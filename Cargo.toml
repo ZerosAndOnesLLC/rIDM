@@ -1,0 +1,87 @@
+[workspace]
+resolver = "3"
+members = ["api", "crates/ridm-core"]
+
+[workspace.package]
+version = "0.1.0-dev"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/mack42/rIDM"
+rust-version = "1.98"
+
+# Every dependency is pinned to an exact version (see working-plan.md §2).
+# Bump deliberately; keep the table in the plan in sync.
+[workspace.dependencies]
+ridm-core = { path = "crates/ridm-core" }
+
+# HTTP
+axum = { version = "=0.8.9", features = ["macros"] }
+axum-server = { version = "=0.8.0", features = ["tls-rustls"] }
+tower = "=0.5.3"
+tower-http = { version = "=0.7.1", features = ["cors", "trace", "compression-gzip", "set-header", "fs"] }
+tower_governor = "=0.8.0"
+http = "=1.5.0"
+tokio = { version = "=1.53.1", features = ["full"] }
+
+# Storage
+sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls-ring", "postgres", "uuid", "chrono", "json", "migrate", "macros"] }
+deadpool-redis = { version = "=0.23.1", features = ["rt_tokio_1"] }
+redis = { version = "=1.7.0", features = ["tokio-rustls-comp", "script"] }
+
+# Crypto / tokens
+jsonwebtoken = "=11.0.0"
+rsa = { version = "=0.9.10", features = ["pem"] }
+p256 = { version = "=0.14.0", features = ["ecdsa", "pem"] }
+ed25519-dalek = { version = "=3.0.0", features = ["rand_core", "pkcs8"] }
+argon2 = "=0.6.0"
+totp-rs = { version = "=6.0.0", features = ["qr", "gen_secret"] }
+webauthn-rs = { version = "=0.5.5", features = ["danger-allow-state-serialisation"] }
+chacha20poly1305 = "=0.11.0"
+sha2 = "=0.11.0"
+hmac = "=0.13.0"
+rand = "=0.10.2"
+rustls = { version = "=0.23.45", default-features = false, features = ["aws-lc-rs", "std", "tls12"] }
+subtle = "=2.6.1"
+zeroize = "=1.9.0"
+base64 = "=0.23.1"
+hex = "=0.4.3"
+
+# Outbound
+reqwest = { version = "=0.13.5", default-features = false, features = ["json", "rustls", "form"] }
+lettre = { version = "=0.11.23", default-features = false, features = ["tokio1", "tokio1-rustls", "aws-lc-rs", "rustls-platform-verifier", "smtp-transport", "builder"] }
+handlebars = "=6.4.4"
+
+# Serde / types
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+uuid = { version = "=1.26.1", features = ["v4", "v7", "serde"] }
+chrono = { version = "=0.4.45", features = ["serde"] }
+thiserror = "=2.0.20"
+validator = { version = "=0.21.0", features = ["derive"] }
+url = { version = "=2.5.8", features = ["serde"] }
+ipnet = { version = "=2.12.2", features = ["serde"] }
+async-trait = "=0.1.92"
+futures = "=0.3.34"
+
+# Config / observability
+dotenvy = "=0.15.7"
+tracing = "=0.1.44"
+tracing-subscriber = { version = "=0.3.23", features = ["env-filter", "json"] }
+metrics = "=0.24.6"
+metrics-exporter-prometheus = { version = "=0.18.3", default-features = false }
+
+# API docs
+utoipa = { version = "=5.5.0", features = ["axum_extras", "uuid", "chrono"] }
+utoipa-axum = "=0.2.0"
+utoipa-swagger-ui = { version = "=9.0.2", features = ["axum"] }
+
+# Embedded UI
+rust-embed = "=8.12.0"
+
+# Dev
+testcontainers-modules = { version = "=0.15.0", features = ["postgres", "redis"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

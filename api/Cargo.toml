@@ -1,0 +1,79 @@
+[package]
+name = "ridm-api"
+description = "rIDM — multi-tenant OpenID Connect identity server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+default-run = "ridm-api"
+
+[[bin]]
+name = "ridm-api"
+path = "src/main.rs"
+
+[lib]
+name = "ridm_api"
+path = "src/lib.rs"
+
+[dependencies]
+ridm-core = { workspace = true }
+
+axum = { workspace = true }
+axum-server = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tower_governor = { workspace = true }
+http = { workspace = true }
+tokio = { workspace = true }
+
+sqlx = { workspace = true }
+deadpool-redis = { workspace = true }
+redis = { workspace = true }
+
+jsonwebtoken = { workspace = true }
+rsa = { workspace = true }
+p256 = { workspace = true }
+ed25519-dalek = { workspace = true }
+argon2 = { workspace = true }
+totp-rs = { workspace = true }
+webauthn-rs = { workspace = true }
+chacha20poly1305 = { workspace = true }
+sha2 = { workspace = true }
+hmac = { workspace = true }
+rand = { workspace = true }
+rustls = { workspace = true }
+subtle = { workspace = true }
+zeroize = { workspace = true }
+base64 = { workspace = true }
+hex = { workspace = true }
+
+reqwest = { workspace = true }
+lettre = { workspace = true }
+handlebars = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+validator = { workspace = true }
+url = { workspace = true }
+ipnet = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+dotenvy = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+
+utoipa = { workspace = true }
+utoipa-axum = { workspace = true }
+utoipa-swagger-ui = { workspace = true }
+
+rust-embed = { workspace = true }
+
+[dev-dependencies]
+testcontainers-modules = { workspace = true }
