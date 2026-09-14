@@ -26,6 +26,16 @@ pub async fn connect(config: &Config) -> Result<Db, sqlx::Error> {
         .await
 }
 
+/// Embedded migrations (`api/migrations`). Applied at startup when
+/// `MIGRATE_ON_START=true`, or with `sqlx migrate run --source api/migrations`.
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+
+/// Apply pending migrations. Safe to call concurrently from several nodes:
+/// sqlx takes an advisory lock.
+pub async fn migrate(db: &Db) -> Result<(), sqlx::migrate::MigrateError> {
+    MIGRATOR.run(db).await
+}
+
 /// Cheap liveness probe used by `/readyz`.
 pub async fn ping(db: &Db) -> Result<(), sqlx::Error> {
     sqlx::query_scalar::<_, i32>("SELECT 1")

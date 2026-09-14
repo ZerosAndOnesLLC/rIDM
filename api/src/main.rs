@@ -39,6 +39,10 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|_| "failed to install rustls crypto provider")?;
 
     let db = db::connect(&config).await?;
+    if config.migrate_on_start {
+        tracing::info!("applying pending migrations");
+        db::migrate(&db).await?;
+    }
     let cache = cache::connect(&config)?;
     cache::ping(&cache).await?;
 
