@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose a feature or improvement
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that rIDM makes hard or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How should it work? Reference the relevant RFC / OIDC spec section if any.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: neutrality
+    attributes:
+      label: Cloud neutrality
+      options:
+        - label: This feature does not require a specific cloud provider in the default build
+          required: true

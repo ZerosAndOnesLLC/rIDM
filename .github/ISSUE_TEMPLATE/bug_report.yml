@@ -1,0 +1,52 @@
+name: Bug report
+description: Something does not work as documented
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security issues: please use private reporting instead
+        (https://github.com/mack42/rIDM/security/advisories/new).
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Image tag, release, or commit SHA
+      placeholder: ghcr.io/mack42/ridm:0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: ["OIDC / tokens", "Login / flows", "MFA", "Admin API", "Admin UI", "Account console", "Brokering / IdPs", "Deployment / packaging", "CLI / crates", "Other"]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Configure a client with ...
+        2. Call /t/{slug}/authorize with ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / output
+      description: Redact secrets and tokens. JSON log lines and the `/readyz` response help.
+      render: shell
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      placeholder: Kubernetes 1.34 + Helm chart 0.1.0, Postgres 18, Valkey 9, behind Traefik
