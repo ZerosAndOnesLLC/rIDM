@@ -232,7 +232,7 @@ Operations
 - [x] 0.2 `config.rs` (typed env: DATABASE_URL, REDIS_URL, PUBLIC_URL, MASTER_KEY or MASTER_KEY_FILE, BIND_ADDR, LOG_FORMAT, DOCS_ENABLED, COOKIE_SECURE, TRUSTED_PROXIES, TLS_CERT/TLS_KEY), `error.rs`, health endpoints, tracing setup.
 - [x] 0.3 `deploy/docker-compose.yml` (api, postgres, redis, mailpit) with dev profile that seeds a tenant, admin, and sample client; `api/Dockerfile` (multi-stage, distroless, multi-arch); `.env.example`.
 - [x] 0.4 Migration 0001: `tenants`; seed `master`. `sqlx migrate run` tested; optional migrate-on-start flag.
-- [ ] 0.5 `ui/` Next 16 static export scaffold (exact-pinned deps from §2). ESLint clean, `next build` produces `out/`.
+- [x] 0.5 `ui/` Next 16 static export scaffold (exact-pinned deps from §2). ESLint clean, `next build` produces `out/`.
 - [ ] 0.6 GitHub Actions CI: `cargo check`, `clippy -D warnings`, `cargo test`, `cargo audit`, `cargo deny`, `npm run lint`, `npm run build`. Renovate config.
 - [ ] 0.7 README, CONTRIBUTING.md, SECURITY.md (disclosure policy), CODE_OF_CONDUCT.md, `security.txt`, issue/PR templates.
 - [ ] 0.8 Provider traits (`KeyEncryptor`, `EmailSender`, `SmsSender`, `Captcha`, `PasswordHasher`) and the internal event bus skeleton.

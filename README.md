@@ -15,6 +15,7 @@ end-user account console.
 | `api/` | `ridm-api` — the identity server |
 | `crates/ridm-core/` | shared types, provider traits, event definitions |
 | `api/migrations/` | sqlx migrations (forward-only) |
+| `ui/` | Next.js 16 static export: admin console, account console, auth pages |
 | `deploy/` | docker-compose, Helm chart, reverse-proxy examples |
 
 ## Quick start (docker-compose)
@@ -43,6 +44,18 @@ cargo run -p ridm-api
 Configuration is entirely environment-driven; every variable is documented in
 `.env.example`. Health probes: `GET /healthz` (liveness) and `GET /readyz`
 (database + cache).
+
+### UI
+
+```bash
+cd ui
+npm install
+npm run lint && npm run typecheck
+npm run build          # static export to ui/out
+```
+
+`NEXT_PUBLIC_API_URL` is empty by default (same origin, for the embedded single-binary
+mode). Set it at build time when hosting `ui/out` on a separate static host or CDN.
 
 ### Container image
 
