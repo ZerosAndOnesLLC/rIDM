@@ -57,6 +57,13 @@ npm run build          # static export to ui/out
 `NEXT_PUBLIC_API_URL` is empty by default (same origin, for the embedded single-binary
 mode). Set it at build time when hosting `ui/out` on a separate static host or CDN.
 
+### CI
+
+Every pull request runs the `ci` workflow: rustfmt, `cargo check`, clippy with warnings
+denied, `cargo audit`, `cargo deny`, ESLint, `tsc`, unit tests, integration tests
+against Postgres and Redis, the UI static export, and a container image boot test.
+Dependencies are updated by Renovate with exact pins.
+
 ### Container image
 
 ```bash

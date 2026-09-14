@@ -1,0 +1,7 @@
+# cargo-audit configuration. Keep in sync with the [advisories].ignore list in deny.toml.
+[advisories]
+ignore = [
+  # rsa Marvin side-channel: signing is done by aws-lc-rs; rsa only generates
+  # keys and encodes JWK/PEM. No fixed release exists.
+  "RUSTSEC-2023-0071",
+]

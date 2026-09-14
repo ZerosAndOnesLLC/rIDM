@@ -79,13 +79,13 @@ All versions are the latest **stable** release as of the date above. Verified by
 | sqlx | 0.9.0 | `runtime-tokio`, `tls-rustls-ring`, `postgres`, `uuid`, `chrono`, `json`, `migrate` |
 | deadpool-redis | 0.23.1 | `rt_tokio_1` |
 | redis | 1.7.0 | `tokio-rustls-comp`, `script` |
-| jsonwebtoken | 11.0.0 | |
+| jsonwebtoken | 11.0.0 | `aws_lc_rs` — constant-time RSA; avoids RUSTSEC-2023-0071 exposure |
 | rsa | 0.9.10 | `pem` — 0.10 is still RC, do not use |
 | p256 | 0.14.0 | `ecdsa`, `pem` |
 | ed25519-dalek | 3.0.0 | `rand_core`, `pkcs8` |
 | argon2 | 0.6.0 | |
 | totp-rs | 6.0.0 | `qr`, `gen_secret` |
-| webauthn-rs | 0.5.5 | `danger-allow-state-serialisation` — 0.6 is still dev, do not use |
+| webauthn-rs | 0.5.5 | `danger-allow-state-serialisation` — 0.6 is still dev, do not use. Requires OpenSSL: `openssl-sys 0.9.117` with `vendored` so the distroless image is self-contained |
 | chacha20poly1305 | 0.11.0 | |
 | sha2 | 0.11.0 | |
 | rand | 0.10.2 | |
@@ -233,7 +233,7 @@ Operations
 - [x] 0.3 `deploy/docker-compose.yml` (api, postgres, redis, mailpit) with dev profile that seeds a tenant, admin, and sample client; `api/Dockerfile` (multi-stage, distroless, multi-arch); `.env.example`.
 - [x] 0.4 Migration 0001: `tenants`; seed `master`. `sqlx migrate run` tested; optional migrate-on-start flag.
 - [x] 0.5 `ui/` Next 16 static export scaffold (exact-pinned deps from §2). ESLint clean, `next build` produces `out/`.
-- [ ] 0.6 GitHub Actions CI: `cargo check`, `clippy -D warnings`, `cargo test`, `cargo audit`, `cargo deny`, `npm run lint`, `npm run build`. Renovate config.
+- [x] 0.6 GitHub Actions CI: `cargo check`, `clippy -D warnings`, `cargo test`, `cargo audit`, `cargo deny`, `npm run lint`, `npm run build`. Renovate config.
 - [ ] 0.7 README, CONTRIBUTING.md, SECURITY.md (disclosure policy), CODE_OF_CONDUCT.md, `security.txt`, issue/PR templates.
 - [ ] 0.8 Provider traits (`KeyEncryptor`, `EmailSender`, `SmsSender`, `Captcha`, `PasswordHasher`) and the internal event bus skeleton.
 - [ ] 0.9 Tests: `ridm-core` test-support module with mock `KeyEncryptor`/`EmailSender`/`SmsSender`/`Captcha`; testcontainers harness (Postgres + Redis) with a shared fixture that seeds tenant, client, admin, user; cargo-llvm-cov wired into CI with coverage report.

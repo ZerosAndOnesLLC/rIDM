@@ -12,7 +12,7 @@ rust-version = "1.98"
 # Every dependency is pinned to an exact version (see working-plan.md §2).
 # Bump deliberately; keep the table in the plan in sync.
 [workspace.dependencies]
-ridm-core = { path = "crates/ridm-core" }
+ridm-core = { path = "crates/ridm-core", version = "0.1.0-dev" }
 
 # HTTP
 axum = { version = "=0.8.9", features = ["macros"] }
@@ -29,13 +29,18 @@ deadpool-redis = { version = "=0.23.1", features = ["rt_tokio_1"] }
 redis = { version = "=1.7.0", features = ["tokio-rustls-comp", "script"] }
 
 # Crypto / tokens
-jsonwebtoken = "=11.0.0"
+# Signing/verification via aws-lc-rs (constant-time RSA); the `rsa` crate is
+# used only for key generation and JWK/PEM encoding.
+jsonwebtoken = { version = "=11.0.0", features = ["aws_lc_rs"] }
 rsa = { version = "=0.9.10", features = ["pem"] }
 p256 = { version = "=0.14.0", features = ["ecdsa", "pem"] }
 ed25519-dalek = { version = "=3.0.0", features = ["rand_core", "pkcs8"] }
 argon2 = "=0.6.0"
 totp-rs = { version = "=6.0.0", features = ["qr", "gen_secret"] }
 webauthn-rs = { version = "=0.5.5", features = ["danger-allow-state-serialisation"] }
+# webauthn-rs 0.5 needs OpenSSL for attestation; vendored so the distroless image
+# has no dynamic libssl dependency.
+openssl-sys = { version = "=0.9.117", features = ["vendored"] }
 chacha20poly1305 = "=0.11.0"
 sha2 = "=0.11.0"
 hmac = "=0.13.0"

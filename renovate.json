@@ -1,0 +1,45 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":pinAllExceptPeerDependencies", ":semanticCommitsDisabled"],
+  "timezone": "UTC",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "rangeStrategy": "pin",
+  "lockFileMaintenance": { "enabled": true, "schedule": ["before 6am on the first day of the month"] },
+  "ignorePaths": ["**/node_modules/**", "**/target/**"],
+  "packageRules": [
+    {
+      "description": "Group minor/patch cargo updates into one PR",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "cargo minor/patch"
+    },
+    {
+      "description": "Group minor/patch npm updates into one PR",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "npm minor/patch"
+    },
+    {
+      "description": "Major updates are reviewed one at a time",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Pre-release crates/packages are never proposed",
+      "matchManagers": ["cargo", "npm"],
+      "ignoreUnstable": true
+    },
+    {
+      "description": "Pin GitHub Actions to major tags",
+      "matchManagers": ["github-actions"],
+      "pinDigests": false
+    },
+    {
+      "description": "Docker base images: digest pins, weekly",
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "pinDigests": true
+    }
+  ],
+  "vulnerabilityAlerts": { "labels": ["security"], "schedule": ["at any time"] }
+}
