@@ -1,0 +1,117 @@
+//! Typed domain events. Every state-changing domain action emits exactly one
+//! event; audit, webhooks, notifications and cache invalidation subscribe.
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+/// Who caused the event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Actor {
+    User { id: Uuid },
+    Client { id: Uuid },
+    Admin { id: Uuid },
+    System,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Event {
+    pub id: Uuid,
+    /// `None` for global (cross-tenant) events such as master-key rotation.
+    pub tenant_id: Option<Uuid>,
+    pub occurred_at: DateTime<Utc>,
+    pub actor: Actor,
+    /// Client IP as seen through trusted proxies, when the event came from a request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ip: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_agent: Option<String>,
+    pub kind: EventKind,
+}
+
+impl Event {
+    pub fn new(tenant_id: Option<Uuid>, actor: Actor, kind: EventKind) -> Self {
+        Self {
+            id: Uuid::now_v7(),
+            tenant_id,
+            occurred_at: Utc::now(),
+            actor,
+            ip: None,
+            user_agent: None,
+            kind,
+        }
+    }
+
+    pub fn with_request(mut self, ip: Option<String>, user_agent: Option<String>) -> Self {
+        self.ip = ip;
+        self.user_agent = user_agent;
+        self
+    }
+
+    /// Stable dotted name (`user.created`) used by audit, webhooks and metrics.
+    pub fn name(&self) -> &'static str {
+        self.kind.name()
+    }
+}
+
+/// The event catalogue. Variants are added phase by phase; the `name()` string
+/// is part of the public webhook contract and must never change once shipped.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum EventKind {
+    // Tenants
+    TenantCreated { tenant_id: Uuid },
+    TenantUpdated { tenant_id: Uuid },
+    TenantDeleted { tenant_id: Uuid },
+
+    // Users
+    UserCreated { user_id: Uuid },
+    UserUpdated { user_id: Uuid },
+    UserDeleted { user_id: Uuid },
+
+    // Keys
+    MasterKeyRotated { new_version: u32 },
+
+    // Generic cache invalidation hint (entity kind + id), used until every
+    // entity has a dedicated event.
+    CacheInvalidate { entity: String, id: String },
+}
+
+impl EventKind {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::TenantCreated { .. } => "tenant.created",
+            Self::TenantUpdated { .. } => "tenant.updated",
+            Self::TenantDeleted { .. } => "tenant.deleted",
+            Self::UserCreated { .. } => "user.created",
+            Self::UserUpdated { .. } => "user.updated",
+            Self::UserDeleted { .. } => "user.deleted",
+            Self::MasterKeyRotated { .. } => "master_key.rotated",
+            Self::CacheInvalidate { .. } => "cache.invalidate",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_serializes_with_tagged_kind() {
+        let e = Event::new(
+            Some(Uuid::nil()),
+            Actor::System,
+            EventKind::UserCreated {
+                user_id: Uuid::nil(),
+            },
+        );
+        let json = serde_json::to_value(&e).unwrap();
+        assert_eq!(json["kind"]["type"], "user_created");
+        assert_eq!(json["actor"]["type"], "system");
+        assert_eq!(e.name(), "user.created");
+        let back: Event = serde_json::from_value(json).unwrap();
+        assert_eq!(back, e);
+    }
+}

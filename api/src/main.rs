@@ -50,6 +50,7 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         config: Arc::new(config),
         db,
         cache,
+        events: ridm_core::events::EventBus::default(),
     };
     let bind_addr = state.config.bind_addr;
     let tls = state.config.tls.clone();
