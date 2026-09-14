@@ -1,0 +1,12 @@
+target
+ui/node_modules
+ui/.next
+ui/out
+.git
+.env
+.env.*
+!.env.example
+deploy
+docs
+perf
+examples

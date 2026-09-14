@@ -1,0 +1,138 @@
+# rIDM full stack: api + postgres + redis (+ mailpit in the dev profile).
+#
+#   Production-ish (no mail catcher, no seeding):
+#     docker compose -f deploy/docker-compose.yml --profile prod up -d
+#
+#   Development (Mailpit catches all email; first run seeds the master tenant,
+#   a global admin, and a sample public client from the BOOTSTRAP_* variables):
+#     docker compose -f deploy/docker-compose.yml --profile dev up -d
+#
+# Every port is overridable so the stack can coexist with other local services:
+#   RIDM_HTTP_PORT (8080), RIDM_PG_PORT (5432), RIDM_REDIS_PORT (6379),
+#   RIDM_MAILPIT_UI_PORT (8025).
+
+name: ridm
+
+x-api-healthcheck: &api-healthcheck
+  test: ["CMD", "/ridm-api", "--healthcheck"]
+  interval: 10s
+  timeout: 3s
+  retries: 10
+  start_period: 15s
+
+x-api-env: &api-env
+  DATABASE_URL: postgres://ridm:${POSTGRES_PASSWORD:-ridm}@postgres:5432/ridm
+  REDIS_URL: redis://redis:6379
+  PUBLIC_URL: ${PUBLIC_URL:-http://localhost:${RIDM_HTTP_PORT:-8080}}
+  BIND_ADDR: 0.0.0.0:8080
+  LOG_FORMAT: ${LOG_FORMAT:-json}
+  RUST_LOG: ${RUST_LOG:-info}
+  MIGRATE_ON_START: "true"
+  # 32 bytes, hex or base64. Generate: openssl rand -hex 32
+  MASTER_KEY: ${MASTER_KEY:?set MASTER_KEY (openssl rand -hex 32)}
+  TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+  COOKIE_SECURE: ${COOKIE_SECURE:-true}
+  DOCS_ENABLED: ${DOCS_ENABLED:-false}
+
+services:
+  postgres:
+    image: postgres:18.6-alpine
+    environment:
+      POSTGRES_DB: ridm
+      POSTGRES_USER: ridm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ridm}
+    command: >
+      postgres -c shared_buffers=256MB -c max_connections=200
+               -c log_min_duration_statement=250
+    volumes:
+      - pgdata:/var/lib/postgresql
+    ports:
+      - "${RIDM_PG_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ridm -d ridm"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:8.10.1-alpine3.23
+    command: >
+      redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata:/data
+    ports:
+      - "${RIDM_REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    profiles: ["prod"]
+    image: ${RIDM_IMAGE:-ghcr.io/mack42/ridm:latest}
+    build:
+      context: ..
+      dockerfile: api/Dockerfile
+    environment:
+      <<: *api-env
+    ports:
+      - "${RIDM_HTTP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck: *api-healthcheck
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # dev profile: mail catcher + first-run seeding + swagger docs + plain http
+  # ---------------------------------------------------------------------------
+  mailpit:
+    profiles: ["dev"]
+    image: axllent/mailpit:v1.31.1
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    ports:
+      - "${RIDM_MAILPIT_UI_PORT:-8025}:8025"
+    restart: unless-stopped
+
+  api-dev:
+    profiles: ["dev"]
+    image: ${RIDM_IMAGE:-ghcr.io/mack42/ridm:latest}
+    build:
+      context: ..
+      dockerfile: api/Dockerfile
+    environment:
+      <<: *api-env
+      LOG_FORMAT: pretty
+      RUST_LOG: ${RUST_LOG:-info,ridm_api=debug}
+      COOKIE_SECURE: "false"
+      DOCS_ENABLED: "true"
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_FROM: "rIDM <no-reply@ridm.local>"
+      # First-run bootstrap (Phase 1.6): creates the `master` tenant, a global
+      # admin, and a sample SPA client. Ignored once the master tenant exists.
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@ridm.local}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-ChangeMe-Now-1234}
+      BOOTSTRAP_SAMPLE_CLIENT: "true"
+    ports:
+      - "${RIDM_HTTP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    healthcheck: *api-healthcheck
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

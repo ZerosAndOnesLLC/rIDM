@@ -14,13 +14,44 @@ end-user account console.
 |------|---------|
 | `api/` | `ridm-api` — the identity server |
 | `crates/ridm-core/` | shared types, provider traits, event definitions |
+| `api/migrations/` | sqlx migrations (forward-only) |
+| `deploy/` | docker-compose, Helm chart, reverse-proxy examples |
+
+## Quick start (docker-compose)
+
+```bash
+export MASTER_KEY=$(openssl rand -hex 32)      # keep this safe; it encrypts secrets at rest
+docker compose -f deploy/docker-compose.yml --profile dev up -d
+curl http://localhost:8080/readyz
+```
+
+The `dev` profile adds [Mailpit](http://localhost:8025) to catch outbound email and
+seeds a `master` tenant, a global admin, and a sample client on first run. Use
+`--profile prod` for a stack without those extras. Ports are overridable with
+`RIDM_HTTP_PORT`, `RIDM_PG_PORT`, `RIDM_REDIS_PORT`, `RIDM_MAILPIT_UI_PORT`.
 
 ## Development
 
-Requirements: Rust 1.98+, Node.js 24 LTS, Postgres 16+, Redis 8+ (or Valkey).
+Requirements: Rust 1.98+, Node.js 24 LTS, Postgres 16+, Redis 8+ (or Valkey), `sqlx-cli`.
 
 ```bash
-cargo check
+cp .env.example .env                           # then set MASTER_KEY and the URLs
+sqlx migrate run --source api/migrations       # or set MIGRATE_ON_START=true
+cargo run -p ridm-api
 ```
+
+Configuration is entirely environment-driven; every variable is documented in
+`.env.example`. Health probes: `GET /healthz` (liveness) and `GET /readyz`
+(database + cache).
+
+### Container image
+
+```bash
+docker build -f api/Dockerfile -t ridm .
+docker buildx build --platform linux/amd64,linux/arm64 -f api/Dockerfile -t ridm .
+```
+
+The image is distroless, runs as non-root, and its `HEALTHCHECK` calls
+`/ridm-api --healthcheck`.
 
 See `working-plan.md` for the roadmap and current status.

@@ -12,6 +12,12 @@ async fn main() {
     // Ignore a missing .env file; production sets real environment variables.
     let _ = dotenvy::dotenv();
 
+    // `ridm-api --healthcheck` is used as the container HEALTHCHECK: distroless
+    // images have no curl, so the binary probes itself.
+    if std::env::args().any(|a| a == "--healthcheck") {
+        std::process::exit(healthcheck().await);
+    }
+
     let config = match Config::from_env() {
         Ok(c) => c,
         Err(err) => {
@@ -87,4 +93,21 @@ async fn shutdown_signal(handle: Handle<SocketAddr>) {
     }
     tracing::info!("shutdown signal received, draining connections");
     handle.graceful_shutdown(Some(std::time::Duration::from_secs(20)));
+}
+
+async fn healthcheck() -> i32 {
+    let bind = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".into());
+    let port = bind.rsplit(':').next().unwrap_or("8080");
+    let url = format!("http://127.0.0.1:{port}/healthz");
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return 1,
+    };
+    match client.get(&url).send().await {
+        Ok(resp) if resp.status().is_success() => 0,
+        _ => 1,
+    }
 }
