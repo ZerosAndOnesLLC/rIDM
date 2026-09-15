@@ -73,6 +73,7 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     let _invalidation_listener = state.cache.spawn_invalidation_listener();
+    let _audit_writer = ridm_api::services::audit::spawn_writer(state.clone());
     let _jobs = ridm_api::jobs::spawn_all(state.clone());
     let bind_addr = state.config.bind_addr;
     let tls = state.config.tls.clone();

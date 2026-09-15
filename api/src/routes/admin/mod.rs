@@ -1,3 +1,4 @@
+mod audit;
 mod auth;
 mod clients;
 mod groups;
@@ -11,6 +12,7 @@ mod scopes;
 mod tenants;
 mod users;
 
+pub use audit::*;
 pub use auth::*;
 pub use clients::*;
 pub use groups::*;

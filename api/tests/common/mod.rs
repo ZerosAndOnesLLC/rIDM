@@ -401,6 +401,8 @@ impl TestApp {
         let redis = ridm_api::cache::connect(&config).expect("connect redis");
         let mut state = AppState::new(config, db, redis);
         configure(&mut state);
+        // The audit writer runs in every deployment; tests observe its rows.
+        let _audit_writer = ridm_api::services::audit::spawn_writer(state.clone());
         let app = ridm_api::build_router_with(state.clone(), extra);
         tokio::spawn(async move {
             axum::serve(

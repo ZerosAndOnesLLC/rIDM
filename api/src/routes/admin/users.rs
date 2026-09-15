@@ -86,6 +86,7 @@ pub fn users_router() -> Router<AppState> {
             put(join_group).delete(leave_group),
         )
         .route(&format!("{base}/{{user}}/consents"), get(user_consents))
+        .route(&format!("{base}/{{user}}/audit"), get(user_audit))
         .route(
             &format!("{base}/{{user}}/consents/{{client_id}}"),
             delete_route(revoke_consent),
@@ -872,4 +873,30 @@ async fn export(
         h.insert(header::CACHE_CONTROL, v);
     }
     Ok(res)
+}
+
+// --- audit ------------------------------------------------------------------
+
+/// Audit rows where the user is the actor or the subject (`ridm:audit:read`).
+async fn user_audit(
+    State(state): State<AppState>,
+    admin: AdminCtx,
+    AdminTenantPath(tenant): AdminTenantPath,
+    Path(UserPath { user }): Path<UserPath>,
+    Query(q): Query<crate::routes::admin::ListQuery>,
+) -> AppResult<Json<crate::util::cursor::Page<crate::models::AuditEvent>>> {
+    admin.require(tenant.id, "ridm:audit:read")?;
+    users::get(&state, tenant.id, user).await?;
+    let mut filter: crate::models::AuditFilter = q.filter.into();
+    filter.user_id = Some(user);
+    Ok(Json(
+        crate::services::audit::list(
+            &state,
+            Some(tenant.id),
+            &filter,
+            q.cursor.as_deref(),
+            q.limit,
+        )
+        .await?,
+    ))
 }

@@ -255,9 +255,20 @@ pagination with `?cursor=&limit=`):
 | `GET/PUT/DELETE /admin/tenants/{slug}/messaging/sms`, `POST .../sms/test` | read / write | HTTP gateway `{url, auth_header?, from?}`, same redaction and test-send rules |
 | `GET .../messaging/templates`, `GET/PUT/DELETE .../templates/{channel}/{event}/{locale}`, `POST .../templates/preview` | read / write / read | events and channels catalogue plus tenant overrides; a `GET` returns the override or the built-in as a starting point; overrides are validated by rendering; preview renders the stored template or an unsaved `draft` with sample `vars` |
 | `GET .../messaging/log?status=&limit=`, `POST .../log/{id}/redeliver` | read / write | outbound queue entries without bodies (links and codes stay private); dead messages can be requeued |
+| `GET /admin/tenants/{slug}/audit` | `ridm:audit:read` | newest first; `?from=&to=&name=&actor_id=&subject_id=&user_id=&cursor=&limit=`; `name` matches exactly or as a prefix when it ends in `.` or `*` |
+| `GET .../audit/export?format=json|csv`, `GET .../audit/verify` | `ridm:audit:read` | oldest first with `prev_hash`/`hash` for offline checking; verify walks the retained chain and names the first broken position |
+| `GET .../users/{id}/audit` | `ridm:audit:read` | rows where the user is actor or subject |
+| `GET /admin/audit`, `.../export`, `.../verify` | `ridm:audit:read` (global only) | the global chain: events with no tenant, such as master-key rotation |
+
+Every domain event is appended to `audit_events` (monthly partitions, tenant RLS) by an
+in-process writer; rows are hash-chained per tenant (`SHA-256(prev_hash || row)`), so a
+row changed or removed inside the retained window fails verification. Retention is a
+tenant setting (`settings.audit.retention_days`, default 365, `0` keeps forever); a daily
+job creates upcoming partitions and drops each tenant's expired chain prefix, so what
+remains stays contiguous. The global chain follows the master tenant's policy.
 
 Tenant settings cover the password, session, MFA, registration, locale, branding,
-key, discovery, DCR, auth-method, lockout, CAPTCHA and notification policies plus a
+key, discovery, DCR, auth-method, lockout, CAPTCHA, notification and audit-retention policies plus a
 free-form `features` flag map. IP rules and webhooks get their own resources later in
 Phase 5.
 

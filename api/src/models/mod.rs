@@ -1,3 +1,4 @@
+mod audit;
 mod claim_mapper;
 mod client;
 mod credential;
@@ -14,6 +15,7 @@ mod signing_key;
 mod tenant;
 mod user;
 
+pub use audit::*;
 pub use claim_mapper::*;
 pub use client::*;
 pub use credential::*;

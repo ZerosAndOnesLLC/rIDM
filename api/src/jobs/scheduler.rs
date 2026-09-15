@@ -16,6 +16,12 @@ pub fn spawn_all(state: AppState) -> Vec<tokio::task::JoinHandle<()>> {
             |s| async move { key_rotation::run_once(&s).await.map(|_| ()) },
         ),
         spawn_periodic(
+            state.clone(),
+            "audit_retention",
+            Duration::from_secs(24 * 3600),
+            |s| async move { crate::jobs::audit_retention::run_once(&s).await.map(|_| ()) },
+        ),
+        spawn_periodic(
             state,
             "message_delivery",
             Duration::from_secs(30),

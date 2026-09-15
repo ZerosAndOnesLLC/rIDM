@@ -1,4 +1,5 @@
 pub mod admin_access;
+pub mod audit;
 pub mod auth_codes;
 pub mod bootstrap;
 pub mod bulk_users;

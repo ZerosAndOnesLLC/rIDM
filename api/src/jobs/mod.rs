@@ -1,3 +1,4 @@
+pub mod audit_retention;
 pub mod key_rotation;
 pub mod leader;
 pub mod message_delivery;

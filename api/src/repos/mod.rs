@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod claim_mappers;
 pub mod clients;
 pub mod consents;
