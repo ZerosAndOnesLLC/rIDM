@@ -100,6 +100,30 @@ pub enum EventKind {
         from_algo: String,
     },
 
+    // Clients
+    ClientCreated {
+        client_id: Uuid,
+        public_id: String,
+    },
+    ClientUpdated {
+        client_id: Uuid,
+    },
+    ClientDeleted {
+        client_id: Uuid,
+    },
+    ClientSecretRotated {
+        client_id: Uuid,
+    },
+    ConsentGranted {
+        user_id: Uuid,
+        client_id: Uuid,
+        scopes: Vec<String>,
+    },
+    ConsentRevoked {
+        user_id: Uuid,
+        client_id: Uuid,
+    },
+
     // Groups
     GroupCreated {
         group_id: Uuid,
@@ -146,6 +170,21 @@ pub enum EventKind {
     RoleCompositeRemoved {
         parent_role_id: Uuid,
         child_role_id: Uuid,
+    },
+
+    // Sessions and authorization
+    SessionCreated {
+        session_id: Uuid,
+        user_id: Uuid,
+    },
+    SessionRevoked {
+        session_id: Uuid,
+        user_id: Uuid,
+    },
+    AuthorizationGranted {
+        user_id: Uuid,
+        client_id: Uuid,
+        scopes: Vec<String>,
     },
 
     // Tokens
@@ -196,6 +235,12 @@ impl EventKind {
             Self::UserDeleted { .. } => "user.deleted",
             Self::PasswordChanged { .. } => "user.password_changed",
             Self::PasswordHashUpgraded { .. } => "user.password_hash_upgraded",
+            Self::ClientCreated { .. } => "client.created",
+            Self::ClientUpdated { .. } => "client.updated",
+            Self::ClientDeleted { .. } => "client.deleted",
+            Self::ClientSecretRotated { .. } => "client.secret_rotated",
+            Self::ConsentGranted { .. } => "consent.granted",
+            Self::ConsentRevoked { .. } => "consent.revoked",
             Self::GroupCreated { .. } => "group.created",
             Self::GroupUpdated { .. } => "group.updated",
             Self::GroupDeleted { .. } => "group.deleted",
@@ -208,6 +253,9 @@ impl EventKind {
             Self::RoleUnassigned { .. } => "role.unassigned",
             Self::RoleCompositeAdded { .. } => "role.composite_added",
             Self::RoleCompositeRemoved { .. } => "role.composite_removed",
+            Self::SessionCreated { .. } => "session.created",
+            Self::SessionRevoked { .. } => "session.revoked",
+            Self::AuthorizationGranted { .. } => "authorization.granted",
             Self::RefreshTokenReuseDetected { .. } => "token.refresh_reuse_detected",
             Self::TokensRevoked { .. } => "token.revoked",
             Self::SigningKeyCreated { .. } => "signing_key.created",

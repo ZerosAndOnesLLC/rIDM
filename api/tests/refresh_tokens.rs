@@ -10,6 +10,23 @@ use ridm_api::services::{denylist, tenants, users};
 use ridm_core::events::Actor;
 use uuid::Uuid;
 
+/// Refresh tokens reference a registered client; create a machine client per id.
+async fn client(app: &TestApp, client_id: &str) {
+    ridm_api::services::clients::create(
+        &app.state,
+        app.tenant.id,
+        Actor::System,
+        ridm_api::models::NewClient {
+            client_id: Some(client_id.into()),
+            name: client_id.into(),
+            client_type: Some(ridm_api::models::ClientType::Machine),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+}
+
 async fn user(app: &TestApp) -> Uuid {
     users::create(
         &app.state,
@@ -47,6 +64,7 @@ async fn rotation_chain_and_reuse_detection() {
     let app = TestApp::spawn().await;
     let tid = app.tenant.id;
     let uid = user(&app).await;
+    client(&app, "app").await;
     let scopes = vec!["openid".to_string(), "offline_access".to_string()];
 
     let first = refresh_tokens::issue(
@@ -101,6 +119,7 @@ async fn rotation_chain_and_reuse_detection() {
 async fn client_binding_expiry_and_garbage() {
     let app = TestApp::spawn().await;
     let tid = app.tenant.id;
+    client(&app, "app-a").await;
     let scopes = vec![];
     let t = refresh_tokens::issue(
         &app.state,
@@ -147,6 +166,9 @@ async fn client_binding_expiry_and_garbage() {
 
     // Tokens are scoped to the tenant they were issued in.
     let other = common::create_tenant(&app.state.db).await;
+    let mut other_app = TestApp::spawn().await;
+    other_app.tenant = other.clone();
+    client(&other_app, "app-a").await;
     let t2 = refresh_tokens::issue(
         &app.state,
         tid,
@@ -173,6 +195,8 @@ async fn revocation_by_token_user_session_and_purge() {
     let app = TestApp::spawn().await;
     let tid = app.tenant.id;
     let uid = user(&app).await;
+    client(&app, "app").await;
+    client(&app, "other").await;
     let scopes = vec![];
     let sid = Uuid::now_v7();
     let a = refresh_tokens::issue(

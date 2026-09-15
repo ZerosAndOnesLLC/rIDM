@@ -31,6 +31,17 @@ end-user account console.
 - **Built for scale.** Stateless API nodes, cache-first reads, short-lived JWTs, Redis
   for sessions and flow state, indexes that lead with `tenant_id`.
 
+## What works today
+
+Per tenant, under `/t/{slug}`: discovery (`/.well-known/openid-configuration`), JWKS,
+`/authorize` (code + PKCE S256 only; query, fragment, form_post and JARM response
+modes), `/par`, JWT-secured request objects, `/token` (authorization_code,
+refresh_token with rotation and reuse detection, client_credentials with service
+accounts; client_secret_basic/post, private_key_jwt, none), `/userinfo`,
+`/introspect`, `/revoke`, `/end_session` with back-channel and front-channel logout,
+dynamic client registration and management. Globally: WebFinger issuer discovery.
+The login, consent and MFA pages that create browser sessions arrive in Phase 4.
+
 ## Quick start (docker-compose)
 
 ```bash

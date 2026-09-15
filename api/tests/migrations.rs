@@ -18,6 +18,15 @@ const TENANT_TABLES: &[&str] = &[
     "roles",
     "role_assignments",
     "role_composites",
+    "signing_keys",
+    "refresh_tokens",
+    "clients",
+    "resource_servers",
+    "permissions",
+    "permission_assignments",
+    "scopes",
+    "claim_mappers",
+    "consents",
 ];
 
 /// Create a throwaway database (needs a superuser/CREATEDB admin URL) and

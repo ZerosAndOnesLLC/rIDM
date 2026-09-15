@@ -61,6 +61,7 @@ matrix. The short version:
 | Coverage | `cargo llvm-cov --workspace --all-features --html` |
 | UI lint / types / build | `npm run lint && npm run typecheck && npm run build` |
 | Supply chain | `cargo audit && cargo deny check` |
+| Fuzz (nightly) | `cd api/fuzz && cargo +nightly fuzz run authorize_params -- -max_total_time=60` |
 
 Integration tests need Postgres and Redis. Point them at running servers with
 `RIDM_TEST_DATABASE_URL` and `RIDM_TEST_REDIS_URL` (for example the docker-compose

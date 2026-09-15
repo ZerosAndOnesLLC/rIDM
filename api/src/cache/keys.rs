@@ -48,3 +48,63 @@ pub fn signing_key_material(key_id: Uuid) -> String {
 pub fn jti_denied(tenant_id: Uuid, jti: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:jti:{jti}")
 }
+
+pub fn client_by_client_id(tenant_id: Uuid, client_id: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:client:{client_id}")
+}
+
+pub fn scopes(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:scopes")
+}
+
+pub fn mappers(tenant_id: Uuid, client_id: Option<Uuid>) -> String {
+    match client_id {
+        Some(c) => format!("{PREFIX}:t:{tenant_id}:mappers:{c}"),
+        None => format!("{PREFIX}:t:{tenant_id}:mappers:global"),
+    }
+}
+
+pub fn discovery(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:discovery")
+}
+
+pub fn sso_session(tenant_id: Uuid, session_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:session:{session_id}")
+}
+
+pub fn auth_code(tenant_id: Uuid, code_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:code:{code_hash}")
+}
+
+pub fn login_flow(tenant_id: Uuid, flow_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:flow:{flow_id}")
+}
+
+pub fn client_jwks(tenant_id: Uuid, client_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:client:{client_id}:jwks")
+}
+
+pub fn client_assertion_jti(tenant_id: Uuid, client_id: Uuid, jti: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:client:{client_id}:assertion:{jti}")
+}
+
+pub fn code_family(tenant_id: Uuid, code_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:code_family:{code_hash}")
+}
+
+/// Clients that obtained tokens within a browser session (for logout notification).
+pub fn session_clients(tenant_id: Uuid, session_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:session:{session_id}:clients")
+}
+
+pub fn logout_flow(tenant_id: Uuid, flow_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:logout:{flow_id}")
+}
+
+pub fn par_request(tenant_id: Uuid, id: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:par:{id}")
+}
+
+pub fn dcr_initial_token(tenant_id: Uuid, token_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:dcr:iat:{token_hash}")
+}

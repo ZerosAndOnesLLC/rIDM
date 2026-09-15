@@ -48,8 +48,29 @@ pub struct TenantSettings {
     pub branding: Branding,
     pub keys: KeyPolicy,
     pub discovery: DiscoverySettings,
+    pub dcr: DcrPolicy,
     /// Custom issuer host (Phase 9.3). `None` means `{PUBLIC_URL}/t/{slug}`.
     pub custom_domain: Option<String>,
+}
+
+/// Dynamic client registration policy (RFC 7591).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DcrPolicy {
+    pub mode: DcrMode,
+    /// Grant types a dynamically registered client may request.
+    pub allowed_grants: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DcrMode {
+    #[default]
+    Disabled,
+    /// Anyone may register (rate limited; public clients only by default).
+    Open,
+    /// Registration requires an admin-issued initial access token.
+    InitialAccessToken,
 }
 
 /// WebFinger issuer discovery (OIDC Discovery §2).

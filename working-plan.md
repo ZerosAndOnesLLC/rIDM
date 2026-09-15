@@ -265,16 +265,16 @@ Operations
 - [x] 2.7 Tests: sign/verify for every alg; rotation overlap (old kid still verifies until retired); revoked kid rejected; JWKS shape and ETag; pairwise `sub` stability; JWE round trip; master-key rotation re-encrypts and verifies; property tests on JWT decoding.
 
 ### Phase 3 — OIDC provider core
-- [ ] 3.1 Migrations: clients (all fields incl. client_type, dual secrets, subject_type, logout URIs), scopes, claim_mappers, consents, refresh_tokens, resource_servers, permissions, permission_assignments. Default scopes seeded per tenant.
-- [ ] 3.2 Discovery document, complete and accurate for every supported feature.
-- [ ] 3.3 `/authorize`: full validation (client, exact redirect_uri incl. loopback rules for native, response_type=code, scope, state, nonce, PKCE, prompt incl. `create`, max_age, acr_values, login_hint, ui_locales, `claims` param, `resource` indicators, `response_mode` query|fragment|form_post|jwt); SSO-session check → code or `login_flow` redirect.
-- [ ] 3.4 `/token`: authorization_code (+PKCE), refresh_token (rotation), client_credentials (service account roles), with client auth basic/post/private_key_jwt; audience-scoped access tokens for resource servers.
-- [ ] 3.5 `/userinfo`, `/introspect`, `/revoke`, `/end_session` (RP-initiated logout), back-channel logout and front-channel logout.
-- [ ] 3.6 PAR (RFC 9126), JAR (RFC 9101), JARM.
-- [ ] 3.7 Dynamic client registration (RFC 7591) and management (RFC 7592) with per-tenant policy (open|initial-access-token|disabled).
-- [ ] 3.8 Client secret rotation (two active secrets, grace window) and `jwks_uri` refresh.
-- [ ] 3.9 Integration tests: code+PKCE round trip, refresh rotation + reuse detection, client_credentials, DCR, logout propagation, negative cases.
-- [ ] 3.10 Security tests: code replay, PKCE missing/mismatched/plain-downgrade, redirect_uri substring/suffix/scheme attacks, loopback port rules, state/nonce mismatch, `id_token_hint` from another tenant, client secret grace expiry, DCR abuse (open policy off), discovery-vs-routes contract test. Fuzz targets: authorize params, redirect_uri matcher.
+- [x] 3.1 Migrations: clients (all fields incl. client_type, dual secrets, subject_type, logout URIs), scopes, claim_mappers, consents, refresh_tokens, resource_servers, permissions, permission_assignments. Default scopes seeded per tenant.
+- [x] 3.2 Discovery document, complete and accurate for every supported feature.
+- [x] 3.3 `/authorize`: full validation (client, exact redirect_uri incl. loopback rules for native, response_type=code, scope, state, nonce, PKCE, prompt incl. `create`, max_age, acr_values, login_hint, ui_locales, `claims` param, `resource` indicators, `response_mode` query|fragment|form_post|jwt); SSO-session check → code or `login_flow` redirect.
+- [x] 3.4 `/token`: authorization_code (+PKCE), refresh_token (rotation), client_credentials (service account roles), with client auth basic/post/private_key_jwt; audience-scoped access tokens for resource servers.
+- [x] 3.5 `/userinfo`, `/introspect`, `/revoke`, `/end_session` (RP-initiated logout), back-channel logout and front-channel logout.
+- [x] 3.6 PAR (RFC 9126), JAR (RFC 9101), JARM.
+- [x] 3.7 Dynamic client registration (RFC 7591) and management (RFC 7592) with per-tenant policy (open|initial-access-token|disabled).
+- [x] 3.8 Client secret rotation (two active secrets, grace window) and `jwks_uri` refresh.
+- [x] 3.9 Integration tests: code+PKCE round trip, refresh rotation + reuse detection, client_credentials, DCR, logout propagation, negative cases.
+- [x] 3.10 Security tests: code replay, PKCE missing/mismatched/plain-downgrade, redirect_uri substring/suffix/scheme attacks, loopback port rules, state/nonce mismatch, `id_token_hint` from another tenant, client secret grace expiry, DCR abuse (open policy off), discovery-vs-routes contract test. Fuzz targets: authorize params, redirect_uri matcher.
 
 ### Phase 4 — Browser flows (API) and end-user UI
 - [ ] 4.1 Flow state machine (Redis): identify → authenticate (password | passkey | magic-link | email-otp | sms-otp | upstream IdP) → mfa → step-up check (acr) → profile-completion → terms → consent → done; CSRF bound to flow; retry counters.

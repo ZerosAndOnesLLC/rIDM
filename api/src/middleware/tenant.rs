@@ -70,6 +70,7 @@ pub fn tenant_cache_keys(tenant: &Tenant) -> Vec<String> {
         keys::tenant_by_slug(&tenant.slug),
         keys::tenant_by_id(tenant.id),
         keys::jwks(tenant.id),
+        keys::discovery(tenant.id),
     ];
     for d in &tenant.settings.discovery.email_domains {
         v.push(keys::tenant_by_email_domain(&d.to_lowercase()));
