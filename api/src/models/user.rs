@@ -56,7 +56,7 @@ impl User {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct NewUser {
     pub username: String,
     pub email: Option<String>,
@@ -70,7 +70,7 @@ pub struct NewUser {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct UserUpdate {
     pub username: Option<String>,
     #[serde(deserialize_with = "double_option")]

@@ -330,6 +330,43 @@ pub async fn permissions_of_user(
     Ok(set.unwrap_or_default())
 }
 
+/// Something an administrator is about to hand to a principal.
+#[derive(Debug, Clone, Copy)]
+pub enum Grant {
+    Role(Uuid),
+    /// Membership: every role of the group and its ancestors.
+    Group(Uuid),
+}
+
+/// Admin permissions a grant carries (composites expanded), for
+/// [`crate::middleware::AdminCtx::require_can_grant`].
+pub async fn permissions_of_grant(
+    state: &AppState,
+    tenant_id: Uuid,
+    grant: Grant,
+) -> AppResult<Vec<String>> {
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let direct: Vec<Uuid> = match grant {
+        Grant::Role(id) => vec![id],
+        Grant::Group(id) => {
+            repos::roles::role_ids_of_group_lineage(&mut *tx, tenant_id, id).await?
+        }
+    };
+    if direct.is_empty() {
+        return Ok(vec![]);
+    }
+    let all = repos::roles::expand_composites(&mut *tx, tenant_id, &direct).await?;
+    let Some(rs) =
+        repos::resource_servers::find_by_identifier(&mut *tx, tenant_id, ADMIN_AUDIENCE).await?
+    else {
+        return Ok(vec![]);
+    };
+    let names =
+        repos::resource_servers::permissions_for_roles(&mut *tx, tenant_id, rs.id, &all).await?;
+    tx.commit().await?;
+    Ok(names)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

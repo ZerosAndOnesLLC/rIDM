@@ -295,3 +295,46 @@ pub async fn effective_roles_of_user<'e>(
     .fetch_all(exec)
     .await
 }
+
+/// `roles` plus every role reachable through composites (what assigning them
+/// actually grants).
+pub async fn expand_composites<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    role_ids: &[Uuid],
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        "WITH RECURSIVE effective AS ( \
+            SELECT id AS role_id, 0 AS depth FROM roles WHERE tenant_id = $1 AND id = ANY($2) \
+            UNION \
+            SELECT rc.child_role_id, e.depth + 1 FROM role_composites rc \
+              JOIN effective e ON rc.parent_role_id = e.role_id WHERE rc.tenant_id = $1 AND e.depth < 64) \
+         SELECT DISTINCT role_id FROM effective",
+    )
+    .bind(tenant_id)
+    .bind(role_ids)
+    .fetch_all(exec)
+    .await
+}
+
+/// Roles assigned to a group or any of its ancestors (what group membership
+/// grants before composites are expanded).
+pub async fn role_ids_of_group_lineage<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    group_id: Uuid,
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        "WITH RECURSIVE lineage AS ( \
+            SELECT id, parent_id, 0 AS depth FROM groups WHERE tenant_id = $1 AND id = $2 \
+            UNION \
+            SELECT p.id, p.parent_id, l.depth + 1 FROM groups p \
+              JOIN lineage l ON p.id = l.parent_id WHERE p.tenant_id = $1 AND l.depth < 64) \
+         SELECT DISTINCT ra.role_id FROM role_assignments ra \
+           JOIN lineage l ON ra.group_id = l.id WHERE ra.tenant_id = $1",
+    )
+    .bind(tenant_id)
+    .bind(group_id)
+    .fetch_all(exec)
+    .await
+}

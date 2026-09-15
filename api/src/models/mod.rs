@@ -1,5 +1,6 @@
 mod claim_mapper;
 mod client;
+mod credential;
 mod group;
 mod invitation;
 mod message;
@@ -15,6 +16,7 @@ mod user;
 
 pub use claim_mapper::*;
 pub use client::*;
+pub use credential::*;
 pub use group::*;
 pub use invitation::*;
 pub use message::*;
