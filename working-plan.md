@@ -273,7 +273,7 @@ Operations
 - [x] 3.6 PAR (RFC 9126), JAR (RFC 9101), JARM.
 - [x] 3.7 Dynamic client registration (RFC 7591) and management (RFC 7592) with per-tenant policy (open|initial-access-token|disabled).
 - [x] 3.8 Client secret rotation (two active secrets, grace window) and `jwks_uri` refresh.
-- [ ] 3.9 Integration tests: code+PKCE round trip, refresh rotation + reuse detection, client_credentials, DCR, logout propagation, negative cases.
+- [x] 3.9 Integration tests: code+PKCE round trip, refresh rotation + reuse detection, client_credentials, DCR, logout propagation, negative cases.
 - [ ] 3.10 Security tests: code replay, PKCE missing/mismatched/plain-downgrade, redirect_uri substring/suffix/scheme attacks, loopback port rules, state/nonce mismatch, `id_token_hint` from another tenant, client secret grace expiry, DCR abuse (open policy off), discovery-vs-routes contract test. Fuzz targets: authorize params, redirect_uri matcher.
 
 ### Phase 4 — Browser flows (API) and end-user UI
