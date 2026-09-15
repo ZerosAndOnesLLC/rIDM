@@ -198,6 +198,24 @@ scope, roles and permissions.
 | `ridm:client-manager` | clients, scopes, claim mappers, resource servers; read roles, tenant settings and audit |
 | `ridm:viewer` | every `*:read` permission |
 
+Admin resources so far (all under `/admin`, RFC 9457 problem+json errors, cursor
+pagination with `?cursor=&limit=`):
+
+| Route | Permission | Notes |
+|-------|------------|-------|
+| `GET /admin/me`, `GET /admin/permissions` | any admin | caller identity; catalogue and built-in roles |
+| `GET /admin/tenants` | `ridm:tenants:read` | global admins page through every tenant; tenant-scoped admins get their own |
+| `POST /admin/tenants` | `ridm:tenants:create` (global only) | `{slug, display_name, settings?}` |
+| `GET /admin/tenants/{slug}` | `ridm:tenants:read` | disabled tenants are still served here |
+| `PATCH /admin/tenants/{slug}` | `ridm:tenants:write` | `display_name`, `status`, and `settings` as a JSON merge patch (RFC 7396): send only what changed, `null` clears; unknown settings fields are rejected |
+| `DELETE /admin/tenants/{slug}` | `ridm:tenants:delete` (global only) | cascades; `master` cannot be deleted or disabled |
+| `GET/PUT/DELETE /admin/tenants/{slug}/captcha` | read / write | provider, site key and secret (stored encrypted; reads return `secret_set` instead of the secret) |
+
+Tenant settings cover the password, session, MFA, registration, locale, branding,
+key, discovery, DCR, auth-method, lockout, CAPTCHA and notification policies plus a
+free-form `features` flag map. IP rules and webhooks get their own resources later in
+Phase 5.
+
 ### UI
 
 ```bash

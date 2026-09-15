@@ -2,23 +2,21 @@
 
 mod common;
 
-use std::time::Duration;
-
 use axum::Router;
 use axum::extract::Path;
 use axum::http::StatusCode;
 use axum::routing::get;
+use common::admin::{TokenOpts, assign, get_json, role_id, token, user_with_role};
 use common::{TestApp, create_tenant};
 use ridm_api::middleware::AdminCtx;
 use ridm_api::models::{
-    ClientType, MASTER_TENANT_ID, NewClient, NewRole, NewUser, Principal, RoleUpdate, Tenant,
-    UserStatus, UserUpdate,
+    ClientType, MASTER_TENANT_ID, NewClient, NewRole, Principal, RoleUpdate, UserStatus, UserUpdate,
 };
 use ridm_api::services::admin_access::{
     ADMIN_AUDIENCE, ADMIN_ROLE, BUILT_IN_ROLES, CATALOGUE, OWNER_ROLE, VIEWER_ROLE,
 };
 use ridm_api::services::sessions::{self, NewSession};
-use ridm_api::services::tokens::{self, AccessTokenRequest, TokenClient};
+use ridm_api::services::tokens;
 use ridm_api::services::{clients, denylist, roles, tenants, users};
 use ridm_api::{db, repos};
 use ridm_core::events::Actor;
@@ -48,113 +46,6 @@ fn probe_routes() -> Router<ridm_api::state::AppState> {
                 },
             ),
         )
-}
-
-async fn user_with_role(app: &TestApp, tenant_id: Uuid, role: Option<&str>) -> Uuid {
-    let suffix = &Uuid::new_v4().simple().to_string()[..8];
-    let user = users::create(
-        &app.state,
-        tenant_id,
-        Actor::System,
-        NewUser {
-            username: format!("adm-{suffix}"),
-            email: Some(format!("adm-{suffix}@example.com")),
-            email_verified: true,
-            ..Default::default()
-        },
-    )
-    .await
-    .unwrap();
-    if let Some(name) = role {
-        assign(app, tenant_id, user.id, name).await;
-    }
-    user.id
-}
-
-async fn role_id(app: &TestApp, tenant_id: Uuid, name: &str) -> Uuid {
-    let mut tx = db::tenant_tx(&app.state.db, tenant_id).await.unwrap();
-    let r = repos::roles::find_by_name(&mut *tx, tenant_id, None, name)
-        .await
-        .unwrap()
-        .unwrap_or_else(|| panic!("role {name} missing in {tenant_id}"));
-    tx.commit().await.unwrap();
-    r.id
-}
-
-async fn assign(app: &TestApp, tenant_id: Uuid, user_id: Uuid, name: &str) {
-    let rid = role_id(app, tenant_id, name).await;
-    roles::assign(
-        &app.state,
-        tenant_id,
-        Actor::System,
-        rid,
-        Principal::User { id: user_id },
-    )
-    .await
-    .unwrap();
-}
-
-struct TokenOpts<'a> {
-    audiences: &'a [&'a str],
-    session_id: Option<Uuid>,
-    ttl: Duration,
-}
-
-impl Default for TokenOpts<'_> {
-    fn default() -> Self {
-        Self {
-            audiences: &[ADMIN_AUDIENCE],
-            session_id: None,
-            ttl: Duration::from_secs(300),
-        }
-    }
-}
-
-/// Issue an access token directly (the token endpoint is covered separately).
-async fn token(app: &TestApp, tenant: &Tenant, user_id: Uuid, opts: TokenOpts<'_>) -> String {
-    let user = users::get(&app.state, tenant.id, user_id).await.unwrap();
-    let role_list = roles::effective_roles(&app.state, tenant.id, user_id)
-        .await
-        .unwrap();
-    let mut client = TokenClient::public("admin-ui");
-    client.access_token_ttl = opts.ttl;
-    let audiences: Vec<String> = opts.audiences.iter().map(|s| s.to_string()).collect();
-    tokens::issue_access_token(
-        &app.state,
-        AccessTokenRequest {
-            tenant,
-            client: &client,
-            user: Some(&user),
-            scopes: &["openid".into()],
-            audiences: &audiences,
-            roles: &role_list,
-            groups: &[],
-            session_id: opts.session_id,
-            auth_time: None,
-            amr: &["pwd".into()],
-            acr: None,
-        },
-    )
-    .await
-    .unwrap()
-    .token
-}
-
-async fn get_json(app: &TestApp, path: &str, bearer: Option<&str>) -> (StatusCode, Value, String) {
-    let mut req = app.http.get(app.url(path));
-    if let Some(t) = bearer {
-        req = req.bearer_auth(t);
-    }
-    let res = req.send().await.unwrap();
-    let status = res.status();
-    let www = res
-        .headers()
-        .get("www-authenticate")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or_default()
-        .to_string();
-    let body: Value = res.json().await.unwrap_or(Value::Null);
-    (status, body, www)
 }
 
 async fn probe(app: &TestApp, bearer: &str, tenant_id: Uuid, permission: &str) -> StatusCode {

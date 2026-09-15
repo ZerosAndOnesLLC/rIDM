@@ -55,6 +55,8 @@ pub struct TenantSettings {
     pub notifications: NotificationPolicy,
     /// Custom issuer host (Phase 9.3). `None` means `{PUBLIC_URL}/t/{slug}`.
     pub custom_domain: Option<String>,
+    /// Feature flags: free-form keys the deployment or its clients consult.
+    pub features: std::collections::BTreeMap<String, bool>,
 }
 
 /// Which security notices users receive (email, or SMS when they have no email).

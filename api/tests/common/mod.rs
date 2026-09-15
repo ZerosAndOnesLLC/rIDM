@@ -13,6 +13,8 @@
 
 #![allow(dead_code)]
 
+pub mod admin;
+
 use std::net::SocketAddr;
 use std::sync::LazyLock;
 

@@ -298,6 +298,34 @@ impl FromRequestParts<AppState> for AdminCtx {
     }
 }
 
+/// The tenant named by the `{slug}` path segment of an admin route.
+///
+/// Unlike [`crate::middleware::TenantCtx`] this admits disabled tenants:
+/// administrators must be able to inspect and re-enable them. Authorization
+/// against the caller is the handler's job (`admin.require(tenant.id, ..)`).
+#[derive(Debug, Clone)]
+pub struct AdminTenantPath(pub Arc<Tenant>);
+
+#[derive(serde::Deserialize)]
+struct SlugPath {
+    slug: String,
+}
+
+impl FromRequestParts<AppState> for AdminTenantPath {
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, AppError> {
+        let axum::extract::Path(SlugPath { slug }) =
+            axum::extract::Path::<SlugPath>::from_request_parts(parts, state)
+                .await
+                .map_err(|_| AppError::NotFound("tenant"))?;
+        let tenant = crate::middleware::resolve_tenant(state, &slug)
+            .await?
+            .ok_or(AppError::NotFound("tenant"))?;
+        Ok(Self(tenant))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

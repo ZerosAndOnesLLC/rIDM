@@ -1,5 +1,4 @@
-//! Admin API entry points that belong to the auth layer itself. Resource
-//! routers (`/admin/tenants/...`) are added by the later Phase 5 sub-phases.
+//! Admin API entry points that belong to the auth layer itself.
 
 use axum::routing::get;
 use axum::{Json, Router};
@@ -10,7 +9,7 @@ use crate::middleware::{AdminCtx, AdminScope};
 use crate::services::admin_access::{ADMIN_AUDIENCE, BUILT_IN_ROLES, CATALOGUE, PermissionDef};
 use crate::state::AppState;
 
-pub fn router() -> Router<AppState> {
+pub fn auth_router() -> Router<AppState> {
     Router::new()
         .route("/admin/me", get(me))
         .route("/admin/permissions", get(permissions))
