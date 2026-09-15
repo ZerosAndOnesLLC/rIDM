@@ -133,6 +133,7 @@ pub async fn update(
         patch.description.as_ref().map(|d| d.as_deref()),
         patch.claims.as_deref(),
         patch.is_default,
+        patch.resource_server_id,
     )
     .await?
     .ok_or(AppError::NotFound("scope"))?;

@@ -35,6 +35,7 @@ pub mod resource_servers;
 pub mod roles;
 pub mod scopes;
 pub mod sessions;
+pub mod tenant_config;
 pub mod tenants;
 pub mod tokens;
 pub mod trusted_devices;

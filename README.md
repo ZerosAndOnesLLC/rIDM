@@ -263,6 +263,8 @@ pagination with `?cursor=&limit=`):
 | `POST .../webhooks/{id}/secret`, `POST .../webhooks/{id}/test` | `ridm:webhooks:write` | rotate the secret (shown once); deliver a `webhook.test` event now and report the attempt |
 | `GET .../webhooks/{id}/deliveries?status=&limit=`, `GET .../deliveries/{id}`, `POST .../deliveries/{id}/redeliver` | read / read / write | delivery log with status, attempts, last status code, error and a response snippet; redeliver requeues and attempts at once |
 | `GET/POST /admin/tenants/{slug}/ip-rules`, `GET/PATCH/DELETE .../{id}` | `ridm:tenants:read` / `write` | `{cidr, action?: allow|deny, client_id?, description?}`; networks are normalized; `?client_id=` or `?tenant_wide=true`; enforced from Phase 9.2 |
+| `GET /admin/tenants/{slug}/export` | `ridm:tenants:export` | the tenant's configuration as one deterministic JSON document (`ridm.tenant/1`): settings, profile schema, resource servers and permissions, scopes, clients, roles (composites, permission grants), groups (by path, with roles), claim mappers, message templates, webhooks and IP rules, keyed by natural identifiers; no secrets, users or provider credentials |
+| `POST /admin/tenants/{slug}/import?dry_run=&prune=` | `ridm:tenants:import` | `dry_run` returns the plan (creates, updates with field-level diffs, and with `prune` deletes of unmentioned configuration); otherwise applies it and reports what was applied, per-item errors, and the secrets of clients and webhooks it created (shown once); applying the same document twice is a no-op |
 
 Webhook deliveries are queued by an in-process subscriber of the event bus and sent by
 the `webhook_delivery` job (every 30 s, one runner per cluster): `POST` with a JSON body

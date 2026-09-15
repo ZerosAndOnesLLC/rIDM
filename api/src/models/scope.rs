@@ -43,11 +43,17 @@ pub struct ScopeUpdate {
     pub description: Option<Option<String>>,
     pub claims: Option<Vec<String>>,
     pub is_default: Option<bool>,
+    /// Bind to (or, with `null`, unbind from) a resource server.
+    #[serde(deserialize_with = "crate::util::patch::double_option")]
+    pub resource_server_id: Option<Option<Uuid>>,
 }
 
 impl ScopeUpdate {
     pub fn is_empty(&self) -> bool {
-        self.description.is_none() && self.claims.is_none() && self.is_default.is_none()
+        self.description.is_none()
+            && self.claims.is_none()
+            && self.is_default.is_none()
+            && self.resource_server_id.is_none()
     }
 }
 
