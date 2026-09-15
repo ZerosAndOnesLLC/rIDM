@@ -62,21 +62,103 @@ impl Event {
 #[non_exhaustive]
 pub enum EventKind {
     // Tenants
-    TenantCreated { tenant_id: Uuid },
-    TenantUpdated { tenant_id: Uuid },
-    TenantDeleted { tenant_id: Uuid },
+    TenantCreated {
+        tenant_id: Uuid,
+    },
+    TenantUpdated {
+        tenant_id: Uuid,
+    },
+    TenantDeleted {
+        tenant_id: Uuid,
+    },
+    ProfileSchemaUpdated {
+        tenant_id: Uuid,
+    },
+    /// First-run bootstrap created the global admin.
+    Bootstrapped {
+        admin_user_id: Uuid,
+    },
 
     // Users
-    UserCreated { user_id: Uuid },
-    UserUpdated { user_id: Uuid },
-    UserDeleted { user_id: Uuid },
+    UserCreated {
+        user_id: Uuid,
+    },
+    UserUpdated {
+        user_id: Uuid,
+    },
+    UserDeleted {
+        user_id: Uuid,
+    },
+    /// Password set by an admin, reset flow, or the user; `by_user` tells which.
+    PasswordChanged {
+        user_id: Uuid,
+        by_user: bool,
+    },
+    /// A legacy or weaker hash was replaced after a successful verification.
+    PasswordHashUpgraded {
+        user_id: Uuid,
+        from_algo: String,
+    },
+
+    // Groups
+    GroupCreated {
+        group_id: Uuid,
+    },
+    GroupUpdated {
+        group_id: Uuid,
+    },
+    GroupDeleted {
+        group_id: Uuid,
+    },
+    GroupMemberAdded {
+        group_id: Uuid,
+        user_id: Uuid,
+    },
+    GroupMemberRemoved {
+        group_id: Uuid,
+        user_id: Uuid,
+    },
+
+    // Roles
+    RoleCreated {
+        role_id: Uuid,
+    },
+    RoleUpdated {
+        role_id: Uuid,
+    },
+    RoleDeleted {
+        role_id: Uuid,
+    },
+    RoleAssigned {
+        role_id: Uuid,
+        user_id: Option<Uuid>,
+        group_id: Option<Uuid>,
+    },
+    RoleUnassigned {
+        role_id: Uuid,
+        user_id: Option<Uuid>,
+        group_id: Option<Uuid>,
+    },
+    RoleCompositeAdded {
+        parent_role_id: Uuid,
+        child_role_id: Uuid,
+    },
+    RoleCompositeRemoved {
+        parent_role_id: Uuid,
+        child_role_id: Uuid,
+    },
 
     // Keys
-    MasterKeyRotated { new_version: u32 },
+    MasterKeyRotated {
+        new_version: u32,
+    },
 
     // Generic cache invalidation hint (entity kind + id), used until every
     // entity has a dedicated event.
-    CacheInvalidate { entity: String, id: String },
+    CacheInvalidate {
+        entity: String,
+        id: String,
+    },
 }
 
 impl EventKind {
@@ -85,9 +167,25 @@ impl EventKind {
             Self::TenantCreated { .. } => "tenant.created",
             Self::TenantUpdated { .. } => "tenant.updated",
             Self::TenantDeleted { .. } => "tenant.deleted",
+            Self::ProfileSchemaUpdated { .. } => "tenant.profile_schema_updated",
+            Self::Bootstrapped { .. } => "system.bootstrapped",
             Self::UserCreated { .. } => "user.created",
             Self::UserUpdated { .. } => "user.updated",
             Self::UserDeleted { .. } => "user.deleted",
+            Self::PasswordChanged { .. } => "user.password_changed",
+            Self::PasswordHashUpgraded { .. } => "user.password_hash_upgraded",
+            Self::GroupCreated { .. } => "group.created",
+            Self::GroupUpdated { .. } => "group.updated",
+            Self::GroupDeleted { .. } => "group.deleted",
+            Self::GroupMemberAdded { .. } => "group.member_added",
+            Self::GroupMemberRemoved { .. } => "group.member_removed",
+            Self::RoleCreated { .. } => "role.created",
+            Self::RoleUpdated { .. } => "role.updated",
+            Self::RoleDeleted { .. } => "role.deleted",
+            Self::RoleAssigned { .. } => "role.assigned",
+            Self::RoleUnassigned { .. } => "role.unassigned",
+            Self::RoleCompositeAdded { .. } => "role.composite_added",
+            Self::RoleCompositeRemoved { .. } => "role.composite_removed",
             Self::MasterKeyRotated { .. } => "master_key.rotated",
             Self::CacheInvalidate { .. } => "cache.invalidate",
         }

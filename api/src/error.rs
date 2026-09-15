@@ -14,7 +14,7 @@ pub type AppResult<T> = Result<T, AppError>;
 pub enum AppError {
     #[error("{0}")]
     BadRequest(String),
-    #[error("validation failed")]
+    #[error("validation failed: {}", format_fields(.0))]
     Validation(Vec<FieldError>),
     #[error("authentication required")]
     Unauthorized,
@@ -40,6 +40,14 @@ pub enum AppError {
 pub struct FieldError {
     pub field: String,
     pub message: String,
+}
+
+fn format_fields(fields: &[FieldError]) -> String {
+    fields
+        .iter()
+        .map(|f| format!("{} {}", f.field, f.message))
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 /// RFC 9457 problem details body.
@@ -128,6 +136,31 @@ impl IntoResponse for AppError {
             response.headers_mut().insert(header::RETRY_AFTER, v);
         }
         response
+    }
+}
+
+impl AppError {
+    /// Translate constraint violations into client errors instead of 500s.
+    pub fn from_db(err: sqlx::Error) -> Self {
+        if let sqlx::Error::Database(db) = &err {
+            if db.is_unique_violation() {
+                return Self::Conflict("already exists".into());
+            }
+            if db.is_foreign_key_violation() {
+                return Self::BadRequest("referenced object does not exist".into());
+            }
+            if db.is_check_violation() {
+                return Self::BadRequest(format!(
+                    "constraint violated: {}",
+                    db.constraint().unwrap_or("unknown")
+                ));
+            }
+            // 42501: insufficient_privilege, raised by row level security.
+            if db.code().as_deref() == Some("42501") {
+                return Self::Forbidden("row level security denied the operation".into());
+            }
+        }
+        Self::Database(err)
     }
 }
 

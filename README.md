@@ -18,7 +18,8 @@ end-user account console.
   default build.
 - **Multi-tenant from the first migration.** Every tenant has its own issuer
   (`{PUBLIC_URL}/t/{slug}`), signing keys, users, clients, policies, branding, and
-  admins. Postgres row level security backs the application-level isolation.
+  admins. Every tenant-scoped table is protected by forced Postgres row level security
+  bound per transaction, with composite foreign keys so rows can never cross tenants.
 - **Standards, not surprises.** Authorization code + PKCE, client credentials, refresh
   token rotation with reuse detection, device flow, PAR, JAR/JARM, DCR, RP-initiated,
   back-channel and front-channel logout, token exchange, DPoP. No implicit, hybrid, or
@@ -50,14 +51,14 @@ in [`.env.example`](.env.example). The essentials:
 
 | Variable | Purpose |
 |----------|---------|
-| `DATABASE_URL` | Postgres 16+ connection string |
+| `DATABASE_URL` | Postgres 16+ connection string; use a **non-superuser, DML-only** role (superusers bypass row level security, owners can disable it) |
 | `REDIS_URL` | Redis 8+ / Valkey connection string |
 | `PUBLIC_URL` | Externally visible base URL; tenant issuers are `{PUBLIC_URL}/t/{slug}` |
 | `MASTER_KEY` / `MASTER_KEY_FILE` | 32-byte key (hex or base64) encrypting secrets at rest |
 | `BIND_ADDR` | Listen address, default `0.0.0.0:8080` |
 | `TRUSTED_PROXIES` | CIDRs whose `X-Forwarded-For` / `Forwarded` headers are honoured |
 | `TLS_CERT` / `TLS_KEY` | Native TLS termination; leave unset behind a reverse proxy |
-| `MIGRATE_ON_START` | Apply pending migrations at startup |
+| `MIGRATE_ON_START` | Apply pending migrations at startup; otherwise run `ridm-api migrate` as the schema-owner role |
 | `LOG_FORMAT`, `RUST_LOG` | `json` or `pretty`; tracing filter |
 | `DOCS_ENABLED` | Serve Swagger UI at `/docs` (off in production) |
 
@@ -72,9 +73,36 @@ Requirements: Rust 1.98+ (pinned in `rust-toolchain.toml`), Node.js 24 LTS, Dock
 ```bash
 cp .env.example .env                           # set MASTER_KEY and the URLs
 docker compose -f deploy/docker-compose.yml up -d postgres redis
-sqlx migrate run --source api/migrations       # or MIGRATE_ON_START=true
-cargo run -p ridm-api
+DATABASE_URL=postgres://ridm_migrator:ridm_migrator@localhost:5432/ridm \
+  sqlx migrate run --source api/migrations     # or: cargo run -p ridm-api -- migrate
+cargo run -p ridm-api                          # runs as the DML-only ridm_app role
 ```
+
+Two database roles are used on purpose: `ridm_migrator` owns the schema and runs
+migrations; `ridm_app` (what the API uses) has DML privileges only. Postgres superusers
+bypass row level security and table owners can disable it, so neither may be the API's
+role. The compose stack creates both and runs migrations in a one-shot `migrate`
+service; on Kubernetes use a Job. `MIGRATE_ON_START=true` is a simpler single-role mode
+for small installs.
+
+### First-run bootstrap
+
+The `master` tenant hosts global administrators. Create the first one either from the
+environment at startup (the compose `dev` profile does this):
+
+```bash
+BOOTSTRAP_ADMIN_EMAIL=admin@example.com BOOTSTRAP_ADMIN_PASSWORD='a-long-passphrase' cargo run -p ridm-api
+```
+
+or interactively (prompts for anything not given):
+
+```bash
+ridm-api bootstrap --email admin@example.com [--username admin] [--password-stdin] [--no-must-change]
+```
+
+Bootstrap is idempotent: once any user in `master` holds the `ridm:owner` role it does
+nothing. The password must satisfy the master tenant's policy, and admins created
+from the environment must change it at first login.
 
 ### UI
 

@@ -36,6 +36,9 @@ rsa = { workspace = true }
 p256 = { workspace = true }
 ed25519-dalek = { workspace = true }
 argon2 = { workspace = true }
+bcrypt = { workspace = true }
+pbkdf2 = { workspace = true }
+md-5 = { workspace = true }
 totp-rs = { workspace = true }
 webauthn-rs = { workspace = true }
 openssl-sys = { workspace = true }
@@ -59,12 +62,14 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 thiserror = { workspace = true }
 validator = { workspace = true }
+regex = { workspace = true }
 url = { workspace = true }
 ipnet = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
 
 dotenvy = { workspace = true }
+rpassword = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 metrics = { workspace = true }

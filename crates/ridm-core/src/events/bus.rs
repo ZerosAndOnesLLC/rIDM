@@ -1,5 +1,5 @@
 //! In-process event bus. Publishing never blocks or fails the caller: if no
-//! subscriber is listening the event is dropped with a warning, and slow
+//! subscriber is listening the event is dropped (logged at debug), and slow
 //! subscribers lose the oldest events (they must be idempotent and tolerate
 //! gaps, e.g. by reconciling from the database).
 //!
@@ -64,7 +64,8 @@ impl EventBus {
             event: Arc::new(event),
         };
         if let Err(err) = self.tx.send(envelope) {
-            tracing::warn!(event = name, "event dropped: no subscribers ({err})");
+            // Normal before the audit/webhook subscribers are running.
+            tracing::debug!(event = name, "event dropped: no subscribers ({err})");
         }
     }
 }

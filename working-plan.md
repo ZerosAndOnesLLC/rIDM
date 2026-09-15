@@ -241,14 +241,14 @@ Operations
 - [x] 0.10 Branch protection on `main`: PRs only, all required status checks in §6 must pass, no bypass; CODEOWNERS.
 
 ### Phase 1 — Tenants, users, groups, roles, profile schema
-- [ ] 1.1 Migrations: users, user_profile_schema, password_history, credentials, groups, group_members, roles, role_assignments, role_composites (indexes lead with tenant_id; RLS policies; `org_id` reserved columns).
-- [ ] 1.2 Tenant resolver extractor (`/t/{slug}` → cached `Tenant`), RLS `SET LOCAL` per request tx; Redis pub/sub cache invalidation.
-- [ ] 1.3 Repos + services: tenant CRUD, user CRUD, group CRUD + membership, role CRUD + assignment, effective-roles resolution (user + groups + composites, cached).
-- [ ] 1.4 Password service: argon2id hash/verify; legacy verifiers (bcrypt, pbkdf2-sha256/512, sha256/sha512 salted, md5 for migration only) with transparent upgrade on successful login; password policy (length, classes, history N, expiry, must_change_password).
-- [ ] 1.5 Profile schema service: validate attributes on create/update; enforce editable_by; expose schema to UI forms.
-- [ ] 1.6 Bootstrap: first-run creates master tenant + global admin from env or interactive CLI.
-- [ ] 1.7 Unit tests (password, policy, role resolution); integration test harness (testcontainers).
-- [ ] 1.8 Tests: tenant isolation suite v1 (every repo query cross-tenant → empty/404; direct RLS bypass attempt fails); profile schema validation; legacy-hash upgrade-on-login; migration test applying all migrations to seeded snapshot and checking constraints/row counts.
+- [x] 1.1 Migrations: users, user_profile_schema, password_history, credentials, groups, group_members, roles, role_assignments, role_composites (indexes lead with tenant_id; RLS policies; `org_id` reserved columns).
+- [x] 1.2 Tenant resolver extractor (`/t/{slug}` → cached `Tenant`), RLS `SET LOCAL` per request tx; Redis pub/sub cache invalidation.
+- [x] 1.3 Repos + services: tenant CRUD, user CRUD, group CRUD + membership, role CRUD + assignment, effective-roles resolution (user + groups + composites, cached).
+- [x] 1.4 Password service: argon2id hash/verify; legacy verifiers (bcrypt, pbkdf2-sha256/512, sha256/sha512 salted, md5 for migration only) with transparent upgrade on successful login; password policy (length, classes, history N, expiry, must_change_password).
+- [x] 1.5 Profile schema service: validate attributes on create/update; enforce editable_by; expose schema to UI forms.
+- [x] 1.6 Bootstrap: first-run creates master tenant + global admin from env or interactive CLI.
+- [x] 1.7 Unit tests (password, policy, role resolution); integration test harness (testcontainers).
+- [x] 1.8 Tests: tenant isolation suite v1 (every repo query cross-tenant → empty/404; direct RLS bypass attempt fails); profile schema validation; legacy-hash upgrade-on-login; migration test applying all migrations to seeded snapshot and checking constraints/row counts.
 
 ### Phase 2 — Keys, JWT issuance, encryption
 - [ ] 2.1 Migration: signing_keys. Keygen (RSA-2048/3072, P-256, Ed25519); private keys encrypted via `KeyEncryptor`.
