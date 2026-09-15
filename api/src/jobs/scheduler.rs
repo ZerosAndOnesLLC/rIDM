@@ -22,6 +22,16 @@ pub fn spawn_all(state: AppState) -> Vec<tokio::task::JoinHandle<()>> {
             |s| async move { crate::jobs::audit_retention::run_once(&s).await.map(|_| ()) },
         ),
         spawn_periodic(
+            state.clone(),
+            "webhook_delivery",
+            Duration::from_secs(30),
+            |s| async move {
+                crate::jobs::webhook_delivery::run_once(&s)
+                    .await
+                    .map(|_| ())
+            },
+        ),
+        spawn_periodic(
             state,
             "message_delivery",
             Duration::from_secs(30),

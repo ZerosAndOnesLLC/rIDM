@@ -259,6 +259,18 @@ pagination with `?cursor=&limit=`):
 | `GET .../audit/export?format=json|csv`, `GET .../audit/verify` | `ridm:audit:read` | oldest first with `prev_hash`/`hash` for offline checking; verify walks the retained chain and names the first broken position |
 | `GET .../users/{id}/audit` | `ridm:audit:read` | rows where the user is actor or subject |
 | `GET /admin/audit`, `.../export`, `.../verify` | `ridm:audit:read` (global only) | the global chain: events with no tenant, such as master-key rotation |
+| `GET/POST /admin/tenants/{slug}/webhooks`, `GET/PATCH/DELETE .../{id}` | `ridm:webhooks:read` / `write` | `{name, url, events, enabled?, headers?, max_attempts?}`; `events` are exact names, prefixes (`user.*`) or `*`; the signing `secret` is returned once on create |
+| `POST .../webhooks/{id}/secret`, `POST .../webhooks/{id}/test` | `ridm:webhooks:write` | rotate the secret (shown once); deliver a `webhook.test` event now and report the attempt |
+| `GET .../webhooks/{id}/deliveries?status=&limit=`, `GET .../deliveries/{id}`, `POST .../deliveries/{id}/redeliver` | read / read / write | delivery log with status, attempts, last status code, error and a response snippet; redeliver requeues and attempts at once |
+| `GET/POST /admin/tenants/{slug}/ip-rules`, `GET/PATCH/DELETE .../{id}` | `ridm:tenants:read` / `write` | `{cidr, action?: allow|deny, client_id?, description?}`; networks are normalized; `?client_id=` or `?tenant_wide=true`; enforced from Phase 9.2 |
+
+Webhook deliveries are queued by an in-process subscriber of the event bus and sent by
+the `webhook_delivery` job (every 30 s, one runner per cluster): `POST` with a JSON body
+`{delivery_id, attempt, event}`, headers `X-RIDM-Event`, `X-RIDM-Delivery`, `X-RIDM-Webhook`
+and `X-RIDM-Signature: t=<unix>,v1=<hex HMAC-SHA256(secret, "<t>.<body>")>`. A 2xx
+counts as delivered; 5xx, 408, 425, 429 and network errors retry with backoff (30 s, 2 m,
+10 m, 30 m, 2 h, 6 h) up to `max_attempts`; other 4xx are dead at once. Secrets are stored
+encrypted under the master key and take part in master-key rotation.
 
 Every domain event is appended to `audit_events` (monthly partitions, tenant RLS) by an
 in-process writer; rows are hash-chained per tenant (`SHA-256(prev_hash || row)`), so a

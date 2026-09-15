@@ -403,6 +403,7 @@ impl TestApp {
         configure(&mut state);
         // The audit writer runs in every deployment; tests observe its rows.
         let _audit_writer = ridm_api::services::audit::spawn_writer(state.clone());
+        let _webhook_dispatcher = ridm_api::services::webhooks::spawn_dispatcher(state.clone());
         let app = ridm_api::build_router_with(state.clone(), extra);
         tokio::spawn(async move {
             axum::serve(

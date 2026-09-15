@@ -1,0 +1,311 @@
+//! Webhooks and their deliveries (tenant-bound transactions).
+
+use chrono::{DateTime, Utc};
+use sqlx::{PgExecutor, QueryBuilder};
+use uuid::Uuid;
+
+use crate::models::{DeliveryStatus, Webhook, WebhookDelivery, WebhookUpdate};
+
+const COLUMNS: &str = "id, tenant_id, name, url, secret_enc, key_version, events, enabled, headers, \
+    max_attempts, created_at, updated_at";
+const DELIVERY_COLUMNS: &str = "id, tenant_id, webhook_id, event_id, event_name, payload, status, \
+    attempts, max_attempts, next_attempt_at, last_status, last_error, response_snippet, created_at, \
+    delivered_at";
+
+pub async fn list<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+) -> Result<Vec<Webhook>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("SELECT ");
+    qb.push(COLUMNS)
+        .push(" FROM webhooks WHERE tenant_id = ")
+        .push_bind(tenant_id)
+        .push(" ORDER BY created_at, id");
+    qb.build_query_as::<Webhook>().fetch_all(exec).await
+}
+
+pub async fn find_by_id<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+) -> Result<Option<Webhook>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("SELECT ");
+    qb.push(COLUMNS)
+        .push(" FROM webhooks WHERE tenant_id = ")
+        .push_bind(tenant_id)
+        .push(" AND id = ")
+        .push_bind(id);
+    qb.build_query_as::<Webhook>().fetch_optional(exec).await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn insert<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+    name: &str,
+    url: &str,
+    secret_enc: &[u8],
+    key_version: i32,
+    events: &[String],
+    enabled: bool,
+    headers: &serde_json::Value,
+    max_attempts: i32,
+) -> Result<Webhook, sqlx::Error> {
+    let mut qb = QueryBuilder::new(
+        "INSERT INTO webhooks (id, tenant_id, name, url, secret_enc, key_version, events, enabled, \
+         headers, max_attempts) VALUES (",
+    );
+    let mut s = qb.separated(", ");
+    s.push_bind(id)
+        .push_bind(tenant_id)
+        .push_bind(name)
+        .push_bind(url)
+        .push_bind(secret_enc)
+        .push_bind(key_version)
+        .push_bind(events)
+        .push_bind(enabled)
+        .push_bind(headers)
+        .push_bind(max_attempts);
+    qb.push(") RETURNING ").push(COLUMNS);
+    qb.build_query_as::<Webhook>().fetch_one(exec).await
+}
+
+pub async fn update<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+    patch: &WebhookUpdate,
+) -> Result<Option<Webhook>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("UPDATE webhooks SET updated_at = now()");
+    if let Some(n) = &patch.name {
+        qb.push(", name = ").push_bind(n);
+    }
+    if let Some(u) = &patch.url {
+        qb.push(", url = ").push_bind(u);
+    }
+    if let Some(e) = &patch.events {
+        qb.push(", events = ").push_bind(e);
+    }
+    if let Some(en) = patch.enabled {
+        qb.push(", enabled = ").push_bind(en);
+    }
+    if let Some(h) = &patch.headers {
+        qb.push(", headers = ").push_bind(h);
+    }
+    if let Some(m) = patch.max_attempts {
+        qb.push(", max_attempts = ").push_bind(m);
+    }
+    qb.push(" WHERE tenant_id = ")
+        .push_bind(tenant_id)
+        .push(" AND id = ")
+        .push_bind(id)
+        .push(" RETURNING ")
+        .push(COLUMNS);
+    qb.build_query_as::<Webhook>().fetch_optional(exec).await
+}
+
+pub async fn set_secret<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+    secret_enc: &[u8],
+    key_version: i32,
+) -> Result<bool, sqlx::Error> {
+    let res = sqlx::query(
+        "UPDATE webhooks SET secret_enc = $3, key_version = $4, updated_at = now() \
+         WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .bind(secret_enc)
+    .bind(key_version)
+    .execute(exec)
+    .await?;
+    Ok(res.rows_affected() > 0)
+}
+
+pub async fn delete<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let res = sqlx::query("DELETE FROM webhooks WHERE tenant_id = $1 AND id = $2")
+        .bind(tenant_id)
+        .bind(id)
+        .execute(exec)
+        .await?;
+    Ok(res.rows_affected() > 0)
+}
+
+// --- deliveries --------------------------------------------------------------
+
+#[allow(clippy::too_many_arguments)]
+pub async fn enqueue<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+    webhook_id: Uuid,
+    event_id: Uuid,
+    event_name: &str,
+    payload: &serde_json::Value,
+    max_attempts: i32,
+) -> Result<WebhookDelivery, sqlx::Error> {
+    let mut qb = QueryBuilder::new(
+        "INSERT INTO webhook_deliveries (id, tenant_id, webhook_id, event_id, event_name, payload, \
+         max_attempts) VALUES (",
+    );
+    let mut s = qb.separated(", ");
+    s.push_bind(id)
+        .push_bind(tenant_id)
+        .push_bind(webhook_id)
+        .push_bind(event_id)
+        .push_bind(event_name)
+        .push_bind(payload)
+        .push_bind(max_attempts);
+    qb.push(") RETURNING ").push(DELIVERY_COLUMNS);
+    qb.build_query_as::<WebhookDelivery>().fetch_one(exec).await
+}
+
+/// Claim due deliveries (pending or retrying) for this tenant.
+pub async fn claim_due<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    limit: i64,
+) -> Result<Vec<WebhookDelivery>, sqlx::Error> {
+    let mut qb = QueryBuilder::new(
+        "UPDATE webhook_deliveries SET status = 'sending' WHERE id IN ( \
+            SELECT id FROM webhook_deliveries WHERE tenant_id = ",
+    );
+    qb.push_bind(tenant_id)
+        .push(" AND status IN ('pending', 'failed') AND next_attempt_at <= now() ORDER BY next_attempt_at LIMIT ")
+        .push_bind(limit)
+        .push(" FOR UPDATE SKIP LOCKED) AND tenant_id = ")
+        .push_bind(tenant_id)
+        .push(" RETURNING ")
+        .push(DELIVERY_COLUMNS);
+    qb.build_query_as::<WebhookDelivery>().fetch_all(exec).await
+}
+
+/// Deliveries stuck in `sending` (crashed worker) go back to the queue.
+pub async fn requeue_stale<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    stale_before: DateTime<Utc>,
+) -> Result<u64, sqlx::Error> {
+    Ok(sqlx::query(
+        "UPDATE webhook_deliveries SET status = 'failed', next_attempt_at = now() \
+         WHERE tenant_id = $1 AND status = 'sending' AND next_attempt_at < $2",
+    )
+    .bind(tenant_id)
+    .bind(stale_before)
+    .execute(exec)
+    .await?
+    .rows_affected())
+}
+
+pub async fn mark_delivered<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+    status_code: i32,
+    snippet: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE webhook_deliveries SET status = 'delivered', attempts = attempts + 1, \
+         last_status = $3, last_error = NULL, response_snippet = $4, delivered_at = now() \
+         WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .bind(status_code)
+    .bind(snippet)
+    .execute(exec)
+    .await?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn mark_failed<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+    status_code: Option<i32>,
+    error: &str,
+    snippet: Option<&str>,
+    next_attempt_at: DateTime<Utc>,
+    dead: bool,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE webhook_deliveries SET status = $7, attempts = attempts + 1, last_status = $3, \
+         last_error = $4, response_snippet = $5, next_attempt_at = $6 \
+         WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .bind(status_code)
+    .bind(error)
+    .bind(snippet)
+    .bind(next_attempt_at)
+    .bind(if dead { "dead" } else { "failed" })
+    .execute(exec)
+    .await?;
+    Ok(())
+}
+
+pub async fn find_delivery<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    webhook_id: Uuid,
+    id: Uuid,
+) -> Result<Option<WebhookDelivery>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("SELECT ");
+    qb.push(DELIVERY_COLUMNS)
+        .push(" FROM webhook_deliveries WHERE tenant_id = ")
+        .push_bind(tenant_id)
+        .push(" AND webhook_id = ")
+        .push_bind(webhook_id)
+        .push(" AND id = ")
+        .push_bind(id);
+    qb.build_query_as::<WebhookDelivery>()
+        .fetch_optional(exec)
+        .await
+}
+
+pub async fn list_deliveries<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    webhook_id: Uuid,
+    status: Option<DeliveryStatus>,
+    limit: i64,
+) -> Result<Vec<WebhookDelivery>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("SELECT ");
+    qb.push(DELIVERY_COLUMNS)
+        .push(" FROM webhook_deliveries WHERE tenant_id = ")
+        .push_bind(tenant_id)
+        .push(" AND webhook_id = ")
+        .push_bind(webhook_id);
+    if let Some(s) = status {
+        qb.push(" AND status = ").push_bind(s);
+    }
+    qb.push(" ORDER BY created_at DESC, id DESC LIMIT ")
+        .push_bind(limit);
+    qb.build_query_as::<WebhookDelivery>().fetch_all(exec).await
+}
+
+/// Requeue one delivery (dead or failed) for an immediate attempt.
+pub async fn requeue<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let res = sqlx::query(
+        "UPDATE webhook_deliveries SET status = 'pending', attempts = 0, next_attempt_at = now(), \
+         last_error = NULL WHERE tenant_id = $1 AND id = $2 AND status IN ('dead', 'failed', 'delivered')",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .execute(exec)
+    .await?;
+    Ok(res.rows_affected() > 0)
+}

@@ -62,6 +62,11 @@ pub fn scopes(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:scopes")
 }
 
+/// Enabled webhooks of a tenant (dispatcher lookup).
+pub fn webhooks(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:webhooks")
+}
+
 /// Per-tenant version token folded into mapper cache keys, bumped on any
 /// claim mapper change (tenant-wide mappers reach every client's cache).
 pub fn mappers_version(tenant_id: Uuid) -> String {

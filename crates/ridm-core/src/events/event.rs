@@ -331,6 +331,33 @@ pub enum EventKind {
         permission_id: Uuid,
     },
 
+    // Webhooks and IP rules
+    WebhookCreated {
+        webhook_id: Uuid,
+    },
+    WebhookUpdated {
+        webhook_id: Uuid,
+    },
+    WebhookDeleted {
+        webhook_id: Uuid,
+    },
+    WebhookSecretRotated {
+        webhook_id: Uuid,
+    },
+    /// Synthetic event delivered by an administrator's test ping.
+    WebhookTest {
+        webhook_id: Uuid,
+    },
+    IpRuleCreated {
+        rule_id: Uuid,
+    },
+    IpRuleUpdated {
+        rule_id: Uuid,
+    },
+    IpRuleDeleted {
+        rule_id: Uuid,
+    },
+
     // Generic cache invalidation hint (entity kind + id), used until every
     // entity has a dedicated event.
     CacheInvalidate {
@@ -408,6 +435,14 @@ impl EventKind {
             Self::PermissionDeleted { .. } => "permission.deleted",
             Self::PermissionGranted { .. } => "permission.granted",
             Self::PermissionRevoked { .. } => "permission.revoked",
+            Self::WebhookCreated { .. } => "webhook.created",
+            Self::WebhookUpdated { .. } => "webhook.updated",
+            Self::WebhookDeleted { .. } => "webhook.deleted",
+            Self::WebhookSecretRotated { .. } => "webhook.secret_rotated",
+            Self::WebhookTest { .. } => "webhook.test",
+            Self::IpRuleCreated { .. } => "ip_rule.created",
+            Self::IpRuleUpdated { .. } => "ip_rule.updated",
+            Self::IpRuleDeleted { .. } => "ip_rule.deleted",
             Self::CacheInvalidate { .. } => "cache.invalidate",
         }
     }

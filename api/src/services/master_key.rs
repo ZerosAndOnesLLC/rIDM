@@ -36,6 +36,12 @@ const TABLES: &[EncryptedTable] = &[
         aad_prefix: "provider_settings",
         id_column: "kind",
     },
+    EncryptedTable {
+        table: "webhooks",
+        column: "secret_enc",
+        aad_prefix: "webhooks",
+        id_column: "id",
+    },
 ];
 
 struct EncryptedTable {
