@@ -45,7 +45,7 @@ async fn confirm(
                 .get(header::USER_AGENT)
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.chars().take(512).collect()),
-            existing_session: None,
+            ..Default::default()
         };
         match flows::resume_after_verification(&state, &tenant, flow_id, &confirmed.user, ctx).await
         {

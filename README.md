@@ -40,7 +40,22 @@ refresh_token with rotation and reuse detection, client_credentials with service
 accounts; client_secret_basic/post, private_key_jwt, none), `/userinfo`,
 `/introspect`, `/revoke`, `/end_session` with back-channel and front-channel logout,
 dynamic client registration and management. Globally: WebFinger issuer discovery.
-The login, consent and MFA pages that create browser sessions arrive in Phase 4.
+
+Browser login is a flow API (`/flows/{id}/...`) that the UI drives step by step:
+password, magic link, email and SMS one-time codes, self-registration with
+schema-driven profiles and email verification, invitations, password reset and
+forced password change, profile completion, terms acceptance, consent. Flows are
+CSRF-bound, rate-limited per user and per IP, and demand a CAPTCHA (Turnstile or
+hCaptcha) after repeated failures. Email and SMS go through per-tenant SMTP or webhook
+settings with localized templates and a retrying outbound queue.
+
+Browser sessions honour the tenant session policy: idle and absolute timeouts, a cap
+on concurrent sessions per user (oldest revoked first), and "remember this device",
+which registers a trusted device only once the whole flow (including any second
+factor) has completed. Sessions are mirrored to Postgres for listing, sign-out
+everywhere and audit. `/authorize` honours `prompt` (`none`, `login`, `consent`,
+`create`, `select_account`), `max_age` and `acr_values`. The end-user pages themselves
+land later in Phase 4; MFA in Phase 7.
 
 ## Quick start (docker-compose)
 

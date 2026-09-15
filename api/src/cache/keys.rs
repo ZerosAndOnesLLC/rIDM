@@ -138,3 +138,8 @@ pub fn email_verification(tenant_id: Uuid, token_hash: &str) -> String {
 pub fn password_reset(tenant_id: Uuid, token_hash: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:reset:{token_hash}")
 }
+
+/// Set of live session ids per user (for concurrency limits and sign-out-everywhere).
+pub fn user_sessions(tenant_id: Uuid, user_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:user:{user_id}:sessions")
+}

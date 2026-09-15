@@ -220,6 +220,14 @@ pub enum EventKind {
     },
 
     // Sessions and authorization
+    TrustedDeviceAdded {
+        user_id: Uuid,
+        device_id: Uuid,
+    },
+    TrustedDeviceRevoked {
+        user_id: Uuid,
+        device_id: Uuid,
+    },
     SessionCreated {
         session_id: Uuid,
         user_id: Uuid,
@@ -312,6 +320,8 @@ impl EventKind {
             Self::LoginFailed { .. } => "login.failed",
             Self::UserLocked { .. } => "user.locked",
             Self::TermsAccepted { .. } => "user.terms_accepted",
+            Self::TrustedDeviceAdded { .. } => "device.trusted",
+            Self::TrustedDeviceRevoked { .. } => "device.revoked",
             Self::SessionCreated { .. } => "session.created",
             Self::SessionRevoked { .. } => "session.revoked",
             Self::AuthorizationGranted { .. } => "authorization.granted",

@@ -12,6 +12,8 @@ pub mod refresh_tokens;
 pub mod resource_servers;
 pub mod roles;
 pub mod scopes;
+pub mod sessions;
 pub mod signing_keys;
 pub mod tenants;
+pub mod trusted_devices;
 pub mod users;

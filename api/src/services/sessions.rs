@@ -1,5 +1,7 @@
-//! Browser SSO sessions: server-side in Redis, referenced by an HttpOnly
-//! cookie. One session per tenant per browser.
+//! Browser SSO sessions: server-side in Redis (fast path), referenced by an
+//! HttpOnly cookie, mirrored to Postgres for listing, revocation and audit.
+//! One session per tenant per browser. Tenant policy sets idle and absolute
+//! timeouts and the number of concurrent sessions a user may hold.
 
 use std::time::Duration;
 
@@ -11,8 +13,11 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::cache::keys;
+use crate::db;
 use crate::error::AppResult;
 use crate::models::{SessionPolicy, Tenant};
+use crate::repos;
+use crate::services::refresh_tokens;
 use crate::state::AppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,6 +31,9 @@ pub struct SsoSession {
     pub acr: Option<String>,
     pub ip: Option<String>,
     pub user_agent: Option<String>,
+    /// Trusted device this session was opened from, if any.
+    #[serde(default)]
+    pub device_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub last_seen_at: DateTime<Utc>,
     /// Absolute end of life.
@@ -102,11 +110,22 @@ pub struct NewSession<'a> {
     pub policy: &'a SessionPolicy,
 }
 
+/// Open a session. When the tenant caps concurrent sessions, the user's
+/// oldest live sessions are revoked first so the cap holds after this one.
 pub async fn create(
     state: &AppState,
     tenant_id: Uuid,
     req: NewSession<'_>,
 ) -> AppResult<SsoSession> {
+    let max = usize::try_from(req.policy.max_concurrent).unwrap_or(usize::MAX);
+    if max > 0 {
+        let live = list_live_for_user(state, tenant_id, req.user_id).await?;
+        let excess = (live.len() + 1).saturating_sub(max);
+        for old in live.iter().take(excess) {
+            revoke(state, tenant_id, old.id).await?;
+        }
+    }
+
     let now = Utc::now();
     let session = SsoSession {
         id: Uuid::now_v7(),
@@ -117,12 +136,19 @@ pub async fn create(
         acr: req.acr,
         ip: req.ip,
         user_agent: req.user_agent,
+        device_id: None,
         created_at: now,
         last_seen_at: now,
         expires_at: now + chrono::Duration::seconds(req.policy.absolute_timeout_secs as i64),
         idle_expires_at: now + chrono::Duration::seconds(req.policy.idle_timeout_secs as i64),
     };
+
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    repos::sessions::insert(&mut *tx, &session, None).await?;
+    tx.commit().await?;
     store(state, &session).await?;
+    track(state, &session).await?;
+
     state.events.publish(Event::new(
         Some(tenant_id),
         Actor::User { id: req.user_id },
@@ -135,16 +161,48 @@ pub async fn create(
 }
 
 async fn store(state: &AppState, session: &SsoSession) -> AppResult<()> {
-    let ttl = (session.expires_at.min(session.idle_expires_at) - Utc::now()).num_seconds();
-    if ttl <= 0 {
+    // Millisecond precision so a short policy window is never rounded away.
+    let ttl_ms = (session.expires_at.min(session.idle_expires_at) - Utc::now()).num_milliseconds();
+    if ttl_ms <= 0 {
         return Ok(());
     }
     let mut conn = state.redis.get().await?;
     let _: () = conn
-        .set_ex(
+        .pset_ex(
             keys::sso_session(session.tenant_id, session.id),
             serde_json::to_string(session)?,
-            ttl as u64,
+            ttl_ms as u64,
+        )
+        .await?;
+    Ok(())
+}
+
+/// Add the session to its user's live-session set. The set outlives its
+/// members (absolute timeout) and is pruned on read.
+async fn track(state: &AppState, session: &SsoSession) -> AppResult<()> {
+    let key = keys::user_sessions(session.tenant_id, session.user_id);
+    let ttl = (session.expires_at - Utc::now()).num_seconds().max(60);
+    let mut conn = state.redis.get().await?;
+    let _: () = conn.sadd(&key, session.id.to_string()).await?;
+    // Never shorten the set's life below a member's remaining lifetime.
+    let current: i64 = conn.ttl(&key).await?;
+    if current < ttl {
+        let _: () = conn.expire(&key, ttl).await?;
+    }
+    Ok(())
+}
+
+async fn untrack(
+    state: &AppState,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    session_id: Uuid,
+) -> AppResult<()> {
+    let mut conn = state.redis.get().await?;
+    let _: () = conn
+        .srem(
+            keys::user_sessions(tenant_id, user_id),
+            session_id.to_string(),
         )
         .await?;
     Ok(())
@@ -177,6 +235,7 @@ pub async fn get(
             + chrono::Duration::seconds(policy.idle_timeout_secs as i64))
         .min(session.expires_at);
         store(state, &session).await?;
+        mirror_touch(state, &session).await?;
     }
     Ok(Some(session))
 }
@@ -193,6 +252,13 @@ pub async fn from_request(
     get(state, tenant.id, id, &tenant.settings.session).await
 }
 
+async fn mirror_touch(state: &AppState, session: &SsoSession) -> AppResult<()> {
+    let mut tx = db::tenant_tx(&state.db, session.tenant_id).await?;
+    repos::sessions::touch(&mut *tx, session).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
 /// Record a fresh authentication on an existing session (step-up, re-login).
 pub async fn refresh_auth(
     state: &AppState,
@@ -203,16 +269,37 @@ pub async fn refresh_auth(
     session.auth_time = Utc::now();
     session.amr = amr;
     session.acr = acr;
-    store(state, session).await
+    store(state, session).await?;
+    mirror_touch(state, session).await
 }
 
+/// Attach the trusted device the browser presented (or just registered).
+pub async fn bind_device(
+    state: &AppState,
+    session: &mut SsoSession,
+    device_id: Uuid,
+) -> AppResult<()> {
+    session.device_id = Some(device_id);
+    store(state, session).await?;
+    let mut tx = db::tenant_tx(&state.db, session.tenant_id).await?;
+    repos::sessions::set_device(&mut *tx, session.tenant_id, session.id, device_id).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// End one session. Returns whether it was live.
 pub async fn revoke(state: &AppState, tenant_id: Uuid, session_id: Uuid) -> AppResult<bool> {
     let mut conn = state.redis.get().await?;
     let raw: Option<String> = conn.get(keys::sso_session(tenant_id, session_id)).await?;
     let removed: i64 = conn.del(keys::sso_session(tenant_id, session_id)).await?;
+    drop(conn);
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    repos::sessions::mark_revoked(&mut *tx, tenant_id, session_id).await?;
+    tx.commit().await?;
     if let Some(raw) = raw
         && let Ok(s) = serde_json::from_str::<SsoSession>(&raw)
     {
+        untrack(state, tenant_id, s.user_id, session_id).await?;
         state.events.publish(Event::new(
             Some(tenant_id),
             Actor::User { id: s.user_id },
@@ -223,6 +310,61 @@ pub async fn revoke(state: &AppState, tenant_id: Uuid, session_id: Uuid) -> AppR
         ));
     }
     Ok(removed > 0)
+}
+
+/// Live sessions of a user, oldest first. Prunes ids whose session expired.
+pub async fn list_live_for_user(
+    state: &AppState,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> AppResult<Vec<SsoSession>> {
+    let set_key = keys::user_sessions(tenant_id, user_id);
+    let mut conn = state.redis.get().await?;
+    let ids: Vec<String> = conn.smembers(&set_key).await?;
+    if ids.is_empty() {
+        return Ok(vec![]);
+    }
+    let session_keys: Vec<String> = ids
+        .iter()
+        .filter_map(|id| Uuid::parse_str(id).ok())
+        .map(|id| keys::sso_session(tenant_id, id))
+        .collect();
+    let raws: Vec<Option<String>> = redis::cmd("MGET")
+        .arg(&session_keys)
+        .query_async(&mut *conn)
+        .await?;
+    let now = Utc::now();
+    let mut live = Vec::with_capacity(raws.len());
+    let mut stale: Vec<String> = vec![];
+    for (id, raw) in ids.iter().zip(raws) {
+        match raw.and_then(|r| serde_json::from_str::<SsoSession>(&r).ok()) {
+            Some(s) if s.is_live(now) && s.user_id == user_id => live.push(s),
+            _ => stale.push(id.clone()),
+        }
+    }
+    if !stale.is_empty() {
+        let _: () = conn.srem(&set_key, stale).await?;
+    }
+    live.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
+    Ok(live)
+}
+
+/// Sign out everywhere: every live session and its refresh tokens.
+pub async fn revoke_all_for_user(
+    state: &AppState,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> AppResult<u64> {
+    let live = list_live_for_user(state, tenant_id, user_id).await?;
+    let mut n = 0u64;
+    for s in live {
+        if revoke(state, tenant_id, s.id).await? {
+            n += 1;
+        }
+        refresh_tokens::revoke_for_session(state, tenant_id, Actor::User { id: user_id }, s.id)
+            .await?;
+    }
+    Ok(n)
 }
 
 /// Redis TTL helper for callers that need the remaining lifetime.

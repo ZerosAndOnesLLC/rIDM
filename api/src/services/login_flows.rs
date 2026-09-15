@@ -123,6 +123,13 @@ pub struct LoginFlow {
     /// Method that authenticated the user in this flow (`pwd`, `otp`, ...).
     #[serde(default)]
     pub amr: Vec<String>,
+    /// The browser presented a live trusted-device cookie for this user.
+    #[serde(default)]
+    pub trusted_device: bool,
+    /// The user asked to remember this browser; the device is registered
+    /// (and its cookie set) when the flow finishes, never before.
+    #[serde(default)]
+    pub remember_device: bool,
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
 }

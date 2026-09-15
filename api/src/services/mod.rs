@@ -28,4 +28,5 @@ pub mod scopes;
 pub mod sessions;
 pub mod tenants;
 pub mod tokens;
+pub mod trusted_devices;
 pub mod users;

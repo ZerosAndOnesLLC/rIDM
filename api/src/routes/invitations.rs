@@ -63,7 +63,7 @@ async fn accept(
             .get(header::USER_AGENT)
             .and_then(|v| v.to_str().ok())
             .map(|s| s.chars().take(512).collect()),
-        existing_session: None,
+        ..Default::default()
     };
     // Accepting proves control of the email: sign the user in.
     let policy = &tenant.tenant.settings.session;
@@ -98,6 +98,7 @@ async fn accept(
             ip: ctx.ip.clone(),
             user_agent: ctx.user_agent.clone(),
             existing_session: Some(session.clone()),
+            ..Default::default()
         };
         if let Ok(AuthStep::Authenticated { flow, .. }) = flows::complete_authentication(
             &state,

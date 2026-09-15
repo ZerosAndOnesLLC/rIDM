@@ -18,7 +18,7 @@ use crate::error::AppError;
 use crate::middleware::TenantCtx;
 use crate::services::flows::{self, AuthStep, ConsentOutcome};
 use crate::services::login_flows::FlowStage;
-use crate::services::sessions;
+use crate::services::{sessions, trusted_devices};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -117,6 +117,8 @@ struct PasswordBody {
     password: String,
     #[serde(default)]
     captcha_token: Option<String>,
+    #[serde(default)]
+    remember_device: bool,
 }
 
 async fn password(
@@ -150,6 +152,8 @@ async fn password(
         user_agent: ua,
         existing_session: existing,
         captcha_token: body.captcha_token,
+        device_secret: trusted_devices::secret_from_headers(&state, &headers),
+        remember_device: body.remember_device,
     };
     match flows::password_step(&state, &tenant, flow, attempt).await {
         Ok(AuthStep::Authenticated { session, flow }) => {
@@ -331,6 +335,7 @@ async fn finish(
     State(state): State<AppState>,
     tenant: TenantCtx,
     Path((_, id)): Path<(String, Uuid)>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
     headers: HeaderMap,
 ) -> Response {
     let flow = match flows::load(&state, tenant.id(), id).await {
@@ -340,11 +345,43 @@ async fn finish(
     if flow.stage != FlowStage::Done {
         return AppError::BadRequest("flow is not complete".into()).into_response();
     }
-    let session = match sessions::from_request(&state, &tenant.tenant, &headers).await {
+    let mut session = match sessions::from_request(&state, &tenant.tenant, &headers).await {
         Ok(Some(s)) if Some(s.id) == flow.session_id && Some(s.user_id) == flow.user_id => s,
         Ok(_) => return AppError::Unauthorized.into_response(),
         Err(e) => return e.into_response(),
     };
+    // "Remember this device" takes effect only once every step (including a
+    // second factor) is done, so a password alone never earns trust.
+    let mut device_cookie = None;
+    if flow.remember_device && !flow.trusted_device {
+        let ip = client_ip(&state, &headers, Some(peer));
+        let ua: Option<String> = headers
+            .get(header::USER_AGENT)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.chars().take(512).collect());
+        let (device, secret) = match trusted_devices::trust(
+            &state,
+            &tenant.tenant,
+            session.user_id,
+            None,
+            ua.as_deref(),
+            ip.as_deref(),
+        )
+        .await
+        {
+            Ok(v) => v,
+            Err(e) => return e.into_response(),
+        };
+        if let Err(e) = sessions::bind_device(&state, &mut session, device.id).await {
+            return e.into_response();
+        }
+        device_cookie = Some(trusted_devices::set_cookie_header(
+            &state,
+            &tenant.tenant,
+            &secret,
+            tenant.tenant.settings.session.remember_device_days.max(1),
+        ));
+    }
     let client = match crate::services::clients::find_by_client_id(
         &state,
         tenant.id(),
@@ -360,7 +397,15 @@ async fn finish(
     match crate::oidc::authorize::issue_code(&state, &tenant, &client, &flow.request, &session)
         .await
     {
-        Ok(r) => r,
+        Ok(mut res) => {
+            if let Some(v) = device_cookie
+                .as_deref()
+                .and_then(|c| HeaderValue::from_str(c).ok())
+            {
+                res.headers_mut().append(header::SET_COOKIE, v);
+            }
+            res
+        }
         Err(e) => e.into_response(),
     }
 }
@@ -419,6 +464,8 @@ struct VerifyBody {
     /// The one-time code, or the magic-link token.
     #[serde(alias = "token")]
     code: String,
+    #[serde(default)]
+    remember_device: bool,
 }
 
 async fn verify_passwordless(
@@ -447,6 +494,8 @@ async fn verify_passwordless(
             .await
             .ok()
             .flatten(),
+        device_secret: trusted_devices::secret_from_headers(&state, &headers),
+        remember_device: body.remember_device,
     };
     match flows::passwordless_verify_step(&state, &tenant, flow, method, &body.code, ctx).await {
         Ok(AuthStep::Authenticated { session, flow }) => {
@@ -539,7 +588,7 @@ async fn register(
             .get(header::USER_AGENT)
             .and_then(|v| v.to_str().ok())
             .map(|s| s.chars().take(512).collect()),
-        existing_session: None,
+        ..Default::default()
     };
     match flows::register_step(
         &state,

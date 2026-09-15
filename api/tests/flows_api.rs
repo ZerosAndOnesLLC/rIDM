@@ -7,7 +7,7 @@ use ridm_api::models::{
 };
 use ridm_api::services::password::{self, SetPasswordOptions};
 use ridm_api::services::tenants::{self, TenantUpdate};
-use ridm_api::services::{clients, profile_schema, users};
+use ridm_api::services::{clients, profile_schema, sessions, users};
 use ridm_core::events::Actor;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -624,4 +624,160 @@ async fn flows_are_tenant_scoped_and_expire() {
             .status(),
         400
     );
+}
+
+#[tokio::test]
+async fn remember_device_is_registered_at_finish_and_recognised_next_login() {
+    let fx = fixture(TenantSettings::default(), false).await;
+    let tid = fx.app.tenant.id;
+    let bare = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+
+    // First login asks to remember the browser: nothing is registered until finish.
+    let (id, state) = start(&fx, &[]).await;
+    let csrf = state["csrf"].as_str().unwrap().to_string();
+    let res = step(
+        &fx,
+        id,
+        "password",
+        json!({"csrf": csrf, "identifier": "alice", "password": "correct-horse-battery", "remember_device": true}),
+    )
+    .await;
+    assert_eq!(res.status(), 200);
+    let session_cookie = res.headers()["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string();
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["stage"], "done", "{body}");
+    assert!(
+        ridm_api::services::trusted_devices::list(&fx.app.state, tid, fx.user_id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let flow = ridm_api::services::login_flows::get(&fx.app.state, tid, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(flow.remember_device && !flow.trusted_device);
+
+    let res = bare
+        .get(body["finish_url"].as_str().unwrap())
+        .header("Cookie", &session_cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 303);
+    let device_cookie = res
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .find(|c| c.starts_with("ridm_device="))
+        .expect("device cookie set at finish")
+        .to_string();
+    assert!(device_cookie.contains("HttpOnly") && device_cookie.contains("Max-Age=2592000"));
+    let devices = ridm_api::services::trusted_devices::list(&fx.app.state, tid, fx.user_id)
+        .await
+        .unwrap();
+    assert_eq!(devices.len(), 1);
+    let session = sessions::list_live_for_user(&fx.app.state, tid, fx.user_id)
+        .await
+        .unwrap();
+    assert_eq!(session.len(), 1);
+    assert_eq!(
+        session[0].device_id,
+        Some(devices[0].id),
+        "session bound to the device"
+    );
+
+    // Next login from the same browser: the device is recognised and not re-registered.
+    let device_cookie = device_cookie.split(';').next().unwrap().to_string();
+    let (id, state) = start(&fx, &[("prompt", "login")]).await;
+    let csrf = state["csrf"].as_str().unwrap().to_string();
+    let res = fx
+        .app
+        .http
+        .post(fx.app.tenant_url(&format!("/flows/{id}/password")))
+        .header("Cookie", format!("{session_cookie}; {device_cookie}"))
+        .json(&json!({"csrf": csrf, "identifier": "alice", "password": "correct-horse-battery", "remember_device": true}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["stage"], "done");
+    let flow = ridm_api::services::login_flows::get(&fx.app.state, tid, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(flow.trusted_device && !flow.remember_device);
+    let res = bare
+        .get(body["finish_url"].as_str().unwrap())
+        .header("Cookie", format!("{session_cookie}; {device_cookie}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 303);
+    assert!(
+        !res.headers()
+            .get_all("set-cookie")
+            .iter()
+            .any(|v| v.to_str().unwrap_or("").starts_with("ridm_device=")),
+        "no second device cookie"
+    );
+    assert_eq!(
+        ridm_api::services::trusted_devices::list(&fx.app.state, tid, fx.user_id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+
+    // Another user's login on this browser does not inherit the trust.
+    let bob = users::create(
+        &fx.app.state,
+        tid,
+        Actor::System,
+        NewUser {
+            username: "bob".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    password::set_password(
+        &fx.app.state,
+        tid,
+        &PasswordPolicy::default(),
+        Actor::System,
+        bob.id,
+        "correct-horse-battery".to_string().into(),
+        SetPasswordOptions::default(),
+    )
+    .await
+    .unwrap();
+    let (id, state) = start(&fx, &[("prompt", "login")]).await;
+    let csrf = state["csrf"].as_str().unwrap().to_string();
+    let res = fx
+        .app
+        .http
+        .post(fx.app.tenant_url(&format!("/flows/{id}/password")))
+        .header("Cookie", &device_cookie)
+        .json(&json!({"csrf": csrf, "identifier": "bob", "password": "correct-horse-battery"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let flow = ridm_api::services::login_flows::get(&fx.app.state, tid, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!flow.trusted_device);
 }

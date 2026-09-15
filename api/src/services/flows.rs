@@ -22,7 +22,7 @@ use crate::repos;
 use crate::services::login_flows::{self, FlowStage, LoginFlow};
 use crate::services::password::{self, SetPasswordOptions, VerifyOutcome};
 use crate::services::sessions::{self, NewSession, SsoSession};
-use crate::services::{clients, consents, profile_schema, users};
+use crate::services::{clients, consents, profile_schema, trusted_devices, users};
 use crate::state::AppState;
 
 /// What the UI needs to render the current step.
@@ -264,11 +264,7 @@ pub async fn advance(
         flow.stage = FlowStage::PasswordChange;
         return Ok(());
     }
-    // Step-up: requested acr not satisfied → MFA (Phase 7 decides the method).
-    if !flow.request.acr_values.is_empty()
-        && !flow.amr.iter().any(|m| m == "mfa")
-        && flow.request.acr_values.iter().any(|a| a.ends_with(":mfa"))
-    {
+    if mfa_required(flow) {
         flow.stage = FlowStage::Mfa;
         return Ok(());
     }
@@ -320,6 +316,10 @@ pub struct PasswordAttempt {
     pub existing_session: Option<SsoSession>,
     /// CAPTCHA response, required once the tenant policy demands one.
     pub captcha_token: Option<String>,
+    /// Trusted-device cookie value, if the browser sent one.
+    pub device_secret: Option<String>,
+    /// "Remember this device" was ticked.
+    pub remember_device: bool,
 }
 
 /// `POST /flows/{id}/password`
@@ -336,6 +336,8 @@ pub async fn password_step(
         user_agent,
         existing_session,
         captcha_token,
+        device_secret,
+        remember_device,
     } = attempt;
     if flow.stage != FlowStage::Authenticate {
         return Err(AppError::BadRequest(
@@ -420,31 +422,21 @@ pub async fn password_step(
                 .await?;
             tx.commit().await?;
 
-            let policy = &tenant.tenant.settings.session;
-            let session = match existing_session {
-                Some(mut s) if s.user_id == user.id => {
-                    sessions::refresh_auth(state, &mut s, vec!["pwd".into()], None).await?;
-                    s
-                }
-                _ => {
-                    sessions::create(
-                        state,
-                        tid,
-                        NewSession {
-                            user_id: user.id,
-                            amr: vec!["pwd".into()],
-                            acr: None,
-                            ip: ip.clone(),
-                            user_agent,
-                            policy,
-                        },
-                    )
-                    .await?
-                }
-            };
-            flow.user_id = Some(user.id);
-            flow.session_id = Some(session.id);
-            flow.amr = vec!["pwd".into()];
+            let session = open_session(
+                state,
+                &tenant.tenant,
+                &mut flow,
+                user.id,
+                vec!["pwd".into()],
+                RequestContext {
+                    ip: ip.clone(),
+                    user_agent,
+                    existing_session,
+                    device_secret,
+                    remember_device,
+                },
+            )
+            .await?;
             advance(state, &tenant.tenant, &mut flow, must_change).await?;
             login_flows::save(state, &flow).await?;
             state.events.publish(
@@ -706,16 +698,90 @@ pub async fn cancel(state: &AppState, flow: &LoginFlow) -> AppResult<String> {
     Ok(denial_redirect(flow))
 }
 
-/// Shared tail of every successful first-factor authentication: session,
-/// flow bookkeeping, stage evaluation.
 /// Request-derived facts an authentication step needs.
+#[derive(Default)]
 pub struct RequestContext {
     pub ip: Option<String>,
     pub user_agent: Option<String>,
     /// An SSO session the browser already has (re-authentication).
     pub existing_session: Option<SsoSession>,
+    /// Trusted-device cookie value, if the browser sent one.
+    pub device_secret: Option<String>,
+    /// "Remember this device" was ticked.
+    pub remember_device: bool,
 }
 
+/// Whether the flow must pass a second factor before continuing.
+///
+/// A step-up the client asked for (`acr_values` ending in `:mfa`) is always
+/// honoured, even on a trusted device. Policy-driven MFA (tenant `mfa`
+/// setting, Phase 7.4) is skipped when `flow.trusted_device` is set.
+pub fn mfa_required(flow: &LoginFlow) -> bool {
+    let has_mfa = flow.amr.iter().any(|m| m == "mfa");
+    let step_up = flow.request.acr_values.iter().any(|a| a.ends_with(":mfa"));
+    step_up && !has_mfa
+}
+
+/// Open (or re-authenticate) the browser's session for `user_id`, recognise
+/// a trusted device, and record both on the flow.
+async fn open_session(
+    state: &AppState,
+    tenant: &Tenant,
+    flow: &mut LoginFlow,
+    user_id: Uuid,
+    amr: Vec<String>,
+    ctx: RequestContext,
+) -> AppResult<SsoSession> {
+    let RequestContext {
+        ip,
+        user_agent,
+        existing_session,
+        device_secret,
+        remember_device,
+    } = ctx;
+    let trusted = match device_secret {
+        Some(secret) => {
+            trusted_devices::verify_secret(state, tenant, user_id, &secret, ip.as_deref()).await?
+        }
+        None => None,
+    };
+    let mut session = match existing_session {
+        Some(mut s) if s.user_id == user_id => {
+            sessions::refresh_auth(state, &mut s, amr.clone(), None).await?;
+            s
+        }
+        _ => {
+            sessions::create(
+                state,
+                tenant.id,
+                NewSession {
+                    user_id,
+                    amr: amr.clone(),
+                    acr: None,
+                    ip,
+                    user_agent,
+                    policy: &tenant.settings.session,
+                },
+            )
+            .await?
+        }
+    };
+    if let Some(d) = &trusted
+        && session.device_id != Some(d.id)
+    {
+        sessions::bind_device(state, &mut session, d.id).await?;
+    }
+    flow.user_id = Some(user_id);
+    flow.session_id = Some(session.id);
+    flow.amr = amr;
+    flow.trusted_device = trusted.is_some();
+    // Already trusted: nothing to register at the end of the flow.
+    flow.remember_device = remember_device && trusted.is_none();
+    Ok(session)
+}
+
+/// Shared tail of every successful first-factor authentication: session,
+/// flow bookkeeping, stage evaluation.
 pub async fn complete_authentication(
     state: &AppState,
     tenant: &TenantCtx,
@@ -725,41 +791,13 @@ pub async fn complete_authentication(
     ctx: RequestContext,
     must_change_password: bool,
 ) -> AppResult<AuthStep> {
-    let RequestContext {
-        ip,
-        user_agent,
-        existing_session,
-    } = ctx;
+    let ip = ctx.ip.clone();
     let tid = tenant.id();
     let mut tx = db::tenant_tx(&state.db, tid).await?;
     repos::users::record_login_success(&mut *tx, tid, user.id).await?;
     repos::login_attempts::record(&mut *tx, tid, &user.username, ip.as_deref(), true, None).await?;
     tx.commit().await?;
-    let policy = &tenant.tenant.settings.session;
-    let session = match existing_session {
-        Some(mut s) if s.user_id == user.id => {
-            sessions::refresh_auth(state, &mut s, amr.clone(), None).await?;
-            s
-        }
-        _ => {
-            sessions::create(
-                state,
-                tid,
-                NewSession {
-                    user_id: user.id,
-                    amr: amr.clone(),
-                    acr: None,
-                    ip: ip.clone(),
-                    user_agent,
-                    policy,
-                },
-            )
-            .await?
-        }
-    };
-    flow.user_id = Some(user.id);
-    flow.session_id = Some(session.id);
-    flow.amr = amr.clone();
+    let session = open_session(state, &tenant.tenant, &mut flow, user.id, amr.clone(), ctx).await?;
     advance(state, &tenant.tenant, &mut flow, must_change_password).await?;
     login_flows::save(state, &flow).await?;
     state.events.publish(
