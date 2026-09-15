@@ -3,20 +3,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { AppWindow, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useDebounced } from "@/lib/console/hooks";
 import { allNavItems, consoleHref } from "@/lib/console/nav";
 import { useConsole } from "@/lib/console/session";
 import { Picker, type PickerItem } from "./picker";
 import { Kbd } from "./ui";
-
-function useDebounced(value: string, ms: number): string {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = window.setTimeout(() => setV(value), ms);
-    return () => window.clearTimeout(t);
-  }, [value, ms]);
-  return v;
-}
 
 /**
  * Global search (⌘K): console pages the administrator may open, plus users

@@ -404,6 +404,21 @@ without ever reading the secret back. The branding editor frames the real login 
 tells the editor it is ready, and applies every draft change (name, logo, colours, links,
 custom CSS) it receives by `postMessage` from the console's origin.
 
+**Clients** (`/console/clients/`): a searchable table (prefix search on client ID and
+name, cursor paging), a four-step creation wizard (kind of client → grants and
+authentication → URIs → scopes and audiences, with the API's type-driven defaults
+preselected) whose result shows the client ID and any secret exactly once, and a detail
+page (`?client=<id>`) saving as you go over `PATCH /admin/tenants/{slug}/clients/{client}`:
+basics, grants and authentication (a switch to a secret-based method reveals the minted
+secret once), URIs, scopes and audiences, token lifetimes, format, ID token encryption and
+JWKS, secrets (rotate with a grace period, revoke a retiring one), service account,
+registration access token (RFC 7592, revealed once) and deletion. The **playground**
+(`/console/playground/?tenant=&client=`) runs the client's flow for real: authorization
+code with PKCE through the tenant's login page with the console as the redirect target
+(`/console/playground/` can be added to the client's redirect URIs in one click), or
+client credentials for machine clients with a pasted secret kept in the tab only; it then
+shows the token response, the decoded access and ID tokens, calls userinfo and refreshes.
+
 ### Container image
 
 ```bash

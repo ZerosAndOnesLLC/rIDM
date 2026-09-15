@@ -2,7 +2,7 @@
 // the sidebar and the command palette only show what the administrator can
 // actually open. Entries are added as their pages land.
 
-import { Building2, LayoutDashboard, Settings2, type LucideIcon } from "lucide-react";
+import { AppWindow, Building2, LayoutDashboard, Settings2, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   label: string;
@@ -28,6 +28,10 @@ export const NAV: NavGroup[] = [
     items: [{ label: "Overview", href: "/console/", icon: LayoutDashboard, key: "o" }],
   },
   {
+    title: "Applications",
+    items: [{ label: "Clients", href: "/console/clients/", icon: AppWindow, permission: "ridm:clients:read", key: "c" }],
+  },
+  {
     title: "Tenant",
     items: [
       { label: "Tenants", href: "/console/tenants/", icon: Building2, permission: "ridm:tenants:read", key: "t" },
@@ -35,6 +39,11 @@ export const NAV: NavGroup[] = [
     ],
   },
 ];
+
+/** Titles of console pages that are not navigation entries. */
+export const PAGE_TITLES: Record<string, string> = {
+  "/console/playground/": "Playground",
+};
 
 export function allNavItems(): NavItem[] {
   return NAV.flatMap((g) => g.items);

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { Spinner } from "@/components/ui";
-import { NAV, allNavItems, consoleHref } from "@/lib/console/nav";
+import { NAV, PAGE_TITLES, allNavItems, consoleHref } from "@/lib/console/nav";
 import { useConsole } from "@/lib/console/session";
 import { modKey, useShortcuts } from "@/lib/console/shortcuts";
 import { useConsoleTenant } from "@/lib/console/tenant";
@@ -108,7 +108,7 @@ function Frame({ children }: { children: ReactNode }) {
               </Dialog.Content>
             </Dialog.Portal>
           </Dialog.Root>
-          <p className="min-w-0 flex-1 truncate text-[0.9375rem] font-medium text-ink">{current?.label ?? "Console"}</p>
+          <p className="min-w-0 flex-1 truncate text-[0.9375rem] font-medium text-ink">{current?.label ?? PAGE_TITLES[pathname] ?? "Console"}</p>
           <button
             type="button"
             onClick={() => setPalette(true)}
