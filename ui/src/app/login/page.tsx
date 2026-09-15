@@ -203,7 +203,7 @@ function Authenticate({
           </>
         )}
         <div className="flex flex-wrap justify-between gap-3 text-[0.875rem]">
-          <button type="button" className="text-accent hover:underline underline-offset-4" onClick={() => void send(sent)} disabled={busy}>
+          <button type="button" className="text-link hover:underline underline-offset-4" onClick={() => void send(sent)} disabled={busy}>
             {t("login.resend")}
           </button>
           <button
@@ -257,12 +257,12 @@ function Authenticate({
             {t("common.continue")}
           </Button>
           <div className="flex flex-wrap justify-between gap-3 text-[0.875rem]">
-            <a href={pageUrl("recover", { tenant, identifier })} className="text-accent hover:underline underline-offset-4">
+            <a href={pageUrl("recover", { tenant, identifier })} className="text-link hover:underline underline-offset-4">
               {t("login.forgot_password")}
             </a>
             <span className="text-muted">
               {t("login.no_account")}{" "}
-              <a href={pageUrl("register", { tenant, flow: flow.id })} className="text-accent hover:underline underline-offset-4">
+              <a href={pageUrl("register", { tenant, flow: flow.id })} className="text-link hover:underline underline-offset-4">
                 {t("login.create_account")}
               </a>
             </span>

@@ -103,8 +103,8 @@ export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: {
       ) : users.isPending ? (
         <Spinner label="Loading users…" />
       ) : (
-        <div className="rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
-          <div role="table" aria-label="Users" aria-rowcount={rows.length} className="text-[0.875rem]">
+        <div className="overflow-x-auto rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
+          <div role="table" aria-label="Users" aria-rowcount={rows.length} className="min-w-[38rem] text-[0.875rem]">
             <div role="row" className="grid grid-cols-[minmax(10rem,2fr)_minmax(10rem,2fr)_7rem_9rem] gap-3 border-b border-line px-4 py-2.5 text-[0.75rem] uppercase tracking-wide text-muted">
               <span role="columnheader">Username</span>
               <span role="columnheader">Email</span>

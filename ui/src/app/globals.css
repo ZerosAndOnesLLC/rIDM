@@ -13,7 +13,8 @@
   --line: #d8dce3;
   --accent: #3451b2;
   --accent-ink: #ffffff;
-  --link: #2f49a6;
+  /* Text-coloured accents: derived from --accent so any tenant colour stays readable. */
+  --link: color-mix(in oklab, var(--accent) 80%, black);
   /* Chart series (validated categorical slots 1 and 2, see dataviz). */
   --series-1: #2a78d6;
   --series-2: #eb6834;
@@ -38,7 +39,7 @@
     --muted: #9aa3b0;
     --line: #2c323b;
     --accent-ink: #ffffff;
-    --link: #9db0f5;
+    --link: color-mix(in oklab, var(--accent) 50%, white);
     --series-1: #3987e5;
     --series-2: #d95926;
     --danger: #f58a7d;
@@ -55,7 +56,7 @@
   --muted: #9aa3b0;
   --line: #2c323b;
   --accent-ink: #ffffff;
-  --link: #9db0f5;
+  --link: color-mix(in oklab, var(--accent) 50%, white);
   --series-1: #3987e5;
   --series-2: #d95926;
   --danger: #f58a7d;

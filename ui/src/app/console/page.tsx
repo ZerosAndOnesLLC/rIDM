@@ -39,9 +39,9 @@ export default function Overview() {
         <Card title="Signed in as">
           <dl>
             <Row label="User">
-              <span className="inline-flex items-center gap-1.5">
-                <UserRound className="size-4 text-muted" aria-hidden />
-                {me?.username}
+              <span className="inline-flex max-w-full items-center gap-1.5">
+                <UserRound className="size-4 shrink-0 text-muted" aria-hidden />
+                <span className="truncate">{me?.username}</span>
               </span>
             </Row>
             <Row label="Home tenant">{me?.tenant_slug}</Row>

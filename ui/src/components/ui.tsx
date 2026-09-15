@@ -9,7 +9,7 @@ type Variant = "primary" | "secondary" | "quiet" | "danger";
 const variantClass: Record<Variant, string> = {
   primary: "bg-accent text-accent-ink hover:brightness-110 active:brightness-95",
   secondary: "bg-paper text-ink border border-line hover:bg-ground",
-  quiet: "bg-transparent text-accent hover:underline underline-offset-4",
+  quiet: "bg-transparent text-link hover:underline underline-offset-4",
   danger: "bg-paper text-danger border border-line hover:bg-danger-soft",
 };
 

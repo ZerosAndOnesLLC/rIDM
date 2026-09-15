@@ -6,7 +6,7 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 export function Card({ title, children, className = "", actions }: { title?: ReactNode; children: ReactNode; className?: string; actions?: ReactNode }) {
   return (
-    <section className={`rounded-[calc(var(--radius)+2px)] border border-line bg-paper ${className}`}>
+    <section className={`min-w-0 rounded-[calc(var(--radius)+2px)] border border-line bg-paper ${className}`}>
       {(title || actions) && (
         <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
           <h2 className="text-[0.9375rem] font-semibold text-ink">{title}</h2>
@@ -25,7 +25,7 @@ export function PageHeader({ title, sub, actions }: { title: ReactNode; sub?: Re
         <h1 className="text-[1.5rem] font-semibold leading-tight tracking-[-0.01em] text-ink">{title}</h1>
         {sub && <p className="mt-1 text-[0.9rem] text-muted">{sub}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </header>
   );
 }
@@ -81,7 +81,7 @@ export function Row({ label, children }: { label: ReactNode; children: ReactNode
   return (
     <div className="flex items-baseline justify-between gap-4 py-2 text-[0.875rem] not-last:border-b not-last:border-line">
       <dt className="shrink-0 text-muted">{label}</dt>
-      <dd className="min-w-0 truncate text-end text-ink">{children}</dd>
+      <dd className="min-w-0 max-w-full truncate text-end text-ink [&>*]:max-w-full [&>*]:truncate">{children}</dd>
     </div>
   );
 }
