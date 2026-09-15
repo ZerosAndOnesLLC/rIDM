@@ -11,15 +11,15 @@ use zeroize::Zeroizing;
 
 use crate::db;
 use crate::error::{AppError, AppResult};
-use crate::models::{MASTER_TENANT_ID, MASTER_TENANT_SLUG, NewRole, NewUser, Principal, Role};
+use crate::models::{MASTER_TENANT_ID, MASTER_TENANT_SLUG, NewUser, Principal, Role};
 use crate::repos;
 use crate::services::password::{self, SetPasswordOptions};
-use crate::services::{roles, tenants, users};
+use crate::services::{admin_access, roles, tenants, users};
 use crate::state::AppState;
 
-/// Built-in role in `master` granting every permission across all tenants.
-/// Phase 5.1 attaches the `ridm:*` permission model to it.
-pub const GLOBAL_OWNER_ROLE: &str = "ridm:owner";
+/// Built-in role in `master` granting every admin permission across all
+/// tenants (see [`crate::services::admin_access`]).
+pub const GLOBAL_OWNER_ROLE: &str = admin_access::OWNER_ROLE;
 
 #[derive(Debug, Clone)]
 pub struct BootstrapRequest {
@@ -80,25 +80,28 @@ async fn ensure_master_tenant(state: &AppState) -> AppResult<()> {
     Ok(())
 }
 
+/// The owner role is seeded by the admin-model migration for every tenant;
+/// re-run the seed if `master` somehow lacks it (it is idempotent).
 async fn ensure_owner_role(state: &AppState) -> AppResult<Role> {
     let mut tx = db::tenant_tx(&state.db, MASTER_TENANT_ID).await?;
     let existing =
         repos::roles::find_by_name(&mut *tx, MASTER_TENANT_ID, None, GLOBAL_OWNER_ROLE).await?;
-    tx.commit().await?;
     if let Some(r) = existing {
+        tx.commit().await?;
         return Ok(r);
     }
-    roles::create(
-        state,
-        MASTER_TENANT_ID,
-        Actor::System,
-        NewRole {
-            name: GLOBAL_OWNER_ROLE.into(),
-            client_id: None,
-            description: Some("Global owner: full access to every tenant".into()),
-        },
-    )
-    .await
+    sqlx::query("SELECT seed_admin_model($1)")
+        .bind(MASTER_TENANT_ID)
+        .execute(&mut *tx)
+        .await?;
+    let role = repos::roles::find_by_name(&mut *tx, MASTER_TENANT_ID, None, GLOBAL_OWNER_ROLE)
+        .await?
+        .ok_or_else(|| {
+            AppError::Internal("seed_admin_model did not create the owner role".into())
+        })?;
+    tx.commit().await?;
+    roles::bump_roles_version(state, MASTER_TENANT_ID).await?;
+    Ok(role)
 }
 
 pub async fn run(state: &AppState, req: BootstrapRequest) -> AppResult<BootstrapOutcome> {
@@ -158,6 +161,7 @@ pub async fn run(state: &AppState, req: BootstrapRequest) -> AppResult<Bootstrap
             must_change: req.must_change_password,
             skip_policy: false,
             by_user: false,
+            notify: false,
         },
     )
     .await?;

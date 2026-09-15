@@ -27,6 +27,13 @@ const TENANT_TABLES: &[&str] = &[
     "scopes",
     "claim_mappers",
     "consents",
+    "login_attempts",
+    "tenant_provider_settings",
+    "message_templates",
+    "outbound_messages",
+    "invitations",
+    "sso_sessions",
+    "trusted_devices",
 ];
 
 /// Create a throwaway database (needs a superuser/CREATEDB admin URL) and
@@ -219,13 +226,19 @@ async fn migrations_apply_cleanly_and_are_idempotent() {
         assert_eq!(applied, applied_again);
         let mut tx = pool.begin().await.unwrap();
         ridm_api::db::bind_tenant(&mut tx, tid).await.unwrap();
-        let (u, g, r): (i64, i64, i64) = sqlx::query_as(
-            "SELECT (SELECT count(*) FROM users), (SELECT count(*) FROM groups), (SELECT count(*) FROM roles)",
+        // Superusers bypass RLS, so scope explicitly. Every tenant insert
+        // seeds the five built-in admin roles on top of what the test added.
+        let (u, g, r, b): (i64, i64, i64, i64) = sqlx::query_as(
+            "SELECT (SELECT count(*) FROM users WHERE tenant_id = $1), \
+                    (SELECT count(*) FROM groups WHERE tenant_id = $1), \
+                    (SELECT count(*) FROM roles WHERE tenant_id = $1 AND NOT built_in), \
+                    (SELECT count(*) FROM roles WHERE tenant_id = $1 AND built_in)",
         )
+        .bind(tid)
         .fetch_one(&mut *tx)
         .await
         .unwrap();
-        assert_eq!((u, g, r), (1, 1, 1));
+        assert_eq!((u, g, r, b), (1, 1, 1, 5));
         tx.rollback().await.unwrap();
         pool.close().await;
     };

@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AttributeType {
     String,
@@ -21,7 +21,7 @@ pub enum AttributeType {
 }
 
 /// Who may set the attribute.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EditableBy {
     /// The user (account console, registration) and admins.
@@ -33,7 +33,7 @@ pub enum EditableBy {
     None,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Exposure {
     IdToken,
@@ -41,7 +41,7 @@ pub enum Exposure {
     AccessToken,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct AttributeValidation {
     pub min_length: Option<u32>,
@@ -54,7 +54,7 @@ pub struct AttributeValidation {
     pub values: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct AttributeDef {
     pub name: String,
@@ -88,7 +88,7 @@ impl Default for AttributeDef {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct ProfileSchema {
     pub attributes: Vec<AttributeDef>,

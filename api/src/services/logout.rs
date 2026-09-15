@@ -47,6 +47,17 @@ pub async fn create_flow(state: &AppState, mut flow: LogoutFlow) -> AppResult<Lo
     Ok(flow)
 }
 
+/// Read a logout flow without consuming it (the confirmation page).
+pub async fn peek_flow(
+    state: &AppState,
+    tenant_id: Uuid,
+    id: Uuid,
+) -> AppResult<Option<LogoutFlow>> {
+    let mut conn = state.redis.get().await?;
+    let raw: Option<String> = conn.get(keys::logout_flow(tenant_id, id)).await?;
+    Ok(raw.and_then(|r| serde_json::from_str(&r).ok()))
+}
+
 pub async fn take_flow(
     state: &AppState,
     tenant_id: Uuid,

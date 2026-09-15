@@ -172,7 +172,79 @@ pub enum EventKind {
         child_role_id: Uuid,
     },
 
+    // Registration and invitations
+    UserRegistered {
+        user_id: Uuid,
+        verified: bool,
+    },
+    EmailVerified {
+        user_id: Uuid,
+    },
+    InvitationCreated {
+        invitation_id: Uuid,
+        email: String,
+    },
+    InvitationAccepted {
+        invitation_id: Uuid,
+        user_id: Uuid,
+    },
+    InvitationRevoked {
+        invitation_id: Uuid,
+    },
+
+    // Authentication
+    PasswordResetRequested {
+        user_id: Uuid,
+    },
+    PasswordResetCompleted {
+        user_id: Uuid,
+    },
+    PasswordlessSent {
+        user_id: Uuid,
+        method: String,
+    },
+    LoginSucceeded {
+        user_id: Uuid,
+        method: String,
+    },
+    LoginFailed {
+        identifier: String,
+        reason: String,
+    },
+    UserLocked {
+        user_id: Uuid,
+        until_secs: i64,
+    },
+    TermsAccepted {
+        user_id: Uuid,
+    },
+
+    // Security notices
+    /// A sign-in from a browser the user had not used before.
+    NewDeviceLogin {
+        user_id: Uuid,
+        session_id: Uuid,
+    },
+    EmailChanged {
+        user_id: Uuid,
+        old_email: Option<String>,
+        new_email: Option<String>,
+    },
+    /// MFA enrolment changed (`change` is a short description, e.g. "TOTP enrolled").
+    MfaChanged {
+        user_id: Uuid,
+        change: String,
+    },
+
     // Sessions and authorization
+    TrustedDeviceAdded {
+        user_id: Uuid,
+        device_id: Uuid,
+    },
+    TrustedDeviceRevoked {
+        user_id: Uuid,
+        device_id: Uuid,
+    },
     SessionCreated {
         session_id: Uuid,
         user_id: Uuid,
@@ -214,6 +286,78 @@ pub enum EventKind {
         new_version: u32,
     },
 
+    // Scopes, claim mappers, resource servers and permissions
+    ScopeCreated {
+        scope_id: Uuid,
+    },
+    ScopeUpdated {
+        scope_id: Uuid,
+    },
+    ScopeDeleted {
+        scope_id: Uuid,
+    },
+    ClaimMapperCreated {
+        mapper_id: Uuid,
+    },
+    ClaimMapperUpdated {
+        mapper_id: Uuid,
+    },
+    ClaimMapperDeleted {
+        mapper_id: Uuid,
+    },
+    ResourceServerCreated {
+        resource_server_id: Uuid,
+    },
+    ResourceServerUpdated {
+        resource_server_id: Uuid,
+    },
+    ResourceServerDeleted {
+        resource_server_id: Uuid,
+    },
+    PermissionCreated {
+        resource_server_id: Uuid,
+        permission_id: Uuid,
+    },
+    PermissionDeleted {
+        resource_server_id: Uuid,
+        permission_id: Uuid,
+    },
+    PermissionGranted {
+        role_id: Uuid,
+        permission_id: Uuid,
+    },
+    PermissionRevoked {
+        role_id: Uuid,
+        permission_id: Uuid,
+    },
+
+    // Webhooks and IP rules
+    WebhookCreated {
+        webhook_id: Uuid,
+    },
+    WebhookUpdated {
+        webhook_id: Uuid,
+    },
+    WebhookDeleted {
+        webhook_id: Uuid,
+    },
+    WebhookSecretRotated {
+        webhook_id: Uuid,
+    },
+    /// Synthetic event delivered by an administrator's test ping.
+    WebhookTest {
+        webhook_id: Uuid,
+    },
+    IpRuleCreated {
+        rule_id: Uuid,
+    },
+    IpRuleUpdated {
+        rule_id: Uuid,
+    },
+    IpRuleDeleted {
+        rule_id: Uuid,
+    },
+
     // Generic cache invalidation hint (entity kind + id), used until every
     // entity has a dedicated event.
     CacheInvalidate {
@@ -253,6 +397,23 @@ impl EventKind {
             Self::RoleUnassigned { .. } => "role.unassigned",
             Self::RoleCompositeAdded { .. } => "role.composite_added",
             Self::RoleCompositeRemoved { .. } => "role.composite_removed",
+            Self::UserRegistered { .. } => "user.registered",
+            Self::EmailVerified { .. } => "user.email_verified",
+            Self::InvitationCreated { .. } => "invitation.created",
+            Self::InvitationAccepted { .. } => "invitation.accepted",
+            Self::InvitationRevoked { .. } => "invitation.revoked",
+            Self::PasswordResetRequested { .. } => "user.password_reset_requested",
+            Self::PasswordResetCompleted { .. } => "user.password_reset_completed",
+            Self::PasswordlessSent { .. } => "login.passwordless_sent",
+            Self::LoginSucceeded { .. } => "login.succeeded",
+            Self::LoginFailed { .. } => "login.failed",
+            Self::UserLocked { .. } => "user.locked",
+            Self::TermsAccepted { .. } => "user.terms_accepted",
+            Self::NewDeviceLogin { .. } => "login.new_device",
+            Self::EmailChanged { .. } => "user.email_changed",
+            Self::MfaChanged { .. } => "mfa.changed",
+            Self::TrustedDeviceAdded { .. } => "device.trusted",
+            Self::TrustedDeviceRevoked { .. } => "device.revoked",
             Self::SessionCreated { .. } => "session.created",
             Self::SessionRevoked { .. } => "session.revoked",
             Self::AuthorizationGranted { .. } => "authorization.granted",
@@ -261,6 +422,27 @@ impl EventKind {
             Self::SigningKeyCreated { .. } => "signing_key.created",
             Self::SigningKeyStatusChanged { .. } => "signing_key.status_changed",
             Self::MasterKeyRotated { .. } => "master_key.rotated",
+            Self::ScopeCreated { .. } => "scope.created",
+            Self::ScopeUpdated { .. } => "scope.updated",
+            Self::ScopeDeleted { .. } => "scope.deleted",
+            Self::ClaimMapperCreated { .. } => "claim_mapper.created",
+            Self::ClaimMapperUpdated { .. } => "claim_mapper.updated",
+            Self::ClaimMapperDeleted { .. } => "claim_mapper.deleted",
+            Self::ResourceServerCreated { .. } => "resource_server.created",
+            Self::ResourceServerUpdated { .. } => "resource_server.updated",
+            Self::ResourceServerDeleted { .. } => "resource_server.deleted",
+            Self::PermissionCreated { .. } => "permission.created",
+            Self::PermissionDeleted { .. } => "permission.deleted",
+            Self::PermissionGranted { .. } => "permission.granted",
+            Self::PermissionRevoked { .. } => "permission.revoked",
+            Self::WebhookCreated { .. } => "webhook.created",
+            Self::WebhookUpdated { .. } => "webhook.updated",
+            Self::WebhookDeleted { .. } => "webhook.deleted",
+            Self::WebhookSecretRotated { .. } => "webhook.secret_rotated",
+            Self::WebhookTest { .. } => "webhook.test",
+            Self::IpRuleCreated { .. } => "ip_rule.created",
+            Self::IpRuleUpdated { .. } => "ip_rule.updated",
+            Self::IpRuleDeleted { .. } => "ip_rule.deleted",
             Self::CacheInvalidate { .. } => "cache.invalidate",
         }
     }

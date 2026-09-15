@@ -90,10 +90,24 @@ pub struct Config {
     /// Apply pending migrations at startup.
     pub migrate_on_start: bool,
     pub argon2: Argon2Params,
+    /// Deployment-wide SMTP defaults used by tenants without their own settings.
+    pub smtp: Option<SmtpDefaults>,
     /// First-run bootstrap from the environment (dev convenience). Runs after
     /// migrations when both email and password are set; a no-op once a global
     /// admin exists.
     pub bootstrap: Option<BootstrapConfig>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SmtpDefaults {
+    pub host: String,
+    pub port: u16,
+    pub username: Option<String>,
+    pub password: Option<SecretString>,
+    /// `From` header, e.g. `rIDM <no-reply@example.com>`.
+    pub from: String,
+    /// `starttls` (default), `tls`, or `none`.
+    pub security: String,
 }
 
 #[derive(Debug, Clone)]
@@ -240,6 +254,17 @@ impl Config {
             });
         }
 
+        let smtp = match optional("SMTP_HOST") {
+            Some(host) => Some(SmtpDefaults {
+                host,
+                port: parse_u32("SMTP_PORT", 587)? as u16,
+                username: optional("SMTP_USERNAME"),
+                password: optional("SMTP_PASSWORD").map(SecretString::new),
+                from: optional("SMTP_FROM").ok_or(ConfigError::Missing("SMTP_FROM"))?,
+                security: optional("SMTP_SECURITY").unwrap_or_else(|| "starttls".into()),
+            }),
+            None => None,
+        };
         let bootstrap = match (
             optional("BOOTSTRAP_ADMIN_EMAIL"),
             optional("BOOTSTRAP_ADMIN_PASSWORD"),
@@ -280,6 +305,7 @@ impl Config {
             db_pool_max,
             migrate_on_start,
             argon2,
+            smtp,
             bootstrap,
         })
     }

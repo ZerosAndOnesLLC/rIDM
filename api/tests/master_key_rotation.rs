@@ -138,6 +138,20 @@ async fn rotation_reencrypts_every_row_and_is_idempotent() {
     // Idempotent: a second pass rewrites nothing.
     let again = master_key::rotate_all(&v2).await.unwrap();
     assert_eq!(again.rewritten.values().sum::<u64>(), 0);
+
+    // Rotation is database-wide, so it also rewrote rows of every other
+    // tenant (including `master`, whose keys later test binaries sign with).
+    // Leave the shared database under generation 1 again.
+    let back = state_with_key(&app, 1, 0x07, vec![(2, 0x42)]).await;
+    let restored = master_key::rotate_all(&back).await.unwrap();
+    assert_eq!(restored.target_version, 1);
+    assert!(restored.rewritten["signing_keys"] >= 2, "{restored:?}");
+    let k1_back = keys::get(&app.state, tid, k1.id).await.unwrap();
+    assert_eq!(k1_back.key_version, 1);
+    assert_eq!(
+        &*keys::private_der(&app.state, &k1_back).await.unwrap(),
+        &*der_before
+    );
 }
 
 #[tokio::test]

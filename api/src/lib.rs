@@ -6,9 +6,11 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod jobs;
+pub mod messaging;
 pub mod middleware;
 pub mod models;
 pub mod oidc;
+pub mod openapi;
 pub mod repos;
 pub mod routes;
 pub mod services;
@@ -29,11 +31,32 @@ pub fn build_router(state: AppState) -> Router {
 /// Build the application router plus `extra` routes (used by integration
 /// tests to exercise extractors and middleware in isolation).
 pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
+    let (admin, api) = openapi::admin_router().split_for_parts();
+    let docs = if state.config.docs_enabled {
+        Router::new()
+            .merge(utoipa_swagger_ui::SwaggerUi::new("/docs").url("/openapi.json", api.clone()))
+    } else {
+        let served = api.clone();
+        Router::new().route(
+            "/openapi.json",
+            axum::routing::get(move || {
+                let doc = served.clone();
+                async move { axum::Json(doc) }
+            }),
+        )
+    };
     Router::new()
         .merge(routes::health::router())
+        .merge(admin)
+        .merge(docs)
+        .merge(routes::branding::router())
         .merge(routes::wellknown::router())
         .merge(routes::webfinger::router())
         .merge(routes::jwks::router())
+        .merge(routes::flows::router())
+        .merge(routes::invitations::router())
+        .merge(routes::verification::router())
+        .merge(routes::recovery::router())
         .merge(oidc::discovery::router())
         .merge(oidc::authorize::router())
         .merge(oidc::par::router())

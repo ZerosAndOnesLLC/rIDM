@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::types::Json;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum ClientType {
@@ -19,7 +21,9 @@ pub enum ClientType {
     Device,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "text", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum TokenEndpointAuthMethod {
@@ -44,7 +48,9 @@ impl TokenEndpointAuthMethod {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum AccessTokenFormat {
@@ -52,7 +58,9 @@ pub enum AccessTokenFormat {
     Opaque,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum ClientSubjectType {
@@ -60,7 +68,9 @@ pub enum ClientSubjectType {
     Pairwise,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum ClientStatus {
@@ -85,7 +95,7 @@ pub mod grants {
 }
 
 /// One of up to two active client secrets (rotation with a grace window).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ClientSecretHash {
     pub id: Uuid,
     /// base64url(SHA-256(secret)). Secrets are 256-bit random, so a fast hash suffices.
@@ -101,7 +111,7 @@ impl ClientSecretHash {
 }
 
 /// `id_token_encryption` column.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct IdTokenEncryptionConfig {
     /// `RSA-OAEP-256` or `RSA-OAEP`.
     pub alg: String,
@@ -109,7 +119,7 @@ pub struct IdTokenEncryptionConfig {
     pub enc: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct Client {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -122,6 +132,7 @@ pub struct Client {
     pub tos_uri: Option<String>,
     pub policy_uri: Option<String>,
     #[serde(skip)]
+    #[schema(ignore)]
     pub secret_hashes: Json<Vec<ClientSecretHash>>,
     pub jwks: Option<serde_json::Value>,
     pub jwks_uri: Option<String>,
@@ -135,6 +146,7 @@ pub struct Client {
     pub refresh_token_ttl_secs: Option<i32>,
     pub id_token_ttl_secs: Option<i32>,
     pub access_token_format: AccessTokenFormat,
+    #[schema(value_type = Option<IdTokenEncryptionConfig>)]
     pub id_token_encryption: Option<Json<IdTokenEncryptionConfig>>,
     pub subject_type: ClientSubjectType,
     pub sector_identifier_uri: Option<String>,
@@ -176,8 +188,8 @@ impl Client {
 }
 
 /// Input for creating a client. Missing fields take type-driven defaults.
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
+#[serde(default, deny_unknown_fields)]
 pub struct NewClient {
     /// Generated when absent.
     pub client_id: Option<String>,

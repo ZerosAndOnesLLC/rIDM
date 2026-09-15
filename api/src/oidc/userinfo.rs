@@ -111,27 +111,9 @@ async fn build(
     let client = clients::find_by_client_id(state, tenant.id(), client_public)
         .await?
         .ok_or(Reject::Token("client no longer exists"))?;
-    // The subject is the user id for public subjects; pairwise subjects cannot
-    // be reversed, so the user is looked up from the session-bound `sid` / `sub`.
-    let user_id = match uuid::Uuid::parse_str(claims["sub"].as_str().unwrap_or_default()) {
-        Ok(id) => id,
-        Err(_) => {
-            // Pairwise: resolve through the session.
-            let sid = claims["sid"]
-                .as_str()
-                .and_then(|s| uuid::Uuid::parse_str(s).ok())
-                .ok_or(Reject::Token("token has no resolvable subject"))?;
-            let session = crate::services::sessions::get(
-                state,
-                tenant.id(),
-                sid,
-                &tenant.tenant.settings.session,
-            )
-            .await?
-            .ok_or(Reject::Token("session has ended"))?;
-            session.user_id
-        }
-    };
+    let user_id = tokens::subject_user_id(state, &tenant.tenant, &claims)
+        .await?
+        .ok_or(Reject::Token("token has no resolvable subject"))?;
     let user = users::get(state, tenant.id(), user_id)
         .await
         .map_err(|_| Reject::Token("user no longer exists"))?;

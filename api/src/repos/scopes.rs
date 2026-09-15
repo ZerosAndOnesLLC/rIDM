@@ -61,8 +61,12 @@ pub async fn update<'e>(
     description: Option<Option<&str>>,
     claims: Option<&[String]>,
     is_default: Option<bool>,
+    resource_server_id: Option<Option<Uuid>>,
 ) -> Result<Option<Scope>, sqlx::Error> {
     let mut qb = QueryBuilder::new("UPDATE scopes SET updated_at = now()");
+    if let Some(rs) = resource_server_id {
+        qb.push(", resource_server_id = ").push_bind(rs);
+    }
     if let Some(d) = description {
         qb.push(", description = ").push_bind(d.map(str::to_string));
     }

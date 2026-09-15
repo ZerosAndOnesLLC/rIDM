@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Where a claim goes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TokenKind {
     Access,
@@ -14,7 +14,7 @@ pub enum TokenKind {
 }
 
 /// How a claim value is produced.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum MapperKind {
     /// Copy a user field (`username`, `email`, ...) or a profile attribute
@@ -49,7 +49,7 @@ pub enum MapperKind {
     Audience { audience: String },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum JsonType {
     #[default]
@@ -59,7 +59,7 @@ pub enum JsonType {
     Json,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ClaimMapper {
     pub name: String,
     #[serde(flatten)]
@@ -107,3 +107,22 @@ pub const PROTECTED_CLAIMS: &[&str] = &[
     "scope",
     "typ",
 ];
+
+/// Input for creating a claim mapper: `config` is the mapper document
+/// (`type`, its fields and `include_in`) without the name.
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
+#[serde(default, deny_unknown_fields)]
+pub struct NewClaimMapper {
+    pub name: String,
+    /// Restrict to one client; absent applies to every client of the tenant.
+    pub client_id: Option<uuid::Uuid>,
+    pub config: serde_json::Value,
+}
+
+/// Partial mapper update; the client scope is immutable.
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
+#[serde(default, deny_unknown_fields)]
+pub struct ClaimMapperUpdate {
+    pub name: Option<String>,
+    pub config: Option<serde_json::Value>,
+}

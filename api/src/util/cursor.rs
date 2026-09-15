@@ -11,7 +11,7 @@ use crate::error::AppError;
 pub const DEFAULT_PAGE_SIZE: u32 = 50;
 pub const MAX_PAGE_SIZE: u32 = 500;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct Cursor {
     #[serde(rename = "t")]
     pub created_at: DateTime<Utc>,
@@ -41,7 +41,7 @@ pub fn page_size(requested: Option<u32>) -> i64 {
     )
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct Page<T> {
     pub items: Vec<T>,
     #[serde(skip_serializing_if = "Option::is_none")]

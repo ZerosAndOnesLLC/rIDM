@@ -8,7 +8,7 @@
 //! asks the user first (protects against forced logout).
 
 use axum::Router;
-use axum::extract::{RawQuery, State};
+use axum::extract::{Path, RawQuery, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
@@ -32,6 +32,50 @@ pub fn router() -> Router<AppState> {
             get(end_session_get).post(end_session_post),
         )
         .route("/t/{slug}/end_session/confirm", post(confirm))
+        .route("/t/{slug}/end_session/{flow}", get(logout_flow))
+}
+
+/// What the UI's logout page needs: whom the user is signing out of, and the
+/// CSRF token the confirmation must echo. The flow stays until confirmed.
+async fn logout_flow(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    headers: HeaderMap,
+    Path((_, id)): Path<(String, Uuid)>,
+) -> Response {
+    let flow = match logout::peek_flow(&state, tenant.id(), id).await {
+        Ok(Some(f)) => f,
+        Ok(None) => return AppError::NotFound("logout flow").into_response(),
+        Err(e) => return e.into_response(),
+    };
+    let client = match &flow.client_id {
+        Some(cid) => match clients::find_by_client_id(&state, tenant.id(), cid).await {
+            Ok(c) => c.map(|c| {
+                serde_json::json!({"client_id": c.client_id, "name": c.name, "logo_uri": c.logo_uri})
+            }),
+            Err(e) => return e.into_response(),
+        },
+        None => None,
+    };
+    let session = match sessions::from_request(&state, &tenant.tenant, &headers).await {
+        Ok(s) => s,
+        Err(e) => return e.into_response(),
+    };
+    let locale =
+        crate::services::locale::negotiate(&flow.ui_locales, None, &tenant.tenant.settings.locale);
+    let mut res = axum::Json(serde_json::json!({
+        "id": flow.id,
+        "csrf": flow.csrf,
+        "client": client,
+        "signed_in": session.is_some(),
+        "returns_to_client": flow.post_logout_redirect_uri.is_some(),
+        "locale": locale,
+        "dir": crate::services::locale::direction(&locale),
+    }))
+    .into_response();
+    res.headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    res
 }
 
 async fn end_session_get(

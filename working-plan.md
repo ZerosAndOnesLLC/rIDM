@@ -4,9 +4,9 @@ A modern, multi-tenant Identity Management (IDM) server: OpenID Connect provider
 JWT issuer, user/group/role management, MFA, and identity brokering, with a bundled
 admin UI and end-user account console.
 
-Stack: Rust (`api/`) + Next.js static export (`ui/`). Postgres + Redis.
+Stack: Rust (`api/`) + Next.js static export (`ui/`). Postgres + Valkey.
 
-Open source (MIT). Cloud-agnostic: runs anywhere a container, Postgres, and Redis run
+Open source (MIT). Cloud-agnostic: runs anywhere a container, Postgres, and Valkey run
 (bare metal, docker-compose, Kubernetes, any cloud). No provider-specific dependencies.
 
 Rules for executing this plan (from global CLAUDE.md): one sub-phase at a time,
@@ -21,7 +21,7 @@ no version bumps outside a release.
 |------|----------|-------|
 | HTTP framework | **axum 0.8** + tower-http | tower middleware composes cleanly for per-tenant extractors, rate limiting, tracing. Alternative: actix-web for parity with tv/api. Decide before Phase 1. |
 | DB | Postgres via **sqlx 0.9** (runtime-tokio, tls-rustls-ring) | Migrations via `sqlx migrate`. No `SELECT *`. |
-| Cache / sessions | **Redis** (deadpool-redis) | Cache-first for tenants, clients, keys, sessions, rate limits, auth-flow state. Invalidate on every write. |
+| Cache / sessions | **Valkey** (Redis protocol via deadpool-redis; Redis 7.2+/8 also works) | Cache-first for tenants, clients, keys, sessions, rate limits, auth-flow state. Invalidate on every write. |
 | Tenancy model | **Shared DB, `tenant_id` on every tenant-scoped table** | Composite indexes lead with `tenant_id`. Postgres RLS enabled as defence-in-depth (`SET LOCAL app.tenant_id`). |
 | Tenant resolution | **Path prefix**: issuer = `https://{host}/t/{tenant_slug}` | Discovery at `/t/{slug}/.well-known/openid-configuration`. Custom domain per tenant in Phase 9 (host → tenant lookup, cached). |
 | Master tenant | Tenant `master` hosts global admins | Global admin roles live here; per-tenant admins live in their tenant. |
@@ -64,7 +64,7 @@ All versions are the latest **stable** release as of the date above. Verified by
 | Node.js | 24.21.0 (LTS) | 26.x is current but not LTS |
 | npm | 12.0.2 | |
 | PostgreSQL | 18.6 | minimum supported: 16 |
-| Redis | 8.10.1 | Valkey 9.1.2 is a drop-in alternative |
+| Valkey | 9.1.2 | image `valkey/valkey:9.1.2-alpine3.24`; Redis 8.x is protocol-compatible |
 | Helm | 4.3.0 | |
 
 ### Backend crates (`api/Cargo.toml`)
@@ -138,7 +138,7 @@ All versions are the latest **stable** release as of the date above. Verified by
 | recharts | 3.10.1 | |
 | qrcode | 1.5.4 | |
 | @types/node / @types/react / @types/react-dom / @types/qrcode | 26.1.0 / 19.2.17 / 19.2.3 / 1.5.6 | |
-| @playwright/test / @axe-core/playwright | latest stable at Phase 4.12 (verify then) | e2e + accessibility |
+| @playwright/test / @axe-core/playwright | 1.63.0 / 4.13.0 | e2e + accessibility (pinned at 4.12) |
 
 Pin exact versions in both manifests (no `^`) so the lockfiles and the tables above stay truthful; bump deliberately.
 
@@ -277,33 +277,33 @@ Operations
 - [x] 3.10 Security tests: code replay, PKCE missing/mismatched/plain-downgrade, redirect_uri substring/suffix/scheme attacks, loopback port rules, state/nonce mismatch, `id_token_hint` from another tenant, client secret grace expiry, DCR abuse (open policy off), discovery-vs-routes contract test. Fuzz targets: authorize params, redirect_uri matcher.
 
 ### Phase 4 — Browser flows (API) and end-user UI
-- [ ] 4.1 Flow state machine (Redis): identify → authenticate (password | passkey | magic-link | email-otp | sms-otp | upstream IdP) → mfa → step-up check (acr) → profile-completion → terms → consent → done; CSRF bound to flow; retry counters.
-- [ ] 4.2 Flow API: `GET /flows/{id}` (public state, branding, locale, available methods), `POST /flows/{id}/{step}`, `/cancel`; completion returns `{ redirect_to }`.
-- [ ] 4.3 Brute-force protection (per-user + per-IP), CAPTCHA challenge via `Captcha` trait after threshold or on registration.
-- [ ] 4.4 Messaging: `EmailSender` (SMTP via lettre, generic HTTP), `SmsSender` (HTTP webhook), per-tenant settings (encrypted), per-locale templates (handlebars), outbound queue with retry and dead-letter.
-- [ ] 4.5 Magic link and email OTP login; SMS OTP login; passwordless-only tenant policy.
-- [ ] 4.6 Self-registration (per-tenant toggle, profile schema driven, email verification, terms acceptance) and invitation acceptance flow.
-- [ ] 4.7 Recovery/verification: password reset, email verify, resend, temporary password + forced change.
-- [ ] 4.8 Session policy enforcement: idle/absolute timeouts, max concurrent sessions, trusted-device "remember me" skipping MFA, `prompt`/`max_age`/`acr_values` honored.
-- [ ] 4.9 i18n: locale negotiation (`ui_locales` → user locale → tenant default), translation bundles, RTL-safe layout.
-- [ ] 4.10 UI pages: `/login/`, `/register/`, `/invite/`, `/consent/`, `/mfa/`, `/recover/`, `/verify/`, `/logout/`, `/device/`, `/error/`. Query-param driven; tenant theme (logo, colors, custom links, optional custom CSS); mobile-first.
-- [ ] 4.11 Security notifications to users: new device login, password changed, MFA changed, email changed.
-- [ ] 4.12 Tests: flow state machine transitions (every step, every error), CSRF on each step, brute-force lockout timing, CAPTCHA gate, magic-link/OTP single-use + expiry, registration with schema validation, invitation acceptance, recovery token single-use, session idle/absolute/concurrent limits, trusted-device skip, locale negotiation, message queue retry/dead-letter with mock senders. Playwright e2e: password login, magic link (via Mailpit), registration, recovery, consent, logout.
+- [x] 4.1 Flow state machine (Redis): identify → authenticate (password | passkey | magic-link | email-otp | sms-otp | upstream IdP) → mfa → step-up check (acr) → profile-completion → terms → consent → done; CSRF bound to flow; retry counters.
+- [x] 4.2 Flow API: `GET /flows/{id}` (public state, branding, locale, available methods), `POST /flows/{id}/{step}`, `/cancel`; completion returns `{ redirect_to }`.
+- [x] 4.3 Brute-force protection (per-user + per-IP), CAPTCHA challenge via `Captcha` trait after threshold or on registration.
+- [x] 4.4 Messaging: `EmailSender` (SMTP via lettre, generic HTTP), `SmsSender` (HTTP webhook), per-tenant settings (encrypted), per-locale templates (handlebars), outbound queue with retry and dead-letter.
+- [x] 4.5 Magic link and email OTP login; SMS OTP login; passwordless-only tenant policy.
+- [x] 4.6 Self-registration (per-tenant toggle, profile schema driven, email verification, terms acceptance) and invitation acceptance flow.
+- [x] 4.7 Recovery/verification: password reset, email verify, resend, temporary password + forced change.
+- [x] 4.8 Session policy enforcement: idle/absolute timeouts, max concurrent sessions, trusted-device "remember me" skipping MFA, `prompt`/`max_age`/`acr_values` honored.
+- [x] 4.9 i18n: locale negotiation (`ui_locales` → user locale → tenant default), translation bundles, RTL-safe layout.
+- [x] 4.10 UI pages: `/login/`, `/register/`, `/invite/`, `/consent/`, `/mfa/`, `/recover/`, `/verify/`, `/logout/`, `/device/`, `/error/`. Query-param driven; tenant theme (logo, colors, custom links, optional custom CSS); mobile-first.
+- [x] 4.11 Security notifications to users: new device login, password changed, MFA changed, email changed.
+- [x] 4.12 Tests (trusted-device MFA skip is covered with 7.7 once a second factor exists): flow state machine transitions (every step, every error), CSRF on each step, brute-force lockout timing, CAPTCHA gate, magic-link/OTP single-use + expiry, registration with schema validation, invitation acceptance, recovery token single-use, session idle/absolute/concurrent limits, trusted-device skip, locale negotiation, message queue retry/dead-letter with mock senders. Playwright e2e: password login, magic link (via Mailpit), registration, recovery, consent, logout; extended after 5.1 with email OTP, invitation acceptance, forced password change, profile completion, terms re-acceptance and lockout.
 
 ### Phase 5 — Admin API
-- [ ] 5.1 Admin auth middleware + admin permission model (`ridm:tenants:*`, `ridm:users:read|write`, `ridm:clients:*`, `ridm:keys:*`, `ridm:audit:read`, …) with built-in admin roles: owner, admin, user-manager, client-manager, viewer.
-- [ ] 5.2 Tenants: CRUD, settings (password, session, MFA, registration, locale, branding, captcha, ip rules, feature flags).
-- [ ] 5.3 Clients: CRUD, type-driven defaults, secret generate/rotate (reveal-once), URIs, grants, scopes, audiences, token settings, encryption, logout URIs, CORS, service account.
-- [ ] 5.4 Users: cursor-paginated list/search, CRUD, set/temp password, force reset, enable/disable/unlock, sessions + revoke, credentials, trusted devices, PATs, role/group assignment, federated identities, consents, per-user audit.
-- [ ] 5.5 Groups, roles, resource servers + permissions, scopes, claim mappers, identity providers CRUD.
-- [ ] 5.6 Keys: list, rotate, revoke. Master-key rotation status.
-- [ ] 5.7 Invitations: create/list/revoke/resend. Bulk user import (CSV/JSON, legacy hashes) and export.
-- [ ] 5.8 Messaging admin: SMTP/SMS settings with test-send, template CRUD per locale with preview.
-- [ ] 5.9 Audit: list/filter/export; retention policy per tenant. Migration for partitioned `audit_events` with hash chain.
-- [ ] 5.10 Webhooks CRUD, delivery log, redeliver. IP rules CRUD.
-- [ ] 5.11 Tenant export/import (config as code): deterministic JSON, secrets excluded or encrypted, idempotent apply with diff preview.
-- [ ] 5.12 Cache invalidation on every write; utoipa docs complete; generated TypeScript admin client published from OpenAPI.
-- [ ] 5.13 Tests: admin permission matrix (each built-in role × each endpoint), tenant isolation suite v2 (every admin endpoint cross-tenant), cursor pagination stability, bulk import (legacy hashes, bad rows reported), export/import round trip is idempotent and diff is empty, audit hash chain verifies, TypeScript client contract test against live OpenAPI.
+- [x] 5.1 Admin auth middleware + admin permission model (`ridm:tenants:*`, `ridm:users:read|write`, `ridm:clients:*`, `ridm:keys:*`, `ridm:audit:read`, …) with built-in admin roles: owner, admin, user-manager, client-manager, viewer. Built as: per-tenant built-in resource server `urn:ridm:admin` + permission catalogue + `ridm:*` roles seeded by migration (Rust mirror in `services/admin_access.rs`, contract-tested); `AdminCtx` bearer extractor (audience-bound, session-bound, permissions re-resolved per request, master = global scope); `GET /admin/me`, `GET /admin/permissions`.
+- [x] 5.2 Tenants: CRUD, settings (password, session, MFA, registration, locale, branding, captcha, ip rules, feature flags). Built as: `/admin/tenants` list (global: all, paginated; tenant-scoped: own), create/delete global-only, get/patch per scope; settings via JSON merge patch with unknown-field rejection; `features` flag map in settings; captcha provider config (encrypted, secret redacted on read); `AdminTenantPath` extractor admits disabled tenants; problem+json `Json` extractor. IP rules are their own resource in 5.10.
+- [x] 5.3 Clients: CRUD, type-driven defaults, secret generate/rotate (reveal-once), URIs, grants, scopes, audiences, token settings, encryption, logout URIs, CORS, service account. Built as: `/admin/tenants/{slug}/clients` (id or public `client_id` in the path); merge-patch updates plus `status`; scopes/audiences validated against the tenant; `secrets` metadata on reads; rotate with grace and revoke by secret id; switching auth method to/from secrets drops or mints one (also on RFC 7592 PUT); service account = a `svc-<client_id>` user linked to the client; registration-token issue for RFC 7592 management.
+- [x] 5.4 Users: cursor-paginated list/search, CRUD, set/temp password, force reset, enable/disable/unlock, sessions + revoke, credentials, trusted devices, role/group assignment, consents. Built as: `/admin/tenants/{slug}/users` and sub-resources; create accepts `password` or `temporary_password` (returned once); `PATCH` with `null` clears, `status` limited to active/disabled (disable revokes sessions); password route with policy override, notify and session revocation; credentials = password summary plus `credentials` rows (metadata only, `repos::credentials`); role and group grants pass `require_can_grant` over the composites-expanded (and ancestor-group) permissions via `admin_access::permissions_of_grant`. Deferred to where their storage arrives: PATs (8.5), federated identities (8.3), per-user audit (5.9).
+- [x] 5.5 Groups, roles, resource servers + permissions, scopes, claim mappers CRUD. Built as: `/admin/tenants/{slug}/{groups,roles,resource-servers,scopes,claim-mappers}`; `built_in` resource servers, their catalogue and built-in roles are immutable (403); every grant path (role to user/group, group membership, composite child, admin-catalogue permission to role) passes `require_can_grant` over `admin_access::permissions_of_grant`; permission grant/revoke and resource-server/permission deletion bump the roles version; claim mappers are cached per client under a tenant-wide mappers version (`claim_mappers::bump_mappers_version`) so tenant-wide changes reach every client at once; new `scope.*`, `claim_mapper.*`, `resource_server.*`, `permission.*` events. Identity provider CRUD moves to 8.3 with its table and brokering semantics.
+- [x] 5.6 Keys: list, rotate, revoke. Master-key rotation status. Built as: `/admin/tenants/{slug}/keys` list (status filter), create (pending or activated), rotate, get, activate, retire, revoke; `/admin/master-key` status with pending row count and `/rotate` re-encryption, both global-only.
+- [x] 5.7 Invitations: create/list/revoke/resend. Bulk user import (CSV/JSON, legacy hashes) and export. Built as: `/admin/tenants/{slug}/invitations` (token only by email, resend rotates it, role/group invitations guarded by `require_can_grant`); `POST .../users/import` (JSON or CSV, `dry_run`, per-row report, legacy hashes via `password::import_hash`, roles/groups by name; `services/bulk_users.rs`) and streaming `GET .../users/export` in JSON or CSV.
+- [x] 5.8 Messaging admin: SMTP/SMS settings with test-send, template CRUD per locale with preview. Built as: `/admin/tenants/{slug}/messaging/{email,sms}` (encrypted provider settings, secrets redacted as `*_set`, omitted secret kept, validation of security/URLs), `/{email,sms}/test` straight through the configured sender, `/templates` catalogue + `/{channel}/{event}/{locale}` override GET/PUT/DELETE (built-in shown as starting point, rendering validated) + `/preview` (stored or draft, sample vars), `/log` without bodies and `/log/{id}/redeliver`; `services/messaging.rs`.
+- [x] 5.9 Audit: list/filter/export; retention policy per tenant. Migration for partitioned `audit_events` with hash chain. Includes the per-user audit route under `/admin/tenants/{slug}/users/{id}/audit` deferred from 5.4. Built as: migration `20260915144648_audit_events` (range-partitioned by month with a default partition, `audit_ensure_partitions()`, tenant RLS, per-chain `seq`), `services/audit.rs` writer subscribed to the event bus (per-chain advisory lock, `SHA-256(prev_hash || canonical row)`), list/export/verify per tenant and for the global chain, `settings.audit.retention_days`, daily `audit_retention` job purging an expired chain prefix and creating partitions.
+- [x] 5.10 Webhooks CRUD, delivery log, redeliver. IP rules CRUD. Built as: migration `20260915150001_webhooks_ip_rules` (`webhooks` with encrypted HMAC secret + `key_version`, `webhook_deliveries` queue, `ip_rules`, all under tenant RLS); `services/webhooks.rs` (event patterns, reveal-once secret on create/rotate, bus dispatcher → queued deliveries, `deliver_due` with HMAC `X-RIDM-Signature`, retry/backoff/dead-letter, redeliver, test ping) + `webhook_delivery` job every 30 s; `services/ip_rules.rs` with CIDR normalization (enforcement stays in 9.2); webhook secrets registered for master-key rotation; dispatcher started in main and the test harness.
+- [x] 5.11 Tenant export/import (config as code): deterministic JSON, secrets excluded or encrypted, idempotent apply with diff preview. Built as: `services/tenant_config.rs` with the `ridm.tenant/1` document (sorted collections, natural keys: client `client_id`, role `name` or `client_id/name`, permission `identifier#name`, group `path[]`, template `channel/event/locale`), `export`, `plan` (normalizes the desired document, compares against a fresh export, field-level diffs, deletes only with `prune`, built-in roles/servers and standard scopes never deleted) and `apply` (dependency-ordered, per-item errors, secrets of created clients and webhooks reported once); `GET .../export`, `POST .../import`. Secrets are excluded (not encrypted): provider credentials are configured per environment.
+- [x] 5.12 Cache invalidation on every write; utoipa docs complete; generated TypeScript admin client published from OpenAPI. Built as: invalidation audit (every cached key has an eviction on its write path; roles/mappers versions cover derived caches); `#[utoipa::path]` on every admin handler with `ToSchema`/`IntoParams` on all models, routers as `utoipa_axum::OpenApiRouter` merged in `openapi.rs` (`/openapi.json`, Swagger UI at `/docs` with `DOCS_ENABLED`, `ridm-api openapi` CLI); committed `api/openapi.json` kept current by a test; `ui/lib/api/openapi.d.ts` generated by `npm run gen:api` (openapi-typescript via npx with TypeScript 5) and `ui/lib/api/client.ts` on `openapi-fetch` with bearer and 401 middleware.
+- [x] 5.13 Tests: admin permission matrix (each built-in role × each endpoint), tenant isolation suite v2 (every admin endpoint cross-tenant), cursor pagination stability, bulk import (legacy hashes, bad rows reported), export/import round trip is idempotent and diff is empty, audit hash chain verifies, TypeScript client contract test against live OpenAPI. Built as: `admin_matrix.rs` derives every operation and its required permission from the route sources (`#[utoipa::path]` + first `admin.require*`) and checks all five built-in roles, the global owner and anonymous callers, then calls every tenant-scoped operation across tenants; `admin_pagination.rs` walks user and client listings with mid-walk inserts; bulk import (`admin_bulk_users.rs`), export/import (`admin_tenant_config.rs`) and audit chain (`admin_audit.rs`) suites from their sub-phases; `ui/e2e/openapi-contract.spec.ts` compares the live document with the committed one and drives the typed client against the live API.
 
 ### Phase 6 — Admin UI
 - [ ] 6.1 Shell: OIDC PKCE login, refresh, tenant switcher, global search, sidebar, dark/light, keyboard shortcuts.
@@ -328,9 +328,9 @@ Operations
 ### Phase 8 — Account console, identity brokering, device flow, PATs
 - [ ] 8.1 Account console UI (`/account/`): profile per schema (auto-save), password change, email/phone change with verification, MFA, passkeys, trusted devices, sessions (revoke, sign out everywhere), linked identities, consented apps, personal access tokens, data export, account deletion.
 - [ ] 8.2 Account API (self-scoped): all of the above; GDPR export (JSON) and deletion (soft-delete → purge job).
-- [ ] 8.3 Upstream OIDC/OAuth2 providers: per-tenant config, `/broker/{alias}/start|callback`, discovery + JWKS cache, attribute mappers, account linking (auto by verified email | explicit | always-new), first-login profile completion. Presets: Google, Microsoft, GitHub, Apple, GitLab.
+- [ ] 8.3 (also adds the admin identity-provider CRUD deferred from 5.5 and the `users/{id}/identities` list/unlink routes deferred from 5.4) Upstream OIDC/OAuth2 providers: per-tenant config, `/broker/{alias}/start|callback`, discovery + JWKS cache, attribute mappers, account linking (auto by verified email | explicit | always-new), first-login profile completion. Presets: Google, Microsoft, GitHub, Apple, GitLab.
 - [ ] 8.4 Device authorization grant (RFC 8628): `/device_authorization`, `/device/` UI, polling on `/token`.
-- [ ] 8.5 Personal access tokens: create/list/revoke, usable as bearer with scoped permissions.
+- [ ] 8.5 Personal access tokens: create/list/revoke, usable as bearer with scoped permissions. Includes the admin `users/{id}/pats` list/revoke routes deferred from 5.4.
 - [ ] 8.6 Tests: account endpoints self-scoped only (cannot read another user), email/phone change verification, GDPR export completeness, deletion → purge job, upstream IdP brokering against a mock OIDC provider (state/nonce checks, linking policies, first-login completion), device flow polling states (pending/slow_down/denied/expired), PAT scope enforcement. Playwright e2e: account console profile, sessions revoke, linked identity.
 
 ### Phase 9 — Scale, security, operability

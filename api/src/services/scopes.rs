@@ -4,13 +4,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use ridm_core::events::Actor;
+use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use uuid::Uuid;
 
 use crate::cache::keys as cache_keys;
 use crate::db;
 use crate::error::{AppError, AppResult};
-use crate::models::{NewScope, STANDARD_SCOPES, Scope};
+use crate::models::{NewScope, STANDARD_SCOPES, Scope, ScopeUpdate};
 use crate::repos;
 use crate::state::AppState;
 
@@ -73,10 +73,19 @@ pub async fn resolve(
     Ok((known, unknown))
 }
 
+pub async fn get(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<Scope> {
+    list(state, tenant_id)
+        .await?
+        .iter()
+        .find(|s| s.id == id)
+        .cloned()
+        .ok_or(AppError::NotFound("scope"))
+}
+
 pub async fn create(
     state: &AppState,
     tenant_id: Uuid,
-    _actor: Actor,
+    actor: Actor,
     input: NewScope,
 ) -> AppResult<Scope> {
     if !is_valid_scope_name(&input.name) {
@@ -97,10 +106,54 @@ pub async fn create(
             cache_keys::discovery(tenant_id),
         ])
         .await?;
+    state.events.publish(Event::new(
+        Some(tenant_id),
+        actor,
+        EventKind::ScopeCreated { scope_id: scope.id },
+    ));
     Ok(scope)
 }
 
-pub async fn delete(state: &AppState, tenant_id: Uuid, _actor: Actor, id: Uuid) -> AppResult<()> {
+/// Description, claims and default flag can change; the name cannot.
+pub async fn update(
+    state: &AppState,
+    tenant_id: Uuid,
+    actor: Actor,
+    id: Uuid,
+    patch: ScopeUpdate,
+) -> AppResult<Scope> {
+    if patch.is_empty() {
+        return get(state, tenant_id, id).await;
+    }
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let scope = repos::scopes::update(
+        &mut *tx,
+        tenant_id,
+        id,
+        patch.description.as_ref().map(|d| d.as_deref()),
+        patch.claims.as_deref(),
+        patch.is_default,
+        patch.resource_server_id,
+    )
+    .await?
+    .ok_or(AppError::NotFound("scope"))?;
+    tx.commit().await?;
+    state
+        .cache
+        .invalidate(&[
+            cache_keys::scopes(tenant_id),
+            cache_keys::discovery(tenant_id),
+        ])
+        .await?;
+    state.events.publish(Event::new(
+        Some(tenant_id),
+        actor,
+        EventKind::ScopeUpdated { scope_id: id },
+    ));
+    Ok(scope)
+}
+
+pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -> AppResult<()> {
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let all = repos::scopes::list_all(&mut *tx, tenant_id).await?;
     if let Some(s) = all.iter().find(|s| s.id == id)
@@ -122,6 +175,11 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, _actor: Actor, id: Uuid) 
             cache_keys::discovery(tenant_id),
         ])
         .await?;
+    state.events.publish(Event::new(
+        Some(tenant_id),
+        actor,
+        EventKind::ScopeDeleted { scope_id: id },
+    ));
     Ok(())
 }
 

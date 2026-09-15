@@ -26,6 +26,11 @@ pub fn effective_roles(tenant_id: Uuid, version: &str, user_id: Uuid) -> String 
     format!("{PREFIX}:t:{tenant_id}:roles:{version}:user:{user_id}")
 }
 
+/// Admin permissions of a user, derived from effective roles (same version token).
+pub fn admin_permissions(tenant_id: Uuid, version: &str, user_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:admin_perms:{version}:user:{user_id}")
+}
+
 pub fn profile_schema(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:profile_schema")
 }
@@ -57,11 +62,20 @@ pub fn scopes(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:scopes")
 }
 
-pub fn mappers(tenant_id: Uuid, client_id: Option<Uuid>) -> String {
-    match client_id {
-        Some(c) => format!("{PREFIX}:t:{tenant_id}:mappers:{c}"),
-        None => format!("{PREFIX}:t:{tenant_id}:mappers:global"),
-    }
+/// Enabled webhooks of a tenant (dispatcher lookup).
+pub fn webhooks(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:webhooks")
+}
+
+/// Per-tenant version token folded into mapper cache keys, bumped on any
+/// claim mapper change (tenant-wide mappers reach every client's cache).
+pub fn mappers_version(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:mappers:ver")
+}
+
+/// Effective mappers of one client under a mappers version token.
+pub fn mappers(tenant_id: Uuid, version: &str, client_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:mappers:{version}:{client_id}")
 }
 
 pub fn discovery(tenant_id: Uuid) -> String {
@@ -107,4 +121,39 @@ pub fn par_request(tenant_id: Uuid, id: &str) -> String {
 
 pub fn dcr_initial_token(tenant_id: Uuid, token_hash: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:dcr:iat:{token_hash}")
+}
+
+/// Decrypted provider configuration (L1 only; never stored in Redis).
+pub fn provider_settings(tenant_id: Uuid, kind: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:provider:{kind}")
+}
+
+/// One-time code bound to a login flow and channel.
+pub fn flow_otp(tenant_id: Uuid, flow_id: Uuid, channel: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:flow:{flow_id}:otp:{channel}")
+}
+
+/// Magic-link token (hashed) → flow.
+pub fn magic_link(tenant_id: Uuid, token_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:magic:{token_hash}")
+}
+
+/// Send rate limit per identifier.
+pub fn passwordless_sends(tenant_id: Uuid, identifier: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:pwless:sends:{identifier}")
+}
+
+/// Email verification token (hashed) → user (and optional flow to resume).
+pub fn email_verification(tenant_id: Uuid, token_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:verify:{token_hash}")
+}
+
+/// Password reset token (hashed) → user.
+pub fn password_reset(tenant_id: Uuid, token_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:reset:{token_hash}")
+}
+
+/// Set of live session ids per user (for concurrency limits and sign-out-everywhere).
+pub fn user_sessions(tenant_id: Uuid, user_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:user:{user_id}:sessions")
 }

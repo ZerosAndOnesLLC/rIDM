@@ -7,11 +7,13 @@
 //! Set `RIDM_TEST_DATABASE_URL` and `RIDM_TEST_REDIS_URL` to use existing
 //! servers (CI service containers, or the docker-compose stack). Otherwise
 //! testcontainers starts `postgres:18.6-alpine` and `redis:8.10.1-alpine3.23`
-//! as named, reusable containers (`ridm-test-postgres`, `ridm-test-redis`) that
+//! as named, reusable containers (`ridm-test-postgres`, `ridm-test-valkey`) that
 //! later test binaries and runs pick up again. Remove them with
-//! `docker rm -f ridm-test-postgres ridm-test-redis`.
+//! `docker rm -f ridm-test-postgres ridm-test-valkey`.
 
 #![allow(dead_code)]
+
+pub mod admin;
 
 use std::net::SocketAddr;
 use std::sync::LazyLock;
@@ -28,7 +30,9 @@ use tokio::sync::OnceCell;
 use uuid::Uuid;
 
 pub const POSTGRES_TAG: &str = "18.6-alpine";
-pub const REDIS_TAG: &str = "8.10.1-alpine3.23";
+/// Valkey speaks the Redis protocol; the testcontainers `redis` module drives it.
+pub const VALKEY_IMAGE: &str = "valkey/valkey";
+pub const VALKEY_TAG: &str = "9.1.2-alpine3.24";
 
 /// Every `#[tokio::test]` runs on its own short-lived runtime. Anything that
 /// must outlive a single test (containers, their Docker client, the
@@ -84,8 +88,9 @@ async fn start_infra() -> Infra {
                 .await
                 .expect("start postgres container");
             let redis = Redis::default()
-                .with_tag(REDIS_TAG)
-                .with_container_name("ridm-test-redis")
+                .with_name(VALKEY_IMAGE)
+                .with_tag(VALKEY_TAG)
+                .with_container_name("ridm-test-valkey")
                 .with_label("dev.ridm.test", "true")
                 .with_reuse(ReuseDirective::Always)
                 .start()
@@ -346,6 +351,7 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
             t_cost: 1,
             p_cost: 1,
         },
+        smtp: None,
         bootstrap: None,
     }
 }
@@ -372,6 +378,15 @@ impl TestApp {
 
     /// Spawn with extra routes merged into the application router.
     pub async fn spawn_with(extra: axum::Router<AppState>) -> Self {
+        Self::spawn_configured(extra, |_| {}).await
+    }
+
+    /// Spawn with extra routes and a hook that can replace parts of the state
+    /// (e.g. mock senders) before the router is built.
+    pub async fn spawn_configured(
+        extra: axum::Router<AppState>,
+        configure: impl FnOnce(&mut AppState),
+    ) -> Self {
         let infra = infra().await;
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -384,7 +399,11 @@ impl TestApp {
             .await
             .expect("connect postgres");
         let redis = ridm_api::cache::connect(&config).expect("connect redis");
-        let state = AppState::new(config, db, redis);
+        let mut state = AppState::new(config, db, redis);
+        configure(&mut state);
+        // The audit writer runs in every deployment; tests observe its rows.
+        let _audit_writer = ridm_api::services::audit::spawn_writer(state.clone());
+        let _webhook_dispatcher = ridm_api::services::webhooks::spawn_dispatcher(state.clone());
         let app = ridm_api::build_router_with(state.clone(), extra);
         tokio::spawn(async move {
             axum::serve(

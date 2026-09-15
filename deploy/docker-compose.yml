@@ -1,4 +1,4 @@
-# rIDM full stack: api + postgres + redis (+ mailpit in the dev profile).
+# rIDM full stack: api + postgres + valkey (+ mailpit in the dev profile).
 #
 #   Production-ish (no mail catcher, no seeding):
 #     docker compose -f deploy/docker-compose.yml --profile prod up -d
@@ -8,7 +8,7 @@
 #     docker compose -f deploy/docker-compose.yml --profile dev up -d
 #
 # Every port is overridable so the stack can coexist with other local services:
-#   RIDM_HTTP_PORT (8080), RIDM_PG_PORT (5432), RIDM_REDIS_PORT (6379),
+#   RIDM_HTTP_PORT (8080), RIDM_PG_PORT (5432), RIDM_VALKEY_PORT (6379),
 #   RIDM_MAILPIT_UI_PORT (8025).
 
 name: ridm
@@ -26,7 +26,7 @@ x-api-env: &api-env
   # table owners can disable it. Migrations run as the migrator role in the
   # one-shot `migrate` service below.
   DATABASE_URL: postgres://${RIDM_APP_USER:-ridm_app}:${RIDM_APP_PASSWORD:-ridm_app}@postgres:5432/ridm
-  REDIS_URL: redis://redis:6379
+  REDIS_URL: redis://valkey:6379
   PUBLIC_URL: ${PUBLIC_URL:-http://localhost:${RIDM_HTTP_PORT:-8080}}
   BIND_ADDR: 0.0.0.0:8080
   LOG_FORMAT: ${LOG_FORMAT:-json}
@@ -64,16 +64,16 @@ services:
       retries: 20
     restart: unless-stopped
 
-  redis:
-    image: redis:8.10.1-alpine3.23
+  valkey:
+    image: valkey/valkey:9.1.2-alpine3.24
     command: >
-      redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+      valkey-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
-      - redisdata:/data
+      - valkeydata:/data
     ports:
-      - "${RIDM_REDIS_PORT:-6379}:6379"
+      - "${RIDM_VALKEY_PORT:-6379}:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -107,7 +107,7 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-      redis:
+      valkey:
         condition: service_healthy
     healthcheck: *api-healthcheck
     restart: unless-stopped
@@ -123,6 +123,8 @@ services:
       MP_SMTP_AUTH_ALLOW_INSECURE: "1"
     ports:
       - "${RIDM_MAILPIT_UI_PORT:-8025}:8025"
+      # SMTP on the host too, for an API running outside compose (dev, e2e).
+      - "${RIDM_MAILPIT_SMTP_PORT:-1025}:1025"
     restart: unless-stopped
 
   api-dev:
@@ -140,6 +142,7 @@ services:
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
       SMTP_FROM: "rIDM <no-reply@ridm.local>"
+      SMTP_SECURITY: none
       # First-run bootstrap (Phase 1.6): creates the `master` tenant, a global
       # admin, and a sample SPA client. Ignored once the master tenant exists.
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@ridm.local}
@@ -150,7 +153,7 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-      redis:
+      valkey:
         condition: service_healthy
       mailpit:
         condition: service_started
@@ -159,4 +162,4 @@ services:
 
 volumes:
   pgdata:
-  redisdata:
+  valkeydata:

@@ -1,0 +1,1025 @@
+//! Login flow state machine.
+//!
+//! A flow starts at `/authorize` and carries the validated request through
+//! the static UI. Each step validates the CSRF token bound to the flow,
+//! performs its action, then [`advance`] recomputes the next stage from
+//! policy and user state until `Done`, when `GET /flows/{id}/finish` issues
+//! the authorization code in the browser's context.
+
+use chrono::{Duration, Utc};
+use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
+use serde::Serialize;
+use serde_json::Value;
+use subtle::ConstantTimeEq as _;
+use uuid::Uuid;
+use zeroize::Zeroizing;
+
+use crate::db;
+use crate::error::{AppError, AppResult, FieldError};
+use crate::middleware::TenantCtx;
+use crate::models::{AttributeDef, Client, Tenant, User, UserStatus};
+use crate::repos;
+use crate::services::login_flows::{self, FlowStage, LoginFlow};
+use crate::services::password::{self, SetPasswordOptions, VerifyOutcome};
+use crate::services::sessions::{self, NewSession, SsoSession};
+use crate::services::{
+    clients, consents, locale, notifications, profile_schema, trusted_devices, users,
+};
+use crate::state::AppState;
+
+/// What the UI needs to render the current step.
+#[derive(Debug, Clone, Serialize)]
+pub struct PublicFlow {
+    pub id: Uuid,
+    pub stage: FlowStage,
+    pub csrf: String,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+    pub client: PublicClient,
+    pub methods: Vec<&'static str>,
+    pub login_hint: Option<String>,
+    pub ui_locales: Vec<String>,
+    /// Negotiated locale (`ui_locales` → user locale → tenant default).
+    pub locale: String,
+    /// `ltr` or `rtl` for the negotiated locale.
+    pub dir: &'static str,
+    /// Locales the tenant offers, for a language switcher.
+    pub locales: Vec<String>,
+    /// Consent stage: scopes awaiting approval with descriptions.
+    pub pending_scopes: Vec<ScopeInfo>,
+    /// Profile stage: attribute definitions still missing.
+    pub missing_attributes: Vec<AttributeDef>,
+    /// Terms stage.
+    pub terms_url: Option<String>,
+    pub privacy_url: Option<String>,
+    /// Authenticated user (after the authenticate stage).
+    pub user: Option<PublicUser>,
+    pub attempts: u32,
+    /// Present when the next authentication attempt must include a CAPTCHA token.
+    pub captcha: Option<CaptchaChallenge>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CaptchaChallenge {
+    pub provider: ridm_core::providers::CaptchaKind,
+    pub site_key: String,
+}
+
+/// Is a CAPTCHA required for the next attempt in this flow?
+pub async fn captcha_required(
+    state: &AppState,
+    tenant: &Tenant,
+    flow: &LoginFlow,
+) -> AppResult<Option<CaptchaChallenge>> {
+    let policy = &tenant.settings.captcha;
+    let needed = (policy.after_failures > 0 && flow.attempts >= policy.after_failures)
+        || (policy.on_registration && flow.stage == FlowStage::Register);
+    if !needed {
+        return Ok(None);
+    }
+    let provider = crate::services::captcha::provider_for(state, tenant.id).await?;
+    Ok(provider.site_key().map(|k| CaptchaChallenge {
+        provider: provider.kind(),
+        site_key: k.to_string(),
+    }))
+}
+
+/// Verify a CAPTCHA token when one is required; `Ok(())` when none is needed.
+pub async fn enforce_captcha(
+    state: &AppState,
+    tenant: &Tenant,
+    flow: &LoginFlow,
+    token: Option<&str>,
+    ip: Option<&str>,
+) -> AppResult<()> {
+    if captcha_required(state, tenant, flow).await?.is_none() {
+        return Ok(());
+    }
+    let Some(token) = token.filter(|t| !t.is_empty()) else {
+        return Err(AppError::Validation(vec![FieldError {
+            field: "captcha_token".into(),
+            message: "captcha_required".into(),
+        }]));
+    };
+    let provider = crate::services::captcha::provider_for(state, tenant.id).await?;
+    let outcome = provider
+        .verify(token, ip.and_then(|s| s.parse().ok()))
+        .await
+        .map_err(|e| AppError::Unavailable(format!("captcha verification failed: {e}")))?;
+    if !outcome.success {
+        return Err(AppError::Validation(vec![FieldError {
+            field: "captcha_token".into(),
+            message: "captcha_failed".into(),
+        }]));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PublicClient {
+    pub client_id: String,
+    pub name: String,
+    pub logo_uri: Option<String>,
+    pub client_uri: Option<String>,
+    pub tos_uri: Option<String>,
+    pub policy_uri: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PublicUser {
+    pub username: String,
+    pub email: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ScopeInfo {
+    pub name: String,
+    pub description: Option<String>,
+}
+
+pub fn check_csrf(flow: &LoginFlow, presented: &str) -> AppResult<()> {
+    if flow.csrf.is_empty() || !bool::from(flow.csrf.as_bytes().ct_eq(presented.as_bytes())) {
+        return Err(AppError::Forbidden("invalid csrf token".into()));
+    }
+    Ok(())
+}
+
+pub async fn load(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<LoginFlow> {
+    login_flows::get(state, tenant_id, id)
+        .await?
+        .ok_or(AppError::NotFound("flow"))
+}
+
+async fn client_of(state: &AppState, flow: &LoginFlow) -> AppResult<std::sync::Arc<Client>> {
+    clients::find_by_client_id(state, flow.tenant_id, &flow.request.client_public_id)
+        .await?
+        .filter(|c| c.is_active())
+        .ok_or(AppError::NotFound("client"))
+}
+
+pub async fn public_state(
+    state: &AppState,
+    tenant: &Tenant,
+    flow: &LoginFlow,
+) -> AppResult<PublicFlow> {
+    let client = client_of(state, flow).await?;
+    let auth = &tenant.settings.auth;
+    let mut methods = vec![];
+    if auth.password {
+        methods.push("password");
+    }
+    if auth.magic_link {
+        methods.push("magic_link");
+    }
+    if auth.email_otp {
+        methods.push("email_otp");
+    }
+    if auth.sms_otp {
+        methods.push("sms_otp");
+    }
+    if auth.passkey {
+        methods.push("passkey");
+    }
+    let all_scopes = crate::services::scopes::list(state, tenant.id).await?;
+    let pending_scopes = flow
+        .pending_scopes
+        .iter()
+        .map(|n| ScopeInfo {
+            name: n.clone(),
+            description: all_scopes
+                .iter()
+                .find(|s| &s.name == n)
+                .and_then(|s| s.description.clone()),
+        })
+        .collect();
+    let (missing_attributes, user, user_locale) = match flow.user_id {
+        Some(uid) => {
+            let u = users::get(state, tenant.id, uid).await?;
+            let missing = if flow.stage == FlowStage::Profile {
+                missing_required(state, tenant.id, &u).await?
+            } else {
+                vec![]
+            };
+            (
+                missing,
+                Some(PublicUser {
+                    username: u.username,
+                    email: u.email,
+                }),
+                u.locale,
+            )
+        }
+        None => (vec![], None, None),
+    };
+    let locale = locale::negotiate(
+        &flow.request.ui_locales,
+        user_locale.as_deref(),
+        &tenant.settings.locale,
+    );
+    Ok(PublicFlow {
+        id: flow.id,
+        stage: flow.stage,
+        csrf: flow.csrf.clone(),
+        expires_at: flow.expires_at,
+        client: PublicClient {
+            client_id: client.client_id.clone(),
+            name: client.name.clone(),
+            logo_uri: client.logo_uri.clone(),
+            client_uri: client.client_uri.clone(),
+            tos_uri: client.tos_uri.clone(),
+            policy_uri: client.policy_uri.clone(),
+        },
+        methods,
+        login_hint: flow.request.login_hint.clone(),
+        ui_locales: flow.request.ui_locales.clone(),
+        dir: locale::direction(&locale),
+        locales: locale::supported_of(&tenant.settings.locale),
+        locale,
+        pending_scopes,
+        missing_attributes,
+        terms_url: tenant.settings.registration.terms_url.clone(),
+        privacy_url: tenant.settings.registration.privacy_url.clone(),
+        user,
+        attempts: flow.attempts,
+        captcha: captcha_required(state, tenant, flow).await?,
+    })
+}
+
+async fn missing_required(
+    state: &AppState,
+    tenant_id: Uuid,
+    user: &User,
+) -> AppResult<Vec<AttributeDef>> {
+    let schema = profile_schema::get(state, tenant_id).await?;
+    Ok(schema
+        .attributes
+        .iter()
+        .filter(|a| a.required && a.editable_by != crate::models::EditableBy::None)
+        .filter(|a| {
+            !user
+                .attributes
+                .get(&a.name)
+                .is_some_and(|v| !v.is_null() && v.as_str().is_none_or(|s| !s.trim().is_empty()))
+        })
+        .cloned()
+        .collect())
+}
+
+/// Recompute the stage after the user is authenticated. `must_change_password`
+/// takes precedence over everything else.
+pub async fn advance(
+    state: &AppState,
+    tenant: &Tenant,
+    flow: &mut LoginFlow,
+    must_change_password: bool,
+) -> AppResult<()> {
+    let (Some(user_id), Some(_session_id)) = (flow.user_id, flow.session_id) else {
+        flow.stage = FlowStage::Authenticate;
+        return Ok(());
+    };
+    let user = users::get(state, tenant.id, user_id).await?;
+    if must_change_password {
+        flow.stage = FlowStage::PasswordChange;
+        return Ok(());
+    }
+    if mfa_required(flow) {
+        flow.stage = FlowStage::Mfa;
+        return Ok(());
+    }
+    if !missing_required(state, tenant.id, &user).await?.is_empty() {
+        flow.stage = FlowStage::Profile;
+        return Ok(());
+    }
+    if tenant.settings.registration.require_terms && user.terms_accepted_at.is_none() {
+        flow.stage = FlowStage::Terms;
+        return Ok(());
+    }
+    let client = client_of(state, flow).await?;
+    let force_consent = flow.request.prompt.iter().any(|p| p == "consent");
+    let pending = if flow.request.skip_consent && !force_consent {
+        vec![]
+    } else if force_consent && flow.pending_scopes.is_empty() && flow.stage != FlowStage::Consent {
+        flow.request.scopes.clone()
+    } else {
+        consents::missing_scopes(state, tenant.id, user_id, client.id, &flow.request.scopes).await?
+    };
+    if !pending.is_empty() && flow.stage != FlowStage::Done {
+        flow.pending_scopes = pending;
+        flow.stage = FlowStage::Consent;
+        return Ok(());
+    }
+    flow.pending_scopes.clear();
+    flow.stage = FlowStage::Done;
+    Ok(())
+}
+
+/// Outcome of an authentication step.
+pub enum AuthStep {
+    /// Session cookie to set and the updated flow.
+    Authenticated {
+        session: Box<SsoSession>,
+        flow: Box<LoginFlow>,
+    },
+    /// Wrong credentials; the flow (with its attempt counter) was saved.
+    Rejected { flow: Box<LoginFlow>, locked: bool },
+}
+
+/// Inputs of a password authentication attempt.
+pub struct PasswordAttempt {
+    pub identifier: String,
+    pub password: Zeroizing<String>,
+    pub ip: Option<String>,
+    pub user_agent: Option<String>,
+    /// An SSO session the browser already has (re-authentication).
+    pub existing_session: Option<SsoSession>,
+    /// CAPTCHA response, required once the tenant policy demands one.
+    pub captcha_token: Option<String>,
+    /// Trusted-device cookie value, if the browser sent one.
+    pub device_secret: Option<String>,
+    /// "Remember this device" was ticked.
+    pub remember_device: bool,
+}
+
+/// `POST /flows/{id}/password`
+pub async fn password_step(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    attempt: PasswordAttempt,
+) -> AppResult<AuthStep> {
+    let PasswordAttempt {
+        identifier,
+        password,
+        ip,
+        user_agent,
+        existing_session,
+        captcha_token,
+        device_secret,
+        remember_device,
+    } = attempt;
+    if flow.stage != FlowStage::Authenticate {
+        return Err(AppError::BadRequest(
+            "flow is not at the authenticate step".into(),
+        ));
+    }
+    if !tenant.tenant.settings.auth.password {
+        return Err(AppError::BadRequest(
+            "password login is disabled for this tenant".into(),
+        ));
+    }
+    let tid = tenant.id();
+    let lockout = &tenant.tenant.settings.lockout;
+    let identifier = identifier.trim().to_lowercase();
+    if identifier.is_empty() || password.is_empty() {
+        return Err(AppError::Validation(vec![FieldError {
+            field: "identifier".into(),
+            message: "identifier and password are required".into(),
+        }]));
+    }
+
+    enforce_captcha(
+        state,
+        &tenant.tenant,
+        &flow,
+        captcha_token.as_deref(),
+        ip.as_deref(),
+    )
+    .await?;
+
+    // IP throttle.
+    if lockout.ip_max_failures > 0
+        && let Some(ip) = &ip
+    {
+        let mut tx = db::tenant_tx(&state.db, tid).await?;
+        let since = Utc::now() - Duration::minutes(i64::from(lockout.ip_window_minutes.max(1)));
+        let n = repos::login_attempts::failures_from_ip(&mut *tx, tid, ip, since).await?;
+        tx.commit().await?;
+        if n >= i64::from(lockout.ip_max_failures) {
+            return Err(AppError::RateLimited {
+                retry_after_secs: u64::from(lockout.ip_window_minutes) * 60,
+            });
+        }
+    }
+
+    let user = users::find_by_identifier(state, tid, &identifier).await?;
+    let verdict = match &user {
+        Some(u) if u.status == UserStatus::Disabled => Err("disabled"),
+        Some(u) if u.is_locked_now() => Err("locked"),
+        Some(u) => match password::verify_and_upgrade(
+            state,
+            tid,
+            &tenant.tenant.settings.password,
+            u,
+            password,
+        )
+        .await?
+        {
+            VerifyOutcome::Valid { must_change } => Ok(must_change),
+            VerifyOutcome::Invalid => Err("invalid_credentials"),
+        },
+        None => {
+            // Equalise timing with a real verification.
+            let _ = password::verify_and_upgrade(
+                state,
+                tid,
+                &tenant.tenant.settings.password,
+                &dummy_user(tid),
+                password,
+            )
+            .await;
+            Err("invalid_credentials")
+        }
+    };
+
+    match verdict {
+        Ok(must_change) => {
+            let user = user.expect("user present");
+            let mut tx = db::tenant_tx(&state.db, tid).await?;
+            repos::users::record_login_success(&mut *tx, tid, user.id).await?;
+            repos::login_attempts::record(&mut *tx, tid, &identifier, ip.as_deref(), true, None)
+                .await?;
+            tx.commit().await?;
+
+            let session = open_session(
+                state,
+                &tenant.tenant,
+                &mut flow,
+                &user,
+                vec!["pwd".into()],
+                RequestContext {
+                    ip: ip.clone(),
+                    user_agent,
+                    existing_session,
+                    device_secret,
+                    remember_device,
+                },
+            )
+            .await?;
+            advance(state, &tenant.tenant, &mut flow, must_change).await?;
+            login_flows::save(state, &flow).await?;
+            state.events.publish(
+                Event::new(
+                    Some(tid),
+                    Actor::User { id: user.id },
+                    EventKind::LoginSucceeded {
+                        user_id: user.id,
+                        method: "pwd".into(),
+                    },
+                )
+                .with_request(ip, None),
+            );
+            Ok(AuthStep::Authenticated {
+                session: Box::new(session),
+                flow: Box::new(flow),
+            })
+        }
+        Err(reason) => {
+            let mut locked = false;
+            let mut tx = db::tenant_tx(&state.db, tid).await?;
+            repos::login_attempts::record(
+                &mut *tx,
+                tid,
+                &identifier,
+                ip.as_deref(),
+                false,
+                Some(reason),
+            )
+            .await?;
+            if let Some(u) = &user
+                && reason == "invalid_credentials"
+                && lockout.max_failures > 0
+            {
+                let failures = repos::users::record_login_failure(
+                    &mut *tx,
+                    tid,
+                    u.id,
+                    lockout.max_failures as i32,
+                    i64::from(lockout.lock_minutes) * 60,
+                )
+                .await?;
+                if failures >= lockout.max_failures as i32 {
+                    locked = true;
+                    state.events.publish(Event::new(
+                        Some(tid),
+                        Actor::System,
+                        EventKind::UserLocked {
+                            user_id: u.id,
+                            until_secs: i64::from(lockout.lock_minutes) * 60,
+                        },
+                    ));
+                }
+            }
+            tx.commit().await?;
+            flow.attempts += 1;
+            login_flows::save(state, &flow).await?;
+            state.events.publish(
+                Event::new(
+                    Some(tid),
+                    Actor::System,
+                    EventKind::LoginFailed {
+                        identifier: identifier.clone(),
+                        reason: reason.into(),
+                    },
+                )
+                .with_request(ip, None),
+            );
+            Ok(AuthStep::Rejected {
+                flow: Box::new(flow),
+                locked: locked || reason == "locked",
+            })
+        }
+    }
+}
+
+fn dummy_user(tenant_id: Uuid) -> User {
+    User {
+        id: Uuid::nil(),
+        tenant_id,
+        org_id: None,
+        username: String::new(),
+        email: None,
+        email_verified: false,
+        phone: None,
+        phone_verified: false,
+        password_hash: None,
+        password_algo: None,
+        must_change_password: false,
+        password_expires_at: None,
+        password_changed_at: None,
+        status: UserStatus::Active,
+        attributes: Value::Object(Default::default()),
+        locale: None,
+        last_login_at: None,
+        failed_attempts: 0,
+        locked_until: None,
+        deleted_at: None,
+        terms_accepted_at: None,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    }
+}
+
+/// `POST /flows/{id}/password-change`: set a new password at the `PasswordChange` stage.
+pub async fn password_change_step(
+    state: &AppState,
+    tenant: &Tenant,
+    mut flow: LoginFlow,
+    new_password: Zeroizing<String>,
+) -> AppResult<LoginFlow> {
+    if flow.stage != FlowStage::PasswordChange {
+        return Err(AppError::BadRequest(
+            "flow is not at the password change step".into(),
+        ));
+    }
+    let user_id = flow.user_id.ok_or(AppError::Unauthorized)?;
+    password::set_password(
+        state,
+        tenant.id,
+        &tenant.settings.password,
+        Actor::User { id: user_id },
+        user_id,
+        new_password,
+        SetPasswordOptions {
+            must_change: false,
+            skip_policy: false,
+            by_user: true,
+            notify: true,
+        },
+    )
+    .await?;
+    advance(state, tenant, &mut flow, false).await?;
+    login_flows::save(state, &flow).await?;
+    Ok(flow)
+}
+
+/// `POST /flows/{id}/profile`: fill required attributes.
+pub async fn profile_step(
+    state: &AppState,
+    tenant: &Tenant,
+    mut flow: LoginFlow,
+    attributes: Value,
+) -> AppResult<LoginFlow> {
+    if flow.stage != FlowStage::Profile {
+        return Err(AppError::BadRequest(
+            "flow is not at the profile step".into(),
+        ));
+    }
+    let user_id = flow.user_id.ok_or(AppError::Unauthorized)?;
+    users::update(
+        state,
+        tenant.id,
+        Actor::User { id: user_id },
+        user_id,
+        crate::models::UserUpdate {
+            attributes: Some(attributes),
+            ..Default::default()
+        },
+    )
+    .await?;
+    advance(state, tenant, &mut flow, false).await?;
+    login_flows::save(state, &flow).await?;
+    Ok(flow)
+}
+
+/// `POST /flows/{id}/terms`
+pub async fn terms_step(
+    state: &AppState,
+    tenant: &Tenant,
+    mut flow: LoginFlow,
+    accepted: bool,
+) -> AppResult<LoginFlow> {
+    if flow.stage != FlowStage::Terms {
+        return Err(AppError::BadRequest("flow is not at the terms step".into()));
+    }
+    if !accepted {
+        return Err(AppError::Forbidden(
+            "terms must be accepted to continue".into(),
+        ));
+    }
+    let user_id = flow.user_id.ok_or(AppError::Unauthorized)?;
+    let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
+    repos::users::set_terms_accepted(&mut *tx, tenant.id, user_id).await?;
+    tx.commit().await?;
+    state.events.publish(Event::new(
+        Some(tenant.id),
+        Actor::User { id: user_id },
+        EventKind::TermsAccepted { user_id },
+    ));
+    advance(state, tenant, &mut flow, false).await?;
+    login_flows::save(state, &flow).await?;
+    Ok(flow)
+}
+
+/// `POST /flows/{id}/consent`: approve (all pending or a subset that must
+/// include every non-optional scope) or deny.
+pub async fn consent_step(
+    state: &AppState,
+    tenant: &Tenant,
+    mut flow: LoginFlow,
+    approve: bool,
+    granted: Option<Vec<String>>,
+) -> AppResult<ConsentOutcome> {
+    if flow.stage != FlowStage::Consent {
+        return Err(AppError::BadRequest(
+            "flow is not at the consent step".into(),
+        ));
+    }
+    let user_id = flow.user_id.ok_or(AppError::Unauthorized)?;
+    if !approve {
+        return Ok(ConsentOutcome::Denied {
+            redirect_to: denial_redirect(&flow),
+        });
+    }
+    let client = client_of(state, &flow).await?;
+    let granted = granted.unwrap_or_else(|| flow.pending_scopes.clone());
+    // `openid` can never be dropped; anything not requested is ignored.
+    let mut effective: Vec<String> = flow
+        .request
+        .scopes
+        .iter()
+        .filter(|s| *s == "openid" || granted.contains(s) || !flow.pending_scopes.contains(s))
+        .cloned()
+        .collect();
+    effective.dedup();
+    consents::grant(state, tenant.id, user_id, client.id, &effective).await?;
+    flow.request.scopes = effective;
+    flow.pending_scopes.clear();
+    flow.stage = FlowStage::Done;
+    advance(state, tenant, &mut flow, false).await?;
+    login_flows::save(state, &flow).await?;
+    Ok(ConsentOutcome::Granted {
+        flow: Box::new(flow),
+    })
+}
+
+pub enum ConsentOutcome {
+    Granted { flow: Box<LoginFlow> },
+    Denied { redirect_to: String },
+}
+
+/// Client-facing error redirect used by cancel and consent denial.
+pub fn denial_redirect(flow: &LoginFlow) -> String {
+    let mut u = url::Url::parse(&flow.request.redirect_uri).expect("validated redirect uri");
+    {
+        let mut q = u.query_pairs_mut();
+        q.append_pair("error", "access_denied");
+        q.append_pair("error_description", "the user denied the request");
+        if let Some(s) = &flow.request.state {
+            q.append_pair("state", s);
+        }
+    }
+    u.to_string()
+}
+
+/// `POST /flows/{id}/cancel`
+pub async fn cancel(state: &AppState, flow: &LoginFlow) -> AppResult<String> {
+    login_flows::delete(state, flow.tenant_id, flow.id).await?;
+    Ok(denial_redirect(flow))
+}
+
+/// Request-derived facts an authentication step needs.
+#[derive(Default)]
+pub struct RequestContext {
+    pub ip: Option<String>,
+    pub user_agent: Option<String>,
+    /// An SSO session the browser already has (re-authentication).
+    pub existing_session: Option<SsoSession>,
+    /// Trusted-device cookie value, if the browser sent one.
+    pub device_secret: Option<String>,
+    /// "Remember this device" was ticked.
+    pub remember_device: bool,
+}
+
+/// Whether the flow must pass a second factor before continuing.
+///
+/// A step-up the client asked for (`acr_values` ending in `:mfa`) is always
+/// honoured, even on a trusted device. Policy-driven MFA (tenant `mfa`
+/// setting, Phase 7.4) is skipped when `flow.trusted_device` is set.
+pub fn mfa_required(flow: &LoginFlow) -> bool {
+    let has_mfa = flow.amr.iter().any(|m| m == "mfa");
+    let step_up = flow.request.acr_values.iter().any(|a| a.ends_with(":mfa"));
+    step_up && !has_mfa
+}
+
+/// Open (or re-authenticate) the browser's session for `user_id`, recognise
+/// a trusted device, and record both on the flow.
+async fn open_session(
+    state: &AppState,
+    tenant: &Tenant,
+    flow: &mut LoginFlow,
+    user: &User,
+    amr: Vec<String>,
+    ctx: RequestContext,
+) -> AppResult<SsoSession> {
+    let user_id = user.id;
+    let RequestContext {
+        ip,
+        user_agent,
+        existing_session,
+        device_secret,
+        remember_device,
+    } = ctx;
+    let trusted = match device_secret {
+        Some(secret) => {
+            trusted_devices::verify_secret(state, tenant, user_id, &secret, ip.as_deref()).await?
+        }
+        None => None,
+    };
+    let mut session = match existing_session {
+        Some(mut s) if s.user_id == user_id => {
+            sessions::refresh_auth(state, &mut s, amr.clone(), None).await?;
+            s
+        }
+        _ => {
+            let session = sessions::create(
+                state,
+                tenant.id,
+                NewSession {
+                    user_id,
+                    amr: amr.clone(),
+                    acr: None,
+                    ip: ip.clone(),
+                    user_agent: user_agent.clone(),
+                    policy: &tenant.settings.session,
+                },
+            )
+            .await?;
+            // A returning user on an unrecognised browser: tell them.
+            if trusted.is_none()
+                && is_new_browser(state, tenant.id, user_id, user_agent.as_deref(), session.id)
+                    .await?
+            {
+                state.events.publish(
+                    Event::new(
+                        Some(tenant.id),
+                        Actor::User { id: user_id },
+                        EventKind::NewDeviceLogin {
+                            user_id,
+                            session_id: session.id,
+                        },
+                    )
+                    .with_request(ip.clone(), user_agent.clone()),
+                );
+                notifications::new_device_login(
+                    state,
+                    tenant,
+                    user,
+                    ip.as_deref(),
+                    user_agent.as_deref(),
+                )
+                .await;
+            }
+            session
+        }
+    };
+    if let Some(d) = &trusted
+        && session.device_id != Some(d.id)
+    {
+        sessions::bind_device(state, &mut session, d.id).await?;
+    }
+    flow.user_id = Some(user_id);
+    flow.session_id = Some(session.id);
+    flow.amr = amr;
+    flow.trusted_device = trusted.is_some();
+    // Already trusted: nothing to register at the end of the flow.
+    flow.remember_device = remember_device && trusted.is_none();
+    Ok(session)
+}
+
+/// True when the user has signed in before but never from this browser.
+/// Without a user agent nothing can be compared, so no notice is sent.
+async fn is_new_browser(
+    state: &AppState,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    user_agent: Option<&str>,
+    exclude_session: Uuid,
+) -> AppResult<bool> {
+    let Some(ua) = user_agent else {
+        return Ok(false);
+    };
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let (any_before, same_browser) =
+        repos::sessions::browser_history(&mut *tx, tenant_id, user_id, ua, exclude_session).await?;
+    tx.commit().await?;
+    Ok(any_before && !same_browser)
+}
+
+/// Shared tail of every successful first-factor authentication: session,
+/// flow bookkeeping, stage evaluation.
+pub async fn complete_authentication(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    user: &User,
+    amr: Vec<String>,
+    ctx: RequestContext,
+    must_change_password: bool,
+) -> AppResult<AuthStep> {
+    let ip = ctx.ip.clone();
+    let tid = tenant.id();
+    let mut tx = db::tenant_tx(&state.db, tid).await?;
+    repos::users::record_login_success(&mut *tx, tid, user.id).await?;
+    repos::login_attempts::record(&mut *tx, tid, &user.username, ip.as_deref(), true, None).await?;
+    tx.commit().await?;
+    let session = open_session(state, &tenant.tenant, &mut flow, user, amr.clone(), ctx).await?;
+    advance(state, &tenant.tenant, &mut flow, must_change_password).await?;
+    login_flows::save(state, &flow).await?;
+    state.events.publish(
+        Event::new(
+            Some(tid),
+            Actor::User { id: user.id },
+            EventKind::LoginSucceeded {
+                user_id: user.id,
+                method: amr.first().cloned().unwrap_or_default(),
+            },
+        )
+        .with_request(ip, None),
+    );
+    Ok(AuthStep::Authenticated {
+        session: Box::new(session),
+        flow: Box::new(flow),
+    })
+}
+
+/// `POST /flows/{id}/{magic-link|email-otp|sms-otp}`: send a passwordless factor.
+pub async fn passwordless_send_step(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &LoginFlow,
+    method: crate::services::passwordless::Method,
+    identifier: &str,
+    captcha_token: Option<&str>,
+    ip: Option<&str>,
+) -> AppResult<()> {
+    if flow.stage != FlowStage::Authenticate {
+        return Err(AppError::BadRequest(
+            "flow is not at the authenticate step".into(),
+        ));
+    }
+    enforce_captcha(state, &tenant.tenant, flow, captcha_token, ip).await?;
+    crate::services::passwordless::send(state, &tenant.tenant, flow, method, identifier).await
+}
+
+/// `POST /flows/{id}/{email-otp|sms-otp}/verify` and `/magic-link/verify`.
+pub async fn passwordless_verify_step(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    method: crate::services::passwordless::Method,
+    secret: &str,
+    ctx: RequestContext,
+) -> AppResult<AuthStep> {
+    use crate::services::passwordless::{self, Method};
+    if flow.stage != FlowStage::Authenticate {
+        return Err(AppError::BadRequest(
+            "flow is not at the authenticate step".into(),
+        ));
+    }
+    let verified = match method {
+        Method::MagicLink => {
+            passwordless::verify_magic_link(state, &tenant.tenant, &flow, secret).await?
+        }
+        Method::EmailOtp | Method::SmsOtp => {
+            passwordless::verify_otp(state, &tenant.tenant, &flow, method, secret).await?
+        }
+    };
+    let Some(v) = verified else {
+        flow.attempts += 1;
+        login_flows::save(state, &flow).await?;
+        state.events.publish(
+            Event::new(
+                Some(tenant.id()),
+                Actor::System,
+                EventKind::LoginFailed {
+                    identifier: String::new(),
+                    reason: format!("{}_invalid", method.as_str()),
+                },
+            )
+            .with_request(ctx.ip.clone(), None),
+        );
+        return Ok(AuthStep::Rejected {
+            flow: Box::new(flow),
+            locked: false,
+        });
+    };
+    let user = users::get(state, tenant.id(), v.user_id).await?;
+    if user.status != UserStatus::Active && user.status != UserStatus::Pending {
+        return Err(AppError::Forbidden("account is not active".into()));
+    }
+    passwordless::mark_contact_verified(state, tenant.id(), user.id, method).await?;
+    let amr = match method {
+        Method::SmsOtp => vec!["otp".into(), "sms".into()],
+        _ => vec!["otp".into()],
+    };
+    let must_change = user.must_change_password && tenant.tenant.settings.auth.password;
+    complete_authentication(state, tenant, flow, &user, amr, ctx, must_change).await
+}
+
+/// `POST /flows/{id}/register`: create the account from the login or
+/// registration page. With email verification on, the flow waits at
+/// `VerifyEmail` until the link is opened; otherwise the user is signed in.
+pub async fn register_step(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    input: crate::services::registration::RegistrationInput,
+    captcha_token: Option<&str>,
+    ctx: RequestContext,
+) -> AppResult<AuthStep> {
+    if !matches!(flow.stage, FlowStage::Authenticate | FlowStage::Register) {
+        return Err(AppError::BadRequest(
+            "flow does not accept registration at this step".into(),
+        ));
+    }
+    // Registration always counts as the CAPTCHA-protected path when configured.
+    if tenant.tenant.settings.captcha.on_registration {
+        let mut probe = flow.clone();
+        probe.stage = FlowStage::Register;
+        enforce_captcha(
+            state,
+            &tenant.tenant,
+            &probe,
+            captcha_token,
+            ctx.ip.as_deref(),
+        )
+        .await?;
+    }
+    let (user, pending) = crate::services::registration::register(
+        state,
+        &tenant.tenant,
+        input,
+        Some(flow.id),
+        &flow.request.ui_locales,
+    )
+    .await?;
+    if pending {
+        flow.user_id = Some(user.id);
+        flow.stage = FlowStage::VerifyEmail;
+        login_flows::save(state, &flow).await?;
+        return Ok(AuthStep::Rejected {
+            flow: Box::new(flow),
+            locked: false,
+        });
+    }
+    complete_authentication(state, tenant, flow, &user, vec!["pwd".into()], ctx, false).await
+}
+
+/// After the verification link was opened for a flow waiting at `VerifyEmail`,
+/// sign the user in (proof of email control) and continue.
+pub async fn resume_after_verification(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow_id: Uuid,
+    user: &User,
+    ctx: RequestContext,
+) -> AppResult<Option<AuthStep>> {
+    let Some(flow) = login_flows::get(state, tenant.id(), flow_id).await? else {
+        return Ok(None);
+    };
+    if flow.stage != FlowStage::VerifyEmail || flow.user_id != Some(user.id) {
+        return Ok(None);
+    }
+    Ok(Some(
+        complete_authentication(state, tenant, flow, user, vec!["otp".into()], ctx, false).await?,
+    ))
+}

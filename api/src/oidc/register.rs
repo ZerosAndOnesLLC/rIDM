@@ -407,8 +407,14 @@ async fn update(
     )
     .await
     {
-        Ok(c) => {
-            let mut res = axum::Json(to_metadata(&state, &tenant, &c)).into_response();
+        Ok((c, secret)) => {
+            let mut doc = to_metadata(&state, &tenant, &c);
+            // RFC 7592 §2.2: a new secret is issued when the update calls for one.
+            if let Some(secret) = &secret {
+                doc["client_secret"] = json!(secret.as_str());
+                doc["client_secret_expires_at"] = json!(0);
+            }
+            let mut res = axum::Json(doc).into_response();
             res.headers_mut()
                 .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
             res

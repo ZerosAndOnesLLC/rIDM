@@ -12,7 +12,7 @@ use crate::util::cursor::Cursor;
 const COLUMNS: &str = "id, tenant_id, org_id, username, email, email_verified, phone, phone_verified, \
     password_hash, password_algo, must_change_password, password_expires_at, password_changed_at, \
     status, attributes, locale, last_login_at, failed_attempts, locked_until, deleted_at, \
-    created_at, updated_at";
+    terms_accepted_at, created_at, updated_at";
 
 pub async fn find_by_id<'e>(
     exec: impl PgExecutor<'e>,
@@ -331,4 +331,20 @@ fn escape_like(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('%', "\\%")
         .replace('_', "\\_")
+}
+
+pub async fn set_terms_accepted<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let res = sqlx::query(
+        "UPDATE users SET terms_accepted_at = now(), updated_at = now() \
+         WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .execute(exec)
+    .await?;
+    Ok(res.rows_affected() > 0)
 }

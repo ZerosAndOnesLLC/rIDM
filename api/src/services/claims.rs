@@ -272,6 +272,7 @@ mod tests {
             failed_attempts: 0,
             locked_until: None,
             deleted_at: None,
+            terms_accepted_at: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
@@ -284,6 +285,7 @@ mod tests {
             client_id: client.then(Uuid::now_v7),
             name: name.into(),
             description: None,
+            built_in: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

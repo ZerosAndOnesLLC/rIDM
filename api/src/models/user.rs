@@ -4,7 +4,9 @@ use uuid::Uuid;
 
 use crate::util::patch::double_option;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum UserStatus {
@@ -15,7 +17,7 @@ pub enum UserStatus {
     Deleted,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct User {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -39,6 +41,7 @@ pub struct User {
     pub failed_attempts: i32,
     pub locked_until: Option<DateTime<Utc>>,
     pub deleted_at: Option<DateTime<Utc>>,
+    pub terms_accepted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -54,8 +57,8 @@ impl User {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
+#[serde(default, deny_unknown_fields)]
 pub struct NewUser {
     pub username: String,
     pub email: Option<String>,
@@ -68,8 +71,8 @@ pub struct NewUser {
     pub org_id: Option<Uuid>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
+#[serde(default, deny_unknown_fields)]
 pub struct UserUpdate {
     pub username: Option<String>,
     #[serde(deserialize_with = "double_option")]
@@ -103,7 +106,7 @@ impl UserUpdate {
 }
 
 /// Filters for listing users.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct UserFilter {
     /// Case-insensitive prefix match on username or email.
@@ -139,6 +142,7 @@ mod tests {
             failed_attempts: 0,
             locked_until: None,
             deleted_at: None,
+            terms_accepted_at: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

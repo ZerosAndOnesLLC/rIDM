@@ -20,6 +20,18 @@ async fn main() {
     if args.first().map(String::as_str) == Some("bootstrap") {
         std::process::exit(bootstrap_command(&args[1..]).await);
     }
+    if args.first().map(String::as_str) == Some("openapi") {
+        match ridm_api::openapi::openapi().to_pretty_json() {
+            Ok(json) => {
+                println!("{json}");
+                std::process::exit(0);
+            }
+            Err(err) => {
+                eprintln!("openapi: {err}");
+                std::process::exit(1);
+            }
+        }
+    }
     if args.first().map(String::as_str) == Some("migrate") {
         std::process::exit(migrate_command().await);
     }
@@ -73,6 +85,8 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     let _invalidation_listener = state.cache.spawn_invalidation_listener();
+    let _audit_writer = ridm_api::services::audit::spawn_writer(state.clone());
+    let _webhook_dispatcher = ridm_api::services::webhooks::spawn_dispatcher(state.clone());
     let _jobs = ridm_api::jobs::spawn_all(state.clone());
     let bind_addr = state.config.bind_addr;
     let tls = state.config.tls.clone();

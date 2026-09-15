@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// JWS algorithms rIDM can sign with.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "text")]
 pub enum SigningAlg {
     RS256,
@@ -61,7 +63,9 @@ impl std::fmt::Display for SigningAlg {
 
 /// Lifecycle: pending (published, not yet signing) → active (signing) →
 /// retiring (published for verification only) → revoked (unpublished).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum KeyStatus {
@@ -87,7 +91,7 @@ impl KeyStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct SigningKey {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -107,7 +111,7 @@ pub struct SigningKey {
 }
 
 /// RSA modulus size for new RSA keys.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub enum RsaBits {
     B2048,
     B3072,

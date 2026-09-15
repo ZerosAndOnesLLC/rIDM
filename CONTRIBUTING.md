@@ -12,13 +12,13 @@ Docker with Compose, and `sqlx-cli` (`cargo install sqlx-cli --no-default-featur
 
 ```bash
 cp .env.example .env            # set MASTER_KEY=$(openssl rand -hex 32)
-docker compose -f deploy/docker-compose.yml up -d postgres redis
+docker compose -f deploy/docker-compose.yml up -d postgres valkey
 sqlx migrate run --source api/migrations
 cargo run -p ridm-api           # http://localhost:8080/readyz
 cd ui && npm install && npm run dev
 ```
 
-Ports are overridable through `RIDM_PG_PORT`, `RIDM_REDIS_PORT`, `RIDM_HTTP_PORT` and
+Ports are overridable through `RIDM_PG_PORT`, `RIDM_VALKEY_PORT`, `RIDM_HTTP_PORT` and
 `RIDM_MAILPIT_UI_PORT` if the defaults collide with something on your machine.
 
 ## Conventions
@@ -29,7 +29,7 @@ Ports are overridable through `RIDM_PG_PORT`, `RIDM_REDIS_PORT`, `RIDM_HTTP_PORT
   composite index leads with it.
 - `mod.rs` files contain only module declarations and re-exports.
 - Errors are typed (`thiserror`); handlers return `AppResult<T>` or `Result<T, OAuthError>`.
-- Cache first: read through Redis, invalidate on every write.
+- Cache first: read through Valkey, invalidate on every write.
 - Secrets never appear in logs. Wrap them in `SecretString` / `SecretBytes`.
 
 **Migrations**
@@ -63,11 +63,11 @@ matrix. The short version:
 | Supply chain | `cargo audit && cargo deny check` |
 | Fuzz (nightly) | `cd api/fuzz && cargo +nightly fuzz run authorize_params -- -max_total_time=60` |
 
-Integration tests need Postgres and Redis. Point them at running servers with
+Integration tests need Postgres and Valkey (or any Redis-protocol server). Point them at running servers with
 `RIDM_TEST_DATABASE_URL` and `RIDM_TEST_REDIS_URL` (for example the docker-compose
 stack); without those variables the harness starts reusable containers named
-`ridm-test-postgres` and `ridm-test-redis` through testcontainers and reuses them on
-later runs (`docker rm -f ridm-test-postgres ridm-test-redis` removes them). Each test
+`ridm-test-postgres` and `ridm-test-valkey` through testcontainers and reuses them on
+later runs (`docker rm -f ridm-test-postgres ridm-test-valkey` removes them). Each test
 gets its own tenant and its own connection pools, so tests run in parallel. Mock
 providers live in `ridm_core::test_support` (feature `test-support`) and capture what
 was sent so tests assert on content instead of sleeping.

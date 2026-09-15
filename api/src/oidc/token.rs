@@ -159,10 +159,11 @@ async fn effective_mappers(
 ) -> Result<Vec<ClaimMapper>, OAuthError> {
     let db = state.db.clone();
     let client_id = client.id;
+    let version = crate::services::claim_mappers::mappers_version(state, tenant_id).await?;
     let rows = state
         .cache
         .get_or_load(
-            &cache_keys::mappers(tenant_id, Some(client_id)),
+            &cache_keys::mappers(tenant_id, &version, client_id),
             std::time::Duration::from_secs(300),
             || async move {
                 let mut tx = crate::db::tenant_tx(&db, tenant_id).await?;
@@ -225,7 +226,15 @@ async fn resolve_audience(
                 format!("unknown resource `{identifier}`"),
             ));
         };
-        if !client.allowed_audiences.is_empty() && !client.allowed_audiences.contains(identifier) {
+        // Built-in resource servers (the admin API) are never implied: a client
+        // has to be allowed the audience explicitly, even when it is otherwise
+        // unrestricted, so that a third-party client cannot mint admin tokens.
+        let allowed = if rs.built_in {
+            client.allowed_audiences.contains(identifier)
+        } else {
+            client.allowed_audiences.is_empty() || client.allowed_audiences.contains(identifier)
+        };
+        if !allowed {
             return Err(OAuthError::new(
                 OAuthErrorCode::InvalidTarget,
                 format!("resource `{identifier}` is not allowed for this client"),
