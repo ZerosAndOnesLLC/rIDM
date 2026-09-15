@@ -138,7 +138,7 @@ All versions are the latest **stable** release as of the date above. Verified by
 | recharts | 3.10.1 | |
 | qrcode | 1.5.4 | |
 | @types/node / @types/react / @types/react-dom / @types/qrcode | 26.1.0 / 19.2.17 / 19.2.3 / 1.5.6 | |
-| @playwright/test / @axe-core/playwright | latest stable at Phase 4.12 (verify then) | e2e + accessibility |
+| @playwright/test / @axe-core/playwright | 1.63.0 / 4.13.0 | e2e + accessibility (pinned at 4.12) |
 
 Pin exact versions in both manifests (no `^`) so the lockfiles and the tables above stay truthful; bump deliberately.
 
