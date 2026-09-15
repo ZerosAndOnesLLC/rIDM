@@ -4,6 +4,8 @@ pub mod client_auth;
 pub mod discovery;
 pub mod end_session;
 pub mod introspect;
+pub mod jar;
+pub mod par;
 pub mod pkce;
 pub mod redirect_uri;
 pub mod revoke;

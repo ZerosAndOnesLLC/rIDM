@@ -470,7 +470,9 @@ pub async fn verify(
         Some(a) => validation.set_audience(&[a]),
         None => validation.validate_aud = false,
     }
-    validation.set_required_spec_claims(&["exp", "iss", "sub"]);
+    // `sub` is not universal (JARM response JWTs have none); callers that need
+    // it check the claim themselves.
+    validation.set_required_spec_claims(&["exp", "iss"]);
     let data =
         jsonwebtoken::decode::<Map<String, Value>>(token, &decoding, &validation).map_err(|e| {
             tracing::debug!(error = %e, "jwt verification failed");

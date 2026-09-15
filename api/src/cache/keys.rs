@@ -100,3 +100,7 @@ pub fn session_clients(tenant_id: Uuid, session_id: Uuid) -> String {
 pub fn logout_flow(tenant_id: Uuid, flow_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:logout:{flow_id}")
 }
+
+pub fn par_request(tenant_id: Uuid, id: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:par:{id}")
+}

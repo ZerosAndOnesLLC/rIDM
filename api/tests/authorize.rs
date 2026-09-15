@@ -423,14 +423,10 @@ async fn other_problems_are_reported_to_the_client_with_state_and_iss() {
         err(params(&fx, &[("max_age", "-1")])).await.0,
         "invalid_request"
     );
-    assert_eq!(
-        err(params(&fx, &[("response_mode", "jwt")])).await.0,
-        "invalid_request"
-    );
-    assert_eq!(
-        err(params(&fx, &[("request", "eyJ...")])).await.0,
-        "request_not_supported"
-    );
+    // A malformed request object is a client-side problem: shown, not redirected.
+    let res = authorize(&fx, &params(&fx, &[("request", "eyJ...")]), Some(&cookie)).await;
+    assert_eq!(res.status(), 400);
+    assert!(res.text().await.unwrap().contains("invalid_request_object"));
     assert_eq!(
         err(params(&fx, &[("request_uri", "https://x")])).await.0,
         "request_uri_not_supported"

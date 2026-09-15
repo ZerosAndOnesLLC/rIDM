@@ -43,6 +43,39 @@ pub enum ResponseMode {
     Query,
     Fragment,
     FormPost,
+    /// JARM: response parameters inside a signed JWT (`response=`).
+    QueryJwt,
+    FragmentJwt,
+    FormPostJwt,
+}
+
+impl ResponseMode {
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "query" => Self::Query,
+            "fragment" => Self::Fragment,
+            "form_post" => Self::FormPost,
+            // `jwt` alone: default mode for response_type=code is query.
+            "jwt" | "query.jwt" => Self::QueryJwt,
+            "fragment.jwt" => Self::FragmentJwt,
+            "form_post.jwt" => Self::FormPostJwt,
+            _ => return None,
+        })
+    }
+
+    /// Delivery mechanism underneath a JARM mode.
+    pub fn base(self) -> Self {
+        match self {
+            Self::QueryJwt => Self::Query,
+            Self::FragmentJwt => Self::Fragment,
+            Self::FormPostJwt => Self::FormPost,
+            other => other,
+        }
+    }
+
+    pub fn is_jarm(self) -> bool {
+        matches!(self, Self::QueryJwt | Self::FragmentJwt | Self::FormPostJwt)
+    }
 }
 
 /// Where the flow currently is. Phase 4 adds the intermediate steps.

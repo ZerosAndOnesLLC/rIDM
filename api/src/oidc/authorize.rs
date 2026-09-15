@@ -103,7 +103,7 @@ async fn authorize_post(
 }
 
 /// How an error must be delivered.
-enum Failure {
+pub enum Failure {
     /// Client / redirect_uri problem: render to the user.
     Page(&'static str, String),
     /// Everything else: redirect to the client.
@@ -125,9 +125,9 @@ impl From<sqlx::Error> for Failure {
 }
 
 /// Validated request plus the client it belongs to.
-struct Validated {
-    client: std::sync::Arc<Client>,
-    request: AuthRequest,
+pub struct Validated {
+    pub client: std::sync::Arc<Client>,
+    pub request: AuthRequest,
 }
 
 async fn handle(
@@ -136,17 +136,43 @@ async fn handle(
     headers: &HeaderMap,
     params: RawParams,
 ) -> Response {
-    // Phase 1: client + redirect_uri. Errors here are shown to the user.
-    let (client, redirect, response_mode, state_param) =
-        match resolve_client(state, tenant, &params).await {
-            Ok(v) => v,
-            Err(Failure::Page(code, desc)) => {
-                return error_page(StatusCode::BAD_REQUEST, code, &desc);
+    // Pushed request: `client_id` + `request_uri` only (RFC 9126 §4).
+    if let Ok(Some(uri)) = params.one("request_uri")
+        && uri.starts_with(crate::oidc::par::URN_PREFIX)
+    {
+        return match crate::oidc::par::take(state, tenant, &params, uri).await {
+            Ok((client, request)) => {
+                finish_decision(state, tenant, headers, Validated { client, request }).await
             }
-            Err(Failure::Internal(e)) => return e.into_response(),
-            Err(Failure::Redirect(_)) => unreachable!("client resolution never redirects"),
+            Err(Failure::Page(code, desc)) => error_page(StatusCode::BAD_REQUEST, code, &desc),
+            Err(Failure::Internal(e)) => e.into_response(),
+            Err(Failure::Redirect(e)) => error_page(
+                StatusCode::BAD_REQUEST,
+                e.error.as_str(),
+                e.error_description.as_deref().unwrap_or_default(),
+            ),
         };
-    let issuer = tenant.issuer(state);
+    }
+
+    // Phase 1: client + redirect_uri (+ request object merge). Errors are shown to the user.
+    let (client, params) = match resolve_client_and_merge(state, tenant, &params).await {
+        Ok(v) => v,
+        Err(Failure::Page(code, desc)) => return error_page(StatusCode::BAD_REQUEST, code, &desc),
+        Err(Failure::Internal(e)) => return e.into_response(),
+        Err(Failure::Redirect(e)) => {
+            return error_page(
+                StatusCode::BAD_REQUEST,
+                e.error.as_str(),
+                e.error_description.as_deref().unwrap_or_default(),
+            );
+        }
+    };
+    let (redirect, response_mode, state_param) = match resolve_redirect(&client, &params) {
+        Ok(v) => v,
+        Err(Failure::Page(code, desc)) => return error_page(StatusCode::BAD_REQUEST, code, &desc),
+        Err(Failure::Internal(e)) => return e.into_response(),
+        Err(Failure::Redirect(_)) => unreachable!("redirect resolution never redirects"),
+    };
 
     // Phase 2: everything else. Errors go back to the client.
     match validate(
@@ -160,43 +186,81 @@ async fn handle(
     )
     .await
     {
-        Ok(v) => match decide(state, tenant, headers, v).await {
-            Ok(r) => r,
-            Err(Failure::Redirect(e)) => {
-                error_redirect(&redirect, response_mode, e.with_state(state_param), &issuer)
-            }
-            Err(Failure::Page(code, desc)) => error_page(StatusCode::BAD_REQUEST, code, &desc),
-            Err(Failure::Internal(e)) => {
-                tracing::error!(error = ?e, "authorize failed");
-                error_redirect(
-                    &redirect,
-                    response_mode,
-                    OAuthError::server_error().with_state(state_param),
-                    &issuer,
-                )
-            }
-        },
+        Ok(v) => finish_decision(state, tenant, headers, v).await,
         Err(Failure::Redirect(e)) => {
-            error_redirect(&redirect, response_mode, e.with_state(state_param), &issuer)
+            error_redirect(
+                state,
+                tenant,
+                &client,
+                &redirect,
+                response_mode,
+                e.with_state(state_param),
+            )
+            .await
         }
         Err(Failure::Page(code, desc)) => error_page(StatusCode::BAD_REQUEST, code, &desc),
         Err(Failure::Internal(e)) => {
             tracing::error!(error = ?e, "authorize failed");
             error_redirect(
+                state,
+                tenant,
+                &client,
                 &redirect,
                 response_mode,
                 OAuthError::server_error().with_state(state_param),
-                &issuer,
             )
+            .await
         }
     }
 }
 
-async fn resolve_client(
+async fn finish_decision(
+    state: &AppState,
+    tenant: &TenantCtx,
+    headers: &HeaderMap,
+    v: Validated,
+) -> Response {
+    let client = v.client.clone();
+    let redirect = v.request.redirect_uri.clone();
+    let mode = v.request.response_mode;
+    let state_param = v.request.state.clone();
+    match decide(state, tenant, headers, v).await {
+        Ok(r) => r,
+        Err(Failure::Redirect(e)) => {
+            error_redirect(
+                state,
+                tenant,
+                &client,
+                &redirect,
+                mode,
+                e.with_state(state_param),
+            )
+            .await
+        }
+        Err(Failure::Page(code, desc)) => error_page(StatusCode::BAD_REQUEST, code, &desc),
+        Err(Failure::Internal(e)) => {
+            tracing::error!(error = ?e, "authorize failed");
+            error_redirect(
+                state,
+                tenant,
+                &client,
+                &redirect,
+                mode,
+                OAuthError::server_error().with_state(state_param),
+            )
+            .await
+        }
+    }
+}
+
+/// Look up the client and, if a `request` object is present, verify it and
+/// merge its claims over the plain parameters (RFC 9101 §6.3: the request
+/// object wins; `client_id`/`response_type` outside must match inside).
+pub async fn resolve_client_and_merge(
     state: &AppState,
     tenant: &TenantCtx,
     params: &RawParams,
-) -> Result<(std::sync::Arc<Client>, String, ResponseMode, Option<String>), Failure> {
+) -> Result<(std::sync::Arc<Client>, RawParams), Failure> {
     let page = |d: String| Failure::Page("invalid_request", d);
     let client_id = params
         .one("client_id")
@@ -211,6 +275,19 @@ async fn resolve_client(
             "client is disabled".into(),
         ));
     }
+    let merged = match params.one("request").map_err(page)? {
+        Some(jwt) => crate::oidc::jar::merge(state, tenant, &client, params, jwt).await?,
+        None => RawParams(params.0.clone()),
+    };
+    Ok((client, merged))
+}
+
+/// Validate `redirect_uri`, settle the response mode and `state`.
+pub fn resolve_redirect(
+    client: &Client,
+    params: &RawParams,
+) -> Result<(String, ResponseMode, Option<String>), Failure> {
+    let page = |d: String| Failure::Page("invalid_request", d);
     let redirect = params
         .one("redirect_uri")
         .map_err(page)?
@@ -223,26 +300,25 @@ async fn resolve_client(
     }
     // response_mode determines how even errors are delivered, so it is
     // settled here; an invalid value falls back to the default.
-    let response_mode = match params.one("response_mode").map_err(page)? {
-        None | Some("query") => ResponseMode::Query,
-        Some("fragment") => ResponseMode::Fragment,
-        Some("form_post") => ResponseMode::FormPost,
-        Some(_) => ResponseMode::Query,
-    };
+    let response_mode = params
+        .one("response_mode")
+        .map_err(page)?
+        .and_then(ResponseMode::parse)
+        .unwrap_or(ResponseMode::Query);
     let state_param = params.one("state").map_err(page)?.map(str::to_string);
     if let Some(s) = &state_param
         && s.len() > 1024
     {
         return Err(page("state is too long".into()));
     }
-    Ok((client, redirect.to_string(), response_mode, state_param))
+    Ok((redirect.to_string(), response_mode, state_param))
 }
 
 fn invalid(desc: impl Into<String>) -> Failure {
     Failure::Redirect(OAuthError::invalid_request(desc))
 }
 
-async fn validate(
+pub async fn validate(
     state: &AppState,
     tenant: &TenantCtx,
     client: &Client,
@@ -265,7 +341,7 @@ async fn validate(
         )));
     }
     if let Some(mode) = one("response_mode")?
-        && !matches!(mode, "query" | "fragment" | "form_post")
+        && ResponseMode::parse(mode).is_none()
     {
         return Err(invalid(format!("unsupported response_mode `{mode}`")));
     }
@@ -650,7 +726,47 @@ pub async fn issue_code(
     if let Some(s) = &req.state {
         params.push(("state", s.clone()));
     }
-    Ok(deliver(&req.redirect_uri, req.response_mode, &params))
+    deliver_to_client(
+        state,
+        tenant,
+        client,
+        &req.redirect_uri,
+        req.response_mode,
+        params,
+    )
+    .await
+}
+
+/// Deliver success or error parameters, wrapping them in a JARM JWT when the
+/// response mode asks for it (JARM §4.1).
+pub async fn deliver_to_client(
+    state: &AppState,
+    tenant: &TenantCtx,
+    client: &Client,
+    redirect_uri: &str,
+    mode: ResponseMode,
+    params: Vec<(&str, String)>,
+) -> Result<Response, AppError> {
+    if !mode.is_jarm() {
+        return Ok(deliver(redirect_uri, mode, &params));
+    }
+    let key =
+        crate::services::keys::ensure_active(state, tenant.id(), &tenant.tenant.settings.keys)
+            .await?;
+    let mut claims = serde_json::Map::new();
+    claims.insert("iss".into(), serde_json::json!(tenant.issuer(state)));
+    claims.insert("aud".into(), serde_json::json!(client.client_id));
+    claims.insert(
+        "exp".into(),
+        serde_json::json!(Utc::now().timestamp() + 600),
+    );
+    for (k, v) in &params {
+        if *k != "iss" {
+            claims.insert((*k).to_string(), serde_json::json!(v));
+        }
+    }
+    let jwt = crate::services::tokens::sign(state, &key, "JWT", &claims).await?;
+    Ok(deliver(redirect_uri, mode.base(), &[("response", jwt)]))
 }
 
 fn redirect_to_ui(state: &AppState, tenant: &TenantCtx, page: &str, flow_id: Uuid) -> Response {
@@ -666,7 +782,7 @@ fn redirect_to_ui(state: &AppState, tenant: &TenantCtx, page: &str, flow_id: Uui
 
 /// Deliver parameters to the redirect URI in the requested response mode.
 pub fn deliver(redirect_uri: &str, mode: ResponseMode, params: &[(&str, String)]) -> Response {
-    let mut res = match mode {
+    let mut res = match mode.base() {
         ResponseMode::Query => {
             let mut u = url::Url::parse(redirect_uri).expect("validated redirect uri");
             {
@@ -685,7 +801,10 @@ pub fn deliver(redirect_uri: &str, mode: ResponseMode, params: &[(&str, String)]
             u.set_fragment(Some(&frag));
             Redirect::to(u.as_str()).into_response()
         }
-        ResponseMode::FormPost => {
+        ResponseMode::FormPost
+        | ResponseMode::QueryJwt
+        | ResponseMode::FragmentJwt
+        | ResponseMode::FormPostJwt => {
             let inputs: String = params
                 .iter()
                 .map(|(k, v)| {
@@ -732,11 +851,13 @@ pub fn deliver(redirect_uri: &str, mode: ResponseMode, params: &[(&str, String)]
     res
 }
 
-fn error_redirect(
+async fn error_redirect(
+    state: &AppState,
+    tenant: &TenantCtx,
+    client: &Client,
     redirect_uri: &str,
     mode: ResponseMode,
     err: OAuthError,
-    issuer: &str,
 ) -> Response {
     let mut params: Vec<(&str, String)> = vec![("error", err.error.as_str().to_string())];
     if let Some(d) = &err.error_description {
@@ -745,8 +866,11 @@ fn error_redirect(
     if let Some(s) = &err.state {
         params.push(("state", s.clone()));
     }
-    params.push(("iss", issuer.to_string()));
-    deliver(redirect_uri, mode, &params)
+    params.push(("iss", tenant.issuer(state)));
+    match deliver_to_client(state, tenant, client, redirect_uri, mode, params).await {
+        Ok(r) => r,
+        Err(e) => e.into_response(),
+    }
 }
 
 /// Error shown to the end user when the client or redirect URI is untrusted.
