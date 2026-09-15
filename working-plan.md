@@ -287,7 +287,7 @@ Operations
 - [x] 4.8 Session policy enforcement: idle/absolute timeouts, max concurrent sessions, trusted-device "remember me" skipping MFA, `prompt`/`max_age`/`acr_values` honored.
 - [x] 4.9 i18n: locale negotiation (`ui_locales` → user locale → tenant default), translation bundles, RTL-safe layout.
 - [x] 4.10 UI pages: `/login/`, `/register/`, `/invite/`, `/consent/`, `/mfa/`, `/recover/`, `/verify/`, `/logout/`, `/device/`, `/error/`. Query-param driven; tenant theme (logo, colors, custom links, optional custom CSS); mobile-first.
-- [ ] 4.11 Security notifications to users: new device login, password changed, MFA changed, email changed.
+- [x] 4.11 Security notifications to users: new device login, password changed, MFA changed, email changed.
 - [ ] 4.12 Tests: flow state machine transitions (every step, every error), CSRF on each step, brute-force lockout timing, CAPTCHA gate, magic-link/OTP single-use + expiry, registration with schema validation, invitation acceptance, recovery token single-use, session idle/absolute/concurrent limits, trusted-device skip, locale negotiation, message queue retry/dead-letter with mock senders. Playwright e2e: password login, magic link (via Mailpit), registration, recovery, consent, logout.
 
 ### Phase 5 — Admin API

@@ -99,6 +99,27 @@ pub async fn list_live_for_user<'e>(
     qb.build_query_as::<SessionRow>().fetch_all(exec).await
 }
 
+/// Earlier sessions of the user (excluding `exclude_session`): whether any
+/// exist at all, and whether any came from the same browser (user agent).
+pub async fn browser_history<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    user_agent: &str,
+    exclude_session: Uuid,
+) -> Result<(bool, bool), sqlx::Error> {
+    sqlx::query_as(
+        "SELECT count(*) > 0, COALESCE(bool_or(user_agent = $3), false) FROM sso_sessions \
+         WHERE tenant_id = $1 AND user_id = $2 AND id <> $4",
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .bind(user_agent)
+    .bind(exclude_session)
+    .fetch_one(exec)
+    .await
+}
+
 pub async fn purge<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,

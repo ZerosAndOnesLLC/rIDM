@@ -322,6 +322,8 @@ pub struct SetPasswordOptions {
     pub skip_policy: bool,
     /// The user changed their own password (affects the emitted event).
     pub by_user: bool,
+    /// Tell the user by email (not for initial passwords set at registration).
+    pub notify: bool,
 }
 
 async fn hash_blocking(
@@ -437,6 +439,9 @@ pub async fn set_password(
             by_user: opts.by_user,
         },
     ));
+    if opts.notify {
+        crate::services::notifications::password_changed(state, tenant_id, user_id).await;
+    }
     Ok(())
 }
 
@@ -469,6 +474,7 @@ pub async fn set_temporary_password(
             // Random 24-character passwords satisfy any sane policy; history is irrelevant.
             skip_policy: true,
             by_user: false,
+            notify: false,
         },
     )
     .await?;

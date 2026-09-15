@@ -107,6 +107,7 @@ pub async fn complete_password_reset(
             must_change: false,
             skip_policy: false,
             by_user: true,
+            notify: true,
         },
     )
     .await?;

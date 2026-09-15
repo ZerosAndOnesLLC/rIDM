@@ -22,7 +22,9 @@ use crate::repos;
 use crate::services::login_flows::{self, FlowStage, LoginFlow};
 use crate::services::password::{self, SetPasswordOptions, VerifyOutcome};
 use crate::services::sessions::{self, NewSession, SsoSession};
-use crate::services::{clients, consents, locale, profile_schema, trusted_devices, users};
+use crate::services::{
+    clients, consents, locale, notifications, profile_schema, trusted_devices, users,
+};
 use crate::state::AppState;
 
 /// What the UI needs to render the current step.
@@ -441,7 +443,7 @@ pub async fn password_step(
                 state,
                 &tenant.tenant,
                 &mut flow,
-                user.id,
+                &user,
                 vec!["pwd".into()],
                 RequestContext {
                     ip: ip.clone(),
@@ -580,6 +582,7 @@ pub async fn password_change_step(
             must_change: false,
             skip_policy: false,
             by_user: true,
+            notify: true,
         },
     )
     .await?;
@@ -743,10 +746,11 @@ async fn open_session(
     state: &AppState,
     tenant: &Tenant,
     flow: &mut LoginFlow,
-    user_id: Uuid,
+    user: &User,
     amr: Vec<String>,
     ctx: RequestContext,
 ) -> AppResult<SsoSession> {
+    let user_id = user.id;
     let RequestContext {
         ip,
         user_agent,
@@ -766,19 +770,45 @@ async fn open_session(
             s
         }
         _ => {
-            sessions::create(
+            let session = sessions::create(
                 state,
                 tenant.id,
                 NewSession {
                     user_id,
                     amr: amr.clone(),
                     acr: None,
-                    ip,
-                    user_agent,
+                    ip: ip.clone(),
+                    user_agent: user_agent.clone(),
                     policy: &tenant.settings.session,
                 },
             )
-            .await?
+            .await?;
+            // A returning user on an unrecognised browser: tell them.
+            if trusted.is_none()
+                && is_new_browser(state, tenant.id, user_id, user_agent.as_deref(), session.id)
+                    .await?
+            {
+                state.events.publish(
+                    Event::new(
+                        Some(tenant.id),
+                        Actor::User { id: user_id },
+                        EventKind::NewDeviceLogin {
+                            user_id,
+                            session_id: session.id,
+                        },
+                    )
+                    .with_request(ip.clone(), user_agent.clone()),
+                );
+                notifications::new_device_login(
+                    state,
+                    tenant,
+                    user,
+                    ip.as_deref(),
+                    user_agent.as_deref(),
+                )
+                .await;
+            }
+            session
         }
     };
     if let Some(d) = &trusted
@@ -793,6 +823,25 @@ async fn open_session(
     // Already trusted: nothing to register at the end of the flow.
     flow.remember_device = remember_device && trusted.is_none();
     Ok(session)
+}
+
+/// True when the user has signed in before but never from this browser.
+/// Without a user agent nothing can be compared, so no notice is sent.
+async fn is_new_browser(
+    state: &AppState,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    user_agent: Option<&str>,
+    exclude_session: Uuid,
+) -> AppResult<bool> {
+    let Some(ua) = user_agent else {
+        return Ok(false);
+    };
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let (any_before, same_browser) =
+        repos::sessions::browser_history(&mut *tx, tenant_id, user_id, ua, exclude_session).await?;
+    tx.commit().await?;
+    Ok(any_before && !same_browser)
 }
 
 /// Shared tail of every successful first-factor authentication: session,
@@ -812,7 +861,7 @@ pub async fn complete_authentication(
     repos::users::record_login_success(&mut *tx, tid, user.id).await?;
     repos::login_attempts::record(&mut *tx, tid, &user.username, ip.as_deref(), true, None).await?;
     tx.commit().await?;
-    let session = open_session(state, &tenant.tenant, &mut flow, user.id, amr.clone(), ctx).await?;
+    let session = open_session(state, &tenant.tenant, &mut flow, user, amr.clone(), ctx).await?;
     advance(state, &tenant.tenant, &mut flow, must_change_password).await?;
     login_flows::save(state, &flow).await?;
     state.events.publish(

@@ -219,6 +219,23 @@ pub enum EventKind {
         user_id: Uuid,
     },
 
+    // Security notices
+    /// A sign-in from a browser the user had not used before.
+    NewDeviceLogin {
+        user_id: Uuid,
+        session_id: Uuid,
+    },
+    EmailChanged {
+        user_id: Uuid,
+        old_email: Option<String>,
+        new_email: Option<String>,
+    },
+    /// MFA enrolment changed (`change` is a short description, e.g. "TOTP enrolled").
+    MfaChanged {
+        user_id: Uuid,
+        change: String,
+    },
+
     // Sessions and authorization
     TrustedDeviceAdded {
         user_id: Uuid,
@@ -320,6 +337,9 @@ impl EventKind {
             Self::LoginFailed { .. } => "login.failed",
             Self::UserLocked { .. } => "user.locked",
             Self::TermsAccepted { .. } => "user.terms_accepted",
+            Self::NewDeviceLogin { .. } => "login.new_device",
+            Self::EmailChanged { .. } => "user.email_changed",
+            Self::MfaChanged { .. } => "mfa.changed",
             Self::TrustedDeviceAdded { .. } => "device.trusted",
             Self::TrustedDeviceRevoked { .. } => "device.revoked",
             Self::SessionCreated { .. } => "session.created",

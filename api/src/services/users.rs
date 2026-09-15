@@ -129,18 +129,18 @@ pub async fn update(
     }
 
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let before = repos::users::find_by_id(&mut *tx, tenant_id, id)
+        .await?
+        .filter(|u| u.deleted_at.is_none())
+        .ok_or(AppError::NotFound("user"))?;
     if let Some(incoming) = patch.attributes.take() {
-        let current = repos::users::find_by_id(&mut *tx, tenant_id, id)
-            .await?
-            .filter(|u| u.deleted_at.is_none())
-            .ok_or(AppError::NotFound("user"))?;
         let schema = profile_schema::get(state, tenant_id).await?;
         let editor = profile_schema::Editor::from(&actor);
         patch.attributes = Some(profile_schema::validate_attributes(
             &schema,
             &incoming,
             editor,
-            Some(&current.attributes),
+            Some(&before.attributes),
         )?);
     }
     let user = repos::users::update(&mut *tx, tenant_id, id, &patch)
@@ -154,9 +154,28 @@ pub async fn update(
 
     state.events.publish(Event::new(
         Some(tenant_id),
-        actor,
+        actor.clone(),
         EventKind::UserUpdated { user_id: user.id },
     ));
+    if patch.email.is_some() && before.email != user.email {
+        state.events.publish(Event::new(
+            Some(tenant_id),
+            actor,
+            EventKind::EmailChanged {
+                user_id: user.id,
+                old_email: before.email.clone(),
+                new_email: user.email.clone(),
+            },
+        ));
+        let tenant = crate::services::tenants::get(state, tenant_id).await?;
+        crate::services::notifications::email_changed(
+            state,
+            &tenant,
+            &before,
+            user.email.as_deref(),
+        )
+        .await;
+    }
     Ok(user)
 }
 

@@ -142,6 +142,7 @@ pub async fn register(
                 must_change: false,
                 skip_policy: false,
                 by_user: true,
+                notify: false,
             },
         )
         .await

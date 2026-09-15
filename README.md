@@ -65,6 +65,13 @@ rendered in that locale, and self-registered users are stored with it. The UI sh
 English (`ui/src/i18n/en.json`) with key-by-key fallback for added bundles, `Intl`
 plural rules, and logical CSS so right-to-left languages mirror the layout.
 
+Users get security notices, in their locale, through the tenant's messaging
+settings: a sign-in from a browser they have not used before (email, or SMS when
+the account has only a verified phone), a password change (recovery or forced
+change, never the initial password), an email address change (sent to the previous
+address), and MFA changes once Phase 7 lands. Each notice can be switched off per
+tenant under `settings.notifications`.
+
 ## Quick start (docker-compose)
 
 ```bash

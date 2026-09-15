@@ -158,6 +158,7 @@ pub async fn run(state: &AppState, req: BootstrapRequest) -> AppResult<Bootstrap
             must_change: req.must_change_password,
             skip_policy: false,
             by_user: false,
+            notify: false,
         },
     )
     .await?;

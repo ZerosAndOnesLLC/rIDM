@@ -151,6 +151,7 @@ async fn set_verify_policy_and_history() {
             must_change: true,
             skip_policy: true,
             by_user: false,
+            notify: false,
         },
     )
     .await

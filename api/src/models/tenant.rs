@@ -52,8 +52,30 @@ pub struct TenantSettings {
     pub auth: AuthMethods,
     pub lockout: LockoutPolicy,
     pub captcha: CaptchaPolicy,
+    pub notifications: NotificationPolicy,
     /// Custom issuer host (Phase 9.3). `None` means `{PUBLIC_URL}/t/{slug}`.
     pub custom_domain: Option<String>,
+}
+
+/// Which security notices users receive (email, or SMS when they have no email).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NotificationPolicy {
+    pub new_device: bool,
+    pub password_changed: bool,
+    pub mfa_changed: bool,
+    pub email_changed: bool,
+}
+
+impl Default for NotificationPolicy {
+    fn default() -> Self {
+        Self {
+            new_device: true,
+            password_changed: true,
+            mfa_changed: true,
+            email_changed: true,
+        }
+    }
 }
 
 /// Which first-factor login methods the tenant offers.

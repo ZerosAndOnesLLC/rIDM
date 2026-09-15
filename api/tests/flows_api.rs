@@ -406,6 +406,7 @@ async fn password_change_profile_and_terms_stages_in_order() {
             must_change: true,
             skip_policy: true,
             by_user: false,
+            notify: false,
         },
     )
     .await
