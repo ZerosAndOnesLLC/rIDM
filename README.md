@@ -388,6 +388,22 @@ Console code sits in `ui/src/app/console/`, `ui/src/components/console/` and
 `ui/src/lib/console/` (`auth.ts` holds the PKCE flow, `session.tsx` the token store the
 typed client reads from).
 
+Pages so far: **Tenants** (`/console/tenants/`: every tenant for global administrators,
+filter, "New tenant" dialog that lands on the new tenant's settings) and **Settings**
+(`/console/settings/`: every tenant setting on one page, grouped as general, sign-in,
+passwords and lockout, sessions and tokens, branding, locale and notices, keys, discovery
+and audit, plus a delete-tenant zone for global owners). Settings save as you go: each
+change is applied to the page at once and joined into one JSON merge patch that is sent
+`PATCH /admin/tenants/{slug}` once typing pauses (600 ms, at most 2.5 s into continuous
+editing, and with `keepalive` when the tab is hidden or closed); the header shows
+"Unsaved changes", "Saving…", "Saved" or the API's reason for refusing, in which case the
+stored settings are reloaded. The CAPTCHA provider (site key and secret, stored encrypted
+behind its own endpoint) saves as soon as both keys are present and shows "Configured"
+without ever reading the secret back. The branding editor frames the real login page
+(`/login/?tenant=<slug>&preview=1`): the page renders its sign-in form on a stand-in flow,
+tells the editor it is ready, and applies every draft change (name, logo, colours, links,
+custom CSS) it receives by `postMessage` from the console's origin.
+
 ### Container image
 
 ```bash

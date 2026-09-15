@@ -42,6 +42,7 @@ owner (`ridm:owner` in `master`) so the console specs can sign in as them. Setti
 | `lockout` | account lock after repeated failures; right password refused while locked |
 | `consent` | consent denied returns `access_denied` (approval runs inside every sign-in) |
 | `logout` | RP-initiated logout with confirmation |
+| `console-tenants` | tenants list, slug validation and creation, settings saving as you go (text, switch, number, select and tag fields) and surviving a reload, branding changes reaching the framed login-page preview live and after a reload, tenant deletion with typed confirmation |
 | `console` | admin console: sign-in card validation, PKCE sign-in through the tenant login page back to a deep link, session reuse on reload, global search (pages, users, clients), tenant switcher and `t`/`?`/`g o` shortcuts, theme switch persistence, sign-out ending the SSO session, refused stray callback, phone navigation drawer |
 | `a11y` | error, device, invite, verify and logout pages, and login without a tenant |
 | `openapi-contract` | the live `/openapi.json` equals the committed `api/openapi.json` the typed admin client is generated from; the `openapi-fetch` client reaches the live API and types its 401 problem body |

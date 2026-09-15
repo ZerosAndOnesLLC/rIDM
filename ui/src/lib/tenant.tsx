@@ -18,7 +18,7 @@ const TenantContext = createContext<TenantState | null>(null);
  * Loads the tenant's public branding document and applies its theme:
  * accent and ground colours as CSS variables, favicon, and custom CSS.
  */
-export function TenantProvider({ slug, children }: { slug: string | null; children: ReactNode }) {
+export function TenantProvider({ slug, preview = false, children }: { slug: string | null; preview?: boolean; children: ReactNode }) {
   const [state, setState] = useState<TenantState>({
     slug,
     tenant: null,
@@ -39,14 +39,35 @@ export function TenantProvider({ slug, children }: { slug: string | null; childr
     return () => ctrl.abort();
   }, [slug]);
 
+  // Preview (inside the console's branding editor): once the stored branding
+  // is in, tell the opener and take live overrides from it. Only messages
+  // from this origin count.
+  useEffect(() => {
+    if (!preview || !state.tenant || window.parent === window) return;
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin || e.source !== window.parent) return;
+      const m = e.data as { type?: string; display_name?: string; branding?: PublicTenant["branding"] } | null;
+      if (m?.type !== "ridm:preview" || !m.branding) return;
+      const branding = m.branding;
+      const display_name = m.display_name;
+      setState((s) =>
+        s.tenant ? { ...s, tenant: { ...s.tenant, branding, display_name: display_name ?? s.tenant.display_name } } : s,
+      );
+    };
+    window.addEventListener("message", onMessage);
+    window.parent.postMessage({ type: "ridm:preview:ready" }, window.location.origin);
+    return () => window.removeEventListener("message", onMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- subscribe once the tenant has loaded
+  }, [preview, state.tenant !== null]);
+
   useEffect(() => {
     const b = state.tenant?.branding;
     if (!b) return;
     const root = document.documentElement;
     if (b.primary_color && isColor(b.primary_color)) root.style.setProperty("--accent", b.primary_color);
-    if (b.background_color && isColor(b.background_color)) {
-      root.style.setProperty("--ground", b.background_color);
-    }
+    else root.style.removeProperty("--accent");
+    if (b.background_color && isColor(b.background_color)) root.style.setProperty("--ground", b.background_color);
+    else root.style.removeProperty("--ground");
     if (b.favicon_url) {
       let link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
       if (!link) {

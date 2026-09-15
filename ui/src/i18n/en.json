@@ -119,5 +119,6 @@
   "verify.no_token": "This link is incomplete. Open the link from your email again.",
   "logout.frontchannel": "Signing you out of connected applications…",
   "logout.cancelled": "You're still signed in.",
-  "recover.no_flow_hint": "Return to the application and sign in."
+  "recover.no_flow_hint": "Return to the application and sign in.",
+  "login.preview_client": "your application"
 }
