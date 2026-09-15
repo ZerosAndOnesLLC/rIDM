@@ -92,7 +92,10 @@ fn validate_uri(field: &str, uri: &str, client_type: ClientType) -> AppResult<()
 }
 
 /// Resolve `NewClient` into a full `Client` using type-driven defaults.
-fn resolve(tenant_id: Uuid, input: NewClient) -> AppResult<(Client, Option<Zeroizing<String>>)> {
+pub fn resolve(
+    tenant_id: Uuid,
+    input: NewClient,
+) -> AppResult<(Client, Option<Zeroizing<String>>)> {
     let name = input.name.trim().to_string();
     if name.is_empty() || name.len() > 255 {
         return Err(AppError::BadRequest("name must be 1-255 characters".into()));
@@ -515,6 +518,81 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
         EventKind::ClientDeleted { client_id: id },
     ));
     Ok(())
+}
+
+/// Replace a client's metadata (RFC 7592 PUT, admin "replace"). The public
+/// `client_id`, secrets, status, service account and timestamps are kept.
+pub async fn update_metadata(
+    state: &AppState,
+    tenant_id: Uuid,
+    actor: Actor,
+    id: Uuid,
+    mut input: NewClient,
+) -> AppResult<Client> {
+    let current = get(state, tenant_id, id).await?;
+    input.client_id = Some(current.client_id.clone());
+    let (mut resolved, _secret) = resolve(tenant_id, input)?;
+    // A confidential client keeps its secrets; a switch to/from `none` is a
+    // metadata change the caller must follow with a secret rotation.
+    resolved.id = current.id;
+    resolved.secret_hashes = current.secret_hashes.clone();
+    if resolved.token_endpoint_auth_method.uses_secret() && resolved.secret_hashes.is_empty() {
+        return Err(AppError::BadRequest(
+            "switching to a secret-based auth method requires rotating a secret first".into(),
+        ));
+    }
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let client = repos::clients::update_metadata(&mut *tx, &resolved)
+        .await
+        .map_err(AppError::from_db)?
+        .ok_or(AppError::NotFound("client"))?;
+    tx.commit().await?;
+    state
+        .cache
+        .invalidate(&[
+            cache_keys::client_by_client_id(tenant_id, &client.client_id),
+            cache_keys::client_jwks(tenant_id, client.id),
+        ])
+        .await?;
+    state.events.publish(Event::new(
+        Some(tenant_id),
+        actor,
+        EventKind::ClientUpdated { client_id: id },
+    ));
+    Ok(client)
+}
+
+const REGISTRATION_TOKEN_PREFIX: &str = "rat_";
+
+/// Issue (or replace) the RFC 7592 registration access token for a client.
+pub async fn issue_registration_token(
+    state: &AppState,
+    tenant_id: Uuid,
+    id: Uuid,
+) -> AppResult<Zeroizing<String>> {
+    let mut bytes = [0u8; 32];
+    rand::fill(&mut bytes);
+    let token = Zeroizing::new(format!(
+        "{REGISTRATION_TOKEN_PREFIX}{}",
+        URL_SAFE_NO_PAD.encode(bytes)
+    ));
+    let hash = Sha256::digest(token.as_bytes()).to_vec();
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let ok =
+        repos::clients::set_registration_token_hash(&mut *tx, tenant_id, id, Some(&hash)).await?;
+    tx.commit().await?;
+    if !ok {
+        return Err(AppError::NotFound("client"));
+    }
+    Ok(token)
+}
+
+pub fn verify_registration_token(client: &Client, presented: &str) -> bool {
+    let Some(stored) = &client.registration_access_token_hash else {
+        return false;
+    };
+    let hash = Sha256::digest(presented.as_bytes());
+    stored.len() == hash.len() && bool::from(stored.as_slice().ct_eq(hash.as_slice()))
 }
 
 #[cfg(test)]

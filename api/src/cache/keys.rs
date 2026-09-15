@@ -104,3 +104,7 @@ pub fn logout_flow(tenant_id: Uuid, flow_id: Uuid) -> String {
 pub fn par_request(tenant_id: Uuid, id: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:par:{id}")
 }
+
+pub fn dcr_initial_token(tenant_id: Uuid, token_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:dcr:iat:{token_hash}")
+}

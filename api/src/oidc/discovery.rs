@@ -61,7 +61,7 @@ pub const CAPABILITIES: Capabilities = Capabilities {
     par: true,
     jar: true,
     jarm: true,
-    dcr: false,
+    dcr: true,
     device: false,
     token_exchange: false,
     dpop: false,
@@ -212,7 +212,9 @@ pub fn build(
         token_endpoint: ep("/token"),
         jwks_uri: ep("/.well-known/jwks.json"),
         userinfo_endpoint: caps.userinfo.then(|| ep("/userinfo")),
-        registration_endpoint: caps.dcr.then(|| ep("/register")),
+        registration_endpoint: (caps.dcr
+            && tenant.settings.dcr.mode != crate::models::DcrMode::Disabled)
+            .then(|| ep("/register")),
         introspection_endpoint: caps.introspection.then(|| ep("/introspect")),
         revocation_endpoint: caps.revocation.then(|| ep("/revoke")),
         end_session_endpoint: caps.end_session.then(|| ep("/end_session")),

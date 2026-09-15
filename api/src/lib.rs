@@ -37,6 +37,7 @@ pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
         .merge(oidc::discovery::router())
         .merge(oidc::authorize::router())
         .merge(oidc::par::router())
+        .merge(oidc::register::router())
         .merge(oidc::token::router())
         .merge(oidc::userinfo::router())
         .merge(oidc::introspect::router())

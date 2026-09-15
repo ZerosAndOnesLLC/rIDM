@@ -4,6 +4,7 @@ pub mod claims;
 pub mod client_keys;
 pub mod clients;
 pub mod consents;
+pub mod dcr;
 pub mod denylist;
 pub mod groups;
 pub mod jwe;

@@ -8,6 +8,7 @@ pub mod jar;
 pub mod par;
 pub mod pkce;
 pub mod redirect_uri;
+pub mod register;
 pub mod revoke;
 pub mod token;
 pub mod userinfo;

@@ -190,3 +190,76 @@ pub async fn list<'e>(
         .push_bind(limit + 1);
     qb.build_query_as::<Client>().fetch_all(exec).await
 }
+
+/// Replace every metadata column from `c` (identity, secrets, status and
+/// service account are left untouched).
+pub async fn update_metadata<'e>(
+    exec: impl PgExecutor<'e>,
+    c: &Client,
+) -> Result<Option<Client>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("UPDATE clients SET updated_at = now()");
+    qb.push(", name = ").push_bind(&c.name);
+    qb.push(", client_type = ").push_bind(c.client_type);
+    qb.push(", description = ").push_bind(&c.description);
+    qb.push(", logo_uri = ").push_bind(&c.logo_uri);
+    qb.push(", client_uri = ").push_bind(&c.client_uri);
+    qb.push(", tos_uri = ").push_bind(&c.tos_uri);
+    qb.push(", policy_uri = ").push_bind(&c.policy_uri);
+    qb.push(", jwks = ").push_bind(&c.jwks);
+    qb.push(", jwks_uri = ").push_bind(&c.jwks_uri);
+    qb.push(", token_endpoint_auth_method = ")
+        .push_bind(c.token_endpoint_auth_method);
+    qb.push(", redirect_uris = ").push_bind(&c.redirect_uris);
+    qb.push(", post_logout_redirect_uris = ")
+        .push_bind(&c.post_logout_redirect_uris);
+    qb.push(", allowed_grants = ").push_bind(&c.allowed_grants);
+    qb.push(", allowed_scopes = ").push_bind(&c.allowed_scopes);
+    qb.push(", allowed_audiences = ")
+        .push_bind(&c.allowed_audiences);
+    qb.push(", access_token_ttl_secs = ")
+        .push_bind(c.access_token_ttl_secs);
+    qb.push(", refresh_token_ttl_secs = ")
+        .push_bind(c.refresh_token_ttl_secs);
+    qb.push(", id_token_ttl_secs = ")
+        .push_bind(c.id_token_ttl_secs);
+    qb.push(", access_token_format = ")
+        .push_bind(c.access_token_format);
+    qb.push(", id_token_encryption = ")
+        .push_bind(c.id_token_encryption.as_ref().map(|j| Json(&j.0)));
+    qb.push(", subject_type = ").push_bind(c.subject_type);
+    qb.push(", sector_identifier_uri = ")
+        .push_bind(&c.sector_identifier_uri);
+    qb.push(", require_pkce = ").push_bind(c.require_pkce);
+    qb.push(", require_consent = ").push_bind(c.require_consent);
+    qb.push(", cors_origins = ").push_bind(&c.cors_origins);
+    qb.push(", initiate_login_uri = ")
+        .push_bind(&c.initiate_login_uri);
+    qb.push(", backchannel_logout_uri = ")
+        .push_bind(&c.backchannel_logout_uri);
+    qb.push(", frontchannel_logout_uri = ")
+        .push_bind(&c.frontchannel_logout_uri);
+    qb.push(" WHERE tenant_id = ")
+        .push_bind(c.tenant_id)
+        .push(" AND id = ")
+        .push_bind(c.id)
+        .push(" RETURNING ")
+        .push(COLUMNS);
+    qb.build_query_as::<Client>().fetch_optional(exec).await
+}
+
+pub async fn set_registration_token_hash<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+    hash: Option<&[u8]>,
+) -> Result<bool, sqlx::Error> {
+    let res = sqlx::query(
+        "UPDATE clients SET registration_access_token_hash = $3 WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .bind(hash)
+    .execute(exec)
+    .await?;
+    Ok(res.rows_affected() > 0)
+}
