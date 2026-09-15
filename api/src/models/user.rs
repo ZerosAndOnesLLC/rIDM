@@ -112,3 +112,68 @@ pub struct UserFilter {
     pub org_id: Option<Uuid>,
     pub include_deleted: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn user() -> User {
+        User {
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            org_id: None,
+            username: "u".into(),
+            email: None,
+            email_verified: false,
+            phone: None,
+            phone_verified: false,
+            password_hash: None,
+            password_algo: None,
+            must_change_password: false,
+            password_expires_at: None,
+            password_changed_at: None,
+            status: UserStatus::Active,
+            attributes: serde_json::json!({}),
+            locale: None,
+            last_login_at: None,
+            failed_attempts: 0,
+            locked_until: None,
+            deleted_at: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn lock_state_considers_status_and_temporary_lock() {
+        let mut u = user();
+        assert!(!u.is_locked_now());
+        u.locked_until = Some(Utc::now() + chrono::Duration::minutes(5));
+        assert!(u.is_locked_now());
+        u.locked_until = Some(Utc::now() - chrono::Duration::minutes(5));
+        assert!(
+            !u.is_locked_now(),
+            "an expired temporary lock is not a lock"
+        );
+        u.status = UserStatus::Locked;
+        assert!(u.is_locked_now());
+    }
+
+    #[test]
+    fn password_hash_never_serializes() {
+        let mut u = user();
+        u.password_hash = Some("$argon2id$secret".into());
+        u.password_algo = Some("argon2id".into());
+        let json = serde_json::to_string(&u).unwrap();
+        assert!(!json.contains("password_hash"));
+        assert!(!json.contains("secret"));
+        assert!(!json.contains("password_algo"));
+    }
+
+    #[test]
+    fn patch_is_empty_detection() {
+        assert!(UserUpdate::default().is_empty());
+        let p: UserUpdate = serde_json::from_str(r#"{"email": null}"#).unwrap();
+        assert!(!p.is_empty(), "clearing a field is a change");
+    }
+}
