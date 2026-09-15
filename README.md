@@ -435,6 +435,22 @@ enrolled factors with removal), Sessions & devices (revoke one or all), Roles an
 events, expandable). Disable, unlock and delete sit in the header. Personal access
 tokens and linked identities appear with Phases 8.5 and 8.3.
 
+**Groups, roles, resource servers, scopes and claim mappers** each get a list-and-detail
+page (`/console/groups/`, `/console/roles/`, `/console/resource-servers/`,
+`/console/scopes/`, `/console/claim-mappers/`; the selected item travels as a query
+parameter). Groups are a tree: create at any level, move under another group (never
+under a descendant), edit attributes as JSON, attach roles, add members through a user
+search and remove them. Roles: realm or per-client, composites, permissions granted from
+any resource server (admin-catalogue permissions only by someone who holds them), and who
+holds the role; built-in `ridm:*` roles are read-only. Resource servers: name, token
+lifetime cap, signing algorithm, offline access, and their permissions; `urn:ridm:admin`
+is read-only. Scopes: description, released claims, resource server binding and
+"granted by default"; standard scopes can be tuned but not deleted. Claim mappers:
+tenant-wide or per client, of kind user attribute, groups, roles, fixed value, Handlebars
+template (must compile) or audience, with the tokens they are included in. Detail fields
+save as you go; membership-style changes apply at once. Identity providers arrive with
+brokering in Phase 8.3.
+
 The profile schema itself is edited under Settings → Profile attributes (name, type,
 label, description, who may edit, position, required, multiple values, where the value
 surfaces, validation per type), saved whole through the new
