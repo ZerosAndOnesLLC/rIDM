@@ -86,6 +86,8 @@ pub enum FlowStage {
     Authenticate,
     /// User must register (`prompt=create`).
     Register,
+    /// Registered; the verification link must be opened before continuing.
+    VerifyEmail,
     /// Password expired or flagged: a new one is required before continuing.
     PasswordChange,
     /// Second factor required (Phase 7).

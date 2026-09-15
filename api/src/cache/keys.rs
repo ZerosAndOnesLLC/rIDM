@@ -128,3 +128,8 @@ pub fn magic_link(tenant_id: Uuid, token_hash: &str) -> String {
 pub fn passwordless_sends(tenant_id: Uuid, identifier: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:pwless:sends:{identifier}")
 }
+
+/// Email verification token (hashed) → user (and optional flow to resume).
+pub fn email_verification(tenant_id: Uuid, token_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:verify:{token_hash}")
+}

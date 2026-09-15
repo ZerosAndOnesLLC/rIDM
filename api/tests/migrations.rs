@@ -31,6 +31,7 @@ const TENANT_TABLES: &[&str] = &[
     "tenant_provider_settings",
     "message_templates",
     "outbound_messages",
+    "invitations",
 ];
 
 /// Create a throwaway database (needs a superuser/CREATEDB admin URL) and

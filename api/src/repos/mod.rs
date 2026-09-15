@@ -2,6 +2,7 @@ pub mod claim_mappers;
 pub mod clients;
 pub mod consents;
 pub mod groups;
+pub mod invitations;
 pub mod login_attempts;
 pub mod messages;
 pub mod password_history;

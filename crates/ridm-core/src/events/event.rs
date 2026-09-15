@@ -172,6 +172,26 @@ pub enum EventKind {
         child_role_id: Uuid,
     },
 
+    // Registration and invitations
+    UserRegistered {
+        user_id: Uuid,
+        verified: bool,
+    },
+    EmailVerified {
+        user_id: Uuid,
+    },
+    InvitationCreated {
+        invitation_id: Uuid,
+        email: String,
+    },
+    InvitationAccepted {
+        invitation_id: Uuid,
+        user_id: Uuid,
+    },
+    InvitationRevoked {
+        invitation_id: Uuid,
+    },
+
     // Authentication
     PasswordlessSent {
         user_id: Uuid,
@@ -274,6 +294,11 @@ impl EventKind {
             Self::RoleUnassigned { .. } => "role.unassigned",
             Self::RoleCompositeAdded { .. } => "role.composite_added",
             Self::RoleCompositeRemoved { .. } => "role.composite_removed",
+            Self::UserRegistered { .. } => "user.registered",
+            Self::EmailVerified { .. } => "user.email_verified",
+            Self::InvitationCreated { .. } => "invitation.created",
+            Self::InvitationAccepted { .. } => "invitation.accepted",
+            Self::InvitationRevoked { .. } => "invitation.revoked",
             Self::PasswordlessSent { .. } => "login.passwordless_sent",
             Self::LoginSucceeded { .. } => "login.succeeded",
             Self::LoginFailed { .. } => "login.failed",

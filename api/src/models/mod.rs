@@ -1,6 +1,7 @@
 mod claim_mapper;
 mod client;
 mod group;
+mod invitation;
 mod message;
 mod profile_schema;
 mod provider_settings;
@@ -14,6 +15,7 @@ mod user;
 pub use claim_mapper::*;
 pub use client::*;
 pub use group::*;
+pub use invitation::*;
 pub use message::*;
 pub use profile_schema::*;
 pub use provider_settings::*;

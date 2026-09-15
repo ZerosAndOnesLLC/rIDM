@@ -852,3 +852,67 @@ pub async fn passwordless_verify_step(
     let must_change = user.must_change_password && tenant.tenant.settings.auth.password;
     complete_authentication(state, tenant, flow, &user, amr, ctx, must_change).await
 }
+
+/// `POST /flows/{id}/register`: create the account from the login or
+/// registration page. With email verification on, the flow waits at
+/// `VerifyEmail` until the link is opened; otherwise the user is signed in.
+pub async fn register_step(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    input: crate::services::registration::RegistrationInput,
+    captcha_token: Option<&str>,
+    ctx: RequestContext,
+) -> AppResult<AuthStep> {
+    if !matches!(flow.stage, FlowStage::Authenticate | FlowStage::Register) {
+        return Err(AppError::BadRequest(
+            "flow does not accept registration at this step".into(),
+        ));
+    }
+    // Registration always counts as the CAPTCHA-protected path when configured.
+    if tenant.tenant.settings.captcha.on_registration {
+        let mut probe = flow.clone();
+        probe.stage = FlowStage::Register;
+        enforce_captcha(
+            state,
+            &tenant.tenant,
+            &probe,
+            captcha_token,
+            ctx.ip.as_deref(),
+        )
+        .await?;
+    }
+    let (user, pending) =
+        crate::services::registration::register(state, &tenant.tenant, input, Some(flow.id))
+            .await?;
+    if pending {
+        flow.user_id = Some(user.id);
+        flow.stage = FlowStage::VerifyEmail;
+        login_flows::save(state, &flow).await?;
+        return Ok(AuthStep::Rejected {
+            flow: Box::new(flow),
+            locked: false,
+        });
+    }
+    complete_authentication(state, tenant, flow, &user, vec!["pwd".into()], ctx, false).await
+}
+
+/// After the verification link was opened for a flow waiting at `VerifyEmail`,
+/// sign the user in (proof of email control) and continue.
+pub async fn resume_after_verification(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow_id: Uuid,
+    user: &User,
+    ctx: RequestContext,
+) -> AppResult<Option<AuthStep>> {
+    let Some(flow) = login_flows::get(state, tenant.id(), flow_id).await? else {
+        return Ok(None);
+    };
+    if flow.stage != FlowStage::VerifyEmail || flow.user_id != Some(user.id) {
+        return Ok(None);
+    }
+    Ok(Some(
+        complete_authentication(state, tenant, flow, user, vec!["otp".into()], ctx, false).await?,
+    ))
+}

@@ -29,6 +29,7 @@ pub fn router() -> Router<AppState> {
             "/t/{slug}/flows/{id}/password-change",
             post(password_change),
         )
+        .route("/t/{slug}/flows/{id}/register", post(register))
         .route("/t/{slug}/flows/{id}/magic-link", post(send_magic_link))
         .route(
             "/t/{slug}/flows/{id}/magic-link/verify",
@@ -507,3 +508,62 @@ passwordless_routes!(
     verify_sms_otp,
     crate::services::passwordless::Method::SmsOtp
 );
+
+#[derive(Deserialize)]
+struct RegisterBody {
+    csrf: String,
+    #[serde(flatten)]
+    input: crate::services::registration::RegistrationInput,
+    #[serde(default)]
+    captcha_token: Option<String>,
+}
+
+async fn register(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<RegisterBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    let ctx = flows::RequestContext {
+        ip: client_ip(&state, &headers, Some(peer)),
+        user_agent: headers
+            .get(header::USER_AGENT)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.chars().take(512).collect()),
+        existing_session: None,
+    };
+    match flows::register_step(
+        &state,
+        &tenant,
+        flow,
+        body.input,
+        body.captcha_token.as_deref(),
+        ctx,
+    )
+    .await
+    {
+        Ok(AuthStep::Authenticated { session, flow }) => {
+            let mut res = respond_state(&state, &tenant, &flow).await;
+            if let Ok(v) = HeaderValue::from_str(&sessions::set_cookie_header(
+                &state,
+                &tenant.tenant,
+                &session,
+            )) {
+                res.headers_mut().append(header::SET_COOKIE, v);
+            }
+            res
+        }
+        // Waiting for the verification link.
+        Ok(AuthStep::Rejected { flow, .. }) => respond_state(&state, &tenant, &flow).await,
+        Err(e) => e.into_response(),
+    }
+}
