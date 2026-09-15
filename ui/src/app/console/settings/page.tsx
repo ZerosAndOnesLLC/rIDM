@@ -10,6 +10,7 @@ import { DangerZone } from "@/components/console/settings/danger";
 import { GeneralSection } from "@/components/console/settings/general";
 import { LocaleSection } from "@/components/console/settings/locale";
 import { PasswordsSection } from "@/components/console/settings/passwords";
+import { ProfileSchemaSection } from "@/components/console/settings/profile";
 import { SessionsSection } from "@/components/console/settings/sessions";
 import { SignInSection } from "@/components/console/settings/signin";
 import { PageHeader } from "@/components/console/ui";
@@ -128,6 +129,7 @@ export default function SettingsPage() {
         <div className="flex min-w-0 flex-col gap-6">
           <GeneralSection />
           <SignInSection />
+          <ProfileSchemaSection tenant={editor.draft.slug} editable={editable} />
           <PasswordsSection />
           <SessionsSection />
           <BrandingSection />

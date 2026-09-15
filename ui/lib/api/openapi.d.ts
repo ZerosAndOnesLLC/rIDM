@@ -850,6 +850,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/tenants/{slug}/profile-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The tenant's user profile schema: declared attributes, their types,
+         *     validation, who may edit them and where they surface.
+         */
+        get: operations["tenants_profile_schema_get"];
+        /**
+         * Replace the profile schema. Validated structurally (names, types,
+         *     enum values, patterns); existing attribute values are not rewritten.
+         */
+        put: operations["tenants_profile_schema_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/tenants/{slug}/resource-servers": {
         parameters: {
             query?: never;
@@ -8207,6 +8231,117 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    tenants_profile_schema_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileSchema"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    tenants_profile_schema_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileSchema"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileSchema"];
+                };
             };
             /** @description Bad request */
             400: {

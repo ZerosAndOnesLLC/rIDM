@@ -224,6 +224,7 @@ pagination with `?cursor=&limit=`):
 | `PATCH /admin/tenants/{slug}` | `ridm:tenants:write` | `display_name`, `status`, and `settings` as a JSON merge patch (RFC 7396): send only what changed, `null` clears; unknown settings fields are rejected |
 | `DELETE /admin/tenants/{slug}` | `ridm:tenants:delete` (global only) | cascades; `master` cannot be deleted or disabled |
 | `GET/PUT/DELETE /admin/tenants/{slug}/captcha` | read / write | provider, site key and secret (stored encrypted; reads return `secret_set` instead of the secret) |
+| `GET/PUT /admin/tenants/{slug}/profile-schema` | read / write | the user profile schema (declared attributes with type, validation, editability and exposure); `PUT` replaces it after structural validation |
 | `GET /admin/tenants/{slug}/clients` | `ridm:clients:read` | `?search=` prefix-matches `client_id` and name |
 | `POST /admin/tenants/{slug}/clients` | `ridm:clients:write` | any field of the client model; missing ones take type-driven defaults (`spa`, `web`, `native`, `machine`, `device`); scopes and audiences must exist; the secret is in the `201` body and nowhere else |
 | `GET /admin/tenants/{slug}/clients/{client}` | `ridm:clients:read` | `{client}` is the id or the public `client_id`; `secrets` lists ids and validity, never hashes |
@@ -418,6 +419,26 @@ code with PKCE through the tenant's login page with the console as the redirect 
 (`/console/playground/` can be added to the client's redirect URIs in one click), or
 client credentials for machine clients with a pasted secret kept in the tab only; it then
 shows the token response, the decoded access and ID tokens, calls userinfo and refreshes.
+
+**Users** (`/console/users/`): a windowed table (only the rows in view are rendered) with
+prefix search, status filter and deleted users on request, loading further pages as you
+scroll; "New user" (temporary password revealed once, or a chosen password, or none),
+"Invite" (email, roles, groups, expiry; open invitations listed under `?view=invitations`
+with resend and revoke), "Import" (paste or pick JSON or CSV, dry run first with a per-row
+report, then import) and "Export" (JSON or CSV download). The detail page (`?user=<id>`)
+has tabs: Profile (identity fields and the attributes the tenant's profile schema
+declares, each rendered by type, saving as you go with the complete attribute set),
+Password & credentials (summary, replace with a temporary or chosen password with
+notify/sign-out-everywhere/skip-policy options, require a change at next sign-in,
+enrolled factors with removal), Sessions & devices (revoke one or all), Roles and Groups
+(direct with assign/remove, effective shown), Consents (revoke) and Audit (the user's
+events, expandable). Disable, unlock and delete sit in the header. Personal access
+tokens and linked identities appear with Phases 8.5 and 8.3.
+
+The profile schema itself is edited under Settings → Profile attributes (name, type,
+label, description, who may edit, position, required, multiple values, where the value
+surfaces, validation per type), saved whole through the new
+`GET/PUT /admin/tenants/{slug}/profile-schema` routes (`ridm:tenants:read`/`write`).
 
 ### Container image
 
