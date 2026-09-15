@@ -20,6 +20,8 @@ pub struct AppState {
     pub events: EventBus,
     pub hasher: Arc<dyn PasswordHasher>,
     pub key_encryptor: Arc<dyn KeyEncryptor>,
+    /// Builds per-tenant email/SMS senders; tests swap in mocks.
+    pub senders: Arc<dyn crate::messaging::SenderFactory>,
 }
 
 impl AppState {
@@ -36,6 +38,7 @@ impl AppState {
             events: EventBus::default(),
             hasher,
             key_encryptor,
+            senders: Arc::new(crate::messaging::DefaultSenderFactory),
         }
     }
 }

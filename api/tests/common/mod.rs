@@ -346,6 +346,7 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
             t_cost: 1,
             p_cost: 1,
         },
+        smtp: None,
         bootstrap: None,
     }
 }

@@ -140,6 +140,7 @@ services:
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
       SMTP_FROM: "rIDM <no-reply@ridm.local>"
+      SMTP_SECURITY: none
       # First-run bootstrap (Phase 1.6): creates the `master` tenant, a global
       # admin, and a sample SPA client. Ignored once the master tenant exists.
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@ridm.local}

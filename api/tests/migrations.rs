@@ -27,6 +27,10 @@ const TENANT_TABLES: &[&str] = &[
     "scopes",
     "claim_mappers",
     "consents",
+    "login_attempts",
+    "tenant_provider_settings",
+    "message_templates",
+    "outbound_messages",
 ];
 
 /// Create a throwaway database (needs a superuser/CREATEDB admin URL) and

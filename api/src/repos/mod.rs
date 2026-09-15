@@ -3,6 +3,7 @@ pub mod clients;
 pub mod consents;
 pub mod groups;
 pub mod login_attempts;
+pub mod messages;
 pub mod password_history;
 pub mod profile_schema;
 pub mod provider_settings;

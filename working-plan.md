@@ -280,7 +280,7 @@ Operations
 - [x] 4.1 Flow state machine (Redis): identify → authenticate (password | passkey | magic-link | email-otp | sms-otp | upstream IdP) → mfa → step-up check (acr) → profile-completion → terms → consent → done; CSRF bound to flow; retry counters.
 - [x] 4.2 Flow API: `GET /flows/{id}` (public state, branding, locale, available methods), `POST /flows/{id}/{step}`, `/cancel`; completion returns `{ redirect_to }`.
 - [x] 4.3 Brute-force protection (per-user + per-IP), CAPTCHA challenge via `Captcha` trait after threshold or on registration.
-- [ ] 4.4 Messaging: `EmailSender` (SMTP via lettre, generic HTTP), `SmsSender` (HTTP webhook), per-tenant settings (encrypted), per-locale templates (handlebars), outbound queue with retry and dead-letter.
+- [x] 4.4 Messaging: `EmailSender` (SMTP via lettre, generic HTTP), `SmsSender` (HTTP webhook), per-tenant settings (encrypted), per-locale templates (handlebars), outbound queue with retry and dead-letter.
 - [ ] 4.5 Magic link and email OTP login; SMS OTP login; passwordless-only tenant policy.
 - [ ] 4.6 Self-registration (per-tenant toggle, profile schema driven, email verification, terms acceptance) and invitation acceptance flow.
 - [ ] 4.7 Recovery/verification: password reset, email verify, resend, temporary password + forced change.
