@@ -131,6 +131,31 @@ impl IntoResponse for AppError {
     }
 }
 
+impl AppError {
+    /// Translate constraint violations into client errors instead of 500s.
+    pub fn from_db(err: sqlx::Error) -> Self {
+        if let sqlx::Error::Database(db) = &err {
+            if db.is_unique_violation() {
+                return Self::Conflict("already exists".into());
+            }
+            if db.is_foreign_key_violation() {
+                return Self::BadRequest("referenced object does not exist".into());
+            }
+            if db.is_check_violation() {
+                return Self::BadRequest(format!(
+                    "constraint violated: {}",
+                    db.constraint().unwrap_or("unknown")
+                ));
+            }
+            // 42501: insufficient_privilege, raised by row level security.
+            if db.code().as_deref() == Some("42501") {
+                return Self::Forbidden("row level security denied the operation".into());
+            }
+        }
+        Self::Database(err)
+    }
+}
+
 impl From<redis::RedisError> for AppError {
     fn from(err: redis::RedisError) -> Self {
         Self::Cache(err.to_string())
