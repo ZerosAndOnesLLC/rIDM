@@ -24,8 +24,8 @@ use crate::models::{
 use crate::services::messaging::TemplateBody;
 use crate::services::tenants::TenantUpdate;
 use crate::services::{
-    claim_mappers, clients, groups, ip_rules, messaging as messaging_admin, profile_schema,
-    resource_servers, roles, scopes, tenants, webhooks,
+    admin_console, claim_mappers, clients, groups, ip_rules, messaging as messaging_admin,
+    profile_schema, resource_servers, roles, scopes, tenants, webhooks,
 };
 use crate::state::AppState;
 
@@ -317,7 +317,11 @@ pub async fn export(state: &AppState, tenant: &Tenant) -> AppResult<TenantConfig
     scopes_out.sort_by(|a, b| a.name.cmp(&b.name));
 
     let mut clients_out = vec![];
-    for id in all_clients.keys() {
+    for (id, public_id) in &all_clients {
+        // The console's client is built in and follows `UI_URL`, not the document.
+        if admin_console::is_console_client(public_id) {
+            continue;
+        }
         let c = clients::get(state, tid, *id).await?;
         clients_out.push(ClientDoc {
             client_id: c.client_id.clone(),
@@ -616,6 +620,12 @@ fn normalize(tenant_id: Uuid, mut doc: TenantConfig) -> AppResult<TenantConfig> 
         )));
     }
     for c in &mut doc.clients {
+        if admin_console::is_console_client(&c.client_id) {
+            return Err(AppError::BadRequest(format!(
+                "clients: `{}` is built in and is not part of the document",
+                c.client_id
+            )));
+        }
         let mut input = Value::Object(c.metadata.clone());
         input["client_id"] = Value::String(c.client_id.clone());
         let new_client: NewClient = serde_json::from_value(input)
@@ -699,7 +709,7 @@ pub async fn plan(
         &current.clients,
         &desired.clients,
         |c| c.client_id.clone(),
-        |_| true,
+        |c| !admin_console::is_console_client(&c.client_id),
     )?;
     diff_collection(
         &mut plan,

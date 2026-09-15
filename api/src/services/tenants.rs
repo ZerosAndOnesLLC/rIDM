@@ -62,6 +62,8 @@ pub async fn create(state: &AppState, actor: Actor, input: NewTenant) -> AppResu
             tenant_id: tenant.id,
         },
     ));
+    // The admin console signs in through a built-in client in every tenant.
+    super::admin_console::ensure(state, tenant.id).await?;
     Ok(tenant)
 }
 

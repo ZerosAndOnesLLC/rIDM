@@ -11,6 +11,7 @@ import { Alert, Button, Checkbox, Divider, PasswordField, Spinner, TextField, Ti
 import { ApiError } from "@/lib/api";
 import { pageUrl, useFlow, type Post } from "@/lib/flow";
 import { usePageParams, WithParams } from "@/lib/params";
+import { useTenant } from "@/lib/tenant";
 import type { AttributeDef, Method, PublicFlow } from "@/lib/types";
 
 const ACCEPTS = ["authenticate", "password_change", "profile", "terms", "done"] as const;
@@ -25,6 +26,52 @@ export default function Page() {
 
 function LoginPage() {
   const p = usePageParams();
+  if (p.get("preview") === "1") return <PreviewPage tenant={p.tenant} />;
+  return <LivePage p={p} />;
+}
+
+/**
+ * Inside the console's branding editor: the real page on a stand-in flow,
+ * so every colour, logo, link and stylesheet change shows at once. Nothing
+ * is submitted.
+ */
+function PreviewPage({ tenant }: { tenant: string | null }) {
+  return (
+    <AuthShell slug={tenant} preview>
+      <PreviewForm tenant={tenant} />
+    </AuthShell>
+  );
+}
+
+function PreviewForm({ tenant }: { tenant: string | null }) {
+  const { tenant: info } = useTenant();
+  const { t } = useI18n();
+  if (!info) return <Spinner label={t("common.loading")} />;
+  const flow: PublicFlow = {
+    id: "preview",
+    stage: "authenticate",
+    csrf: "",
+    expires_at: "2099-01-01T00:00:00Z",
+    client: { client_id: "preview", name: t("login.preview_client"), logo_uri: null, client_uri: null, tos_uri: null, policy_uri: null },
+    methods: info.methods,
+    login_hint: null,
+    ui_locales: [],
+    locale: info.locale.default,
+    dir: "ltr",
+    locales: info.locale.supported,
+    pending_scopes: [],
+    missing_attributes: [],
+    terms_url: info.registration.terms_url,
+    privacy_url: info.registration.privacy_url,
+    user: null,
+    attempts: 0,
+    captcha: null,
+  };
+  const post: Post = <T,>() => new Promise<T>(() => {});
+  return <Authenticate flow={flow} post={post} reload={() => Promise.resolve()} magic={null} tenant={tenant} preview />;
+}
+
+function LivePage({ p }: { p: ReturnType<typeof usePageParams> }) {
   const f = useFlow(p.tenant, p.flow, ACCEPTS);
   const { t } = useI18n();
   const errorText = useErrorText();
@@ -62,12 +109,15 @@ function Authenticate({
   reload,
   magic,
   tenant,
+  preview = false,
 }: {
   flow: PublicFlow;
   post: Post;
   reload: () => Promise<void>;
   magic: string | null;
   tenant: string | null;
+  /** Framed in the console: never grab focus (it would scroll the editor). */
+  preview?: boolean;
 }) {
   const { t } = useI18n();
   const errorText = useErrorText();
@@ -153,7 +203,7 @@ function Authenticate({
           </>
         )}
         <div className="flex flex-wrap justify-between gap-3 text-[0.875rem]">
-          <button type="button" className="text-accent hover:underline underline-offset-4" onClick={() => void send(sent)} disabled={busy}>
+          <button type="button" className="text-link hover:underline underline-offset-4" onClick={() => void send(sent)} disabled={busy}>
             {t("login.resend")}
           </button>
           <button
@@ -179,7 +229,7 @@ function Authenticate({
       onChange={(e) => setIdentifier(e.target.value)}
       autoComplete={method === "sms_otp" ? "tel" : method === "password" ? "username" : "email"}
       inputMode={method === "sms_otp" ? "tel" : method === "password" ? "text" : "email"}
-      autoFocus={!flow.login_hint}
+      autoFocus={!preview && !flow.login_hint}
       required
     />
   );
@@ -198,7 +248,7 @@ function Authenticate({
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
-            autoFocus={Boolean(flow.login_hint)}
+            autoFocus={!preview && Boolean(flow.login_hint)}
             required
           />
           {flow.captcha && <Captcha challenge={flow.captcha} onToken={onToken} />}
@@ -207,12 +257,12 @@ function Authenticate({
             {t("common.continue")}
           </Button>
           <div className="flex flex-wrap justify-between gap-3 text-[0.875rem]">
-            <a href={pageUrl("recover", { tenant, identifier })} className="text-accent hover:underline underline-offset-4">
+            <a href={pageUrl("recover", { tenant, identifier })} className="text-link hover:underline underline-offset-4">
               {t("login.forgot_password")}
             </a>
             <span className="text-muted">
               {t("login.no_account")}{" "}
-              <a href={pageUrl("register", { tenant, flow: flow.id })} className="text-accent hover:underline underline-offset-4">
+              <a href={pageUrl("register", { tenant, flow: flow.id })} className="text-link hover:underline underline-offset-4">
                 {t("login.create_account")}
               </a>
             </span>

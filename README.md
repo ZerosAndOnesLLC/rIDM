@@ -80,6 +80,12 @@ tenant reach that tenant only. Permissions are re-read from the caller's effecti
 roles on every request, so revoking a role takes effect immediately. See
 [Admin API access](#admin-api-access).
 
+The admin console at `/console/` signs administrators in through their own tenant's
+login page (authorization code with PKCE against a built-in `ridm-admin-console`
+client), then works the admin API with a tenant switcher for global administrators,
+global search (`Ctrl`/`⌘ K`), keyboard shortcuts, light and dark themes and a phone
+layout. See [Admin console](#admin-console).
+
 ## Quick start (docker-compose)
 
 ```bash
@@ -179,6 +185,14 @@ query or form parameter). The token may come from any tenant, but it must:
 - still have a live browser session when it was issued in one, so signing out ends
   admin access before the token expires.
 
+Every tenant carries a built-in public client, `ridm-admin-console`, that the bundled
+console signs in with: authorization code with PKCE, no consent step, `urn:ridm:admin`
+as its only audience, and redirect URIs derived from `UI_URL` (`/console/callback/`,
+`/console/`). It is created at startup and with every new tenant, its URIs are
+brought back in line whenever `UI_URL` changes, and it cannot be deleted or carried
+in a tenant document (exports leave it out, imports refuse it, prune never plans its
+deletion). Everything else on it (token lifetimes, CORS origins) is tunable.
+
 Missing or invalid tokens get `401` with a `WWW-Authenticate: Bearer` challenge; a valid
 token without the needed permission gets `403` `application/problem+json`. Tokens from
 `master` are global; tokens from any other tenant only reach that tenant.
@@ -210,6 +224,8 @@ pagination with `?cursor=&limit=`):
 | `PATCH /admin/tenants/{slug}` | `ridm:tenants:write` | `display_name`, `status`, and `settings` as a JSON merge patch (RFC 7396): send only what changed, `null` clears; unknown settings fields are rejected |
 | `DELETE /admin/tenants/{slug}` | `ridm:tenants:delete` (global only) | cascades; `master` cannot be deleted or disabled |
 | `GET/PUT/DELETE /admin/tenants/{slug}/captcha` | read / write | provider, site key and secret (stored encrypted; reads return `secret_set` instead of the secret) |
+| `GET /admin/tenants/{slug}/stats` | `ridm:tenants:read` | `?days=` (1–365, default 30): sign-ins and failures per day, live sessions, user counts and second-factor adoption, most authorized clients |
+| `GET/PUT /admin/tenants/{slug}/profile-schema` | read / write | the user profile schema (declared attributes with type, validation, editability and exposure); `PUT` replaces it after structural validation |
 | `GET /admin/tenants/{slug}/clients` | `ridm:clients:read` | `?search=` prefix-matches `client_id` and name |
 | `POST /admin/tenants/{slug}/clients` | `ridm:clients:write` | any field of the client model; missing ones take type-driven defaults (`spa`, `web`, `native`, `machine`, `device`); scopes and audiences must exist; the secret is in the `201` body and nowhere else |
 | `GET /admin/tenants/{slug}/clients/{client}` | `ridm:clients:read` | `{client}` is the id or the public `client_id`; `secrets` lists ids and validity, never hashes |
@@ -282,8 +298,10 @@ and drives the generated client against the live API.
 `GET /openapi.json` serves the admin API document; `ridm-api openapi` prints the same
 document without a database. It is derived from the routers with utoipa, so every route
 is documented or the build fails, and a test keeps the committed `api/openapi.json` equal
-to what the binary produces. The UI's typed client (`ui/lib/api/client.ts`, built on
-`openapi-fetch`) is generated from that file:
+to what the binary produces. Operation ids are the handler names prefixed with their tag
+(`users_list`, `clients_create`), unique across the document as generated clients
+require. The UI's typed client (`ui/lib/api/client.ts`, built on `openapi-fetch`) is
+generated from that file:
 
 ```bash
 cargo run -p ridm-api -- openapi > api/openapi.json
@@ -329,9 +347,10 @@ npm run build          # static export to ui/out
 `NEXT_PUBLIC_API_URL` is empty by default (same origin, for the embedded single-binary
 mode). Set it at build time when hosting `ui/out` on a separate static host or CDN.
 
-`npm run e2e` runs the Playwright suite (password, magic-link, registration, recovery,
-consent and logout journeys, with axe-core accessibility checks on every page) against
-a running API and Mailpit; see [`ui/e2e/README.md`](ui/e2e/README.md).
+`npm run e2e` runs the Playwright suite (the end-user journeys — password, magic link,
+registration, recovery, consent, logout — and the admin console journeys for every
+page, with axe-core accessibility checks on every page in light, dark and phone width)
+against a running API and Mailpit; see [`ui/e2e/README.md`](ui/e2e/README.md).
 
 The end-user pages live under `ui/src/app`: `/login/`, `/register/`, `/invite/`,
 `/consent/`, `/mfa/`, `/recover/`, `/verify/`, `/logout/`, `/device/` and `/error/`.
@@ -348,6 +367,125 @@ same-origin (session cookies work without CORS) and point the API back at it:
 UI_URL=http://localhost:3110 cargo run -p ridm-api             # API on :8090
 cd ui && API_PROXY=http://localhost:8090 npx next dev -p 3110   # UI on :3110
 ```
+
+### Admin console
+
+The console lives under `/console/` (the `/admin/*` paths are the API). Signed out, every
+console page shows a card asking which tenant to sign in through (global administrators
+use `master`); the browser then goes through that tenant's normal login page, including
+any forced password change or MFA, and comes back to `/console/callback/` with an
+authorization code that the page exchanges with PKCE. No consent step is shown for the
+console's own client. Tokens live in the tab's `sessionStorage`; the access token is
+refreshed ahead of expiry through refresh-token rotation, and because admin tokens are
+bound to the browser session, "Sign out" (RP-initiated logout with the ID token as hint)
+ends both at once. A 401 the API still returns, for a revoked session or a removed role,
+drops the console back to the sign-in card with a notice.
+
+The frame: sidebar navigation filtered by the administrator's permissions (`/admin/me`),
+a tenant switcher for global administrators (the chosen tenant travels as `?tenant=` so
+links deep-link), global search over pages, users and clients of the current tenant,
+theme switch (system, light, dark; kept in `localStorage` and applied before first
+paint), and keyboard shortcuts: `Ctrl`/`⌘ K` or `/` search, `t` tenant switcher, `g o`
+overview, `?` the shortcut list. Below the `md` breakpoint the navigation is a drawer.
+Console code sits in `ui/src/app/console/`, `ui/src/components/console/` and
+`ui/src/lib/console/` (`auth.ts` holds the PKCE flow, `session.tsx` the token store the
+typed client reads from).
+
+Pages so far: **Tenants** (`/console/tenants/`: every tenant for global administrators,
+filter, "New tenant" dialog that lands on the new tenant's settings) and **Settings**
+(`/console/settings/`: every tenant setting on one page, grouped as general, sign-in,
+passwords and lockout, sessions and tokens, branding, locale and notices, keys, discovery
+and audit, plus a delete-tenant zone for global owners). Settings save as you go: each
+change is applied to the page at once and joined into one JSON merge patch that is sent
+`PATCH /admin/tenants/{slug}` once typing pauses (600 ms, at most 2.5 s into continuous
+editing, and with `keepalive` when the tab is hidden or closed); the header shows
+"Unsaved changes", "Saving…", "Saved" or the API's reason for refusing, in which case the
+stored settings are reloaded. The CAPTCHA provider (site key and secret, stored encrypted
+behind its own endpoint) saves as soon as both keys are present and shows "Configured"
+without ever reading the secret back. The branding editor frames the real login page
+(`/login/?tenant=<slug>&preview=1`): the page renders its sign-in form on a stand-in flow,
+tells the editor it is ready, and applies every draft change (name, logo, colours, links,
+custom CSS) it receives by `postMessage` from the console's origin.
+
+**Clients** (`/console/clients/`): a searchable table (prefix search on client ID and
+name, cursor paging), a four-step creation wizard (kind of client → grants and
+authentication → URIs → scopes and audiences, with the API's type-driven defaults
+preselected) whose result shows the client ID and any secret exactly once, and a detail
+page (`?client=<id>`) saving as you go over `PATCH /admin/tenants/{slug}/clients/{client}`:
+basics, grants and authentication (a switch to a secret-based method reveals the minted
+secret once), URIs, scopes and audiences, token lifetimes, format, ID token encryption and
+JWKS, secrets (rotate with a grace period, revoke a retiring one), service account,
+registration access token (RFC 7592, revealed once) and deletion. The **playground**
+(`/console/playground/?tenant=&client=`) runs the client's flow for real: authorization
+code with PKCE through the tenant's login page with the console as the redirect target
+(`/console/playground/` can be added to the client's redirect URIs in one click), or
+client credentials for machine clients with a pasted secret kept in the tab only; it then
+shows the token response, the decoded access and ID tokens, calls userinfo and refreshes.
+
+**Users** (`/console/users/`): a windowed table (only the rows in view are rendered) with
+prefix search, status filter and deleted users on request, loading further pages as you
+scroll; "New user" (temporary password revealed once, or a chosen password, or none),
+"Invite" (email, roles, groups, expiry; open invitations listed under `?view=invitations`
+with resend and revoke), "Import" (paste or pick JSON or CSV, dry run first with a per-row
+report, then import) and "Export" (JSON or CSV download). The detail page (`?user=<id>`)
+has tabs: Profile (identity fields and the attributes the tenant's profile schema
+declares, each rendered by type, saving as you go with the complete attribute set),
+Password & credentials (summary, replace with a temporary or chosen password with
+notify/sign-out-everywhere/skip-policy options, require a change at next sign-in,
+enrolled factors with removal), Sessions & devices (revoke one or all), Roles and Groups
+(direct with assign/remove, effective shown), Consents (revoke) and Audit (the user's
+events, expandable). Disable, unlock and delete sit in the header. Personal access
+tokens and linked identities appear with Phases 8.5 and 8.3.
+
+**Groups, roles, resource servers, scopes and claim mappers** each get a list-and-detail
+page (`/console/groups/`, `/console/roles/`, `/console/resource-servers/`,
+`/console/scopes/`, `/console/claim-mappers/`; the selected item travels as a query
+parameter). Groups are a tree: create at any level, move under another group (never
+under a descendant), edit attributes as JSON, attach roles, add members through a user
+search and remove them. Roles: realm or per-client, composites, permissions granted from
+any resource server (admin-catalogue permissions only by someone who holds them), and who
+holds the role; built-in `ridm:*` roles are read-only. Resource servers: name, token
+lifetime cap, signing algorithm, offline access, and their permissions; `urn:ridm:admin`
+is read-only. Scopes: description, released claims, resource server binding and
+"granted by default"; standard scopes can be tuned but not deleted. Claim mappers:
+tenant-wide or per client, of kind user attribute, groups, roles, fixed value, Handlebars
+template (must compile) or audience, with the tokens they are included in. Detail fields
+save as you go; membership-style changes apply at once. Identity providers arrive with
+brokering in Phase 8.3.
+
+**Overview** (`/console/`): the dashboard — sign-ins, failed sign-ins and live sessions
+for the chosen window (7, 30 or 90 days), two-step adoption, a sign-ins-per-day line
+chart with a table view, the most authorized clients, and user counts — fed by the new
+`GET /admin/tenants/{slug}/stats?days=` route (`ridm:tenants:read`), which derives
+everything from login attempts, sessions, credentials and audit events.
+
+**Export & import** (`/console/config/`): download the tenant's `ridm.tenant/1` document
+or load it into an editor, paste or pick a document, preview the plan (creates, field-level
+updates with old and new values, deletes when prune is on, errors) and apply it; secrets
+of clients and webhooks the import created are shown once.
+
+**Signing keys** (`/console/keys/`): every key on a timeline (created → signs from →
+published until) with status, algorithm and public JWK; rotate now, create a pending key
+(algorithm, RSA size, activate at once) and activate, retire or revoke each key. Global
+administrators also see the master-key status (current generation, rows still under
+older ones) and can re-encrypt pending rows. **Audit log** (`/console/audit/`): the
+tenant's chain or, for global administrators, the global one; filters by event, time
+window, actor, subject and user; newer/older paging; expandable rows with the payload
+and hashes; JSON and CSV export; chain verification. **IP rules** (`/console/ip-rules/`):
+allow and deny networks per tenant or client, edited in place (stored now, enforced from
+Phase 9.2). **Webhooks** (`/console/webhooks/`): create (signing secret shown once),
+events as exact names, prefixes or `*`, static headers, attempt limit, enable/disable,
+rotate the secret, send a test ping, and the delivery log with status filter, details
+and redelivery. **Messaging** (`/console/messaging/`): email provider (SMTP or HTTP
+webhook; secrets kept, never shown), SMS gateway, a test send for each, templates per
+channel, event and locale with a live preview of the draft (text, optional HTML
+rendering, sample variables), save as a tenant override or reset to the built-in, and the
+outbound log with redelivery of dead messages.
+
+The profile schema itself is edited under Settings → Profile attributes (name, type,
+label, description, who may edit, position, required, multiple values, where the value
+surfaces, validation per type), saved whole through the new
+`GET/PUT /admin/tenants/{slug}/profile-schema` routes (`ridm:tenants:read`/`write`).
 
 ### Container image
 

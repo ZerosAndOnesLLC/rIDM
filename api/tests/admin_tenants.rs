@@ -2,6 +2,7 @@
 
 mod common;
 
+use axum::http::StatusCode;
 use common::admin::{admin_token, call, get_json};
 use common::{TestApp, create_tenant};
 use reqwest::Method;
@@ -409,4 +410,44 @@ async fn captcha_configuration_round_trips_with_the_secret_redacted() {
     assert_eq!(status, 204);
     let (status, _, _) = get_json(&app, &path, Some(&t)).await;
     assert_eq!(status, 204);
+}
+
+#[tokio::test]
+async fn profile_schema_is_read_and_replaced_through_the_admin_api() {
+    let app = TestApp::spawn().await;
+    let slug = app.tenant.slug.clone();
+    let t = admin_token(&app, MASTER_TENANT_ID, ADMIN_ROLE).await;
+    let path = format!("/admin/tenants/{slug}/profile-schema");
+
+    let (status, body, _) = call(&app, Method::GET, &path, Some(&t), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["attributes"], serde_json::json!([]));
+    assert_eq!(body["allow_undeclared"], false);
+
+    let schema = serde_json::json!({
+        "attributes": [
+            {"name": "department", "type": "enum", "required": true, "validation": {"values": ["eng", "sales"]}, "editable_by": "admin", "visible_in": ["id_token"], "order": 1},
+            {"name": "nickname", "type": "string", "label": "Nickname"}
+        ],
+        "allow_undeclared": false
+    });
+    let (status, body, _) = call(&app, Method::PUT, &path, Some(&t), Some(&schema)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["attributes"][0]["name"], "department");
+    let (status, body, _) = call(&app, Method::GET, &path, Some(&t), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["attributes"].as_array().unwrap().len(), 2);
+    assert_eq!(body["attributes"][1]["label"], "Nickname");
+
+    // Structural validation applies: an enum needs values.
+    let bad = serde_json::json!({"attributes": [{"name": "level", "type": "enum"}]});
+    let (status, body, _) = call(&app, Method::PUT, &path, Some(&t), Some(&bad)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+    // Read-only roles see it but cannot change it.
+    let viewer = admin_token(&app, MASTER_TENANT_ID, VIEWER_ROLE).await;
+    let (status, _, _) = call(&app, Method::GET, &path, Some(&viewer), None).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, _) = call(&app, Method::PUT, &path, Some(&viewer), Some(&schema)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
 }

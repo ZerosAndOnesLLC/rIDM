@@ -165,11 +165,15 @@ export function alertOf(page: Page) {
   return page.locator("[role=alert]:not(#__next-route-announcer__)");
 }
 
-/** Fail on serious or critical accessibility violations on the current page. */
-export async function expectAccessible(page: Page) {
+/**
+ * Fail on serious or critical accessibility violations on the current page.
+ * `iframes: false` skips frames axe cannot enter (a fully sandboxed srcdoc
+ * preview, say); same-origin frames are analysed by default.
+ */
+export async function expectAccessible(page: Page, { iframes = true }: { iframes?: boolean } = {}) {
   // The card fades in; sampling colours mid-animation gives false contrast failures.
   await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))));
-  const results = await new AxeBuilder({ page }).analyze();
+  const results = await new AxeBuilder({ page }).options({ iframes }).analyze();
   const bad = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   expect(bad, JSON.stringify(bad, null, 2)).toEqual([]);
 }
@@ -194,4 +198,37 @@ export async function loginWithPassword(page: Page, state: State, extra: Record<
   await page.getByLabel("Email or username").fill(state.email);
   await page.getByLabel("Password", { exact: true }).fill(state.password);
   await page.getByRole("button", { name: "Continue" }).click();
+}
+
+/**
+ * Give a `master` user the global owner role straight in the database, then
+ * drop the tenant's roles version so the API re-resolves their permissions.
+ */
+export function promoteToOwner(email: string) {
+  const tid = tenantId();
+  const uid = tenantSql(`SELECT id FROM users WHERE tenant_id = '${tid}' AND email = '${email}'`);
+  const rid = tenantSql(`SELECT id FROM roles WHERE tenant_id = '${tid}' AND client_id IS NULL AND name = 'ridm:owner'`);
+  if (!uid || !rid) throw new Error(`cannot promote ${email}: user ${uid || "?"} role ${rid || "?"}`);
+  tenantSql(
+    `INSERT INTO role_assignments (tenant_id, role_id, user_id) VALUES ('${tid}', '${rid}', '${uid}') ON CONFLICT DO NOTHING`,
+  );
+  try {
+    execFileSync("redis-cli", ["-u", REDIS_URL, "del", `ridm:t:${tid}:roles:ver`]);
+  } catch (e) {
+    console.warn("redis-cli unavailable; roles cache not cleared:", String(e).split("\n")[0]);
+  }
+}
+
+/** Sign into the console through the tenant's login page; lands on the overview. */
+export async function consoleLogin(page: Page, state: State) {
+  await page.goto("/console/");
+  await expect(page.getByRole("heading", { name: "Sign in to the console" })).toBeVisible();
+  await page.getByLabel("Tenant").fill(TENANT);
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.waitForURL(/\/login\//);
+  await page.getByLabel("Email or username").fill(state.email);
+  await page.getByLabel("Password", { exact: true }).fill(state.password);
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.waitForURL(/\/console\/(\?.*)?$/, { timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible({ timeout: 15_000 });
 }

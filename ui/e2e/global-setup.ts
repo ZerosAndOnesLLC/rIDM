@@ -1,4 +1,4 @@
-import { API, TENANT, clearTenantCache, mailpit, registerVerifiedUser, saveState, sql, t } from "./helpers";
+import { API, TENANT, clearTenantCache, mailpit, promoteToOwner, registerVerifiedUser, saveState, sql, t } from "./helpers";
 
 const UI_PORT = Number(process.env.E2E_UI_PORT ?? 3110);
 const UI = process.env.E2E_UI_URL ?? `http://localhost:${UI_PORT}`;
@@ -38,7 +38,9 @@ export default async function globalSetup() {
   const client_id = ((await reg.json()) as { client_id: string }).client_id;
 
   // A verified user, created through the registration flow like a real one.
+  // The console specs sign in as them, so they also hold the global owner role.
   const { email, password } = await registerVerifiedUser(client_id, UI);
+  promoteToOwner(email);
 
   saveState({ ui: UI, client_id, email, password });
 }

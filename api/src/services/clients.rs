@@ -509,6 +509,11 @@ pub async fn set_status(
 
 pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -> AppResult<()> {
     let client = get(state, tenant_id, id).await?;
+    if super::admin_console::is_console_client(&client.client_id) {
+        return Err(AppError::Forbidden(
+            "the admin console client is built in and cannot be deleted".into(),
+        ));
+    }
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let ok = repos::clients::delete(&mut *tx, tenant_id, id).await?;
     tx.commit().await?;

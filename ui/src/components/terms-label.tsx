@@ -7,7 +7,7 @@ export function TermsLabel({ terms, privacy }: { terms: string | null; privacy: 
   const { t } = useI18n();
   const link = (href: string | null, label: string) =>
     href ? (
-      <a href={href} target="_blank" rel="noreferrer" className="text-accent underline underline-offset-4">
+      <a href={href} target="_blank" rel="noreferrer" className="text-link underline underline-offset-4">
         {label}
       </a>
     ) : (

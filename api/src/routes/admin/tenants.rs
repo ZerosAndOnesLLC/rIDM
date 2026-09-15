@@ -18,7 +18,7 @@ use crate::models::{
     CaptchaConfig, CaptchaProvider, ProviderKind, Tenant, TenantSettings, TenantStatus,
 };
 use crate::services::tenants::{self, NewTenant, TenantUpdate};
-use crate::services::{captcha, provider_settings};
+use crate::services::{captcha, profile_schema, provider_settings};
 use crate::state::AppState;
 use crate::util::cursor::Page;
 use crate::util::patch::{diff_paths, merge_patch};
@@ -28,6 +28,7 @@ pub fn tenants_router() -> OpenApiRouter<AppState> {
         .routes(routes!(list, create))
         .routes(routes!(get_one, update, delete))
         .routes(routes!(captcha_get, captcha_put, captcha_delete))
+        .routes(routes!(profile_schema_get, profile_schema_put))
 }
 
 const P_READ: &str = "ridm:tenants:read";
@@ -206,4 +207,32 @@ async fn captcha_delete(
     admin.require(tenant.id, P_WRITE)?;
     captcha::disable(&state, tenant.id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// The tenant's user profile schema: declared attributes, their types,
+/// validation, who may edit them and where they surface.
+#[utoipa::path(get, path = "/admin/tenants/{slug}/profile-schema", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = crate::models::ProfileSchema), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+async fn profile_schema_get(
+    State(state): State<AppState>,
+    admin: AdminCtx,
+    AdminTenantPath(tenant): AdminTenantPath,
+) -> AppResult<Json<crate::models::ProfileSchema>> {
+    admin.require(tenant.id, P_READ)?;
+    let schema = profile_schema::get(&state, tenant.id).await?;
+    Ok(Json((*schema).clone()))
+}
+
+/// Replace the profile schema. Validated structurally (names, types,
+/// enum values, patterns); existing attribute values are not rewritten.
+#[utoipa::path(put, path = "/admin/tenants/{slug}/profile-schema", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), request_body = crate::models::ProfileSchema, responses((status = 200, body = crate::models::ProfileSchema), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+async fn profile_schema_put(
+    State(state): State<AppState>,
+    admin: AdminCtx,
+    AdminTenantPath(tenant): AdminTenantPath,
+    Json(body): Json<crate::models::ProfileSchema>,
+) -> AppResult<Json<crate::models::ProfileSchema>> {
+    admin.require(tenant.id, P_WRITE)?;
+    Ok(Json(
+        profile_schema::set(&state, tenant.id, admin.actor(), body).await?,
+    ))
 }

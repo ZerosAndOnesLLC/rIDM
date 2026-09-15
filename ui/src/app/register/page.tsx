@@ -64,7 +64,7 @@ function RegisterForm({ flow, post, reload, tenant }: { flow: PublicFlow; post: 
         <Title>{t("register.title")}</Title>
         <Alert tone="error">{t("register.disabled")}</Alert>
         <p className="mt-4 text-center text-[0.875rem]">
-          <a href={pageUrl("login", { tenant, flow: flow.id })} className="text-accent hover:underline underline-offset-4">
+          <a href={pageUrl("login", { tenant, flow: flow.id })} className="text-link hover:underline underline-offset-4">
             {t("register.sign_in")}
           </a>
         </p>
@@ -117,7 +117,7 @@ function RegisterForm({ flow, post, reload, tenant }: { flow: PublicFlow; post: 
       </Button>
       <p className="text-center text-[0.875rem] text-muted">
         {t("register.have_account")}{" "}
-        <a href={pageUrl("login", { tenant, flow: flow.id })} className="text-accent hover:underline underline-offset-4">
+        <a href={pageUrl("login", { tenant, flow: flow.id })} className="text-link hover:underline underline-offset-4">
           {t("register.sign_in")}
         </a>
       </p>

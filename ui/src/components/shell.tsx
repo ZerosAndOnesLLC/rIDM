@@ -16,16 +16,19 @@ export function AuthShell({
   slug,
   locale,
   locales,
+  preview = false,
   children,
 }: {
   slug: string | null;
   /** Locale negotiated by the server for this request, once known. */
   locale?: string | null;
   locales?: string[];
+  /** Framed by the console's branding editor: follow its live overrides. */
+  preview?: boolean;
   children: ReactNode;
 }) {
   return (
-    <TenantProvider slug={slug}>
+    <TenantProvider slug={slug} preview={preview}>
       <Frame locale={locale} locales={locales}>
         {children}
       </Frame>

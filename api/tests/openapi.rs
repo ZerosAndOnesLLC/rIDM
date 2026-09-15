@@ -48,12 +48,19 @@ async fn openapi_document_is_served_and_complete() {
     }
     assert!(paths.len() >= 85, "{} paths", paths.len());
 
-    // Every operation is tagged, secured and documents the auth failures.
+    // Every operation is tagged, secured, uniquely identified (generated
+    // clients key on the id) and documents the auth failures.
     let mut operations = 0;
+    let mut ids = std::collections::HashSet::new();
     for (path, item) in paths {
         for m in METHODS {
             let Some(op) = item.get(m) else { continue };
             operations += 1;
+            let id = op["operationId"].as_str().unwrap_or_default();
+            assert!(
+                !id.is_empty() && ids.insert(id.to_string()),
+                "{m} {path}: operationId `{id}` missing or duplicated"
+            );
             assert!(
                 op["tags"].as_array().is_some_and(|t| !t.is_empty()),
                 "{m} {path} has no tag"
@@ -99,5 +106,10 @@ async fn openapi_document_is_served_and_complete() {
         committed, generated,
         "api/openapi.json is stale: run `cargo run -p ridm-api -- openapi > api/openapi.json` \
          and `npm run gen:api` in ui/"
+    );
+    // ...and the served route hands out that very document.
+    assert_eq!(
+        doc, committed,
+        "GET /openapi.json differs from the CLI document"
     );
 }

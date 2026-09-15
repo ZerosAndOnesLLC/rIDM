@@ -1,4 +1,5 @@
 pub mod admin_access;
+pub mod admin_console;
 pub mod audit;
 pub mod auth_codes;
 pub mod bootstrap;
@@ -35,6 +36,7 @@ pub mod resource_servers;
 pub mod roles;
 pub mod scopes;
 pub mod sessions;
+pub mod stats;
 pub mod tenant_config;
 pub mod tenants;
 pub mod tokens;
