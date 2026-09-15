@@ -16,6 +16,7 @@ pub mod login_flows;
 pub mod logout;
 pub mod master_key;
 pub mod password;
+pub mod passwordless;
 pub mod profile_schema;
 pub mod provider_settings;
 pub mod refresh_tokens;

@@ -373,6 +373,15 @@ impl TestApp {
 
     /// Spawn with extra routes merged into the application router.
     pub async fn spawn_with(extra: axum::Router<AppState>) -> Self {
+        Self::spawn_configured(extra, |_| {}).await
+    }
+
+    /// Spawn with extra routes and a hook that can replace parts of the state
+    /// (e.g. mock senders) before the router is built.
+    pub async fn spawn_configured(
+        extra: axum::Router<AppState>,
+        configure: impl FnOnce(&mut AppState),
+    ) -> Self {
         let infra = infra().await;
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -385,7 +394,8 @@ impl TestApp {
             .await
             .expect("connect postgres");
         let redis = ridm_api::cache::connect(&config).expect("connect redis");
-        let state = AppState::new(config, db, redis);
+        let mut state = AppState::new(config, db, redis);
+        configure(&mut state);
         let app = ridm_api::build_router_with(state.clone(), extra);
         tokio::spawn(async move {
             axum::serve(

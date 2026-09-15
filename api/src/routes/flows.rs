@@ -29,6 +29,18 @@ pub fn router() -> Router<AppState> {
             "/t/{slug}/flows/{id}/password-change",
             post(password_change),
         )
+        .route("/t/{slug}/flows/{id}/magic-link", post(send_magic_link))
+        .route(
+            "/t/{slug}/flows/{id}/magic-link/verify",
+            post(verify_magic_link),
+        )
+        .route("/t/{slug}/flows/{id}/email-otp", post(send_email_otp))
+        .route(
+            "/t/{slug}/flows/{id}/email-otp/verify",
+            post(verify_email_otp),
+        )
+        .route("/t/{slug}/flows/{id}/sms-otp", post(send_sms_otp))
+        .route("/t/{slug}/flows/{id}/sms-otp/verify", post(verify_sms_otp))
         .route("/t/{slug}/flows/{id}/profile", post(profile))
         .route("/t/{slug}/flows/{id}/terms", post(terms))
         .route("/t/{slug}/flows/{id}/consent", post(consent))
@@ -351,3 +363,147 @@ async fn finish(
         Err(e) => e.into_response(),
     }
 }
+
+#[derive(Deserialize)]
+struct SendBody {
+    csrf: String,
+    identifier: String,
+    #[serde(default)]
+    captcha_token: Option<String>,
+}
+
+async fn send_passwordless(
+    state: AppState,
+    tenant: TenantCtx,
+    id: Uuid,
+    peer: std::net::SocketAddr,
+    headers: HeaderMap,
+    body: SendBody,
+    method: crate::services::passwordless::Method,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    let ip = client_ip(&state, &headers, Some(peer));
+    match flows::passwordless_send_step(
+        &state,
+        &tenant,
+        &flow,
+        method,
+        &body.identifier,
+        body.captcha_token.as_deref(),
+        ip.as_deref(),
+    )
+    .await
+    {
+        // Same answer whether or not the identifier exists.
+        Ok(()) => no_store(
+            (
+                StatusCode::ACCEPTED,
+                axum::Json(json!({"sent": true, "method": method.as_str()})),
+            )
+                .into_response(),
+        ),
+        Err(e) => e.into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct VerifyBody {
+    csrf: String,
+    /// The one-time code, or the magic-link token.
+    #[serde(alias = "token")]
+    code: String,
+}
+
+async fn verify_passwordless(
+    state: AppState,
+    tenant: TenantCtx,
+    id: Uuid,
+    peer: std::net::SocketAddr,
+    headers: HeaderMap,
+    body: VerifyBody,
+    method: crate::services::passwordless::Method,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    let ctx = flows::RequestContext {
+        ip: client_ip(&state, &headers, Some(peer)),
+        user_agent: headers
+            .get(header::USER_AGENT)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.chars().take(512).collect()),
+        existing_session: sessions::from_request(&state, &tenant.tenant, &headers)
+            .await
+            .ok()
+            .flatten(),
+    };
+    match flows::passwordless_verify_step(&state, &tenant, flow, method, &body.code, ctx).await {
+        Ok(AuthStep::Authenticated { session, flow }) => {
+            let mut res = respond_state(&state, &tenant, &flow).await;
+            if let Ok(v) = HeaderValue::from_str(&sessions::set_cookie_header(&state, &tenant.tenant, &session)) {
+                res.headers_mut().append(header::SET_COOKIE, v);
+            }
+            res
+        }
+        Ok(AuthStep::Rejected { flow, .. }) => no_store(
+            (
+                StatusCode::UNAUTHORIZED,
+                axum::Json(json!({"error": "invalid_code", "error_description": "the code or link is invalid or expired", "attempts": flow.attempts})),
+            )
+                .into_response(),
+        ),
+        Err(e) => e.into_response(),
+    }
+}
+
+macro_rules! passwordless_routes {
+    ($send:ident, $verify:ident, $method:expr) => {
+        async fn $send(
+            State(state): State<AppState>,
+            tenant: TenantCtx,
+            Path((_, id)): Path<(String, Uuid)>,
+            ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+            headers: HeaderMap,
+            axum::Json(body): axum::Json<SendBody>,
+        ) -> Response {
+            send_passwordless(state, tenant, id, peer, headers, body, $method).await
+        }
+
+        async fn $verify(
+            State(state): State<AppState>,
+            tenant: TenantCtx,
+            Path((_, id)): Path<(String, Uuid)>,
+            ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+            headers: HeaderMap,
+            axum::Json(body): axum::Json<VerifyBody>,
+        ) -> Response {
+            verify_passwordless(state, tenant, id, peer, headers, body, $method).await
+        }
+    };
+}
+
+passwordless_routes!(
+    send_magic_link,
+    verify_magic_link,
+    crate::services::passwordless::Method::MagicLink
+);
+passwordless_routes!(
+    send_email_otp,
+    verify_email_otp,
+    crate::services::passwordless::Method::EmailOtp
+);
+passwordless_routes!(
+    send_sms_otp,
+    verify_sms_otp,
+    crate::services::passwordless::Method::SmsOtp
+);

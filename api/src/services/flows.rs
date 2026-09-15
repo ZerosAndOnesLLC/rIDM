@@ -705,3 +705,150 @@ pub async fn cancel(state: &AppState, flow: &LoginFlow) -> AppResult<String> {
     login_flows::delete(state, flow.tenant_id, flow.id).await?;
     Ok(denial_redirect(flow))
 }
+
+/// Shared tail of every successful first-factor authentication: session,
+/// flow bookkeeping, stage evaluation.
+/// Request-derived facts an authentication step needs.
+pub struct RequestContext {
+    pub ip: Option<String>,
+    pub user_agent: Option<String>,
+    /// An SSO session the browser already has (re-authentication).
+    pub existing_session: Option<SsoSession>,
+}
+
+pub async fn complete_authentication(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    user: &User,
+    amr: Vec<String>,
+    ctx: RequestContext,
+    must_change_password: bool,
+) -> AppResult<AuthStep> {
+    let RequestContext {
+        ip,
+        user_agent,
+        existing_session,
+    } = ctx;
+    let tid = tenant.id();
+    let mut tx = db::tenant_tx(&state.db, tid).await?;
+    repos::users::record_login_success(&mut *tx, tid, user.id).await?;
+    repos::login_attempts::record(&mut *tx, tid, &user.username, ip.as_deref(), true, None).await?;
+    tx.commit().await?;
+    let policy = &tenant.tenant.settings.session;
+    let session = match existing_session {
+        Some(mut s) if s.user_id == user.id => {
+            sessions::refresh_auth(state, &mut s, amr.clone(), None).await?;
+            s
+        }
+        _ => {
+            sessions::create(
+                state,
+                tid,
+                NewSession {
+                    user_id: user.id,
+                    amr: amr.clone(),
+                    acr: None,
+                    ip: ip.clone(),
+                    user_agent,
+                    policy,
+                },
+            )
+            .await?
+        }
+    };
+    flow.user_id = Some(user.id);
+    flow.session_id = Some(session.id);
+    flow.amr = amr.clone();
+    advance(state, &tenant.tenant, &mut flow, must_change_password).await?;
+    login_flows::save(state, &flow).await?;
+    state.events.publish(
+        Event::new(
+            Some(tid),
+            Actor::User { id: user.id },
+            EventKind::LoginSucceeded {
+                user_id: user.id,
+                method: amr.first().cloned().unwrap_or_default(),
+            },
+        )
+        .with_request(ip, None),
+    );
+    Ok(AuthStep::Authenticated {
+        session: Box::new(session),
+        flow: Box::new(flow),
+    })
+}
+
+/// `POST /flows/{id}/{magic-link|email-otp|sms-otp}`: send a passwordless factor.
+pub async fn passwordless_send_step(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &LoginFlow,
+    method: crate::services::passwordless::Method,
+    identifier: &str,
+    captcha_token: Option<&str>,
+    ip: Option<&str>,
+) -> AppResult<()> {
+    if flow.stage != FlowStage::Authenticate {
+        return Err(AppError::BadRequest(
+            "flow is not at the authenticate step".into(),
+        ));
+    }
+    enforce_captcha(state, &tenant.tenant, flow, captcha_token, ip).await?;
+    crate::services::passwordless::send(state, &tenant.tenant, flow, method, identifier).await
+}
+
+/// `POST /flows/{id}/{email-otp|sms-otp}/verify` and `/magic-link/verify`.
+pub async fn passwordless_verify_step(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    method: crate::services::passwordless::Method,
+    secret: &str,
+    ctx: RequestContext,
+) -> AppResult<AuthStep> {
+    use crate::services::passwordless::{self, Method};
+    if flow.stage != FlowStage::Authenticate {
+        return Err(AppError::BadRequest(
+            "flow is not at the authenticate step".into(),
+        ));
+    }
+    let verified = match method {
+        Method::MagicLink => {
+            passwordless::verify_magic_link(state, &tenant.tenant, &flow, secret).await?
+        }
+        Method::EmailOtp | Method::SmsOtp => {
+            passwordless::verify_otp(state, &tenant.tenant, &flow, method, secret).await?
+        }
+    };
+    let Some(v) = verified else {
+        flow.attempts += 1;
+        login_flows::save(state, &flow).await?;
+        state.events.publish(
+            Event::new(
+                Some(tenant.id()),
+                Actor::System,
+                EventKind::LoginFailed {
+                    identifier: String::new(),
+                    reason: format!("{}_invalid", method.as_str()),
+                },
+            )
+            .with_request(ctx.ip.clone(), None),
+        );
+        return Ok(AuthStep::Rejected {
+            flow: Box::new(flow),
+            locked: false,
+        });
+    };
+    let user = users::get(state, tenant.id(), v.user_id).await?;
+    if user.status != UserStatus::Active && user.status != UserStatus::Pending {
+        return Err(AppError::Forbidden("account is not active".into()));
+    }
+    passwordless::mark_contact_verified(state, tenant.id(), user.id, method).await?;
+    let amr = match method {
+        Method::SmsOtp => vec!["otp".into(), "sms".into()],
+        _ => vec!["otp".into()],
+    };
+    let must_change = user.must_change_password && tenant.tenant.settings.auth.password;
+    complete_authentication(state, tenant, flow, &user, amr, ctx, must_change).await
+}

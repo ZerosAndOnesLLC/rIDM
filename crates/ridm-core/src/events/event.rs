@@ -173,6 +173,10 @@ pub enum EventKind {
     },
 
     // Authentication
+    PasswordlessSent {
+        user_id: Uuid,
+        method: String,
+    },
     LoginSucceeded {
         user_id: Uuid,
         method: String,
@@ -270,6 +274,7 @@ impl EventKind {
             Self::RoleUnassigned { .. } => "role.unassigned",
             Self::RoleCompositeAdded { .. } => "role.composite_added",
             Self::RoleCompositeRemoved { .. } => "role.composite_removed",
+            Self::PasswordlessSent { .. } => "login.passwordless_sent",
             Self::LoginSucceeded { .. } => "login.succeeded",
             Self::LoginFailed { .. } => "login.failed",
             Self::UserLocked { .. } => "user.locked",

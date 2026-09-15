@@ -113,3 +113,18 @@ pub fn dcr_initial_token(tenant_id: Uuid, token_hash: &str) -> String {
 pub fn provider_settings(tenant_id: Uuid, kind: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:provider:{kind}")
 }
+
+/// One-time code bound to a login flow and channel.
+pub fn flow_otp(tenant_id: Uuid, flow_id: Uuid, channel: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:flow:{flow_id}:otp:{channel}")
+}
+
+/// Magic-link token (hashed) → flow.
+pub fn magic_link(tenant_id: Uuid, token_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:magic:{token_hash}")
+}
+
+/// Send rate limit per identifier.
+pub fn passwordless_sends(tenant_id: Uuid, identifier: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:pwless:sends:{identifier}")
+}
