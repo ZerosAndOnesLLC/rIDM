@@ -20,6 +20,7 @@ pub mod locale;
 pub mod login_flows;
 pub mod logout;
 pub mod master_key;
+pub mod messaging;
 pub mod notifications;
 pub mod password;
 pub mod passwordless;
