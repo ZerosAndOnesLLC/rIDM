@@ -38,3 +38,4 @@ ui/playwright-report
 lcov.info
 api/fuzz/artifacts
 api/fuzz/corpus
+api/fuzz/target

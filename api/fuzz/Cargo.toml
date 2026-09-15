@@ -1,0 +1,45 @@
+[package]
+name = "ridm-api-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+ridm-api = { path = ".." }
+ridm-core = { path = "../../crates/ridm-core" }
+jsonwebtoken = "11"
+serde_json = "1"
+
+[[bin]]
+name = "authorize_params"
+path = "fuzz_targets/authorize_params.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "redirect_uri"
+path = "fuzz_targets/redirect_uri.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pkce"
+path = "fuzz_targets/pkce.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jwt_decode"
+path = "fuzz_targets/jwt_decode.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
