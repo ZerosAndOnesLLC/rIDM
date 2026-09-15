@@ -13,6 +13,7 @@ pub mod invitations;
 pub mod jwe;
 pub mod key_encryptor;
 pub mod keys;
+pub mod locale;
 pub mod login_flows;
 pub mod logout;
 pub mod master_key;

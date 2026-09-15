@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/*
+ * RTL: the document direction follows the negotiated locale (see src/i18n).
+ * Use logical utilities (ps-/pe-/ms-/me-/start-/end-/text-start) rather than
+ * left/right ones so layouts mirror automatically; only icons that encode
+ * direction (arrows, chevrons) need the flip below.
+ */
+[dir="rtl"] .rtl-flip {
+  transform: scaleX(-1);
+}
+
 :root {
   --background: #fafafa;
   --foreground: #171717;

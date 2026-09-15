@@ -22,7 +22,7 @@ use crate::repos;
 use crate::services::login_flows::{self, FlowStage, LoginFlow};
 use crate::services::password::{self, SetPasswordOptions, VerifyOutcome};
 use crate::services::sessions::{self, NewSession, SsoSession};
-use crate::services::{clients, consents, profile_schema, trusted_devices, users};
+use crate::services::{clients, consents, locale, profile_schema, trusted_devices, users};
 use crate::state::AppState;
 
 /// What the UI needs to render the current step.
@@ -36,6 +36,12 @@ pub struct PublicFlow {
     pub methods: Vec<&'static str>,
     pub login_hint: Option<String>,
     pub ui_locales: Vec<String>,
+    /// Negotiated locale (`ui_locales` → user locale → tenant default).
+    pub locale: String,
+    /// `ltr` or `rtl` for the negotiated locale.
+    pub dir: &'static str,
+    /// Locales the tenant offers, for a language switcher.
+    pub locales: Vec<String>,
     /// Consent stage: scopes awaiting approval with descriptions.
     pub pending_scopes: Vec<ScopeInfo>,
     /// Profile stage: attribute definitions still missing.
@@ -183,7 +189,7 @@ pub async fn public_state(
                 .and_then(|s| s.description.clone()),
         })
         .collect();
-    let (missing_attributes, user) = match flow.user_id {
+    let (missing_attributes, user, user_locale) = match flow.user_id {
         Some(uid) => {
             let u = users::get(state, tenant.id, uid).await?;
             let missing = if flow.stage == FlowStage::Profile {
@@ -197,10 +203,16 @@ pub async fn public_state(
                     username: u.username,
                     email: u.email,
                 }),
+                u.locale,
             )
         }
-        None => (vec![], None),
+        None => (vec![], None, None),
     };
+    let locale = locale::negotiate(
+        &flow.request.ui_locales,
+        user_locale.as_deref(),
+        &tenant.settings.locale,
+    );
     Ok(PublicFlow {
         id: flow.id,
         stage: flow.stage,
@@ -217,6 +229,9 @@ pub async fn public_state(
         methods,
         login_hint: flow.request.login_hint.clone(),
         ui_locales: flow.request.ui_locales.clone(),
+        dir: locale::direction(&locale),
+        locales: locale::supported_of(&tenant.settings.locale),
+        locale,
         pending_scopes,
         missing_attributes,
         terms_url: tenant.settings.registration.terms_url.clone(),
@@ -920,9 +935,14 @@ pub async fn register_step(
         )
         .await?;
     }
-    let (user, pending) =
-        crate::services::registration::register(state, &tenant.tenant, input, Some(flow.id))
-            .await?;
+    let (user, pending) = crate::services::registration::register(
+        state,
+        &tenant.tenant,
+        input,
+        Some(flow.id),
+        &flow.request.ui_locales,
+    )
+    .await?;
     if pending {
         flow.user_id = Some(user.id);
         flow.stage = FlowStage::VerifyEmail;

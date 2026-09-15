@@ -156,7 +156,11 @@ pub async fn send(
     };
     check_send_limit(state, tenant.id, &format!("user:{}", user.id)).await?;
     let mut conn = state.redis.get().await?;
-    let locale = user.locale.clone();
+    let locale = Some(crate::services::locale::negotiate(
+        &flow.request.ui_locales,
+        user.locale.as_deref(),
+        &tenant.settings.locale,
+    ));
     match method {
         Method::MagicLink => {
             let mut bytes = [0u8; 32];

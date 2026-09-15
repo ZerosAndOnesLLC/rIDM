@@ -57,6 +57,14 @@ everywhere and audit. `/authorize` honours `prompt` (`none`, `login`, `consent`,
 `create`, `select_account`), `max_age` and `acr_values`. The end-user pages themselves
 land later in Phase 4; MFA in Phase 7.
 
+Locale is negotiated per request: the OIDC `ui_locales` parameter, then the user's
+stored locale, then the tenant default, constrained to the tenant's supported list
+(exact tag or same language). The flow state carries the result as `locale`, `dir`
+(`ltr`/`rtl`) and the selectable `locales`; every email or SMS a flow triggers is
+rendered in that locale, and self-registered users are stored with it. The UI ships
+English (`ui/src/i18n/en.json`) with key-by-key fallback for added bundles, `Intl`
+plural rules, and logical CSS so right-to-left languages mirror the layout.
+
 ## Quick start (docker-compose)
 
 ```bash

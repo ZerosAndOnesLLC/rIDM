@@ -86,8 +86,14 @@ pub async fn register(
     tenant: &Tenant,
     input: RegistrationInput,
     flow_id: Option<Uuid>,
+    requested_locales: &[String],
 ) -> AppResult<(User, bool)> {
     check_policy(tenant, &input)?;
+    // A locale the form supplied wins when the tenant supports it; otherwise
+    // the flow's `ui_locales`, then the tenant default.
+    let mut preferred: Vec<String> = input.locale.iter().cloned().collect();
+    preferred.extend_from_slice(requested_locales);
+    let locale = crate::services::locale::negotiate(&preferred, None, &tenant.settings.locale);
     let email = users::normalize_email(&input.email)?;
     let username = match input
         .username
@@ -113,7 +119,7 @@ pub async fn register(
                 UserStatus::Active
             }),
             attributes: input.attributes.clone(),
-            locale: input.locale.clone(),
+            locale: Some(locale),
             ..Default::default()
         },
     )

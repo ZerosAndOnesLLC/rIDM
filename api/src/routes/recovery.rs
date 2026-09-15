@@ -32,6 +32,9 @@ fn no_store(mut res: Response) -> Response {
 #[derive(Deserialize)]
 struct IdentifierBody {
     identifier: String,
+    /// Locale the page is showing, so the email matches it.
+    #[serde(default)]
+    locale: Option<String>,
 }
 
 async fn request_reset(
@@ -39,7 +42,10 @@ async fn request_reset(
     tenant: TenantCtx,
     axum::Json(body): axum::Json<IdentifierBody>,
 ) -> Response {
-    match recovery::request_password_reset(&state, &tenant.tenant, &body.identifier).await {
+    let requested: Vec<String> = body.locale.into_iter().collect();
+    match recovery::request_password_reset(&state, &tenant.tenant, &body.identifier, &requested)
+        .await
+    {
         Ok(()) => {
             no_store((StatusCode::ACCEPTED, axum::Json(json!({"sent": true}))).into_response())
         }

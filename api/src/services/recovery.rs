@@ -30,6 +30,7 @@ pub async fn request_password_reset(
     state: &AppState,
     tenant: &Tenant,
     identifier: &str,
+    requested_locales: &[String],
 ) -> AppResult<()> {
     let identifier = identifier.trim().to_lowercase();
     if identifier.is_empty() {
@@ -61,7 +62,11 @@ pub async fn request_password_reset(
         channel: MessageChannel::Email,
         event: "password_reset",
         recipient: user.email.as_deref().unwrap_or_default(),
-        locale: user.locale.as_deref(),
+        locale: Some(&crate::services::locale::negotiate(
+            requested_locales,
+            user.locale.as_deref(),
+            &tenant.settings.locale,
+        )),
         vars: serde_json::json!({"user": {"username": user.username}, "link": link, "expires_minutes": RESET_TTL_SECS / 60}),
     })
     .await?;

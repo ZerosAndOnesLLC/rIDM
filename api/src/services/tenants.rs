@@ -9,6 +9,7 @@ use crate::error::{AppError, AppResult};
 use crate::middleware::{is_valid_slug, tenant_cache_keys};
 use crate::models::{MASTER_TENANT_ID, Tenant, TenantSettings, TenantStatus};
 use crate::repos;
+use crate::services::locale;
 use crate::state::AppState;
 use crate::util::cursor::{Cursor, Page, page_size};
 
@@ -41,7 +42,8 @@ pub async fn create(state: &AppState, actor: Actor, input: NewTenant) -> AppResu
             "display_name must be 1-255 characters".into(),
         ));
     }
-    let settings = input.settings.unwrap_or_default();
+    let mut settings = input.settings.unwrap_or_default();
+    locale::validate_settings(&mut settings.locale)?;
     let tenant = repos::tenants::insert(&state.db, Uuid::now_v7(), &slug, display_name, &settings)
         .await
         .map_err(|e| match AppError::from_db(e) {
@@ -70,8 +72,11 @@ pub async fn update(
     state: &AppState,
     actor: Actor,
     id: Uuid,
-    patch: TenantUpdate,
+    mut patch: TenantUpdate,
 ) -> AppResult<Tenant> {
+    if let Some(settings) = patch.settings.as_mut() {
+        locale::validate_settings(&mut settings.locale)?;
+    }
     if let Some(name) = &patch.display_name
         && (name.trim().is_empty() || name.len() > 255)
     {
