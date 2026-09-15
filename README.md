@@ -51,14 +51,14 @@ in [`.env.example`](.env.example). The essentials:
 
 | Variable | Purpose |
 |----------|---------|
-| `DATABASE_URL` | Postgres 16+ connection string; use a **non-superuser** role (superusers bypass row level security) |
+| `DATABASE_URL` | Postgres 16+ connection string; use a **non-superuser, DML-only** role (superusers bypass row level security, owners can disable it) |
 | `REDIS_URL` | Redis 8+ / Valkey connection string |
 | `PUBLIC_URL` | Externally visible base URL; tenant issuers are `{PUBLIC_URL}/t/{slug}` |
 | `MASTER_KEY` / `MASTER_KEY_FILE` | 32-byte key (hex or base64) encrypting secrets at rest |
 | `BIND_ADDR` | Listen address, default `0.0.0.0:8080` |
 | `TRUSTED_PROXIES` | CIDRs whose `X-Forwarded-For` / `Forwarded` headers are honoured |
 | `TLS_CERT` / `TLS_KEY` | Native TLS termination; leave unset behind a reverse proxy |
-| `MIGRATE_ON_START` | Apply pending migrations at startup |
+| `MIGRATE_ON_START` | Apply pending migrations at startup; otherwise run `ridm-api migrate` as the schema-owner role |
 | `LOG_FORMAT`, `RUST_LOG` | `json` or `pretty`; tracing filter |
 | `DOCS_ENABLED` | Serve Swagger UI at `/docs` (off in production) |
 
@@ -73,9 +73,17 @@ Requirements: Rust 1.98+ (pinned in `rust-toolchain.toml`), Node.js 24 LTS, Dock
 ```bash
 cp .env.example .env                           # set MASTER_KEY and the URLs
 docker compose -f deploy/docker-compose.yml up -d postgres redis
-sqlx migrate run --source api/migrations       # or MIGRATE_ON_START=true
-cargo run -p ridm-api
+DATABASE_URL=postgres://ridm_migrator:ridm_migrator@localhost:5432/ridm \
+  sqlx migrate run --source api/migrations     # or: cargo run -p ridm-api -- migrate
+cargo run -p ridm-api                          # runs as the DML-only ridm_app role
 ```
+
+Two database roles are used on purpose: `ridm_migrator` owns the schema and runs
+migrations; `ridm_app` (what the API uses) has DML privileges only. Postgres superusers
+bypass row level security and table owners can disable it, so neither may be the API's
+role. The compose stack creates both and runs migrations in a one-shot `migrate`
+service; on Kubernetes use a Job. `MIGRATE_ON_START=true` is a simpler single-role mode
+for small installs.
 
 ### First-run bootstrap
 

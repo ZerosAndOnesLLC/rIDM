@@ -20,6 +20,9 @@ async fn main() {
     if args.first().map(String::as_str) == Some("bootstrap") {
         std::process::exit(bootstrap_command(&args[1..]).await);
     }
+    if args.first().map(String::as_str) == Some("migrate") {
+        std::process::exit(migrate_command().await);
+    }
 
     let config = match Config::from_env() {
         Ok(c) => c,
@@ -273,4 +276,36 @@ fn prompt_password() -> Option<zeroize::Zeroizing<String>> {
         return None;
     }
     Some(zeroize::Zeroizing::new(first))
+}
+
+/// `ridm-api migrate`: apply pending migrations and exit. Run it as the role
+/// that owns the schema (the migrator), e.g. from a compose one-shot service or
+/// a Kubernetes job, so the API itself can run as a DML-only role.
+async fn migrate_command() -> i32 {
+    let config = match Config::from_env() {
+        Ok(c) => c,
+        Err(err) => {
+            eprintln!("configuration error: {err}");
+            return 2;
+        }
+    };
+    telemetry::init(config.log_format);
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let db = match db::connect(&config).await {
+        Ok(d) => d,
+        Err(err) => {
+            tracing::error!(error = %err, "database connection failed");
+            return 1;
+        }
+    };
+    match db::migrate(&db).await {
+        Ok(()) => {
+            tracing::info!("migrations applied");
+            0
+        }
+        Err(err) => {
+            tracing::error!(error = %err, "migration failed");
+            1
+        }
+    }
 }

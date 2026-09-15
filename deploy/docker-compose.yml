@@ -21,15 +21,17 @@ x-api-healthcheck: &api-healthcheck
   start_period: 15s
 
 x-api-env: &api-env
-  # The API connects as a NON-superuser role (created by deploy/postgres/init-app-role.sh)
-  # because Postgres superusers bypass row level security.
+  # The API connects as a DML-only, NON-superuser role (see
+  # deploy/postgres/init-app-role.sh): superusers bypass row level security and
+  # table owners can disable it. Migrations run as the migrator role in the
+  # one-shot `migrate` service below.
   DATABASE_URL: postgres://${RIDM_APP_USER:-ridm_app}:${RIDM_APP_PASSWORD:-ridm_app}@postgres:5432/ridm
   REDIS_URL: redis://redis:6379
   PUBLIC_URL: ${PUBLIC_URL:-http://localhost:${RIDM_HTTP_PORT:-8080}}
   BIND_ADDR: 0.0.0.0:8080
   LOG_FORMAT: ${LOG_FORMAT:-json}
   RUST_LOG: ${RUST_LOG:-info}
-  MIGRATE_ON_START: "true"
+  MIGRATE_ON_START: "false"
   # 32 bytes, hex or base64. Generate: openssl rand -hex 32
   MASTER_KEY: ${MASTER_KEY:?set MASTER_KEY (openssl rand -hex 32)}
   TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
@@ -43,7 +45,9 @@ services:
       POSTGRES_DB: ridm
       POSTGRES_USER: ridm                     # superuser: migrations tooling, backups
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ridm}
-      RIDM_APP_USER: ${RIDM_APP_USER:-ridm_app}   # non-superuser: what the API uses
+      RIDM_MIGRATOR_USER: ${RIDM_MIGRATOR_USER:-ridm_migrator}   # owns the schema
+      RIDM_MIGRATOR_PASSWORD: ${RIDM_MIGRATOR_PASSWORD:-ridm_migrator}
+      RIDM_APP_USER: ${RIDM_APP_USER:-ridm_app}   # DML only: what the API uses
       RIDM_APP_PASSWORD: ${RIDM_APP_PASSWORD:-ridm_app}
     command: >
       postgres -c shared_buffers=256MB -c max_connections=200
@@ -75,6 +79,21 @@ services:
       retries: 20
     restart: unless-stopped
 
+  # One-shot: applies pending migrations as the schema owner, then exits.
+  migrate:
+    image: ${RIDM_IMAGE:-ghcr.io/zerosandonesllc/ridm:latest}
+    build:
+      context: ..
+      dockerfile: api/Dockerfile
+    command: ["migrate"]
+    environment:
+      <<: *api-env
+      DATABASE_URL: postgres://${RIDM_MIGRATOR_USER:-ridm_migrator}:${RIDM_MIGRATOR_PASSWORD:-ridm_migrator}@postgres:5432/ridm
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   api:
     profiles: ["prod"]
     image: ${RIDM_IMAGE:-ghcr.io/zerosandonesllc/ridm:latest}
@@ -86,8 +105,8 @@ services:
     ports:
       - "${RIDM_HTTP_PORT:-8080}:8080"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     healthcheck: *api-healthcheck
@@ -129,8 +148,8 @@ services:
     ports:
       - "${RIDM_HTTP_PORT:-8080}:8080"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       mailpit:

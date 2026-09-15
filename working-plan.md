@@ -248,7 +248,7 @@ Operations
 - [x] 1.5 Profile schema service: validate attributes on create/update; enforce editable_by; expose schema to UI forms.
 - [x] 1.6 Bootstrap: first-run creates master tenant + global admin from env or interactive CLI.
 - [x] 1.7 Unit tests (password, policy, role resolution); integration test harness (testcontainers).
-- [ ] 1.8 Tests: tenant isolation suite v1 (every repo query cross-tenant → empty/404; direct RLS bypass attempt fails); profile schema validation; legacy-hash upgrade-on-login; migration test applying all migrations to seeded snapshot and checking constraints/row counts.
+- [x] 1.8 Tests: tenant isolation suite v1 (every repo query cross-tenant → empty/404; direct RLS bypass attempt fails); profile schema validation; legacy-hash upgrade-on-login; migration test applying all migrations to seeded snapshot and checking constraints/row counts.
 
 ### Phase 2 — Keys, JWT issuance, encryption
 - [ ] 2.1 Migration: signing_keys. Keygen (RSA-2048/3072, P-256, Ed25519); private keys encrypted via `KeyEncryptor`.

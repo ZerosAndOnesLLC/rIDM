@@ -44,7 +44,14 @@ static RT: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
 });
 
 pub struct Infra {
+    /// Non-superuser application role (DML only): what the API uses.
     pub database_url: String,
+    /// Role that owns the schema and runs migrations; `None` when the
+    /// provided URL was not a superuser (then `database_url` did both).
+    pub migrator_url: Option<String>,
+    /// The URL we were given (superuser in CI / testcontainers); used by the
+    /// migration suite to create throwaway databases.
+    pub admin_url: String,
     pub redis_url: String,
     // Kept alive for the life of the test binary.
     _postgres: Option<ContainerAsync<Postgres>>,
@@ -96,20 +103,53 @@ async fn start_infra() -> Infra {
     };
 
     // Superusers bypass row level security, which would make the isolation
-    // suite meaningless. If we were handed a superuser, create an ordinary
-    // application role, migrate as it (so it owns the tables), and use it.
-    let database_url = ensure_app_role(&database_url).await;
+    // suite meaningless. If we were handed a superuser, create the production
+    // role layout: a migrator that owns the schema and an application role
+    // with DML privileges only.
+    let admin_url = database_url.clone();
+    let roles = ensure_roles(&admin_url).await;
+    let (database_url, migrator_url) = match roles {
+        Some((app, migrator)) => (app, Some(migrator)),
+        None => (database_url, None),
+    };
 
     // Migrate once with a throwaway pool owned by this runtime.
-    let config = test_config(&database_url, &redis_url, "http://127.0.0.1:0");
-    let db = ridm_api::db::connect(&config)
-        .await
-        .expect("connect postgres");
-    ridm_api::db::migrate(&db).await.expect("migrate");
-    db.close().await;
+    //   * fresh database (superuser path): as the test migrator, so it owns the schema;
+    //   * database migrated by some other role (e.g. the compose stack): as the
+    //     superuser, then grant the app role access to whatever exists;
+    //   * ordinary role given to us: skip when everything is already applied,
+    //     otherwise try (and fail loudly if the role may not).
+    match &migrator_url {
+        Some(migrator) => {
+            let migrate_as = if migrations_owned_by_other(&admin_url, MIGRATOR_ROLE).await {
+                admin_url.clone()
+            } else {
+                migrator.clone()
+            };
+            let config = test_config(&migrate_as, &redis_url, "http://127.0.0.1:0");
+            let db = ridm_api::db::connect(&config)
+                .await
+                .expect("connect postgres");
+            ridm_api::db::migrate(&db).await.expect("migrate");
+            db.close().await;
+            grant_existing_objects(&admin_url).await;
+        }
+        None => {
+            let config = test_config(&database_url, &redis_url, "http://127.0.0.1:0");
+            let db = ridm_api::db::connect(&config)
+                .await
+                .expect("connect postgres");
+            if !fully_migrated(&db).await {
+                ridm_api::db::migrate(&db).await.expect("migrate");
+            }
+            db.close().await;
+        }
+    }
 
     Infra {
         database_url,
+        migrator_url,
+        admin_url,
         redis_url,
         _postgres: pg,
         _redis: redis,
@@ -118,10 +158,12 @@ async fn start_infra() -> Infra {
 
 pub const APP_ROLE: &str = "ridm_test_app";
 pub const APP_ROLE_PASSWORD: &str = "ridm_test_app";
+pub const MIGRATOR_ROLE: &str = "ridm_test_migrator";
+pub const MIGRATOR_ROLE_PASSWORD: &str = "ridm_test_migrator";
 
-/// Returns a connection URL for a non-superuser role. When `url` is already an
-/// ordinary role it is returned unchanged.
-async fn ensure_app_role(url: &str) -> String {
+/// When `url` is a superuser, create (idempotently) the migrator and app roles
+/// and return `(app_url, migrator_url)`. Returns `None` for ordinary roles.
+async fn ensure_roles(url: &str) -> Option<(String, String)> {
     use sqlx::Connection as _;
 
     let mut conn = sqlx::PgConnection::connect(url)
@@ -133,7 +175,7 @@ async fn ensure_app_role(url: &str) -> String {
             .await
             .expect("query rolsuper");
     if !is_super {
-        return url.to_string();
+        return None;
     }
     let db_name: String = sqlx::query_scalar("SELECT current_database()")
         .fetch_one(&mut conn)
@@ -141,15 +183,32 @@ async fn ensure_app_role(url: &str) -> String {
         .expect("current database");
     let statements = [
         format!(
+            "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{MIGRATOR_ROLE}') THEN \
+             CREATE ROLE {MIGRATOR_ROLE} LOGIN PASSWORD '{MIGRATOR_ROLE_PASSWORD}' \
+             NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS; END IF; END $$"
+        ),
+        format!(
             "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{APP_ROLE}') THEN \
              CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{APP_ROLE_PASSWORD}' \
              NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS; END IF; END $$"
         ),
-        format!("GRANT CONNECT, CREATE, TEMP ON DATABASE \"{db_name}\" TO {APP_ROLE}"),
-        format!("GRANT ALL ON SCHEMA public TO {APP_ROLE}"),
-        // Tables created earlier by the superuser (e.g. a CI migrate step).
-        format!("GRANT ALL ON ALL TABLES IN SCHEMA public TO {APP_ROLE}"),
-        format!("GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO {APP_ROLE}"),
+        format!("GRANT CONNECT, CREATE, TEMP ON DATABASE \"{db_name}\" TO {MIGRATOR_ROLE}"),
+        format!("GRANT ALL ON SCHEMA public TO {MIGRATOR_ROLE}"),
+        format!("GRANT CONNECT, TEMP ON DATABASE \"{db_name}\" TO {APP_ROLE}"),
+        format!("GRANT USAGE ON SCHEMA public TO {APP_ROLE}"),
+        // Tables the migrator creates later are automatically usable by the app role.
+        format!(
+            "ALTER DEFAULT PRIVILEGES FOR ROLE {MIGRATOR_ROLE} IN SCHEMA public \
+             GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {APP_ROLE}"
+        ),
+        format!(
+            "ALTER DEFAULT PRIVILEGES FOR ROLE {MIGRATOR_ROLE} IN SCHEMA public \
+             GRANT USAGE, SELECT ON SEQUENCES TO {APP_ROLE}"
+        ),
+        format!(
+            "ALTER DEFAULT PRIVILEGES FOR ROLE {MIGRATOR_ROLE} IN SCHEMA public \
+             GRANT EXECUTE ON FUNCTIONS TO {APP_ROLE}"
+        ),
     ];
     for stmt in statements {
         // DDL built from constants above, not from user input.
@@ -160,12 +219,69 @@ async fn ensure_app_role(url: &str) -> String {
     }
     conn.close().await.expect("close bootstrap connection");
 
-    let mut app_url = url::Url::parse(url).expect("parse database url");
-    app_url.set_username(APP_ROLE).expect("set username");
-    app_url
-        .set_password(Some(APP_ROLE_PASSWORD))
-        .expect("set password");
-    app_url.to_string()
+    let with_creds = |user: &str, pass: &str| {
+        let mut u = url::Url::parse(url).expect("parse database url");
+        u.set_username(user).expect("set username");
+        u.set_password(Some(pass)).expect("set password");
+        u.to_string()
+    };
+    Some((
+        with_creds(APP_ROLE, APP_ROLE_PASSWORD),
+        with_creds(MIGRATOR_ROLE, MIGRATOR_ROLE_PASSWORD),
+    ))
+}
+
+/// Is `_sqlx_migrations` present and owned by a role other than `role`?
+async fn migrations_owned_by_other(admin_url: &str, role: &str) -> bool {
+    use sqlx::Connection as _;
+    let mut conn = sqlx::PgConnection::connect(admin_url)
+        .await
+        .expect("connect admin");
+    let owner: Option<String> = sqlx::query_scalar(
+        "SELECT tableowner FROM pg_tables WHERE schemaname = 'public' AND tablename = '_sqlx_migrations'",
+    )
+    .fetch_optional(&mut conn)
+    .await
+    .expect("query owner");
+    conn.close().await.expect("close");
+    owner.is_some_and(|o| o != role)
+}
+
+/// Grant the test app role DML on everything that already exists (objects
+/// created by roles other than the test migrator).
+async fn grant_existing_objects(admin_url: &str) {
+    use sqlx::Connection as _;
+    let mut conn = sqlx::PgConnection::connect(admin_url)
+        .await
+        .expect("connect admin");
+    for stmt in [
+        format!(
+            "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {APP_ROLE}"
+        ),
+        format!("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {APP_ROLE}"),
+        format!("GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO {APP_ROLE}"),
+    ] {
+        sqlx::raw_sql(sqlx::AssertSqlSafe(stmt.clone()))
+            .execute(&mut conn)
+            .await
+            .unwrap_or_else(|e| panic!("{stmt}: {e}"));
+    }
+    conn.close().await.expect("close");
+}
+
+/// Every embedded migration is recorded as applied.
+async fn fully_migrated(db: &Db) -> bool {
+    let applied: Vec<i64> =
+        match sqlx::query_scalar("SELECT version FROM _sqlx_migrations WHERE success")
+            .fetch_all(db)
+            .await
+        {
+            Ok(v) => v,
+            Err(_) => return false,
+        };
+    ridm_api::db::MIGRATOR
+        .iter()
+        .all(|m| applied.contains(&m.version))
 }
 
 pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Config {

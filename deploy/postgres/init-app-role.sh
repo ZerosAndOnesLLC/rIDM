@@ -1,17 +1,32 @@
 #!/bin/sh
 # Runs once on first database initialisation (docker-entrypoint-initdb.d).
 #
-# Creates the NON-superuser role the API connects as. Postgres superusers bypass
-# row level security, so the application must never connect as one: tenant
-# isolation is enforced by RLS policies that only apply to ordinary roles.
+# Creates the two roles rIDM uses. Postgres superusers bypass row level
+# security, and a role that owns a table can disable RLS on it, so:
+#   * RIDM_MIGRATOR_USER owns the schema and runs migrations (one-shot job);
+#   * RIDM_APP_USER is what the API connects as: DML only, cannot alter tables.
 set -eu
 
+: "${RIDM_MIGRATOR_USER:=ridm_migrator}"
+: "${RIDM_MIGRATOR_PASSWORD:=ridm_migrator}"
 : "${RIDM_APP_USER:=ridm_app}"
 : "${RIDM_APP_PASSWORD:=ridm_app}"
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<SQL
+CREATE ROLE "${RIDM_MIGRATOR_USER}" LOGIN PASSWORD '${RIDM_MIGRATOR_PASSWORD}'
+    NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 CREATE ROLE "${RIDM_APP_USER}" LOGIN PASSWORD '${RIDM_APP_PASSWORD}'
     NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
-GRANT CONNECT, CREATE, TEMP ON DATABASE "${POSTGRES_DB}" TO "${RIDM_APP_USER}";
-GRANT ALL ON SCHEMA public TO "${RIDM_APP_USER}";
+
+GRANT CONNECT, CREATE, TEMP ON DATABASE "${POSTGRES_DB}" TO "${RIDM_MIGRATOR_USER}";
+GRANT ALL ON SCHEMA public TO "${RIDM_MIGRATOR_USER}";
+
+GRANT CONNECT, TEMP ON DATABASE "${POSTGRES_DB}" TO "${RIDM_APP_USER}";
+GRANT USAGE ON SCHEMA public TO "${RIDM_APP_USER}";
+ALTER DEFAULT PRIVILEGES FOR ROLE "${RIDM_MIGRATOR_USER}" IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${RIDM_APP_USER}";
+ALTER DEFAULT PRIVILEGES FOR ROLE "${RIDM_MIGRATOR_USER}" IN SCHEMA public
+    GRANT USAGE, SELECT ON SEQUENCES TO "${RIDM_APP_USER}";
+ALTER DEFAULT PRIVILEGES FOR ROLE "${RIDM_MIGRATOR_USER}" IN SCHEMA public
+    GRANT EXECUTE ON FUNCTIONS TO "${RIDM_APP_USER}";
 SQL
