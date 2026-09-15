@@ -66,10 +66,15 @@ pub async fn resolve_tenant(state: &AppState, slug: &str) -> Result<Option<Arc<T
 
 /// Cache keys that must be evicted whenever a tenant row changes.
 pub fn tenant_cache_keys(tenant: &Tenant) -> Vec<String> {
-    vec![
+    let mut v = vec![
         keys::tenant_by_slug(&tenant.slug),
         keys::tenant_by_id(tenant.id),
-    ]
+        keys::jwks(tenant.id),
+    ];
+    for d in &tenant.settings.discovery.email_domains {
+        v.push(keys::tenant_by_email_domain(&d.to_lowercase()));
+    }
+    v
 }
 
 /// Same rule as the `tenants_slug_format` check constraint.

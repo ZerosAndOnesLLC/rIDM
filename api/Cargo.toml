@@ -84,6 +84,6 @@ rust-embed = { workspace = true }
 
 [dev-dependencies]
 ridm-core = { workspace = true, features = ["test-support"] }
-reqwest = { workspace = true, features = ["cookies"] }
+reqwest = { workspace = true, features = ["cookies", "query"] }
 testcontainers-modules = { workspace = true }
 testcontainers = { workspace = true }

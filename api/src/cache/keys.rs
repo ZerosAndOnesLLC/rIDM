@@ -34,3 +34,7 @@ pub fn profile_schema(tenant_id: Uuid) -> String {
 pub fn jwks(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:jwks")
 }
+
+pub fn tenant_by_email_domain(domain: &str) -> String {
+    format!("{PREFIX}:tenant:domain:{domain}")
+}

@@ -44,8 +44,18 @@ pub struct TenantSettings {
     pub locale: LocaleSettings,
     pub branding: Branding,
     pub keys: KeyPolicy,
+    pub discovery: DiscoverySettings,
     /// Custom issuer host (Phase 9.3). `None` means `{PUBLIC_URL}/t/{slug}`.
     pub custom_domain: Option<String>,
+}
+
+/// WebFinger issuer discovery (OIDC Discovery §2).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DiscoverySettings {
+    /// `acct:user@<domain>` resources with one of these domains resolve to
+    /// this tenant's issuer.
+    pub email_domains: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

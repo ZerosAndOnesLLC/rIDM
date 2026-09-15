@@ -103,3 +103,18 @@ pub async fn list<'e>(
         .push_bind(limit + 1);
     qb.build_query_as::<Tenant>().fetch_all(exec).await
 }
+
+/// Tenant whose discovery settings list `domain` (lower-case). First match wins.
+pub async fn find_by_email_domain<'e>(
+    exec: impl PgExecutor<'e>,
+    domain: &str,
+) -> Result<Option<Tenant>, sqlx::Error> {
+    sqlx::query_as::<_, Tenant>(
+        "SELECT id, slug, display_name, status, settings, created_at, updated_at FROM tenants \
+         WHERE settings->'discovery'->'email_domains' ? $1 AND status = 'active' \
+         ORDER BY created_at LIMIT 1",
+    )
+    .bind(domain)
+    .fetch_optional(exec)
+    .await
+}

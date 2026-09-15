@@ -31,6 +31,8 @@ pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
     Router::new()
         .merge(routes::health::router())
         .merge(routes::wellknown::router())
+        .merge(routes::webfinger::router())
+        .merge(routes::jwks::router())
         .merge(extra)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
