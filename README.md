@@ -458,6 +458,11 @@ chart with a table view, the most authorized clients, and user counts — fed by
 `GET /admin/tenants/{slug}/stats?days=` route (`ridm:tenants:read`), which derives
 everything from login attempts, sessions, credentials and audit events.
 
+**Export & import** (`/console/config/`): download the tenant's `ridm.tenant/1` document
+or load it into an editor, paste or pick a document, preview the plan (creates, field-level
+updates with old and new values, deletes when prune is on, errors) and apply it; secrets
+of clients and webhooks the import created are shown once.
+
 **Signing keys** (`/console/keys/`): every key on a timeline (created → signs from →
 published until) with status, algorithm and public JWK; rotate now, create a pending key
 (algorithm, RSA size, activate at once) and activate, retire or revoke each key. Global
