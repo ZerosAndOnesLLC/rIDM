@@ -88,3 +88,4 @@ ridm-core = { workspace = true, features = ["test-support"] }
 reqwest = { workspace = true, features = ["cookies", "query"] }
 testcontainers-modules = { workspace = true }
 testcontainers = { workspace = true }
+proptest = { workspace = true }

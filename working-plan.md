@@ -112,6 +112,7 @@ All versions are the latest **stable** release as of the date above. Verified by
 | utoipa-swagger-ui | 9.0.2 | `axum` |
 | rust-embed | 8.12.0 | embedded UI mode |
 | testcontainers-modules (dev) | 0.15.0 | `postgres`, `redis` |
+| proptest (dev) | 1.11.0 | property tests for token/blob/cursor parsing |
 | testcontainers (dev) | 0.27.3 | `reusable-containers` — no Ryuk in testcontainers-rs; named reusable containers instead |
 | cargo-llvm-cov / cargo-fuzz / cargo-audit / cargo-deny (tools) | latest stable at Phase 0.9 (verify then) | coverage, fuzzing, supply chain |
 
@@ -261,7 +262,7 @@ Operations
 - [x] 2.4 Token service: sign/verify access + ID tokens; claim-mapper pipeline; pairwise `sub` derivation; optional JWE encryption of ID tokens per client.
 - [x] 2.5 Refresh token service: opaque, hashed, rotation, family reuse detection; `jti` denylist for instant access-token revocation.
 - [x] 2.6 Master key rotation command: re-encrypt all `*_enc` columns under a new key version, zero downtime.
-- [ ] 2.7 Tests: sign/verify for every alg; rotation overlap (old kid still verifies until retired); revoked kid rejected; JWKS shape and ETag; pairwise `sub` stability; JWE round trip; master-key rotation re-encrypts and verifies; property tests on JWT decoding.
+- [x] 2.7 Tests: sign/verify for every alg; rotation overlap (old kid still verifies until retired); revoked kid rejected; JWKS shape and ETag; pairwise `sub` stability; JWE round trip; master-key rotation re-encrypts and verifies; property tests on JWT decoding.
 
 ### Phase 3 — OIDC provider core
 - [ ] 3.1 Migrations: clients (all fields incl. client_type, dual secrets, subject_type, logout URIs), scopes, claim_mappers, consents, refresh_tokens, resource_servers, permissions, permission_assignments. Default scopes seeded per tenant.
