@@ -18,7 +18,8 @@ end-user account console.
   default build.
 - **Multi-tenant from the first migration.** Every tenant has its own issuer
   (`{PUBLIC_URL}/t/{slug}`), signing keys, users, clients, policies, branding, and
-  admins. Postgres row level security backs the application-level isolation.
+  admins. Every tenant-scoped table is protected by forced Postgres row level security
+  bound per transaction, with composite foreign keys so rows can never cross tenants.
 - **Standards, not surprises.** Authorization code + PKCE, client credentials, refresh
   token rotation with reuse detection, device flow, PAR, JAR/JARM, DCR, RP-initiated,
   back-channel and front-channel logout, token exchange, DPoP. No implicit, hybrid, or
@@ -50,7 +51,7 @@ in [`.env.example`](.env.example). The essentials:
 
 | Variable | Purpose |
 |----------|---------|
-| `DATABASE_URL` | Postgres 16+ connection string |
+| `DATABASE_URL` | Postgres 16+ connection string; use a **non-superuser** role (superusers bypass row level security) |
 | `REDIS_URL` | Redis 8+ / Valkey connection string |
 | `PUBLIC_URL` | Externally visible base URL; tenant issuers are `{PUBLIC_URL}/t/{slug}` |
 | `MASTER_KEY` / `MASTER_KEY_FILE` | 32-byte key (hex or base64) encrypting secrets at rest |

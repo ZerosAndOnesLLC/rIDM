@@ -241,7 +241,7 @@ Operations
 - [x] 0.10 Branch protection on `main`: PRs only, all required status checks in §6 must pass, no bypass; CODEOWNERS.
 
 ### Phase 1 — Tenants, users, groups, roles, profile schema
-- [ ] 1.1 Migrations: users, user_profile_schema, password_history, credentials, groups, group_members, roles, role_assignments, role_composites (indexes lead with tenant_id; RLS policies; `org_id` reserved columns).
+- [x] 1.1 Migrations: users, user_profile_schema, password_history, credentials, groups, group_members, roles, role_assignments, role_composites (indexes lead with tenant_id; RLS policies; `org_id` reserved columns).
 - [ ] 1.2 Tenant resolver extractor (`/t/{slug}` → cached `Tenant`), RLS `SET LOCAL` per request tx; Redis pub/sub cache invalidation.
 - [ ] 1.3 Repos + services: tenant CRUD, user CRUD, group CRUD + membership, role CRUD + assignment, effective-roles resolution (user + groups + composites, cached).
 - [ ] 1.4 Password service: argon2id hash/verify; legacy verifiers (bcrypt, pbkdf2-sha256/512, sha256/sha512 salted, md5 for migration only) with transparent upgrade on successful login; password policy (length, classes, history N, expiry, must_change_password).

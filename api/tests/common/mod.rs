@@ -32,7 +32,7 @@ pub const POSTGRES_TAG: &str = "18.6-alpine";
 pub const REDIS_TAG: &str = "8.10.1-alpine3.23";
 
 /// Every `#[tokio::test]` runs on its own short-lived runtime. Anything that
-/// must outlive a single test (containers, the Ryuk reaper connection, the
+/// must outlive a single test (containers, their Docker client, the
 /// one-time migration) runs on this dedicated runtime instead. Per-test pools
 /// are created on the test's own runtime so their sockets die with it.
 static RT: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
@@ -96,6 +96,11 @@ async fn start_infra() -> Infra {
         }
     };
 
+    // Superusers bypass row level security, which would make the isolation
+    // suite meaningless. If we were handed a superuser, create an ordinary
+    // application role, migrate as it (so it owns the tables), and use it.
+    let database_url = ensure_app_role(&database_url).await;
+
     // Migrate once with a throwaway pool owned by this runtime.
     let config = test_config(&database_url, &redis_url, "http://127.0.0.1:0");
     let db = ridm_api::db::connect(&config)
@@ -110,6 +115,58 @@ async fn start_infra() -> Infra {
         _postgres: pg,
         _redis: redis,
     }
+}
+
+pub const APP_ROLE: &str = "ridm_test_app";
+pub const APP_ROLE_PASSWORD: &str = "ridm_test_app";
+
+/// Returns a connection URL for a non-superuser role. When `url` is already an
+/// ordinary role it is returned unchanged.
+async fn ensure_app_role(url: &str) -> String {
+    use sqlx::Connection as _;
+
+    let mut conn = sqlx::PgConnection::connect(url)
+        .await
+        .expect("connect as bootstrap user");
+    let is_super: bool =
+        sqlx::query_scalar("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")
+            .fetch_one(&mut conn)
+            .await
+            .expect("query rolsuper");
+    if !is_super {
+        return url.to_string();
+    }
+    let db_name: String = sqlx::query_scalar("SELECT current_database()")
+        .fetch_one(&mut conn)
+        .await
+        .expect("current database");
+    let statements = [
+        format!(
+            "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{APP_ROLE}') THEN \
+             CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{APP_ROLE_PASSWORD}' \
+             NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS; END IF; END $$"
+        ),
+        format!("GRANT CONNECT, CREATE, TEMP ON DATABASE \"{db_name}\" TO {APP_ROLE}"),
+        format!("GRANT ALL ON SCHEMA public TO {APP_ROLE}"),
+        // Tables created earlier by the superuser (e.g. a CI migrate step).
+        format!("GRANT ALL ON ALL TABLES IN SCHEMA public TO {APP_ROLE}"),
+        format!("GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO {APP_ROLE}"),
+    ];
+    for stmt in statements {
+        // DDL built from constants above, not from user input.
+        sqlx::raw_sql(sqlx::AssertSqlSafe(stmt.clone()))
+            .execute(&mut conn)
+            .await
+            .unwrap_or_else(|e| panic!("{stmt}: {e}"));
+    }
+    conn.close().await.expect("close bootstrap connection");
+
+    let mut app_url = url::Url::parse(url).expect("parse database url");
+    app_url.set_username(APP_ROLE).expect("set username");
+    app_url
+        .set_password(Some(APP_ROLE_PASSWORD))
+        .expect("set password");
+    app_url.to_string()
 }
 
 pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Config {

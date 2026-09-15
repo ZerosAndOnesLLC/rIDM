@@ -35,7 +35,9 @@ Ports are overridable through `RIDM_PG_PORT`, `RIDM_REDIS_PORT`, `RIDM_HTTP_PORT
 **Migrations**
 - Forward-only, created with `sqlx migrate add --source api/migrations <name>`.
 - Tested locally with `sqlx migrate run` before committing.
-- Tenant-scoped tables enable row level security using `current_tenant_id()`.
+- Tenant-scoped tables call `enable_tenant_rls('table')`, which enables and forces the
+  `tenant_isolation` policy. Child tables use composite `(tenant_id, id)` foreign keys.
+- The API (and the tests) connect as a non-superuser role; superusers bypass RLS.
 
 **UI**
 - Next.js static export; no server components that require a Node runtime.
