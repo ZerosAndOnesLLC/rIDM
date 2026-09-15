@@ -7,8 +7,10 @@
 //! own admin permissions so nobody can grant what they do not hold.
 
 use axum::Router;
-use axum::extract::{Path, Query, State};
+use axum::body::Body;
+use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::StatusCode;
+use axum::http::header::{self, HeaderMap};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete as delete_route, get, post, put};
 use chrono::{DateTime, Utc};
@@ -26,6 +28,7 @@ use crate::models::{
 };
 use crate::repos;
 use crate::services::admin_access::{self, Grant};
+use crate::services::bulk_users::{self, ExportFormat, ImportReport};
 use crate::services::password::{self, SetPasswordOptions};
 use crate::services::sessions::{self, SsoSession};
 use crate::services::{consents, groups, roles, trusted_devices, users};
@@ -36,6 +39,11 @@ pub fn users_router() -> Router<AppState> {
     let base = "/admin/tenants/{slug}/users";
     Router::new()
         .route(base, get(list).post(create))
+        .route(
+            &format!("{base}/import"),
+            post(import).layer(DefaultBodyLimit::max(IMPORT_BODY_LIMIT)),
+        )
+        .route(&format!("{base}/export"), get(export))
         .route(
             &format!("{base}/{{user}}"),
             get(get_one).patch(update).delete(delete),
@@ -86,6 +94,11 @@ pub fn users_router() -> Router<AppState> {
 
 const P_READ: &str = "ridm:users:read";
 const P_WRITE: &str = "ridm:users:write";
+/// Bulk import is an invitation-side power in the catalogue; creating users
+/// with credentials also needs the users permission.
+const P_IMPORT: &str = "ridm:invitations:write";
+/// 32 MiB of JSON or CSV per import request.
+const IMPORT_BODY_LIMIT: usize = 32 * 1024 * 1024;
 
 #[derive(Deserialize)]
 struct UserPath {
@@ -779,4 +792,84 @@ async fn revoke_consent(
         return Err(AppError::NotFound("consent"));
     }
     Ok(StatusCode::NO_CONTENT)
+}
+
+// --- bulk import and export -------------------------------------------------
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct ImportQuery {
+    /// Validate only; nothing is written.
+    dry_run: bool,
+}
+
+/// `POST .../users/import` with `application/json` (an array of users or
+/// `{"users": [...]}`) or `text/csv` (header row; `attr.<name>` columns become
+/// profile attributes). Rows are processed independently; the report names
+/// every row that failed and why.
+async fn import(
+    State(state): State<AppState>,
+    admin: AdminCtx,
+    AdminTenantPath(tenant): AdminTenantPath,
+    Query(q): Query<ImportQuery>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> AppResult<Json<ImportReport>> {
+    admin.require(tenant.id, P_WRITE)?;
+    admin.require(tenant.id, P_IMPORT)?;
+    let content_type = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let rows = if content_type.starts_with("text/csv") {
+        bulk_users::parse_csv(&body)?
+    } else if content_type.starts_with("application/json") {
+        bulk_users::parse_json(&body)?
+    } else {
+        return Err(AppError::BadRequest(
+            "send application/json or text/csv".into(),
+        ));
+    };
+    Ok(Json(
+        bulk_users::import(&state, &tenant, admin.actor(), rows, q.dry_run).await?,
+    ))
+}
+
+#[derive(Deserialize)]
+struct ExportQuery {
+    #[serde(default = "default_format")]
+    format: ExportFormat,
+}
+
+fn default_format() -> ExportFormat {
+    ExportFormat::Json
+}
+
+/// `GET .../users/export?format=json|csv`: every live user, streamed page by
+/// page, without credentials.
+async fn export(
+    State(state): State<AppState>,
+    admin: AdminCtx,
+    AdminTenantPath(tenant): AdminTenantPath,
+    Query(q): Query<ExportQuery>,
+) -> AppResult<Response> {
+    admin.require(tenant.id, P_READ)?;
+    let (content_type, filename) = match q.format {
+        ExportFormat::Json => ("application/json", "users.json"),
+        ExportFormat::Csv => ("text/csv; charset=utf-8", "users.csv"),
+    };
+    let stream = bulk_users::export(state, tenant.id, q.format);
+    let mut res = Body::from_stream(stream).into_response();
+    let h = res.headers_mut();
+    if let Ok(v) = content_type.parse() {
+        h.insert(header::CONTENT_TYPE, v);
+    }
+    if let Ok(v) = format!("attachment; filename=\"{filename}\"").parse() {
+        h.insert(header::CONTENT_DISPOSITION, v);
+    }
+    if let Ok(v) = "no-store".parse() {
+        h.insert(header::CACHE_CONTROL, v);
+    }
+    Ok(res)
 }

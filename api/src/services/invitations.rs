@@ -157,6 +157,13 @@ pub async fn resend(
     Ok(inv)
 }
 
+pub async fn get(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<Invitation> {
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let inv = repos::invitations::find_by_id(&mut *tx, tenant_id, id).await?;
+    tx.commit().await?;
+    inv.ok_or(AppError::NotFound("invitation"))
+}
+
 pub async fn revoke(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -> AppResult<()> {
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let ok = repos::invitations::revoke(&mut *tx, tenant_id, id).await?;

@@ -26,7 +26,7 @@ impl Invitation {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct NewInvitation {
     pub email: String,
     pub roles: Vec<Uuid>,

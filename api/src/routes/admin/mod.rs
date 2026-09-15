@@ -1,6 +1,7 @@
 mod auth;
 mod clients;
 mod groups;
+mod invitations;
 mod keys;
 mod mappers;
 mod resource_servers;
@@ -12,6 +13,7 @@ mod users;
 pub use auth::*;
 pub use clients::*;
 pub use groups::*;
+pub use invitations::*;
 pub use keys::*;
 pub use mappers::*;
 pub use resource_servers::*;

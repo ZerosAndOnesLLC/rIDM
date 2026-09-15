@@ -1,6 +1,7 @@
 pub mod admin_access;
 pub mod auth_codes;
 pub mod bootstrap;
+pub mod bulk_users;
 pub mod captcha;
 pub mod claim_mappers;
 pub mod claims;
