@@ -22,6 +22,9 @@ pub struct Tenant {
     pub display_name: String,
     pub status: TenantStatus,
     pub settings: Json<TenantSettings>,
+    /// Random per-tenant salt for pairwise subject identifiers. Never exported.
+    #[serde(skip)]
+    pub pairwise_salt: Vec<u8>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

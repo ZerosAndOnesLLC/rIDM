@@ -7,14 +7,15 @@ use uuid::Uuid;
 use crate::models::{Tenant, TenantSettings, TenantStatus};
 use crate::util::cursor::Cursor;
 
-const COLUMNS: &str = "id, slug, display_name, status, settings, created_at, updated_at";
+const COLUMNS: &str =
+    "id, slug, display_name, status, settings, pairwise_salt, created_at, updated_at";
 
 pub async fn find_by_slug<'e>(
     exec: impl PgExecutor<'e>,
     slug: &str,
 ) -> Result<Option<Tenant>, sqlx::Error> {
     sqlx::query_as::<_, Tenant>(
-        "SELECT id, slug, display_name, status, settings, created_at, updated_at \
+        "SELECT id, slug, display_name, status, settings, pairwise_salt, created_at, updated_at \
          FROM tenants WHERE slug = $1",
     )
     .bind(slug)
@@ -27,7 +28,7 @@ pub async fn find_by_id<'e>(
     id: Uuid,
 ) -> Result<Option<Tenant>, sqlx::Error> {
     sqlx::query_as::<_, Tenant>(
-        "SELECT id, slug, display_name, status, settings, created_at, updated_at \
+        "SELECT id, slug, display_name, status, settings, pairwise_salt, created_at, updated_at \
          FROM tenants WHERE id = $1",
     )
     .bind(id)
@@ -44,7 +45,7 @@ pub async fn insert<'e>(
 ) -> Result<Tenant, sqlx::Error> {
     sqlx::query_as::<_, Tenant>(
         "INSERT INTO tenants (id, slug, display_name, settings) VALUES ($1, $2, $3, $4) \
-         RETURNING id, slug, display_name, status, settings, created_at, updated_at",
+         RETURNING id, slug, display_name, status, settings, pairwise_salt, created_at, updated_at",
     )
     .bind(id)
     .bind(slug)
@@ -110,7 +111,7 @@ pub async fn find_by_email_domain<'e>(
     domain: &str,
 ) -> Result<Option<Tenant>, sqlx::Error> {
     sqlx::query_as::<_, Tenant>(
-        "SELECT id, slug, display_name, status, settings, created_at, updated_at FROM tenants \
+        "SELECT id, slug, display_name, status, settings, pairwise_salt, created_at, updated_at FROM tenants \
          WHERE settings->'discovery'->'email_domains' ? $1 AND status = 'active' \
          ORDER BY created_at LIMIT 1",
     )

@@ -38,3 +38,13 @@ pub fn jwks(tenant_id: Uuid) -> String {
 pub fn tenant_by_email_domain(domain: &str) -> String {
     format!("{PREFIX}:tenant:domain:{domain}")
 }
+
+/// Parsed signing key material (L1 only; never written to Redis).
+pub fn signing_key_material(key_id: Uuid) -> String {
+    format!("{PREFIX}:signing_key:{key_id}:material")
+}
+
+/// Denylisted access-token `jti` (instant revocation before expiry).
+pub fn jti_denied(tenant_id: Uuid, jti: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:jti:{jti}")
+}

@@ -3624,6 +3624,7 @@ version = "0.1.0-dev"
 dependencies = [
  "argon2",
  "async-trait",
+ "aws-lc-rs",
  "axum",
  "axum-server",
  "base64 0.23.1",

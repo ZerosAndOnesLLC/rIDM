@@ -148,6 +148,18 @@ pub enum EventKind {
         child_role_id: Uuid,
     },
 
+    // Tokens
+    RefreshTokenReuseDetected {
+        family_id: Uuid,
+        client_id: String,
+        user_id: Option<Uuid>,
+    },
+    TokensRevoked {
+        user_id: Option<Uuid>,
+        session_id: Option<Uuid>,
+        count: u64,
+    },
+
     // Keys
     SigningKeyCreated {
         key_id: Uuid,
@@ -196,6 +208,8 @@ impl EventKind {
             Self::RoleUnassigned { .. } => "role.unassigned",
             Self::RoleCompositeAdded { .. } => "role.composite_added",
             Self::RoleCompositeRemoved { .. } => "role.composite_removed",
+            Self::RefreshTokenReuseDetected { .. } => "token.refresh_reuse_detected",
+            Self::TokensRevoked { .. } => "token.revoked",
             Self::SigningKeyCreated { .. } => "signing_key.created",
             Self::SigningKeyStatusChanged { .. } => "signing_key.status_changed",
             Self::MasterKeyRotated { .. } => "master_key.rotated",
