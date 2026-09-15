@@ -163,6 +163,22 @@ npm run build          # static export to ui/out
 `NEXT_PUBLIC_API_URL` is empty by default (same origin, for the embedded single-binary
 mode). Set it at build time when hosting `ui/out` on a separate static host or CDN.
 
+The end-user pages live under `ui/src/app`: `/login/`, `/register/`, `/invite/`,
+`/consent/`, `/mfa/`, `/recover/`, `/verify/`, `/logout/`, `/device/` and `/error/`.
+Every page is driven by query parameters (`tenant`, `flow`, `token`, ...), loads the
+tenant's public branding document (`GET /t/{slug}/branding`: name, logo, colours,
+links, custom CSS, locales, sign-in methods) and applies it as a theme, and speaks the
+flow API step by step. Pages redirect each other by flow stage, so the API only ever
+sends the browser to `/login/` or `/logout/`.
+
+To work on the pages against a local API, run the dev server with the API proxied
+same-origin (session cookies work without CORS) and point the API back at it:
+
+```bash
+UI_URL=http://localhost:3110 cargo run -p ridm-api             # API on :8090
+cd ui && API_PROXY=http://localhost:8090 npx next dev -p 3110   # UI on :3110
+```
+
 ### Container image
 
 ```bash

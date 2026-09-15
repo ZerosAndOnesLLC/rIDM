@@ -641,16 +641,35 @@ async fn logout_without_hint_asks_for_confirmation() {
         .1
         .parse()
         .unwrap();
-    let raw: String = redis::AsyncCommands::get(
-        &mut fx.app.state.redis.get().await.unwrap(),
-        ridm_api::cache::keys::logout_flow(tenant.id, flow_id),
-    )
-    .await
-    .unwrap();
-    let csrf = serde_json::from_str::<Value>(&raw).unwrap()["csrf"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    // The logout page reads the flow (client, csrf) without consuming it.
+    let res = fx
+        .app
+        .http
+        .get(fx.app.tenant_url(&format!("/end_session/{flow_id}")))
+        .header("Cookie", &fx.cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    assert_eq!(res.headers()["cache-control"], "no-store");
+    let view: Value = res.json().await.unwrap();
+    assert_eq!(view["client"]["client_id"], cid);
+    assert_eq!(view["signed_in"], true);
+    assert_eq!(view["returns_to_client"], true);
+    assert_eq!(view["dir"], "ltr");
+    let csrf = view["csrf"].as_str().unwrap().to_string();
+    assert!(!csrf.is_empty());
+    // Still there after reading.
+    assert_eq!(
+        fx.app
+            .http
+            .get(fx.app.tenant_url(&format!("/end_session/{flow_id}")))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        200
+    );
     let res = fx
         .app
         .http

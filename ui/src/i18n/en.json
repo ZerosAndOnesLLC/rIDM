@@ -17,7 +17,6 @@
   "common.expired": "This page has expired. Start again.",
   "common.language": "Language",
   "common.powered_by": "Secured by rIDM",
-
   "login.title": "Sign in",
   "login.subtitle": "to continue to {client}",
   "login.remember_device": "Remember this device",
@@ -42,7 +41,6 @@
   "login.attempts_left_one": "{count} attempt left",
   "login.attempts_left_other": "{count} attempts left",
   "login.captcha_required": "Please complete the verification below.",
-
   "register.title": "Create your account",
   "register.have_account": "Already have an account?",
   "register.sign_in": "Sign in",
@@ -52,36 +50,29 @@
   "register.verify_email_sent": "We sent a verification link to {email}. Open it to finish creating your account.",
   "register.email_taken": "An account with this email or username already exists.",
   "register.domain_not_allowed": "Registration is not open for this email domain.",
-
   "invite.title": "You're invited",
   "invite.description": "{inviter} invited you to join {tenant}.",
   "invite.accept": "Accept invitation",
   "invite.invalid": "This invitation is invalid, expired, or already used.",
-
   "consent.title": "Allow access?",
   "consent.description": "{client} would like to:",
   "consent.approve": "Allow",
   "consent.deny": "Deny",
   "consent.signed_in_as": "Signed in as {username}",
-
   "mfa.title": "Two-step verification",
   "mfa.description": "Enter the code from your authenticator app.",
   "mfa.use_recovery_code": "Use a recovery code",
   "mfa.trust_device": "Don't ask again on this device",
-
   "password_change.title": "Choose a new password",
   "password_change.description": "Your password must be changed before continuing.",
   "password_change.new_password": "New password",
   "password_change.confirm": "Confirm new password",
   "password_change.mismatch": "The passwords do not match.",
-
   "profile.title": "Complete your profile",
   "profile.description": "A few more details are needed before continuing.",
-
   "terms.title": "Terms of service",
   "terms.description": "Please review and accept the terms to continue.",
   "terms.accept": "I accept",
-
   "recover.title": "Reset your password",
   "recover.description": "Enter your email or username and we'll send you a reset link.",
   "recover.send": "Send reset link",
@@ -89,27 +80,44 @@
   "recover.new_password": "New password",
   "recover.done": "Your password has been reset. You can sign in now.",
   "recover.invalid": "This reset link is invalid or has expired.",
-
   "verify.title": "Verify your email",
   "verify.verifying": "Verifying…",
   "verify.done": "Your email is verified.",
   "verify.invalid": "This verification link is invalid or has expired.",
   "verify.resend": "Send a new link",
   "verify.resent": "A new verification link is on its way.",
-
   "logout.title": "Signing out",
   "logout.done": "You have been signed out.",
   "logout.confirm": "Sign out of {client}?",
   "logout.sign_out": "Sign out",
   "logout.stay": "Stay signed in",
-
   "device.title": "Connect a device",
   "device.description": "Enter the code shown on your device.",
   "device.approve": "Approve",
   "device.approved": "Device connected. You can return to your device.",
   "device.denied": "The request was denied.",
-
   "error.title": "Something went wrong",
   "error.description": "The request could not be completed.",
-  "error.try_again": "Try again"
+  "error.try_again": "Try again",
+  "common.show_password": "Show password",
+  "common.hide_password": "Hide password",
+  "common.help": "Help",
+  "common.rate_limited": "Too many requests. Wait a moment and try again.",
+  "common.return_to_app": "Return to {client}",
+  "common.signed_in_as": "Signed in as {username}",
+  "login.change_method": "Sign in another way",
+  "login.no_methods": "Sign-in is not available for this service right now.",
+  "login.passkey_unavailable": "Passkeys aren't available yet.",
+  "mfa.unavailable": "Two-step verification isn't available for this service yet.",
+  "device.unavailable": "Device sign-in isn't available for this service yet.",
+  "error.no_tenant": "This link is missing the service it belongs to.",
+  "error.unknown_tenant": "This service does not exist.",
+  "register.disabled": "This service doesn't allow creating accounts here.",
+  "register.password_hint": "At least {min} characters.",
+  "invite.for": "for {email}",
+  "invite.done": "Your account is ready.",
+  "verify.no_token": "This link is incomplete. Open the link from your email again.",
+  "logout.frontchannel": "Signing you out of connected applications…",
+  "logout.cancelled": "You're still signed in.",
+  "recover.no_flow_hint": "Return to the application and sign in."
 }
