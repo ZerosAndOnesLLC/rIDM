@@ -72,7 +72,7 @@ services:
 
   api:
     profiles: ["prod"]
-    image: ${RIDM_IMAGE:-ghcr.io/mack42/ridm:latest}
+    image: ${RIDM_IMAGE:-ghcr.io/zerosandonesllc/ridm:latest}
     build:
       context: ..
       dockerfile: api/Dockerfile
@@ -103,7 +103,7 @@ services:
 
   api-dev:
     profiles: ["dev"]
-    image: ${RIDM_IMAGE:-ghcr.io/mack42/ridm:latest}
+    image: ${RIDM_IMAGE:-ghcr.io/zerosandonesllc/ridm:latest}
     build:
       context: ..
       dockerfile: api/Dockerfile

@@ -1,0 +1,58 @@
+mod common;
+
+use common::TestApp;
+
+#[tokio::test]
+async fn healthz_reports_version() {
+    let app = TestApp::spawn().await;
+    let res = app.http.get(app.url("/healthz")).send().await.unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["status"], "ok");
+    assert_eq!(body["version"], env!("CARGO_PKG_VERSION"));
+}
+
+#[tokio::test]
+async fn readyz_checks_database_and_cache() {
+    let app = TestApp::spawn().await;
+    let res = app.http.get(app.url("/readyz")).send().await.unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["checks"]["database"], "ok");
+    assert_eq!(body["checks"]["cache"], "ok");
+}
+
+#[tokio::test]
+async fn security_txt_is_served() {
+    let app = TestApp::spawn().await;
+    let res = app
+        .http
+        .get(app.url("/.well-known/security.txt"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    assert!(
+        res.headers()["content-type"]
+            .to_str()
+            .unwrap()
+            .starts_with("text/plain")
+    );
+    let text = res.text().await.unwrap();
+    assert!(text.contains("Contact:"));
+    assert!(text.contains("Expires:"));
+}
+
+#[tokio::test]
+async fn each_test_app_gets_its_own_tenant() {
+    let a = TestApp::spawn().await;
+    let b = TestApp::spawn().await;
+    assert_ne!(a.tenant.id, b.tenant.id);
+    assert_ne!(a.tenant.slug, b.tenant.slug);
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM tenants WHERE slug = $1")
+        .bind(&a.tenant.slug)
+        .fetch_one(&a.state.db)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+}

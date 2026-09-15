@@ -13,11 +13,11 @@ pub fn router() -> Router<AppState> {
 
 /// RFC 9116 security.txt. Kept in sync with SECURITY.md.
 const SECURITY_TXT: &str = "\
-Contact: https://github.com/mack42/rIDM/security/advisories/new
+Contact: https://github.com/ZerosAndOnesLLC/rIDM/security/advisories/new
 Expires: 2027-09-14T00:00:00.000Z
 Preferred-Languages: en
-Policy: https://github.com/mack42/rIDM/blob/main/SECURITY.md
-Canonical: https://github.com/mack42/rIDM/blob/main/api/src/routes/wellknown.rs
+Policy: https://github.com/ZerosAndOnesLLC/rIDM/blob/main/SECURITY.md
+Canonical: https://github.com/ZerosAndOnesLLC/rIDM/blob/main/api/src/routes/wellknown.rs
 ";
 
 async fn security_txt() -> impl IntoResponse {

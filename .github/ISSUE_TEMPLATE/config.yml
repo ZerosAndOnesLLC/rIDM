@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/mack42/rIDM/security/advisories/new
+    url: https://github.com/ZerosAndOnesLLC/rIDM/security/advisories/new
     about: Report vulnerabilities privately. Please do not open a public issue.
   - name: Question / discussion
-    url: https://github.com/mack42/rIDM/discussions
+    url: https://github.com/ZerosAndOnesLLC/rIDM/discussions
     about: Ask questions and discuss ideas.

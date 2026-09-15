@@ -108,6 +108,7 @@ All versions are the latest **stable** release as of the date above. Verified by
 | utoipa-swagger-ui | 9.0.2 | `axum` |
 | rust-embed | 8.12.0 | embedded UI mode |
 | testcontainers-modules (dev) | 0.15.0 | `postgres`, `redis` |
+| testcontainers (dev) | 0.27.3 | `reusable-containers` — no Ryuk in testcontainers-rs; named reusable containers instead |
 | cargo-llvm-cov / cargo-fuzz / cargo-audit / cargo-deny (tools) | latest stable at Phase 0.9 (verify then) | coverage, fuzzing, supply chain |
 
 ### Frontend packages (`ui/package.json`)
@@ -236,7 +237,7 @@ Operations
 - [x] 0.6 GitHub Actions CI: `cargo check`, `clippy -D warnings`, `cargo test`, `cargo audit`, `cargo deny`, `npm run lint`, `npm run build`. Renovate config.
 - [x] 0.7 README, CONTRIBUTING.md, SECURITY.md (disclosure policy), CODE_OF_CONDUCT.md, `security.txt`, issue/PR templates.
 - [x] 0.8 Provider traits (`KeyEncryptor`, `EmailSender`, `SmsSender`, `Captcha`, `PasswordHasher`) and the internal event bus skeleton.
-- [ ] 0.9 Tests: `ridm-core` test-support module with mock `KeyEncryptor`/`EmailSender`/`SmsSender`/`Captcha`; testcontainers harness (Postgres + Redis) with a shared fixture that seeds tenant, client, admin, user; cargo-llvm-cov wired into CI with coverage report.
+- [x] 0.9 Tests: `ridm-core` test-support module with mock `KeyEncryptor`/`EmailSender`/`SmsSender`/`Captcha`; testcontainers harness (Postgres + Redis) with a shared fixture that seeds tenant, client, admin, user; cargo-llvm-cov wired into CI with coverage report.
 - [ ] 0.10 Branch protection on `main`: PRs only, all required status checks in §6 must pass, no bypass; CODEOWNERS.
 
 ### Phase 1 — Tenants, users, groups, roles, profile schema

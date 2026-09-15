@@ -12,7 +12,7 @@ current and previous minor release are supported.
 **Please do not report security vulnerabilities through public GitHub issues.**
 
 Use GitHub's private reporting:
-<https://github.com/mack42/rIDM/security/advisories/new>
+<https://github.com/ZerosAndOnesLLC/rIDM/security/advisories/new>
 
 Include as much of the following as you can:
 

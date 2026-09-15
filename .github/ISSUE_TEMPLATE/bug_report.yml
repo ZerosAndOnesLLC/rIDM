@@ -6,13 +6,13 @@ body:
     attributes:
       value: |
         Security issues: please use private reporting instead
-        (https://github.com/mack42/rIDM/security/advisories/new).
+        (https://github.com/ZerosAndOnesLLC/rIDM/security/advisories/new).
   - type: input
     id: version
     attributes:
       label: Version
       description: Image tag, release, or commit SHA
-      placeholder: ghcr.io/mack42/ridm:0.1.0
+      placeholder: ghcr.io/zerosandonesllc/ridm:0.1.0
     validations:
       required: true
   - type: dropdown

@@ -47,7 +47,7 @@ FROM gcr.io/distroless/cc-debian12:nonroot
 
 LABEL org.opencontainers.image.title="rIDM" \
       org.opencontainers.image.description="Multi-tenant OpenID Connect identity server" \
-      org.opencontainers.image.source="https://github.com/mack42/rIDM" \
+      org.opencontainers.image.source="https://github.com/ZerosAndOnesLLC/rIDM" \
       org.opencontainers.image.licenses="MIT"
 
 COPY --from=builder /src/target/release/ridm-api /ridm-api

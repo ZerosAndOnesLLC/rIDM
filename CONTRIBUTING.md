@@ -55,9 +55,19 @@ matrix. The short version:
 | Kind | Command |
 |------|---------|
 | Unit | `cargo test --workspace --lib --bins` |
-| Integration (needs Postgres + Redis) | `cargo test --workspace --tests` |
+| Integration | `cargo test --workspace --tests` |
+| Coverage | `cargo llvm-cov --workspace --all-features --html` |
 | UI lint / types / build | `npm run lint && npm run typecheck && npm run build` |
 | Supply chain | `cargo audit && cargo deny check` |
+
+Integration tests need Postgres and Redis. Point them at running servers with
+`RIDM_TEST_DATABASE_URL` and `RIDM_TEST_REDIS_URL` (for example the docker-compose
+stack); without those variables the harness starts reusable containers named
+`ridm-test-postgres` and `ridm-test-redis` through testcontainers and reuses them on
+later runs (`docker rm -f ridm-test-postgres ridm-test-redis` removes them). Each test
+gets its own tenant and its own connection pools, so tests run in parallel. Mock
+providers live in `ridm_core::test_support` (feature `test-support`) and capture what
+was sent so tests assert on content instead of sleeping.
 
 Every security finding gets a regression test in `api/tests/security/` before the fix
 merges.

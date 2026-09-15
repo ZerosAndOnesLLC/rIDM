@@ -12,3 +12,5 @@
 
 pub mod events;
 pub mod providers;
+#[cfg(feature = "test-support")]
+pub mod test_support;

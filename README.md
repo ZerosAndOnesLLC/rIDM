@@ -1,6 +1,6 @@
 # rIDM
 
-[![ci](https://github.com/mack42/rIDM/actions/workflows/ci.yml/badge.svg)](https://github.com/mack42/rIDM/actions/workflows/ci.yml)
+[![ci](https://github.com/ZerosAndOnesLLC/rIDM/actions/workflows/ci.yml/badge.svg)](https://github.com/ZerosAndOnesLLC/rIDM/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A modern, multi-tenant Identity Management server: OpenID Connect provider, JWT issuer,
