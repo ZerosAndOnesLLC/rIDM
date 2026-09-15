@@ -107,3 +107,22 @@ pub const PROTECTED_CLAIMS: &[&str] = &[
     "scope",
     "typ",
 ];
+
+/// Input for creating a claim mapper: `config` is the mapper document
+/// (`type`, its fields and `include_in`) without the name.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct NewClaimMapper {
+    pub name: String,
+    /// Restrict to one client; absent applies to every client of the tenant.
+    pub client_id: Option<uuid::Uuid>,
+    pub config: serde_json::Value,
+}
+
+/// Partial mapper update; the client scope is immutable.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ClaimMapperUpdate {
+    pub name: Option<String>,
+    pub config: Option<serde_json::Value>,
+}

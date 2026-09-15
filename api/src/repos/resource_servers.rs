@@ -3,7 +3,7 @@
 use sqlx::{PgExecutor, QueryBuilder};
 use uuid::Uuid;
 
-use crate::models::{Permission, ResourceServer};
+use crate::models::{Permission, ResourceServer, ResourceServerUpdate};
 
 const RS_COLUMNS: &str = "id, tenant_id, identifier, name, token_ttl_secs, signing_alg, \
     allow_offline_access, built_in, created_at, updated_at";
@@ -194,6 +194,69 @@ pub async fn permissions_for_roles<'e>(
     .bind(tenant_id)
     .bind(resource_server_id)
     .bind(role_ids)
+    .fetch_all(exec)
+    .await
+}
+
+/// Change the mutable columns (identifier and `built_in` never change).
+pub async fn update<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+    patch: &ResourceServerUpdate,
+) -> Result<Option<ResourceServer>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("UPDATE resource_servers SET updated_at = now()");
+    if let Some(n) = &patch.name {
+        qb.push(", name = ").push_bind(n);
+    }
+    if let Some(t) = patch.token_ttl_secs {
+        qb.push(", token_ttl_secs = ").push_bind(t);
+    }
+    if let Some(a) = &patch.signing_alg {
+        qb.push(", signing_alg = ").push_bind(a);
+    }
+    if let Some(o) = patch.allow_offline_access {
+        qb.push(", allow_offline_access = ").push_bind(o);
+    }
+    qb.push(" WHERE tenant_id = ")
+        .push_bind(tenant_id)
+        .push(" AND id = ")
+        .push_bind(id)
+        .push(" RETURNING ")
+        .push(RS_COLUMNS);
+    qb.build_query_as::<ResourceServer>()
+        .fetch_optional(exec)
+        .await
+}
+
+pub async fn find_permission<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+) -> Result<Option<Permission>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("SELECT ");
+    qb.push(PERM_COLUMNS)
+        .push(" FROM permissions WHERE tenant_id = ")
+        .push_bind(tenant_id)
+        .push(" AND id = ")
+        .push_bind(id);
+    qb.build_query_as::<Permission>().fetch_optional(exec).await
+}
+
+/// Permissions granted directly to a role (composites not expanded).
+pub async fn permissions_of_role<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    role_id: Uuid,
+) -> Result<Vec<Permission>, sqlx::Error> {
+    sqlx::query_as::<_, Permission>(
+        "SELECT p.id, p.tenant_id, p.resource_server_id, p.name, p.description, p.created_at \
+         FROM permission_assignments pa \
+         JOIN permissions p ON p.tenant_id = pa.tenant_id AND p.id = pa.permission_id \
+         WHERE pa.tenant_id = $1 AND pa.role_id = $2 ORDER BY p.name, p.id",
+    )
+    .bind(tenant_id)
+    .bind(role_id)
     .fetch_all(exec)
     .await
 }

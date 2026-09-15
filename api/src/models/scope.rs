@@ -26,13 +26,68 @@ pub const STANDARD_SCOPES: [&str; 6] = [
 ];
 
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct NewScope {
     pub name: String,
     pub description: Option<String>,
     pub claims: Vec<String>,
     pub resource_server_id: Option<Uuid>,
     pub is_default: bool,
+}
+
+/// Partial scope update; the name is immutable.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ScopeUpdate {
+    #[serde(deserialize_with = "crate::util::patch::double_option")]
+    pub description: Option<Option<String>>,
+    pub claims: Option<Vec<String>>,
+    pub is_default: Option<bool>,
+}
+
+impl ScopeUpdate {
+    pub fn is_empty(&self) -> bool {
+        self.description.is_none() && self.claims.is_none() && self.is_default.is_none()
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct NewResourceServer {
+    /// Audience value (`aud`) tokens for this API carry; 1-512 characters.
+    pub identifier: String,
+    pub name: String,
+    pub token_ttl_secs: Option<i32>,
+    pub signing_alg: Option<String>,
+    pub allow_offline_access: Option<bool>,
+}
+
+/// Partial resource server update; the identifier is immutable.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ResourceServerUpdate {
+    pub name: Option<String>,
+    #[serde(deserialize_with = "crate::util::patch::double_option")]
+    pub token_ttl_secs: Option<Option<i32>>,
+    #[serde(deserialize_with = "crate::util::patch::double_option")]
+    pub signing_alg: Option<Option<String>>,
+    pub allow_offline_access: Option<bool>,
+}
+
+impl ResourceServerUpdate {
+    pub fn is_empty(&self) -> bool {
+        self.name.is_none()
+            && self.token_ttl_secs.is_none()
+            && self.signing_alg.is_none()
+            && self.allow_offline_access.is_none()
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct NewPermission {
+    pub name: String,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

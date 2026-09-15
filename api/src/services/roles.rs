@@ -228,6 +228,18 @@ pub async fn unassign(
     Ok(())
 }
 
+/// Users and groups holding the role directly.
+pub async fn holders_of(
+    state: &AppState,
+    tenant_id: Uuid,
+    role_id: Uuid,
+) -> AppResult<Vec<RoleAssignment>> {
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let rows = repos::roles::assignments_of_role(&mut *tx, tenant_id, role_id).await?;
+    tx.commit().await?;
+    Ok(rows)
+}
+
 pub async fn assignments_of(
     state: &AppState,
     tenant_id: Uuid,

@@ -286,6 +286,51 @@ pub enum EventKind {
         new_version: u32,
     },
 
+    // Scopes, claim mappers, resource servers and permissions
+    ScopeCreated {
+        scope_id: Uuid,
+    },
+    ScopeUpdated {
+        scope_id: Uuid,
+    },
+    ScopeDeleted {
+        scope_id: Uuid,
+    },
+    ClaimMapperCreated {
+        mapper_id: Uuid,
+    },
+    ClaimMapperUpdated {
+        mapper_id: Uuid,
+    },
+    ClaimMapperDeleted {
+        mapper_id: Uuid,
+    },
+    ResourceServerCreated {
+        resource_server_id: Uuid,
+    },
+    ResourceServerUpdated {
+        resource_server_id: Uuid,
+    },
+    ResourceServerDeleted {
+        resource_server_id: Uuid,
+    },
+    PermissionCreated {
+        resource_server_id: Uuid,
+        permission_id: Uuid,
+    },
+    PermissionDeleted {
+        resource_server_id: Uuid,
+        permission_id: Uuid,
+    },
+    PermissionGranted {
+        role_id: Uuid,
+        permission_id: Uuid,
+    },
+    PermissionRevoked {
+        role_id: Uuid,
+        permission_id: Uuid,
+    },
+
     // Generic cache invalidation hint (entity kind + id), used until every
     // entity has a dedicated event.
     CacheInvalidate {
@@ -350,6 +395,19 @@ impl EventKind {
             Self::SigningKeyCreated { .. } => "signing_key.created",
             Self::SigningKeyStatusChanged { .. } => "signing_key.status_changed",
             Self::MasterKeyRotated { .. } => "master_key.rotated",
+            Self::ScopeCreated { .. } => "scope.created",
+            Self::ScopeUpdated { .. } => "scope.updated",
+            Self::ScopeDeleted { .. } => "scope.deleted",
+            Self::ClaimMapperCreated { .. } => "claim_mapper.created",
+            Self::ClaimMapperUpdated { .. } => "claim_mapper.updated",
+            Self::ClaimMapperDeleted { .. } => "claim_mapper.deleted",
+            Self::ResourceServerCreated { .. } => "resource_server.created",
+            Self::ResourceServerUpdated { .. } => "resource_server.updated",
+            Self::ResourceServerDeleted { .. } => "resource_server.deleted",
+            Self::PermissionCreated { .. } => "permission.created",
+            Self::PermissionDeleted { .. } => "permission.deleted",
+            Self::PermissionGranted { .. } => "permission.granted",
+            Self::PermissionRevoked { .. } => "permission.revoked",
             Self::CacheInvalidate { .. } => "cache.invalidate",
         }
     }

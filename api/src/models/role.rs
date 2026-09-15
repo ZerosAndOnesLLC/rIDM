@@ -19,7 +19,7 @@ pub struct Role {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct NewRole {
     pub name: String,
     pub client_id: Option<Uuid>,
@@ -27,7 +27,7 @@ pub struct NewRole {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct RoleUpdate {
     pub name: Option<String>,
     #[serde(deserialize_with = "double_option")]

@@ -17,7 +17,7 @@ pub struct Group {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct NewGroup {
     pub name: String,
     pub parent_id: Option<Uuid>,
@@ -26,7 +26,7 @@ pub struct NewGroup {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct GroupUpdate {
     pub name: Option<String>,
     #[serde(deserialize_with = "double_option")]

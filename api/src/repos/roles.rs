@@ -338,3 +338,19 @@ pub async fn role_ids_of_group_lineage<'e>(
     .fetch_all(exec)
     .await
 }
+
+/// Every principal holding a role directly.
+pub async fn assignments_of_role<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    role_id: Uuid,
+) -> Result<Vec<RoleAssignment>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("SELECT ");
+    qb.push(ASSIGNMENT_COLUMNS)
+        .push(" FROM role_assignments WHERE tenant_id = ")
+        .push_bind(tenant_id)
+        .push(" AND role_id = ")
+        .push_bind(role_id)
+        .push(" ORDER BY created_at, id");
+    qb.build_query_as::<RoleAssignment>().fetch_all(exec).await
+}

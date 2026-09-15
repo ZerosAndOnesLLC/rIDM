@@ -62,11 +62,15 @@ pub fn scopes(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:scopes")
 }
 
-pub fn mappers(tenant_id: Uuid, client_id: Option<Uuid>) -> String {
-    match client_id {
-        Some(c) => format!("{PREFIX}:t:{tenant_id}:mappers:{c}"),
-        None => format!("{PREFIX}:t:{tenant_id}:mappers:global"),
-    }
+/// Per-tenant version token folded into mapper cache keys, bumped on any
+/// claim mapper change (tenant-wide mappers reach every client's cache).
+pub fn mappers_version(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:mappers:ver")
+}
+
+/// Effective mappers of one client under a mappers version token.
+pub fn mappers(tenant_id: Uuid, version: &str, client_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:mappers:{version}:{client_id}")
 }
 
 pub fn discovery(tenant_id: Uuid) -> String {

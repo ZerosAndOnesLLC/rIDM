@@ -7,6 +7,22 @@ use crate::models::ClaimMapperRow;
 
 const COLUMNS: &str = "id, tenant_id, client_id, name, config, created_at, updated_at";
 
+pub async fn find_by_id<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+) -> Result<Option<ClaimMapperRow>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("SELECT ");
+    qb.push(COLUMNS)
+        .push(" FROM claim_mappers WHERE tenant_id = ")
+        .push_bind(tenant_id)
+        .push(" AND id = ")
+        .push_bind(id);
+    qb.build_query_as::<ClaimMapperRow>()
+        .fetch_optional(exec)
+        .await
+}
+
 /// Mappers that apply to `client_id`: the tenant-wide ones plus the client's own.
 pub async fn list_effective<'e>(
     exec: impl PgExecutor<'e>,
@@ -23,18 +39,22 @@ pub async fn list_effective<'e>(
     qb.build_query_as::<ClaimMapperRow>().fetch_all(exec).await
 }
 
+/// `None`: every mapper of the tenant; `Some(None)`: tenant-wide only;
+/// `Some(Some(c))`: one client's own.
 pub async fn list<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
-    client_id: Option<Uuid>,
+    scope: Option<Option<Uuid>>,
 ) -> Result<Vec<ClaimMapperRow>, sqlx::Error> {
     let mut qb = QueryBuilder::new("SELECT ");
     qb.push(COLUMNS)
         .push(" FROM claim_mappers WHERE tenant_id = ")
-        .push_bind(tenant_id)
-        .push(" AND client_id IS NOT DISTINCT FROM ")
-        .push_bind(client_id)
-        .push(" ORDER BY name");
+        .push_bind(tenant_id);
+    if let Some(client_id) = scope {
+        qb.push(" AND client_id IS NOT DISTINCT FROM ")
+            .push_bind(client_id);
+    }
+    qb.push(" ORDER BY name, id");
     qb.build_query_as::<ClaimMapperRow>().fetch_all(exec).await
 }
 

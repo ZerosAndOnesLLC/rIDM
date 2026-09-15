@@ -232,6 +232,17 @@ pagination with `?cursor=&limit=`):
 | `GET /admin/tenants/{slug}/users/{id}/roles`, `PUT/DELETE .../roles/{id}` | read / write | direct and effective roles; granting is refused when the role (composites included) carries admin permissions the caller lacks |
 | `GET /admin/tenants/{slug}/users/{id}/groups`, `PUT/DELETE .../groups/{id}` | read / write | direct and effective groups; joining is guarded like a role grant against the group's and its ancestors' roles |
 | `GET /admin/tenants/{slug}/users/{id}/consents`, `DELETE .../consents/{client_id}` | read / write | granted scopes per client; revoke |
+| `GET/POST /admin/tenants/{slug}/groups`, `GET/PATCH/DELETE .../groups/{id}` | `ridm:groups:read` / `write` | flat list with `parent_id`; detail carries the group's own roles and member count; moving a group under its own descendant is refused |
+| `GET .../groups/{id}/members`, `PUT/DELETE .../members/{user_id}` | read / write | joining is refused when the group (or an ancestor) carries admin permissions the caller lacks |
+| `GET .../groups/{id}/roles`, `PUT/DELETE .../roles/{role_id}` | read / write | roles every member inherits; granting is guarded like a role grant |
+| `GET/POST /admin/tenants/{slug}/roles`, `GET/PATCH/DELETE .../roles/{id}` | `ridm:roles:read` / `write` | `?client_id=` or `?realm_only=true`; detail carries composites and granted permissions; built-in `ridm:*` roles are listed and assignable but immutable |
+| `GET .../roles/{id}/composites`, `PUT/DELETE .../composites/{child_id}` | read / write | cycles refused; adding a child is guarded by the child's admin permissions |
+| `GET .../roles/{id}/permissions`, `PUT/DELETE .../permissions/{permission_id}` | read / `ridm:resource-servers:write` | admin-catalogue permissions can only be granted by a caller who holds them; built-in roles keep their seeded set; takes effect on the next request |
+| `GET .../roles/{id}/holders` | read | users and groups holding the role directly |
+| `GET/POST /admin/tenants/{slug}/resource-servers`, `GET/PATCH/DELETE .../{id}` | `ridm:resource-servers:read` / `write` | audience identifier (immutable), name, token TTL, signing alg, offline access; `urn:ridm:admin` is read-only |
+| `GET/POST .../resource-servers/{id}/permissions`, `DELETE .../permissions/{id}` | read / write | the built-in catalogue cannot be extended or trimmed |
+| `GET/POST /admin/tenants/{slug}/scopes`, `GET/PATCH/DELETE .../scopes/{id}` | `ridm:scopes:read` / `write` | name immutable; description, claims and `is_default` tunable, also for the standard scopes, which cannot be deleted; discovery follows at once |
+| `GET/POST /admin/tenants/{slug}/claim-mappers`, `GET/PATCH/DELETE .../{id}` | `ridm:mappers:read` / `write` | `{name, client_id?, config}` with `config` = `{type, ..., include_in}`; `?client_id=` or `?tenant_wide=true`; templates must compile; tokens reflect changes at once |
 
 Tenant settings cover the password, session, MFA, registration, locale, branding,
 key, discovery, DCR, auth-method, lockout, CAPTCHA and notification policies plus a

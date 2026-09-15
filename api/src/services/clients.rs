@@ -517,10 +517,10 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
     }
     state
         .cache
-        .invalidate(&[
-            cache_keys::client_by_client_id(tenant_id, &client.client_id),
-            cache_keys::mappers(tenant_id, Some(id)),
-        ])
+        .invalidate(&[cache_keys::client_by_client_id(
+            tenant_id,
+            &client.client_id,
+        )])
         .await?;
     state.events.publish(Event::new(
         Some(tenant_id),
