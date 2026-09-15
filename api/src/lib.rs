@@ -5,6 +5,7 @@ pub mod cache;
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod jobs;
 pub mod middleware;
 pub mod models;
 pub mod repos;

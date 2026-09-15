@@ -35,7 +35,7 @@ async fn keys_are_generated_encrypted_and_recoverable_per_algorithm() {
         assert!(der.len() > 32);
         assert_eq!(der[0], 0x30, "PKCS#8 DER starts with a SEQUENCE");
         assert!(
-            !key.private_key_enc.windows(der.len()).any(|w| w == &*der),
+            !key.private_key_enc.windows(der.len()).any(|w| w == *der),
             "private key must not be stored in the clear"
         );
 

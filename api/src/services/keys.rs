@@ -16,7 +16,7 @@ use zeroize::Zeroizing;
 use crate::cache::keys as cache_keys;
 use crate::db;
 use crate::error::{AppError, AppResult};
-use crate::models::{KeyStatus, RsaBits, SigningAlg, SigningKey};
+use crate::models::{KeyPolicy, KeyStatus, RsaBits, SigningAlg, SigningKey};
 use crate::repos;
 use crate::state::AppState;
 
@@ -195,6 +195,211 @@ pub async fn private_der(state: &AppState, key: &SigningKey) -> AppResult<Zeroiz
         .decrypt(&encrypted, &aad_for(key.tenant_id, key.id))
         .await
         .map_err(|e| AppError::Internal(format!("key decryption: {e}")))
+}
+
+/// Make `id` the signing key for its algorithm. Any other active key of the
+/// same algorithm moves to `retiring` and stays published for
+/// `retire_overlap_hours` so tokens it signed keep verifying.
+pub async fn activate(
+    state: &AppState,
+    tenant_id: Uuid,
+    policy: &KeyPolicy,
+    actor: Actor,
+    id: Uuid,
+) -> AppResult<SigningKey> {
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let key = repos::signing_keys::find_by_id(&mut *tx, tenant_id, id)
+        .await?
+        .ok_or(AppError::NotFound("signing key"))?;
+    if key.status == KeyStatus::Revoked {
+        return Err(AppError::BadRequest(
+            "a revoked key cannot be activated".into(),
+        ));
+    }
+    let overlap = Utc::now() + chrono::Duration::hours(i64::from(policy.retire_overlap_hours));
+    let mut retired = vec![];
+    for other in repos::signing_keys::list(&mut *tx, tenant_id, Some(KeyStatus::Active)).await? {
+        if other.id != id && other.alg == key.alg {
+            repos::signing_keys::set_status(
+                &mut *tx,
+                tenant_id,
+                other.id,
+                KeyStatus::Retiring,
+                Some(overlap),
+            )
+            .await?;
+            retired.push(other);
+        }
+    }
+    let key = repos::signing_keys::set_status(&mut *tx, tenant_id, id, KeyStatus::Active, None)
+        .await?
+        .ok_or(AppError::NotFound("signing key"))?;
+    tx.commit().await?;
+    state
+        .cache
+        .invalidate(&[cache_keys::jwks(tenant_id)])
+        .await?;
+    for r in retired {
+        publish_status(state, tenant_id, actor.clone(), &r, KeyStatus::Retiring);
+    }
+    publish_status(state, tenant_id, actor, &key, KeyStatus::Active);
+    Ok(key)
+}
+
+/// Stop signing with a key but keep it published until `expires_at`.
+pub async fn retire(
+    state: &AppState,
+    tenant_id: Uuid,
+    policy: &KeyPolicy,
+    actor: Actor,
+    id: Uuid,
+) -> AppResult<SigningKey> {
+    let overlap = Utc::now() + chrono::Duration::hours(i64::from(policy.retire_overlap_hours));
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let key = repos::signing_keys::find_by_id(&mut *tx, tenant_id, id)
+        .await?
+        .ok_or(AppError::NotFound("signing key"))?;
+    if key.status == KeyStatus::Revoked {
+        return Err(AppError::BadRequest("key is already revoked".into()));
+    }
+    let key = repos::signing_keys::set_status(
+        &mut *tx,
+        tenant_id,
+        id,
+        KeyStatus::Retiring,
+        Some(overlap),
+    )
+    .await?
+    .ok_or(AppError::NotFound("signing key"))?;
+    tx.commit().await?;
+    state
+        .cache
+        .invalidate(&[cache_keys::jwks(tenant_id)])
+        .await?;
+    publish_status(state, tenant_id, actor, &key, KeyStatus::Retiring);
+    Ok(key)
+}
+
+/// Unpublish a key immediately. Tokens signed with it stop verifying.
+pub async fn revoke(
+    state: &AppState,
+    tenant_id: Uuid,
+    actor: Actor,
+    id: Uuid,
+) -> AppResult<SigningKey> {
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let key = repos::signing_keys::set_status(
+        &mut *tx,
+        tenant_id,
+        id,
+        KeyStatus::Revoked,
+        Some(Utc::now()),
+    )
+    .await?
+    .ok_or(AppError::NotFound("signing key"))?;
+    tx.commit().await?;
+    state
+        .cache
+        .invalidate(&[cache_keys::jwks(tenant_id)])
+        .await?;
+    publish_status(state, tenant_id, actor, &key, KeyStatus::Revoked);
+    Ok(key)
+}
+
+/// Generate a new key with the tenant's default algorithm, activate it, and
+/// retire the previous active key with overlap.
+pub async fn rotate(
+    state: &AppState,
+    tenant_id: Uuid,
+    policy: &KeyPolicy,
+    actor: Actor,
+) -> AppResult<SigningKey> {
+    let fresh = create(
+        state,
+        tenant_id,
+        actor.clone(),
+        policy.default_alg,
+        policy.rsa_bits,
+        KeyStatus::Pending,
+        None,
+    )
+    .await?;
+    activate(state, tenant_id, policy, actor, fresh.id).await
+}
+
+/// The active key for the tenant's default algorithm, created on first use.
+pub async fn ensure_active(
+    state: &AppState,
+    tenant_id: Uuid,
+    policy: &KeyPolicy,
+) -> AppResult<SigningKey> {
+    if let Some(k) = active(state, tenant_id, policy.default_alg).await? {
+        return Ok(k);
+    }
+    match create(
+        state,
+        tenant_id,
+        Actor::System,
+        policy.default_alg,
+        policy.rsa_bits,
+        KeyStatus::Active,
+        None,
+    )
+    .await
+    {
+        Ok(k) => Ok(k),
+        // Lost a race with another node: use what it created.
+        Err(AppError::Conflict(_)) => active(state, tenant_id, policy.default_alg)
+            .await?
+            .ok_or(AppError::Internal("no active key after creation".into())),
+        Err(e) => Err(e),
+    }
+}
+
+/// Housekeeping for one tenant: revoke retiring keys past their overlap and
+/// rotate the active key when it is older than the rotation interval.
+/// Returns `(revoked, rotated)`.
+pub async fn maintain(
+    state: &AppState,
+    tenant_id: Uuid,
+    policy: &KeyPolicy,
+) -> AppResult<(usize, bool)> {
+    let now = Utc::now();
+    let mut revoked = 0;
+    for key in list(state, tenant_id, Some(KeyStatus::Retiring)).await? {
+        if key.expires_at.is_some_and(|t| t <= now) {
+            revoke(state, tenant_id, Actor::System, key.id).await?;
+            revoked += 1;
+        }
+    }
+    let mut rotated = false;
+    if policy.rotation_interval_days > 0
+        && let Some(current) = active(state, tenant_id, policy.default_alg).await?
+        && current.not_before + chrono::Duration::days(i64::from(policy.rotation_interval_days))
+            <= now
+    {
+        rotate(state, tenant_id, policy, Actor::System).await?;
+        rotated = true;
+    }
+    Ok((revoked, rotated))
+}
+
+fn publish_status(
+    state: &AppState,
+    tenant_id: Uuid,
+    actor: Actor,
+    key: &SigningKey,
+    status: KeyStatus,
+) {
+    state.events.publish(Event::new(
+        Some(tenant_id),
+        actor,
+        EventKind::SigningKeyStatusChanged {
+            key_id: key.id,
+            kid: key.kid.clone(),
+            status: status.as_str().into(),
+        },
+    ));
 }
 
 pub async fn get(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<SigningKey> {
