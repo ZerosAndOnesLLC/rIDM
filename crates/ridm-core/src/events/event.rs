@@ -149,6 +149,16 @@ pub enum EventKind {
     },
 
     // Keys
+    SigningKeyCreated {
+        key_id: Uuid,
+        kid: String,
+        alg: String,
+    },
+    SigningKeyStatusChanged {
+        key_id: Uuid,
+        kid: String,
+        status: String,
+    },
     MasterKeyRotated {
         new_version: u32,
     },
@@ -186,6 +196,8 @@ impl EventKind {
             Self::RoleUnassigned { .. } => "role.unassigned",
             Self::RoleCompositeAdded { .. } => "role.composite_added",
             Self::RoleCompositeRemoved { .. } => "role.composite_removed",
+            Self::SigningKeyCreated { .. } => "signing_key.created",
+            Self::SigningKeyStatusChanged { .. } => "signing_key.status_changed",
             Self::MasterKeyRotated { .. } => "master_key.rotated",
             Self::CacheInvalidate { .. } => "cache.invalidate",
         }

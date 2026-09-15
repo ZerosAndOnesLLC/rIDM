@@ -1,5 +1,7 @@
 pub mod bootstrap;
 pub mod groups;
+pub mod key_encryptor;
+pub mod keys;
 pub mod password;
 pub mod profile_schema;
 pub mod roles;

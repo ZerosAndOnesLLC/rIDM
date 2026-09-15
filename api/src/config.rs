@@ -65,8 +65,13 @@ pub struct Config {
     /// Externally visible base URL, e.g. `https://id.example.com`. Issuer URLs
     /// are derived from it: `{PUBLIC_URL}/t/{tenant_slug}`.
     pub public_url: Url,
-    /// 32-byte key that encrypts secrets at rest.
+    /// 32-byte key that encrypts secrets at rest (current generation).
     pub master_key: SecretBytes,
+    /// Generation number of `master_key`; stored with every ciphertext.
+    pub master_key_version: u32,
+    /// Older generations still needed to decrypt rows not yet re-encrypted
+    /// (`MASTER_KEY_PREVIOUS="1=<hex>,2=<hex>"`).
+    pub master_key_previous: Vec<(u32, SecretBytes)>,
     /// Socket address the HTTP(S) listener binds to.
     pub bind_addr: SocketAddr,
     pub log_format: LogFormat,
@@ -133,6 +138,37 @@ impl Config {
             })
         })?;
         let master_key = load_master_key()?;
+        let master_key_version = parse_u32("MASTER_KEY_VERSION", 1)?;
+        if master_key_version == 0 {
+            return Err(ConfigError::Invalid {
+                name: "MASTER_KEY_VERSION",
+                reason: "must be >= 1".into(),
+            });
+        }
+        let master_key_previous = parse(
+            "MASTER_KEY_PREVIOUS",
+            optional("MASTER_KEY_PREVIOUS").unwrap_or_default(),
+            |v| -> Result<Vec<(u32, SecretBytes)>, String> {
+                v.split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(|pair| {
+                        let (ver, key) = pair
+                            .split_once('=')
+                            .ok_or_else(|| "expected `version=key` pairs".to_string())?;
+                        let ver: u32 = ver.trim().parse().map_err(|_| "bad version".to_string())?;
+                        if ver == 0 || ver >= master_key_version {
+                            return Err(
+                                "previous versions must be lower than MASTER_KEY_VERSION".into()
+                            );
+                        }
+                        let key = decode_master_key("MASTER_KEY_PREVIOUS", key.trim().as_bytes())
+                            .map_err(|e| e.to_string())?;
+                        Ok((ver, key))
+                    })
+                    .collect()
+            },
+        )?;
         let bind_addr = parse(
             "BIND_ADDR",
             optional("BIND_ADDR").unwrap_or_else(|| "0.0.0.0:8080".to_string()),
@@ -224,6 +260,8 @@ impl Config {
             redis_url,
             public_url,
             master_key,
+            master_key_version,
+            master_key_previous,
             bind_addr,
             log_format,
             docs_enabled,

@@ -29,3 +29,8 @@ pub fn effective_roles(tenant_id: Uuid, version: &str, user_id: Uuid) -> String 
 pub fn profile_schema(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:profile_schema")
 }
+
+/// Published (active + retiring) keys of a tenant, i.e. the JWKS document.
+pub fn jwks(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:jwks")
+}
