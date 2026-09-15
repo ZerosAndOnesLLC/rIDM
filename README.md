@@ -85,6 +85,19 @@ role. The compose stack creates both and runs migrations in a one-shot `migrate`
 service; on Kubernetes use a Job. `MIGRATE_ON_START=true` is a simpler single-role mode
 for small installs.
 
+### Master key rotation
+
+Secrets at rest (signing keys, MFA credentials, IdP secrets) are encrypted with
+`MASTER_KEY`, and every ciphertext records the key generation that produced it. To
+rotate without downtime:
+
+1. Generate a new key and roll it out to every node as `MASTER_KEY` with
+   `MASTER_KEY_VERSION` incremented, keeping the old one in `MASTER_KEY_PREVIOUS`
+   (`<old version>=<old key>`). New writes use the new generation; old rows still decrypt.
+2. Run `ridm-api rotate-master-key` once (any node, same configuration). It re-encrypts
+   every row under the current generation in batches. `--status` shows what remains.
+3. Remove the old key from `MASTER_KEY_PREVIOUS`.
+
 ### First-run bootstrap
 
 The `master` tenant hosts global administrators. Create the first one either from the

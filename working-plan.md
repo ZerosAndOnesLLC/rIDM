@@ -260,7 +260,7 @@ Operations
 - [x] 2.3 JWKS endpoint (cached, ETag). WebFinger endpoint for issuer discovery.
 - [x] 2.4 Token service: sign/verify access + ID tokens; claim-mapper pipeline; pairwise `sub` derivation; optional JWE encryption of ID tokens per client.
 - [x] 2.5 Refresh token service: opaque, hashed, rotation, family reuse detection; `jti` denylist for instant access-token revocation.
-- [ ] 2.6 Master key rotation command: re-encrypt all `*_enc` columns under a new key version, zero downtime.
+- [x] 2.6 Master key rotation command: re-encrypt all `*_enc` columns under a new key version, zero downtime.
 - [ ] 2.7 Tests: sign/verify for every alg; rotation overlap (old kid still verifies until retired); revoked kid rejected; JWKS shape and ETag; pairwise `sub` stability; JWE round trip; master-key rotation re-encrypts and verifies; property tests on JWT decoding.
 
 ### Phase 3 — OIDC provider core

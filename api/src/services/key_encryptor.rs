@@ -60,6 +60,10 @@ impl KeyEncryptor for MasterKeyEncryptor {
         self.current
     }
 
+    fn known_versions_hint(&self) -> Option<Vec<u32>> {
+        Some(self.known_versions())
+    }
+
     async fn encrypt(&self, plaintext: &[u8], aad: &[u8]) -> Result<Encrypted, ProviderError> {
         let cipher = self.cipher(self.current)?;
         let mut nonce = [0u8; NONCE_LEN];
