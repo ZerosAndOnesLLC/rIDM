@@ -440,6 +440,41 @@ pub async fn set_password(
     Ok(())
 }
 
+/// Generate a random temporary password, set it with `must_change`, and
+/// return it once (admin "reset password" / "set temporary password").
+pub async fn set_temporary_password(
+    state: &AppState,
+    tenant_id: Uuid,
+    policy: &PasswordPolicy,
+    actor: Actor,
+    user_id: Uuid,
+) -> AppResult<Zeroizing<String>> {
+    const ALPHABET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+    let mut bytes = [0u8; 24];
+    rand::fill(&mut bytes);
+    let temp: String = bytes
+        .iter()
+        .map(|b| ALPHABET[(*b as usize) % ALPHABET.len()] as char)
+        .collect();
+    let temp = Zeroizing::new(format!("{}-{}-{}", &temp[..8], &temp[8..16], &temp[16..]));
+    set_password(
+        state,
+        tenant_id,
+        policy,
+        actor,
+        user_id,
+        temp.clone(),
+        SetPasswordOptions {
+            must_change: true,
+            // Random 24-character passwords satisfy any sane policy; history is irrelevant.
+            skip_policy: true,
+            by_user: false,
+        },
+    )
+    .await?;
+    Ok(temp)
+}
+
 /// Import a hash produced elsewhere (bulk migration). No policy checks; the
 /// algorithm is derived from the hash format and upgraded on first login.
 pub async fn import_hash(

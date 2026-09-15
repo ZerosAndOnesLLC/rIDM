@@ -20,6 +20,7 @@ pub mod password;
 pub mod passwordless;
 pub mod profile_schema;
 pub mod provider_settings;
+pub mod recovery;
 pub mod refresh_tokens;
 pub mod registration;
 pub mod roles;

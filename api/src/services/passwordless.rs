@@ -86,7 +86,11 @@ fn enabled(tenant: &Tenant, method: Method) -> bool {
     }
 }
 
-async fn check_send_limit(state: &AppState, tenant_id: Uuid, identifier: &str) -> AppResult<()> {
+pub async fn check_send_limit(
+    state: &AppState,
+    tenant_id: Uuid,
+    identifier: &str,
+) -> AppResult<()> {
     let key = keys::passwordless_sends(tenant_id, identifier);
     let mut conn = state.redis.get().await?;
     let n: i64 = conn.incr(&key, 1).await?;

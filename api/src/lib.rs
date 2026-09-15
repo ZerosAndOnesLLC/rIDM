@@ -38,6 +38,7 @@ pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
         .merge(routes::flows::router())
         .merge(routes::invitations::router())
         .merge(routes::verification::router())
+        .merge(routes::recovery::router())
         .merge(oidc::discovery::router())
         .merge(oidc::authorize::router())
         .merge(oidc::par::router())

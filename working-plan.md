@@ -283,7 +283,7 @@ Operations
 - [x] 4.4 Messaging: `EmailSender` (SMTP via lettre, generic HTTP), `SmsSender` (HTTP webhook), per-tenant settings (encrypted), per-locale templates (handlebars), outbound queue with retry and dead-letter.
 - [x] 4.5 Magic link and email OTP login; SMS OTP login; passwordless-only tenant policy.
 - [x] 4.6 Self-registration (per-tenant toggle, profile schema driven, email verification, terms acceptance) and invitation acceptance flow.
-- [ ] 4.7 Recovery/verification: password reset, email verify, resend, temporary password + forced change.
+- [x] 4.7 Recovery/verification: password reset, email verify, resend, temporary password + forced change.
 - [ ] 4.8 Session policy enforcement: idle/absolute timeouts, max concurrent sessions, trusted-device "remember me" skipping MFA, `prompt`/`max_age`/`acr_values` honored.
 - [ ] 4.9 i18n: locale negotiation (`ui_locales` → user locale → tenant default), translation bundles, RTL-safe layout.
 - [ ] 4.10 UI pages: `/login/`, `/register/`, `/invite/`, `/consent/`, `/mfa/`, `/recover/`, `/verify/`, `/logout/`, `/device/`, `/error/`. Query-param driven; tenant theme (logo, colors, custom links, optional custom CSS); mobile-first.

@@ -133,3 +133,8 @@ pub fn passwordless_sends(tenant_id: Uuid, identifier: &str) -> String {
 pub fn email_verification(tenant_id: Uuid, token_hash: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:verify:{token_hash}")
 }
+
+/// Password reset token (hashed) → user.
+pub fn password_reset(tenant_id: Uuid, token_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:reset:{token_hash}")
+}

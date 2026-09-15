@@ -193,6 +193,12 @@ pub enum EventKind {
     },
 
     // Authentication
+    PasswordResetRequested {
+        user_id: Uuid,
+    },
+    PasswordResetCompleted {
+        user_id: Uuid,
+    },
     PasswordlessSent {
         user_id: Uuid,
         method: String,
@@ -299,6 +305,8 @@ impl EventKind {
             Self::InvitationCreated { .. } => "invitation.created",
             Self::InvitationAccepted { .. } => "invitation.accepted",
             Self::InvitationRevoked { .. } => "invitation.revoked",
+            Self::PasswordResetRequested { .. } => "user.password_reset_requested",
+            Self::PasswordResetCompleted { .. } => "user.password_reset_completed",
             Self::PasswordlessSent { .. } => "login.passwordless_sent",
             Self::LoginSucceeded { .. } => "login.succeeded",
             Self::LoginFailed { .. } => "login.failed",
