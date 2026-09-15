@@ -42,6 +42,15 @@ pub fn router() -> Router<AppState> {
         )
         .route("/t/{slug}/flows/{id}/sms-otp", post(send_sms_otp))
         .route("/t/{slug}/flows/{id}/sms-otp/verify", post(verify_sms_otp))
+        .route(
+            "/t/{slug}/flows/{id}/mfa/totp/enroll",
+            post(mfa_totp_enroll),
+        )
+        .route(
+            "/t/{slug}/flows/{id}/mfa/totp/confirm",
+            post(mfa_totp_confirm),
+        )
+        .route("/t/{slug}/flows/{id}/mfa/verify", post(mfa_verify))
         .route("/t/{slug}/flows/{id}/profile", post(profile))
         .route("/t/{slug}/flows/{id}/terms", post(terms))
         .route("/t/{slug}/flows/{id}/consent", post(consent))
@@ -79,22 +88,29 @@ pub fn client_ip(
     peer_ip.map(|ip| ip.to_string())
 }
 
+/// The public state as JSON, with `finish_url` once the flow is done.
+async fn public_body(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &crate::services::login_flows::LoginFlow,
+) -> Result<serde_json::Value, AppError> {
+    let mut public = flows::public_state(state, &tenant.tenant, flow).await?;
+    let mut body = serde_json::to_value(&public).unwrap_or_default();
+    if public.stage == FlowStage::Done {
+        body["finish_url"] = json!(format!("{}/flows/{}/finish", tenant.issuer(state), flow.id));
+    }
+    // The csrf token is only needed by the UI; keep it in the body.
+    public.csrf.clear();
+    Ok(body)
+}
+
 async fn respond_state(
     state: &AppState,
     tenant: &TenantCtx,
     flow: &crate::services::login_flows::LoginFlow,
 ) -> Response {
-    match flows::public_state(state, &tenant.tenant, flow).await {
-        Ok(mut public) => {
-            let mut body = serde_json::to_value(&public).unwrap_or_default();
-            if public.stage == FlowStage::Done {
-                body["finish_url"] =
-                    json!(format!("{}/flows/{}/finish", tenant.issuer(state), flow.id));
-            }
-            // The csrf token is only needed by the UI; keep it in the body.
-            public.csrf.clear();
-            no_store(axum::Json(body).into_response())
-        }
+    match public_body(state, tenant, flow).await {
+        Ok(body) => no_store(axum::Json(body).into_response()),
         Err(e) => e.into_response(),
     }
 }
@@ -299,6 +315,119 @@ async fn consent(
                 axum::Json(json!({"stage": "denied", "redirect_to": redirect_to})).into_response(),
             )
         }
+        Err(e) => e.into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct MfaBody {
+    csrf: String,
+    /// Authenticator code (six digits) or a recovery code.
+    code: String,
+    /// Enrolment only: a name for the authenticator.
+    label: Option<String>,
+    #[serde(default)]
+    remember_device: bool,
+}
+
+async fn mfa_totp_enroll(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    axum::Json(body): axum::Json<CancelBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    match flows::mfa_enrol_begin(&state, &tenant, &flow).await {
+        Ok(enrolment) => no_store(axum::Json(enrolment).into_response()),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn mfa_totp_confirm(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<MfaBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    let ip = client_ip(&state, &headers, Some(peer));
+    let outcome = flows::mfa_enrol_confirm(
+        &state,
+        &tenant,
+        flow,
+        &body.code,
+        body.label.as_deref(),
+        body.remember_device,
+        ip,
+    )
+    .await;
+    respond_mfa(&state, &tenant, outcome).await
+}
+
+async fn mfa_verify(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<MfaBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    let ip = client_ip(&state, &headers, Some(peer));
+    let outcome =
+        flows::mfa_verify_step(&state, &tenant, flow, &body.code, body.remember_device, ip).await;
+    respond_mfa(&state, &tenant, outcome).await
+}
+
+/// A passed factor answers with the flow state; right after an enrolment the
+/// state is wrapped as `{recovery_codes, flow}` so the UI shows the codes
+/// before moving on. A wrong code is `401 invalid_code` with the attempt count.
+async fn respond_mfa(
+    state: &AppState,
+    tenant: &TenantCtx,
+    outcome: Result<flows::MfaStep, AppError>,
+) -> Response {
+    match outcome {
+        Ok(flows::MfaStep::Passed {
+            flow,
+            recovery_codes: None,
+        }) => respond_state(state, tenant, &flow).await,
+        Ok(flows::MfaStep::Passed {
+            flow,
+            recovery_codes: Some(codes),
+        }) => match public_body(state, tenant, &flow).await {
+            Ok(body) => no_store(
+                axum::Json(json!({"recovery_codes": codes, "flow": body})).into_response(),
+            ),
+            Err(e) => e.into_response(),
+        },
+        Ok(flows::MfaStep::Rejected { flow }) => no_store(
+            (
+                StatusCode::UNAUTHORIZED,
+                axum::Json(json!({"error": "invalid_code", "error_description": "the code is invalid or was already used", "attempts": flow.attempts})),
+            )
+                .into_response(),
+        ),
         Err(e) => e.into_response(),
     }
 }

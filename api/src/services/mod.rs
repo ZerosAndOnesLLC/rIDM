@@ -40,6 +40,7 @@ pub mod stats;
 pub mod tenant_config;
 pub mod tenants;
 pub mod tokens;
+pub mod totp;
 pub mod trusted_devices;
 pub mod users;
 pub mod webhooks;

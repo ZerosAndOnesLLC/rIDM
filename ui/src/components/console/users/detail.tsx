@@ -393,7 +393,7 @@ function SecurityTab({ tenant, u, editable, onReveal, onChanged, onForce }: { te
             {creds.error.message}
           </p>
         ) : creds.data.credentials.length === 0 ? (
-          <p className="text-[0.875rem] text-muted">None enrolled. Second factors arrive with Phase 7.</p>
+          <p className="text-[0.875rem] text-muted">None enrolled. Users add an authenticator app when the sign-in policy asks for one.</p>
         ) : (
           <ul className="divide-y divide-line">
             {creds.data.credentials.map((c) => (

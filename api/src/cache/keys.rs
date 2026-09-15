@@ -157,3 +157,13 @@ pub fn password_reset(tenant_id: Uuid, token_hash: &str) -> String {
 pub fn user_sessions(tenant_id: Uuid, user_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:user:{user_id}:sessions")
 }
+
+/// Pending TOTP enrolment (secret awaiting its first code), bound to a login flow.
+pub fn totp_enrolment(tenant_id: Uuid, flow_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:flow:{flow_id}:totp:enrol")
+}
+
+/// A TOTP time step already accepted for a credential (replay guard).
+pub fn totp_used_step(tenant_id: Uuid, credential_id: Uuid, step: u64) -> String {
+    format!("{PREFIX}:t:{tenant_id}:totp:{credential_id}:used:{step}")
+}

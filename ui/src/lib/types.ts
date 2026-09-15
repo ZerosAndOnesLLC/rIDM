@@ -80,8 +80,35 @@ export interface PublicFlow {
   user: { username: string; email: string | null } | null;
   attempts: number;
   captcha: CaptchaChallenge | null;
+  /** Present at the `mfa` stage. */
+  mfa: MfaInfo | null;
   /** Present once the stage is `done`. */
   finish_url?: string;
+}
+
+export interface MfaInfo {
+  /** Enrolled factor kinds. */
+  factors: "totp"[];
+  /** No factor yet: the user must enrol one now. */
+  enroll: boolean;
+  /** Unused recovery codes remain. */
+  recovery_codes: boolean;
+}
+
+/** Answer of `mfa/totp/enroll`. */
+export interface TotpEnrolment {
+  secret: string;
+  otpauth_uri: string;
+  issuer: string;
+  account: string;
+  digits: number;
+  period: number;
+}
+
+/** Answer of `mfa/totp/confirm`: the codes are shown once, then the flow goes on. */
+export interface TotpConfirmed {
+  recovery_codes: string[];
+  flow: PublicFlow;
 }
 
 export interface BrandingLink {

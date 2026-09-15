@@ -44,8 +44,8 @@ dynamic client registration and management. Globally: WebFinger issuer discovery
 Browser login is a flow API (`/flows/{id}/...`) that the UI drives step by step:
 password, magic link, email and SMS one-time codes, self-registration with
 schema-driven profiles and email verification, invitations, password reset and
-forced password change, profile completion, terms acceptance, consent. Flows are
-CSRF-bound, rate-limited per user and per IP, and demand a CAPTCHA (Turnstile or
+forced password change, a second factor, profile completion, terms acceptance,
+consent. Flows are CSRF-bound, rate-limited per user and per IP, and demand a CAPTCHA (Turnstile or
 hCaptcha) after repeated failures. Email and SMS go through per-tenant SMTP or webhook
 settings with localized templates and a retrying outbound queue.
 
@@ -54,8 +54,20 @@ on concurrent sessions per user (oldest revoked first), and "remember this devic
 which registers a trusted device only once the whole flow (including any second
 factor) has completed. Sessions are mirrored to Postgres for listing, sign-out
 everywhere and audit. `/authorize` honours `prompt` (`none`, `login`, `consent`,
-`create`, `select_account`), `max_age` and `acr_values`. The end-user pages themselves
-land later in Phase 4; MFA in Phase 7.
+`create`, `select_account`), `max_age` and `acr_values`.
+
+Two-step verification (`/flows/{id}/mfa/...`) uses an authenticator app (TOTP, RFC
+6238: SHA-1, six digits, 30-second steps, one step of drift either side, every code
+accepted once). The tenant `mfa` policy decides who is asked: `required` asks
+everyone and enrols an authenticator on the first sign-in, `optional` asks users who
+enrolled one, `off` never asks; a client step-up (`acr_values` ending in `:mfa`) is
+always honoured, and a trusted device skips the policy-driven check. Enrolment
+returns a set of ten single-use recovery codes, shown once; any of them replaces the
+app for one sign-in and the user is told how many remain. Secrets are encrypted per
+row under the master key, recovery codes are hashed then encrypted, and the session
+records `amr` (`otp`, `mfa`) and `acr` (`urn:ridm:acr:mfa`, or the class the client
+asked for) so tokens say how the user signed in. Passkeys, OTP factors and the
+role-based policy modes follow later in Phase 7.
 
 Locale is negotiated per request: the OIDC `ui_locales` parameter, then the user's
 stored locale, then the tenant default, constrained to the tenant's supported list
@@ -69,7 +81,7 @@ Users get security notices, in their locale, through the tenant's messaging
 settings: a sign-in from a browser they have not used before (email, or SMS when
 the account has only a verified phone), a password change (recovery or forced
 change, never the initial password), an email address change (sent to the previous
-address), and MFA changes once Phase 7 lands. Each notice can be switched off per
+address), and MFA changes (an authenticator added, a recovery code used). Each notice can be switched off per
 tenant under `settings.notifications`.
 
 The admin API (`/admin/...`) is guarded by `ridm:<resource>:<action>` permissions that

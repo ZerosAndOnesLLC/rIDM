@@ -17,13 +17,13 @@ use zeroize::Zeroizing;
 use crate::db;
 use crate::error::{AppError, AppResult, FieldError};
 use crate::middleware::TenantCtx;
-use crate::models::{AttributeDef, Client, Tenant, User, UserStatus};
+use crate::models::{AttributeDef, Client, MfaPolicy, Tenant, User, UserStatus};
 use crate::repos;
 use crate::services::login_flows::{self, FlowStage, LoginFlow};
 use crate::services::password::{self, SetPasswordOptions, VerifyOutcome};
 use crate::services::sessions::{self, NewSession, SsoSession};
 use crate::services::{
-    clients, consents, locale, notifications, profile_schema, trusted_devices, users,
+    clients, consents, locale, notifications, profile_schema, totp, trusted_devices, users,
 };
 use crate::state::AppState;
 
@@ -56,7 +56,26 @@ pub struct PublicFlow {
     pub attempts: u32,
     /// Present when the next authentication attempt must include a CAPTCHA token.
     pub captcha: Option<CaptchaChallenge>,
+    /// Mfa stage: what the user can verify with, or whether they must enrol first.
+    pub mfa: Option<MfaInfo>,
 }
+
+/// Second-factor state of the signed-in user, shown at the `mfa` stage.
+#[derive(Debug, Clone, Serialize)]
+pub struct MfaInfo {
+    /// Enrolled factor kinds (`totp`).
+    pub factors: Vec<&'static str>,
+    /// No factor yet: the user must enrol one now.
+    pub enroll: bool,
+    /// Unused recovery codes remain, so the recovery-code option is worth showing.
+    pub recovery_codes: bool,
+}
+
+/// `acr` recorded on a session once a second factor passed, unless the client
+/// asked for another `*:mfa` class.
+pub const ACR_MFA: &str = "urn:ridm:acr:mfa";
+/// Wrong second-factor codes tolerated per flow before it is discarded.
+pub const MFA_MAX_ATTEMPTS: u32 = 5;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CaptchaChallenge {
@@ -191,13 +210,23 @@ pub async fn public_state(
                 .and_then(|s| s.description.clone()),
         })
         .collect();
-    let (missing_attributes, user, user_locale) = match flow.user_id {
+    let (missing_attributes, user, user_locale, mfa) = match flow.user_id {
         Some(uid) => {
             let u = users::get(state, tenant.id, uid).await?;
             let missing = if flow.stage == FlowStage::Profile {
                 missing_required(state, tenant.id, &u).await?
             } else {
                 vec![]
+            };
+            let mfa = if flow.stage == FlowStage::Mfa {
+                let f = totp::factors_of(state, tenant.id, uid).await?;
+                Some(MfaInfo {
+                    factors: if f.totp { vec!["totp"] } else { vec![] },
+                    enroll: !f.totp,
+                    recovery_codes: f.totp && f.recovery_codes > 0,
+                })
+            } else {
+                None
             };
             (
                 missing,
@@ -206,9 +235,10 @@ pub async fn public_state(
                     email: u.email,
                 }),
                 u.locale,
+                mfa,
             )
         }
-        None => (vec![], None, None),
+        None => (vec![], None, None, None),
     };
     let locale = locale::negotiate(
         &flow.request.ui_locales,
@@ -241,6 +271,7 @@ pub async fn public_state(
         user,
         attempts: flow.attempts,
         captcha: captcha_required(state, tenant, flow).await?,
+        mfa,
     })
 }
 
@@ -281,7 +312,7 @@ pub async fn advance(
         flow.stage = FlowStage::PasswordChange;
         return Ok(());
     }
-    if mfa_required(flow) {
+    if mfa_required(state, tenant, flow, &user).await? {
         flow.stage = FlowStage::Mfa;
         return Ok(());
     }
@@ -732,12 +763,198 @@ pub struct RequestContext {
 /// Whether the flow must pass a second factor before continuing.
 ///
 /// A step-up the client asked for (`acr_values` ending in `:mfa`) is always
-/// honoured, even on a trusted device. Policy-driven MFA (tenant `mfa`
-/// setting, Phase 7.4) is skipped when `flow.trusted_device` is set.
-pub fn mfa_required(flow: &LoginFlow) -> bool {
-    let has_mfa = flow.amr.iter().any(|m| m == "mfa");
-    let step_up = flow.request.acr_values.iter().any(|a| a.ends_with(":mfa"));
-    step_up && !has_mfa
+/// honoured, even on a trusted device. Policy-driven MFA is skipped on a
+/// trusted device: `required` asks everyone (enrolling first when needed),
+/// `optional` asks users who enrolled a factor. The role-based modes are
+/// evaluated in 7.4 and behave like `optional` until then.
+pub async fn mfa_required(
+    state: &AppState,
+    tenant: &Tenant,
+    flow: &LoginFlow,
+    user: &User,
+) -> AppResult<bool> {
+    if flow.amr.iter().any(|m| m == "mfa") {
+        return Ok(false);
+    }
+    if flow.request.acr_values.iter().any(|a| a.ends_with(":mfa")) {
+        return Ok(true);
+    }
+    if flow.trusted_device {
+        return Ok(false);
+    }
+    Ok(match &tenant.settings.mfa {
+        MfaPolicy::Off => false,
+        MfaPolicy::Required => true,
+        MfaPolicy::Optional | MfaPolicy::RequiredForAdmins | MfaPolicy::RequiredForRoles { .. } => {
+            totp::has_second_factor(state, tenant.id, user.id).await?
+        }
+    })
+}
+
+/// Outcome of a second-factor step.
+pub enum MfaStep {
+    /// The factor passed; `recovery_codes` is set once, right after enrolment.
+    Passed {
+        flow: Box<LoginFlow>,
+        recovery_codes: Option<Vec<String>>,
+    },
+    /// Wrong code; the flow (with its attempt counter) was saved, or discarded
+    /// once [`MFA_MAX_ATTEMPTS`] is reached.
+    Rejected { flow: Box<LoginFlow> },
+}
+
+/// The signed-in user of a flow waiting at the `mfa` stage.
+async fn mfa_user(state: &AppState, tenant: &TenantCtx, flow: &LoginFlow) -> AppResult<User> {
+    if flow.stage != FlowStage::Mfa {
+        return Err(AppError::BadRequest(
+            "flow is not at the second-factor step".into(),
+        ));
+    }
+    let user_id = flow.user_id.ok_or(AppError::Unauthorized)?;
+    let user = users::get(state, tenant.id(), user_id).await?;
+    if user.status != UserStatus::Active && user.status != UserStatus::Pending {
+        return Err(AppError::Forbidden("account is not active".into()));
+    }
+    Ok(user)
+}
+
+/// `POST /flows/{id}/mfa/totp/enroll`: a fresh authenticator secret for a
+/// user who has none yet.
+pub async fn mfa_enrol_begin(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &LoginFlow,
+) -> AppResult<totp::Enrolment> {
+    let user = mfa_user(state, tenant, flow).await?;
+    if totp::factors_of(state, tenant.id(), user.id).await?.totp {
+        return Err(AppError::BadRequest(
+            "an authenticator app is already enrolled".into(),
+        ));
+    }
+    totp::begin_enrolment(state, &tenant.tenant, flow.id, &user).await
+}
+
+/// `POST /flows/{id}/mfa/totp/confirm`: prove the pending enrolment; the
+/// factor then counts as passed for this sign-in.
+pub async fn mfa_enrol_confirm(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    code: &str,
+    label: Option<&str>,
+    remember_device: bool,
+    ip: Option<String>,
+) -> AppResult<MfaStep> {
+    let user = mfa_user(state, tenant, &flow).await?;
+    match totp::confirm_enrolment(state, &tenant.tenant, flow.id, &user, code, label).await? {
+        Some(codes) => {
+            pass_second_factor(state, tenant, &mut flow, &user, &["otp"], remember_device).await?;
+            Ok(MfaStep::Passed {
+                flow: Box::new(flow),
+                recovery_codes: Some(codes),
+            })
+        }
+        None => mfa_reject(state, tenant, flow, &user, ip).await,
+    }
+}
+
+/// `POST /flows/{id}/mfa/verify`: an authenticator code or a recovery code.
+pub async fn mfa_verify_step(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    code: &str,
+    remember_device: bool,
+    ip: Option<String>,
+) -> AppResult<MfaStep> {
+    let user = mfa_user(state, tenant, &flow).await?;
+    match totp::verify(state, &tenant.tenant, &user, code).await? {
+        Some(totp::Verified::Totp { .. }) => {
+            pass_second_factor(state, tenant, &mut flow, &user, &["otp"], remember_device).await?;
+            Ok(MfaStep::Passed {
+                flow: Box::new(flow),
+                recovery_codes: None,
+            })
+        }
+        Some(totp::Verified::RecoveryCode { .. }) => {
+            pass_second_factor(state, tenant, &mut flow, &user, &[], remember_device).await?;
+            Ok(MfaStep::Passed {
+                flow: Box::new(flow),
+                recovery_codes: None,
+            })
+        }
+        None => mfa_reject(state, tenant, flow, &user, ip).await,
+    }
+}
+
+/// Record the second factor on the session (`amr` gains `mfa` plus the
+/// method, `acr` the requested or default MFA class) and move the flow on.
+async fn pass_second_factor(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &mut LoginFlow,
+    user: &User,
+    methods: &[&str],
+    remember_device: bool,
+) -> AppResult<()> {
+    let session_id = flow.session_id.ok_or(AppError::Unauthorized)?;
+    let mut session = sessions::get(
+        state,
+        tenant.id(),
+        session_id,
+        &tenant.tenant.settings.session,
+    )
+    .await?
+    .filter(|s| s.user_id == user.id)
+    .ok_or(AppError::Unauthorized)?;
+    let mut amr = flow.amr.clone();
+    for m in methods.iter().copied().chain(std::iter::once("mfa")) {
+        if !amr.iter().any(|a| a == m) {
+            amr.push(m.to_string());
+        }
+    }
+    let acr = flow
+        .request
+        .acr_values
+        .iter()
+        .find(|a| a.ends_with(":mfa"))
+        .cloned()
+        .unwrap_or_else(|| ACR_MFA.to_string());
+    sessions::refresh_auth(state, &mut session, amr.clone(), Some(acr)).await?;
+    flow.amr = amr;
+    flow.remember_device = (flow.remember_device || remember_device) && !flow.trusted_device;
+    flow.attempts = 0;
+    advance(state, &tenant.tenant, flow, false).await?;
+    login_flows::save(state, flow).await
+}
+
+async fn mfa_reject(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    user: &User,
+    ip: Option<String>,
+) -> AppResult<MfaStep> {
+    flow.attempts += 1;
+    if flow.attempts >= MFA_MAX_ATTEMPTS {
+        login_flows::delete(state, tenant.id(), flow.id).await?;
+    } else {
+        login_flows::save(state, &flow).await?;
+    }
+    state.events.publish(
+        Event::new(
+            Some(tenant.id()),
+            Actor::User { id: user.id },
+            EventKind::LoginFailed {
+                identifier: user.username.clone(),
+                reason: "mfa_invalid".into(),
+            },
+        )
+        .with_request(ip, None),
+    );
+    Ok(MfaStep::Rejected {
+        flow: Box::new(flow),
+    })
 }
 
 /// Open (or re-authenticate) the browser's session for `user_id`, recognise

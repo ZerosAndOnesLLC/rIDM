@@ -24,7 +24,7 @@ export function SignInSection() {
         <Toggle label="Passkeys" hint="Available once Phase 7 lands." checked={auth.passkey} disabled={!editable} onChange={(v) => update({ auth: { passkey: v } })} />
       </div>
 
-      <Field label="Two-step verification" hint="Enforced once second factors exist (Phase 7).">
+      <Field label="Two-step verification" hint="Required asks everyone (enrolling an authenticator app on first sign-in); optional asks users who enrolled one. Role-based modes arrive with 7.4.">
         {(id, by) => (
           <SelectInput id={id} aria-describedby={by} value={mfa.mode} disabled={!editable} onChange={(e) => setMfa(e.target.value as MfaMode)}>
             <option value="off">Off</option>

@@ -66,6 +66,7 @@ function PreviewForm({ tenant }: { tenant: string | null }) {
     user: null,
     attempts: 0,
     captcha: null,
+    mfa: null,
   };
   const post: Post = <T,>() => new Promise<T>(() => {});
   return <Authenticate flow={flow} post={post} reload={() => Promise.resolve()} magic={null} tenant={tenant} preview />;

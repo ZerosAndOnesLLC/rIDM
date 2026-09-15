@@ -195,6 +195,9 @@ fn steps() -> Vec<(&'static str, Value)> {
         ("email-otp/verify", json!({"code": "000000"})),
         ("sms-otp", json!({"identifier": "+15550000001"})),
         ("sms-otp/verify", json!({"code": "000000"})),
+        ("mfa/totp/enroll", json!({})),
+        ("mfa/totp/confirm", json!({"code": "000000"})),
+        ("mfa/verify", json!({"code": "000000"})),
         ("profile", json!({"attributes": {}})),
         ("terms", json!({"accepted": true})),
         ("consent", json!({"approve": true})),
@@ -254,7 +257,15 @@ async fn every_step_refuses_the_wrong_stage_and_unknown_flows() {
     };
 
     // At `authenticate`, the later stages are not reachable.
-    for step in ["password-change", "profile", "terms", "consent"] {
+    for step in [
+        "password-change",
+        "mfa/totp/enroll",
+        "mfa/totp/confirm",
+        "mfa/verify",
+        "profile",
+        "terms",
+        "consent",
+    ] {
         let body = steps().into_iter().find(|(s, _)| *s == step).unwrap().1;
         let res = post(step, body, csrf.clone()).await;
         assert_eq!(res.status(), 400, "{step} at authenticate");
@@ -286,6 +297,9 @@ async fn every_step_refuses_the_wrong_stage_and_unknown_flows() {
         "sms-otp",
         "sms-otp/verify",
         "password-change",
+        "mfa/totp/enroll",
+        "mfa/totp/confirm",
+        "mfa/verify",
         "profile",
         "terms",
     ] {
