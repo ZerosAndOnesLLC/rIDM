@@ -1,0 +1,11 @@
+# Every change requires review from a code owner (enforced by branch protection).
+*                       @mack42
+
+# Security-sensitive areas
+/api/src/oidc/          @mack42
+/api/src/flows/         @mack42
+/api/src/middleware/    @mack42
+/api/migrations/        @mack42
+/deny.toml              @mack42
+/.github/               @mack42
+/SECURITY.md            @mack42

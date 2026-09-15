@@ -238,7 +238,7 @@ Operations
 - [x] 0.7 README, CONTRIBUTING.md, SECURITY.md (disclosure policy), CODE_OF_CONDUCT.md, `security.txt`, issue/PR templates.
 - [x] 0.8 Provider traits (`KeyEncryptor`, `EmailSender`, `SmsSender`, `Captcha`, `PasswordHasher`) and the internal event bus skeleton.
 - [x] 0.9 Tests: `ridm-core` test-support module with mock `KeyEncryptor`/`EmailSender`/`SmsSender`/`Captcha`; testcontainers harness (Postgres + Redis) with a shared fixture that seeds tenant, client, admin, user; cargo-llvm-cov wired into CI with coverage report.
-- [ ] 0.10 Branch protection on `main`: PRs only, all required status checks in §6 must pass, no bypass; CODEOWNERS.
+- [x] 0.10 Branch protection on `main`: PRs only, all required status checks in §6 must pass, no bypass; CODEOWNERS.
 
 ### Phase 1 — Tenants, users, groups, roles, profile schema
 - [ ] 1.1 Migrations: users, user_profile_schema, password_history, credentials, groups, group_members, roles, role_assignments, role_composites (indexes lead with tenant_id; RLS policies; `org_id` reserved columns).
