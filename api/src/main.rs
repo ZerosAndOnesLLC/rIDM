@@ -1,6 +1,7 @@
 use axum_server::Handle;
 use axum_server::tls_rustls::RustlsConfig;
 use ridm_api::config::Config;
+use ridm_api::services::bootstrap;
 use ridm_api::state::AppState;
 use ridm_api::{build_router, cache, db, telemetry};
 use std::net::SocketAddr;
@@ -12,8 +13,12 @@ async fn main() {
 
     // `ridm-api --healthcheck` is used as the container HEALTHCHECK: distroless
     // images have no curl, so the binary probes itself.
-    if std::env::args().any(|a| a == "--healthcheck") {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|a| a == "--healthcheck") {
         std::process::exit(healthcheck().await);
+    }
+    if args.first().map(String::as_str) == Some("bootstrap") {
+        std::process::exit(bootstrap_command(&args[1..]).await);
     }
 
     let config = match Config::from_env() {
@@ -44,7 +49,23 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     let cache = cache::connect(&config)?;
     cache::ping(&cache).await?;
 
+    let bootstrap = config.bootstrap.clone();
     let state = AppState::new(config, db, cache);
+    if let Some(b) = bootstrap {
+        let outcome = bootstrap::run(
+            &state,
+            bootstrap::BootstrapRequest {
+                admin_email: b.admin_email,
+                admin_username: b.admin_username,
+                admin_password: zeroize::Zeroizing::new(b.admin_password.expose().to_string()),
+                must_change_password: true,
+            },
+        )
+        .await?;
+        if outcome == bootstrap::BootstrapOutcome::AlreadyBootstrapped {
+            tracing::debug!("bootstrap: already done, skipping");
+        }
+    }
     let _invalidation_listener = state.cache.spawn_invalidation_listener();
     let bind_addr = state.config.bind_addr;
     let tls = state.config.tls.clone();
@@ -109,4 +130,147 @@ async fn healthcheck() -> i32 {
         Ok(resp) if resp.status().is_success() => 0,
         _ => 1,
     }
+}
+
+/// `ridm-api bootstrap [--email E] [--username U] [--password-stdin] [--no-must-change]`
+///
+/// Creates the global administrator. Values not given as flags fall back to the
+/// `BOOTSTRAP_*` environment variables, then to interactive prompts.
+async fn bootstrap_command(args: &[String]) -> i32 {
+    let mut email: Option<String> = None;
+    let mut username: Option<String> = None;
+    let mut password_stdin = false;
+    let mut must_change = true;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--email" => {
+                email = args.get(i + 1).cloned();
+                i += 1;
+            }
+            "--username" => {
+                username = args.get(i + 1).cloned();
+                i += 1;
+            }
+            "--password-stdin" => password_stdin = true,
+            "--no-must-change" => must_change = false,
+            "-h" | "--help" => {
+                println!(
+                    "usage: ridm-api bootstrap [--email EMAIL] [--username NAME] \
+                     [--password-stdin] [--no-must-change]"
+                );
+                return 0;
+            }
+            other => {
+                eprintln!("unknown argument: {other}");
+                return 2;
+            }
+        }
+        i += 1;
+    }
+
+    let config = match Config::from_env() {
+        Ok(c) => c,
+        Err(err) => {
+            eprintln!("configuration error: {err}");
+            return 2;
+        }
+    };
+    let env_bootstrap = config.bootstrap.clone();
+    let email = email
+        .or_else(|| env_bootstrap.as_ref().map(|b| b.admin_email.clone()))
+        .or_else(|| prompt("Admin email: "));
+    let username = username
+        .or_else(|| env_bootstrap.as_ref().map(|b| b.admin_username.clone()))
+        .unwrap_or_else(|| "admin".to_string());
+    let password = if password_stdin {
+        let mut s = String::new();
+        if std::io::stdin().read_line(&mut s).is_err() {
+            eprintln!("failed to read password from stdin");
+            return 2;
+        }
+        Some(zeroize::Zeroizing::new(
+            s.trim_end_matches(['\r', '\n']).to_string(),
+        ))
+    } else if let Some(b) = &env_bootstrap {
+        Some(zeroize::Zeroizing::new(
+            b.admin_password.expose().to_string(),
+        ))
+    } else {
+        prompt_password()
+    };
+    let (Some(email), Some(password)) = (email, password) else {
+        eprintln!("email and password are required");
+        return 2;
+    };
+
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let db = match db::connect(&config).await {
+        Ok(d) => d,
+        Err(err) => {
+            eprintln!("database: {err}");
+            return 1;
+        }
+    };
+    if let Err(err) = db::migrate(&db).await {
+        eprintln!("migrate: {err}");
+        return 1;
+    }
+    let cache = match cache::connect(&config) {
+        Ok(c) => c,
+        Err(err) => {
+            eprintln!("redis: {err}");
+            return 1;
+        }
+    };
+    let state = AppState::new(config, db, cache);
+    match bootstrap::run(
+        &state,
+        bootstrap::BootstrapRequest {
+            admin_email: email,
+            admin_username: username,
+            admin_password: password,
+            must_change_password: must_change,
+        },
+    )
+    .await
+    {
+        Ok(bootstrap::BootstrapOutcome::Created { admin_user_id }) => {
+            println!("global admin created (user id {admin_user_id})");
+            0
+        }
+        Ok(bootstrap::BootstrapOutcome::AlreadyBootstrapped) => {
+            println!("already bootstrapped: a global owner exists; nothing changed");
+            0
+        }
+        Err(err) => {
+            eprintln!("bootstrap failed: {err}");
+            if let ridm_api::error::AppError::Validation(fields) = &err {
+                for f in fields {
+                    eprintln!("  {}: {}", f.field, f.message);
+                }
+            }
+            1
+        }
+    }
+}
+
+fn prompt(label: &str) -> Option<String> {
+    use std::io::Write as _;
+    print!("{label}");
+    std::io::stdout().flush().ok()?;
+    let mut s = String::new();
+    std::io::stdin().read_line(&mut s).ok()?;
+    let s = s.trim().to_string();
+    (!s.is_empty()).then_some(s)
+}
+
+fn prompt_password() -> Option<zeroize::Zeroizing<String>> {
+    let first = rpassword::prompt_password("Admin password: ").ok()?;
+    let second = rpassword::prompt_password("Repeat password: ").ok()?;
+    if first != second {
+        eprintln!("passwords do not match");
+        return None;
+    }
+    Some(zeroize::Zeroizing::new(first))
 }

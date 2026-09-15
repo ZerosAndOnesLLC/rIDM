@@ -10,7 +10,7 @@ use std::str::FromStr;
 use ipnet::IpNet;
 use url::Url;
 
-use crate::util::secret::SecretBytes;
+use crate::util::secret::{SecretBytes, SecretString};
 
 /// Length in bytes of the master key used to encrypt secrets at rest.
 pub const MASTER_KEY_LEN: usize = 32;
@@ -82,6 +82,19 @@ pub struct Config {
     /// Apply pending migrations at startup.
     pub migrate_on_start: bool,
     pub argon2: Argon2Params,
+    /// First-run bootstrap from the environment (dev convenience). Runs after
+    /// migrations when both email and password are set; a no-op once a global
+    /// admin exists.
+    pub bootstrap: Option<BootstrapConfig>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BootstrapConfig {
+    pub admin_email: String,
+    pub admin_username: String,
+    pub admin_password: SecretString,
+    /// Also create a sample public client (applied once clients exist, Phase 3).
+    pub sample_client: bool,
 }
 
 /// argon2id cost parameters. Defaults follow the OWASP minimum recommendation
@@ -184,6 +197,28 @@ impl Config {
             });
         }
 
+        let bootstrap = match (
+            optional("BOOTSTRAP_ADMIN_EMAIL"),
+            optional("BOOTSTRAP_ADMIN_PASSWORD"),
+        ) {
+            (Some(admin_email), Some(password)) => Some(BootstrapConfig {
+                admin_email,
+                admin_username: optional("BOOTSTRAP_ADMIN_USERNAME")
+                    .unwrap_or_else(|| "admin".to_string()),
+                admin_password: SecretString::new(password),
+                sample_client: parse_bool("BOOTSTRAP_SAMPLE_CLIENT", false)?,
+            }),
+            (None, None) => None,
+            _ => {
+                return Err(ConfigError::Invalid {
+                    name: "BOOTSTRAP_ADMIN_EMAIL",
+                    reason:
+                        "BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD must be set together"
+                            .into(),
+                });
+            }
+        };
+
         Ok(Self {
             database_url,
             redis_url,
@@ -199,6 +234,7 @@ impl Config {
             db_pool_max,
             migrate_on_start,
             argon2,
+            bootstrap,
         })
     }
 

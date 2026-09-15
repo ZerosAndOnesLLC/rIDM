@@ -74,6 +74,10 @@ pub enum EventKind {
     ProfileSchemaUpdated {
         tenant_id: Uuid,
     },
+    /// First-run bootstrap created the global admin.
+    Bootstrapped {
+        admin_user_id: Uuid,
+    },
 
     // Users
     UserCreated {
@@ -164,6 +168,7 @@ impl EventKind {
             Self::TenantUpdated { .. } => "tenant.updated",
             Self::TenantDeleted { .. } => "tenant.deleted",
             Self::ProfileSchemaUpdated { .. } => "tenant.profile_schema_updated",
+            Self::Bootstrapped { .. } => "system.bootstrapped",
             Self::UserCreated { .. } => "user.created",
             Self::UserUpdated { .. } => "user.updated",
             Self::UserDeleted { .. } => "user.deleted",

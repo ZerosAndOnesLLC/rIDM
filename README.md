@@ -77,6 +77,25 @@ sqlx migrate run --source api/migrations       # or MIGRATE_ON_START=true
 cargo run -p ridm-api
 ```
 
+### First-run bootstrap
+
+The `master` tenant hosts global administrators. Create the first one either from the
+environment at startup (the compose `dev` profile does this):
+
+```bash
+BOOTSTRAP_ADMIN_EMAIL=admin@example.com BOOTSTRAP_ADMIN_PASSWORD='a-long-passphrase' cargo run -p ridm-api
+```
+
+or interactively (prompts for anything not given):
+
+```bash
+ridm-api bootstrap --email admin@example.com [--username admin] [--password-stdin] [--no-must-change]
+```
+
+Bootstrap is idempotent: once any user in `master` holds the `ridm:owner` role it does
+nothing. The password must satisfy the master tenant's policy, and admins created
+from the environment must change it at first login.
+
 ### UI
 
 ```bash

@@ -1,3 +1,4 @@
+pub mod bootstrap;
 pub mod groups;
 pub mod password;
 pub mod profile_schema;

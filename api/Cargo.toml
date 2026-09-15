@@ -69,6 +69,7 @@ async-trait = { workspace = true }
 futures = { workspace = true }
 
 dotenvy = { workspace = true }
+rpassword = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 metrics = { workspace = true }

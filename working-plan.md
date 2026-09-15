@@ -246,7 +246,7 @@ Operations
 - [x] 1.3 Repos + services: tenant CRUD, user CRUD, group CRUD + membership, role CRUD + assignment, effective-roles resolution (user + groups + composites, cached).
 - [x] 1.4 Password service: argon2id hash/verify; legacy verifiers (bcrypt, pbkdf2-sha256/512, sha256/sha512 salted, md5 for migration only) with transparent upgrade on successful login; password policy (length, classes, history N, expiry, must_change_password).
 - [x] 1.5 Profile schema service: validate attributes on create/update; enforce editable_by; expose schema to UI forms.
-- [ ] 1.6 Bootstrap: first-run creates master tenant + global admin from env or interactive CLI.
+- [x] 1.6 Bootstrap: first-run creates master tenant + global admin from env or interactive CLI.
 - [ ] 1.7 Unit tests (password, policy, role resolution); integration test harness (testcontainers).
 - [ ] 1.8 Tests: tenant isolation suite v1 (every repo query cross-tenant → empty/404; direct RLS bypass attempt fails); profile schema validation; legacy-hash upgrade-on-login; migration test applying all migrations to seeded snapshot and checking constraints/row counts.
 

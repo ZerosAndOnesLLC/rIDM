@@ -14,7 +14,7 @@ pub type AppResult<T> = Result<T, AppError>;
 pub enum AppError {
     #[error("{0}")]
     BadRequest(String),
-    #[error("validation failed")]
+    #[error("validation failed: {}", format_fields(.0))]
     Validation(Vec<FieldError>),
     #[error("authentication required")]
     Unauthorized,
@@ -40,6 +40,14 @@ pub enum AppError {
 pub struct FieldError {
     pub field: String,
     pub message: String,
+}
+
+fn format_fields(fields: &[FieldError]) -> String {
+    fields
+        .iter()
+        .map(|f| format!("{} {}", f.field, f.message))
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 /// RFC 9457 problem details body.
