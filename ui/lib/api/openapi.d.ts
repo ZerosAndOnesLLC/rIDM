@@ -11,7 +11,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["global_list"];
+        get: operations["audit_global_list"];
         put?: never;
         post?: never;
         delete?: never;
@@ -27,7 +27,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["global_export"];
+        get: operations["audit_global_export"];
         put?: never;
         post?: never;
         delete?: never;
@@ -43,7 +43,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["global_verify"];
+        get: operations["audit_global_verify"];
         put?: never;
         post?: never;
         delete?: never;
@@ -63,7 +63,7 @@ export interface paths {
          * Which master-key generation every encrypted row is under. Spans all
          *     tenants, so global administrators only.
          */
-        get: operations["master_status"];
+        get: operations["keys_master_status"];
         put?: never;
         post?: never;
         delete?: never;
@@ -85,7 +85,7 @@ export interface paths {
          * Re-encrypt every row still under an older generation with the current
          *     master key (the new key itself comes from the environment).
          */
-        post: operations["master_rotate"];
+        post: operations["keys_master_rotate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -100,7 +100,7 @@ export interface paths {
             cookie?: never;
         };
         /** Who the caller is and what they may do; the admin UI reads this after login. */
-        get: operations["me"];
+        get: operations["auth_me"];
         put?: never;
         post?: never;
         delete?: never;
@@ -117,7 +117,7 @@ export interface paths {
             cookie?: never;
         };
         /** The permission catalogue and built-in roles (for role editors and docs). */
-        get: operations["permissions"];
+        get: operations["auth_permissions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -134,9 +134,9 @@ export interface paths {
             cookie?: never;
         };
         /** Global administrators see every tenant; tenant-scoped ones see their own. */
-        get: operations["list"];
+        get: operations["tenants_list"];
         put?: never;
-        post: operations["create"];
+        post: operations["tenants_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -150,13 +150,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_one"];
+        get: operations["tenants_get_one"];
         put?: never;
         post?: never;
-        delete: operations["delete"];
+        delete: operations["tenants_delete"];
         options?: never;
         head?: never;
-        patch: operations["update"];
+        patch: operations["tenants_update"];
         trace?: never;
     };
     "/admin/tenants/{slug}/audit": {
@@ -170,7 +170,7 @@ export interface paths {
          * `?from=&to=&name=&actor_id=&subject_id=&user_id=&cursor=&limit=`; `name`
          *     matches exactly, or as a prefix when it ends with `.` or `*`.
          */
-        get: operations["list"];
+        get: operations["audit_list"];
         put?: never;
         post?: never;
         delete?: never;
@@ -187,7 +187,7 @@ export interface paths {
             cookie?: never;
         };
         /** Oldest first, streamed, with the chain hashes so the file can be verified offline. */
-        get: operations["export"];
+        get: operations["audit_export"];
         put?: never;
         post?: never;
         delete?: never;
@@ -203,7 +203,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["verify"];
+        get: operations["audit_verify"];
         put?: never;
         post?: never;
         delete?: never;
@@ -219,10 +219,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["captcha_get"];
-        put: operations["captcha_put"];
+        get: operations["tenants_captcha_get"];
+        put: operations["tenants_captcha_put"];
         post?: never;
-        delete: operations["captcha_delete"];
+        delete: operations["tenants_captcha_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -235,10 +235,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        get: operations["mappers_list"];
         put?: never;
         /** Body: `{name, client_id?, config}` where `config` is `{type, ..., include_in}`. */
-        post: operations["create"];
+        post: operations["mappers_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -252,14 +252,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_one"];
+        get: operations["mappers_get_one"];
         put?: never;
         post?: never;
-        delete: operations["delete"];
+        delete: operations["mappers_delete"];
         options?: never;
         head?: never;
         /** `config` replaces the whole document (mapper types differ too much to merge). */
-        patch: operations["update"];
+        patch: operations["mappers_update"];
         trace?: never;
     };
     "/admin/tenants/{slug}/clients": {
@@ -269,9 +269,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        get: operations["clients_list"];
         put?: never;
-        post: operations["create"];
+        post: operations["clients_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -285,10 +285,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_one"];
+        get: operations["clients_get_one"];
         put?: never;
         post?: never;
-        delete: operations["delete"];
+        delete: operations["clients_delete"];
         options?: never;
         head?: never;
         /**
@@ -298,7 +298,7 @@ export interface paths {
          *     alongside. Switching to a secret-based auth method mints a secret that is
          *     returned once in `client_secret`.
          */
-        patch: operations["update"];
+        patch: operations["clients_update"];
         trace?: never;
     };
     "/admin/tenants/{slug}/clients/{client}/registration-token": {
@@ -314,7 +314,7 @@ export interface paths {
          * Issue (replacing any previous one) the RFC 7592 registration access token
          *     so the client's owner can manage its metadata without admin access.
          */
-        post: operations["registration_token"];
+        post: operations["clients_registration_token"];
         delete?: never;
         options?: never;
         head?: never;
@@ -334,7 +334,7 @@ export interface paths {
          * Generate a new secret (first one, or a rotation with a grace window for
          *     the previous secret). The secret is in the response and nowhere else.
          */
-        post: operations["rotate_secret"];
+        post: operations["clients_rotate_secret"];
         delete?: never;
         options?: never;
         head?: never;
@@ -351,7 +351,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete: operations["revoke_secret"];
+        delete: operations["clients_revoke_secret"];
         options?: never;
         head?: never;
         patch?: never;
@@ -366,9 +366,9 @@ export interface paths {
         };
         get?: never;
         /** Create (or return) the user the client acts as under `client_credentials`. */
-        put: operations["enable_service_account"];
+        put: operations["clients_enable_service_account"];
         post?: never;
-        delete: operations["disable_service_account"];
+        delete: operations["clients_disable_service_account"];
         options?: never;
         head?: never;
         patch?: never;
@@ -382,7 +382,7 @@ export interface paths {
             cookie?: never;
         };
         /** Deterministic JSON (sorted keys and collections, natural keys, no secrets). */
-        get: operations["export"];
+        get: operations["tenant_config_export"];
         put?: never;
         post?: never;
         delete?: never;
@@ -399,9 +399,9 @@ export interface paths {
             cookie?: never;
         };
         /** Flat list with `parent_id`; the UI builds the tree. */
-        get: operations["list"];
+        get: operations["groups_list"];
         put?: never;
-        post: operations["create"];
+        post: operations["groups_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -415,14 +415,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_one"];
+        get: operations["groups_get_one"];
         put?: never;
         post?: never;
-        delete: operations["delete"];
+        delete: operations["groups_delete"];
         options?: never;
         head?: never;
         /** `parent_id: null` moves the group to the top level. */
-        patch: operations["update"];
+        patch: operations["groups_update"];
         trace?: never;
     };
     "/admin/tenants/{slug}/groups/{group}/members": {
@@ -432,7 +432,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["members"];
+        get: operations["groups_members"];
         put?: never;
         post?: never;
         delete?: never;
@@ -449,9 +449,9 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["add_member"];
+        put: operations["groups_add_member"];
         post?: never;
-        delete: operations["remove_member"];
+        delete: operations["groups_remove_member"];
         options?: never;
         head?: never;
         patch?: never;
@@ -464,7 +464,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["group_roles"];
+        get: operations["groups_group_roles"];
         put?: never;
         post?: never;
         delete?: never;
@@ -482,9 +482,9 @@ export interface paths {
         };
         get?: never;
         /** Every member (and members of descendant groups) gains the role. */
-        put: operations["assign_role"];
+        put: operations["groups_assign_role"];
         post?: never;
-        delete: operations["unassign_role"];
+        delete: operations["groups_unassign_role"];
         options?: never;
         head?: never;
         patch?: never;
@@ -506,7 +506,7 @@ export interface paths {
          *     webhooks the import created (shown once). Applying the same document
          *     again yields an empty plan.
          */
-        post: operations["import"];
+        post: operations["tenant_config_import"];
         delete?: never;
         options?: never;
         head?: never;
@@ -520,13 +520,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        get: operations["invitations_list"];
         put?: never;
         /**
          * Emails the invitee; roles and groups are granted on acceptance, so they
          *     are checked against the caller's own admin permissions here.
          */
-        post: operations["create"];
+        post: operations["invitations_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -540,10 +540,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_one"];
+        get: operations["invitations_get_one"];
         put?: never;
         post?: never;
-        delete: operations["revoke"];
+        delete: operations["invitations_revoke"];
         options?: never;
         head?: never;
         patch?: never;
@@ -559,7 +559,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** New token and expiry, emailed again; the previous link stops working. */
-        post: operations["resend"];
+        post: operations["invitations_resend"];
         delete?: never;
         options?: never;
         head?: never;
@@ -573,10 +573,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        get: operations["ip_rules_list"];
         put?: never;
         /** `{cidr, action?: allow|deny (default deny), client_id?, description?}`. */
-        post: operations["create"];
+        post: operations["ip_rules_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -590,13 +590,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_one"];
+        get: operations["ip_rules_get_one"];
         put?: never;
         post?: never;
-        delete: operations["delete"];
+        delete: operations["ip_rules_delete"];
         options?: never;
         head?: never;
-        patch: operations["update"];
+        patch: operations["ip_rules_update"];
         trace?: never;
     };
     "/admin/tenants/{slug}/keys": {
@@ -606,9 +606,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        get: operations["keys_list"];
         put?: never;
-        post: operations["create"];
+        post: operations["keys_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -628,7 +628,7 @@ export interface paths {
          * New key with the tenant's default algorithm, active at once; the previous
          *     active key retires with the policy's overlap.
          */
-        post: operations["rotate"];
+        post: operations["keys_rotate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -642,7 +642,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_one"];
+        get: operations["keys_get_one"];
         put?: never;
         post?: never;
         delete?: never;
@@ -660,7 +660,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["activate"];
+        post: operations["keys_activate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -676,7 +676,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["retire"];
+        post: operations["keys_retire"];
         delete?: never;
         options?: never;
         head?: never;
@@ -693,7 +693,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Unpublish now: tokens signed with the key stop verifying. */
-        post: operations["revoke"];
+        post: operations["keys_revoke"];
         delete?: never;
         options?: never;
         head?: never;
@@ -707,14 +707,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["email_get"];
+        get: operations["messaging_email_get"];
         /**
          * `{type: "smtp", host, port, username?, password?, from, security?}` or
          *     `{type: "http", url, auth_header?, from}`; an omitted secret keeps the stored one.
          */
-        put: operations["email_put"];
+        put: operations["messaging_email_put"];
         post?: never;
-        delete: operations["email_delete"];
+        delete: operations["messaging_email_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -729,7 +729,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["email_test"];
+        post: operations["messaging_email_test"];
         delete?: never;
         options?: never;
         head?: never;
@@ -743,7 +743,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["log"];
+        get: operations["messaging_log"];
         put?: never;
         post?: never;
         delete?: never;
@@ -762,7 +762,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Put a dead message back in the queue. */
-        post: operations["redeliver"];
+        post: operations["messaging_redeliver"];
         delete?: never;
         options?: never;
         head?: never;
@@ -776,10 +776,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["sms_get"];
-        put: operations["sms_put"];
+        get: operations["messaging_sms_get"];
+        put: operations["messaging_sms_put"];
         post?: never;
-        delete: operations["sms_delete"];
+        delete: operations["messaging_sms_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -794,7 +794,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["sms_test"];
+        post: operations["messaging_sms_test"];
         delete?: never;
         options?: never;
         head?: never;
@@ -808,7 +808,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["templates"];
+        get: operations["messaging_templates"];
         put?: never;
         post?: never;
         delete?: never;
@@ -827,7 +827,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Render a stored template or an unsaved draft with sample variables. */
-        post: operations["preview"];
+        post: operations["messaging_preview"];
         delete?: never;
         options?: never;
         head?: never;
@@ -841,10 +841,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["template_get"];
-        put: operations["template_put"];
+        get: operations["messaging_template_get"];
+        put: operations["messaging_template_put"];
         post?: never;
-        delete: operations["template_delete"];
+        delete: operations["messaging_template_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -857,9 +857,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        get: operations["resource_servers_list"];
         put?: never;
-        post: operations["create"];
+        post: operations["resource_servers_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -873,13 +873,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_one"];
+        get: operations["resource_servers_get_one"];
         put?: never;
         post?: never;
-        delete: operations["delete"];
+        delete: operations["resource_servers_delete"];
         options?: never;
         head?: never;
-        patch: operations["update"];
+        patch: operations["resource_servers_update"];
         trace?: never;
     };
     "/admin/tenants/{slug}/resource-servers/{rs}/permissions": {
@@ -889,9 +889,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["permissions"];
+        get: operations["resource_servers_permissions"];
         put?: never;
-        post: operations["create_permission"];
+        post: operations["resource_servers_create_permission"];
         delete?: never;
         options?: never;
         head?: never;
@@ -908,7 +908,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete: operations["delete_permission"];
+        delete: operations["resource_servers_delete_permission"];
         options?: never;
         head?: never;
         patch?: never;
@@ -921,9 +921,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        get: operations["roles_list"];
         put?: never;
-        post: operations["create"];
+        post: operations["roles_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -937,13 +937,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_one"];
+        get: operations["roles_get_one"];
         put?: never;
         post?: never;
-        delete: operations["delete"];
+        delete: operations["roles_delete"];
         options?: never;
         head?: never;
-        patch: operations["update"];
+        patch: operations["roles_update"];
         trace?: never;
     };
     "/admin/tenants/{slug}/roles/{role}/composites": {
@@ -953,7 +953,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["composites"];
+        get: operations["roles_composites"];
         put?: never;
         post?: never;
         delete?: never;
@@ -974,9 +974,9 @@ export interface paths {
          * Everyone holding `role` gains `child_id`, so the child's permissions
          *     must be within the caller's reach.
          */
-        put: operations["add_composite"];
+        put: operations["roles_add_composite"];
         post?: never;
-        delete: operations["remove_composite"];
+        delete: operations["roles_remove_composite"];
         options?: never;
         head?: never;
         patch?: never;
@@ -990,7 +990,7 @@ export interface paths {
             cookie?: never;
         };
         /** Users and groups the role is assigned to directly. */
-        get: operations["holders"];
+        get: operations["roles_holders"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1006,7 +1006,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["permissions"];
+        get: operations["roles_permissions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1024,9 +1024,9 @@ export interface paths {
         };
         get?: never;
         /** Admin-catalogue permissions can only be granted by someone who holds them. */
-        put: operations["grant_permission"];
+        put: operations["roles_grant_permission"];
         post?: never;
-        delete: operations["revoke_permission"];
+        delete: operations["roles_revoke_permission"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1039,9 +1039,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        get: operations["scopes_list"];
         put?: never;
-        post: operations["create"];
+        post: operations["scopes_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1055,13 +1055,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_one"];
+        get: operations["scopes_get_one"];
         put?: never;
         post?: never;
-        delete: operations["delete"];
+        delete: operations["scopes_delete"];
         options?: never;
         head?: never;
-        patch: operations["update"];
+        patch: operations["scopes_update"];
         trace?: never;
     };
     "/admin/tenants/{slug}/users": {
@@ -1071,14 +1071,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        get: operations["users_list"];
         put?: never;
         /**
          * Body: every `NewUser` field plus `password` or `temporary_password: true`.
          *     A temporary password is returned exactly once and must be changed at
          *     first login; an explicit password is checked against the tenant policy.
          */
-        post: operations["create"];
+        post: operations["users_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1096,7 +1096,7 @@ export interface paths {
          * `GET .../users/export?format=json|csv`: every live user, streamed page by
          *     page, without credentials.
          */
-        get: operations["export"];
+        get: operations["users_export"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1120,7 +1120,7 @@ export interface paths {
          *     profile attributes). Rows are processed independently; the report names
          *     every row that failed and why.
          */
-        post: operations["import"];
+        post: operations["users_import"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1134,11 +1134,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_one"];
+        get: operations["users_get_one"];
         put?: never;
         post?: never;
         /** Soft delete; sessions and trusted devices end at once. */
-        delete: operations["delete"];
+        delete: operations["users_delete"];
         options?: never;
         head?: never;
         /**
@@ -1146,7 +1146,7 @@ export interface paths {
          *     enable/disable (`active` / `disabled`); `locked` and `deleted` are set by
          *     the system, use the unlock and delete routes instead.
          */
-        patch: operations["update"];
+        patch: operations["users_update"];
         trace?: never;
     };
     "/admin/tenants/{slug}/users/{user}/audit": {
@@ -1157,7 +1157,7 @@ export interface paths {
             cookie?: never;
         };
         /** Audit rows where the user is the actor or the subject (`ridm:audit:read`). */
-        get: operations["user_audit"];
+        get: operations["users_user_audit"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1173,7 +1173,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["user_consents"];
+        get: operations["users_user_consents"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1192,7 +1192,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete: operations["revoke_consent"];
+        delete: operations["users_revoke_consent"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1205,7 +1205,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["credentials"];
+        get: operations["users_credentials"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1228,7 +1228,7 @@ export interface paths {
          * Remove a factor (the user lost the device, say). The password is not a
          *     row here; replace it through `PUT .../password`.
          */
-        delete: operations["delete_credential"];
+        delete: operations["users_delete_credential"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1241,10 +1241,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["devices"];
+        get: operations["users_devices"];
         put?: never;
         post?: never;
-        delete: operations["revoke_devices"];
+        delete: operations["users_revoke_devices"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1260,7 +1260,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete: operations["revoke_device"];
+        delete: operations["users_revoke_device"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1276,7 +1276,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Flag the account so the next login demands a new password. */
-        post: operations["force_password_change"];
+        post: operations["users_force_password_change"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1290,7 +1290,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["user_groups"];
+        get: operations["users_user_groups"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1307,9 +1307,9 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["join_group"];
+        put: operations["users_join_group"];
         post?: never;
-        delete: operations["leave_group"];
+        delete: operations["users_leave_group"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1323,7 +1323,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["set_password"];
+        put: operations["users_set_password"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1338,7 +1338,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["user_roles"];
+        get: operations["users_user_roles"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1355,9 +1355,9 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["assign_role"];
+        put: operations["users_assign_role"];
         post?: never;
-        delete: operations["unassign_role"];
+        delete: operations["users_unassign_role"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1370,10 +1370,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_sessions"];
+        get: operations["users_list_sessions"];
         put?: never;
         post?: never;
-        delete: operations["revoke_sessions"];
+        delete: operations["users_revoke_sessions"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1389,7 +1389,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete: operations["revoke_session"];
+        delete: operations["users_revoke_session"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1405,7 +1405,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Clear a lockout (failed-attempt counter and `locked` status). */
-        post: operations["unlock"];
+        post: operations["users_unlock"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1419,13 +1419,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        get: operations["webhooks_list"];
         put?: never;
         /**
          * `{name, url, events, enabled?, headers?, max_attempts?}`; the signing
          *     `secret` is in the response and nowhere else.
          */
-        post: operations["create"];
+        post: operations["webhooks_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1439,13 +1439,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_one"];
+        get: operations["webhooks_get_one"];
         put?: never;
         post?: never;
-        delete: operations["delete"];
+        delete: operations["webhooks_delete"];
         options?: never;
         head?: never;
-        patch: operations["update"];
+        patch: operations["webhooks_update"];
         trace?: never;
     };
     "/admin/tenants/{slug}/webhooks/{webhook}/deliveries": {
@@ -1455,7 +1455,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["deliveries"];
+        get: operations["webhooks_deliveries"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1471,7 +1471,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["delivery"];
+        get: operations["webhooks_delivery"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1490,7 +1490,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Requeue and attempt at once; the returned delivery shows the outcome. */
-        post: operations["redeliver"];
+        post: operations["webhooks_redeliver"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1506,7 +1506,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["rotate_secret"];
+        post: operations["webhooks_rotate_secret"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1523,7 +1523,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Deliver a `webhook.test` event now and report the attempt. */
-        post: operations["test"];
+        post: operations["webhooks_test"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3601,7 +3601,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    global_list: {
+    audit_global_list: {
         parameters: {
             query?: {
                 from?: string;
@@ -3665,7 +3665,7 @@ export interface operations {
             };
         };
     };
-    global_export: {
+    audit_global_export: {
         parameters: {
             query?: {
                 from?: string;
@@ -3728,7 +3728,7 @@ export interface operations {
             };
         };
     };
-    global_verify: {
+    audit_global_verify: {
         parameters: {
             query?: never;
             header?: never;
@@ -3783,7 +3783,7 @@ export interface operations {
             };
         };
     };
-    master_status: {
+    keys_master_status: {
         parameters: {
             query?: never;
             header?: never;
@@ -3838,7 +3838,7 @@ export interface operations {
             };
         };
     };
-    master_rotate: {
+    keys_master_rotate: {
         parameters: {
             query?: never;
             header?: never;
@@ -3893,7 +3893,7 @@ export interface operations {
             };
         };
     };
-    me: {
+    auth_me: {
         parameters: {
             query?: never;
             header?: never;
@@ -3930,7 +3930,7 @@ export interface operations {
             };
         };
     };
-    permissions: {
+    auth_permissions: {
         parameters: {
             query?: never;
             header?: never;
@@ -3967,7 +3967,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    tenants_list: {
         parameters: {
             query?: {
                 cursor?: string;
@@ -4025,7 +4025,7 @@ export interface operations {
             };
         };
     };
-    create: {
+    tenants_create: {
         parameters: {
             query?: never;
             header?: never;
@@ -4084,7 +4084,7 @@ export interface operations {
             };
         };
     };
-    get_one: {
+    tenants_get_one: {
         parameters: {
             query?: never;
             header?: never;
@@ -4142,7 +4142,7 @@ export interface operations {
             };
         };
     };
-    delete: {
+    tenants_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -4199,7 +4199,7 @@ export interface operations {
             };
         };
     };
-    update: {
+    tenants_update: {
         parameters: {
             query?: never;
             header?: never;
@@ -4261,7 +4261,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    audit_list: {
         parameters: {
             query?: {
                 from?: string;
@@ -4328,7 +4328,7 @@ export interface operations {
             };
         };
     };
-    export: {
+    audit_export: {
         parameters: {
             query?: {
                 from?: string;
@@ -4394,7 +4394,7 @@ export interface operations {
             };
         };
     };
-    verify: {
+    audit_verify: {
         parameters: {
             query?: never;
             header?: never;
@@ -4452,7 +4452,7 @@ export interface operations {
             };
         };
     };
-    captcha_get: {
+    tenants_captcha_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -4510,7 +4510,7 @@ export interface operations {
             };
         };
     };
-    captcha_put: {
+    tenants_captcha_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -4571,7 +4571,7 @@ export interface operations {
             };
         };
     };
-    captcha_delete: {
+    tenants_captcha_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -4628,7 +4628,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    mappers_list: {
         parameters: {
             query?: {
                 /** @description Only mappers bound to this client. */
@@ -4691,7 +4691,7 @@ export interface operations {
             };
         };
     };
-    create: {
+    mappers_create: {
         parameters: {
             query?: never;
             header?: never;
@@ -4753,7 +4753,7 @@ export interface operations {
             };
         };
     };
-    get_one: {
+    mappers_get_one: {
         parameters: {
             query?: never;
             header?: never;
@@ -4812,7 +4812,7 @@ export interface operations {
             };
         };
     };
-    delete: {
+    mappers_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -4870,7 +4870,7 @@ export interface operations {
             };
         };
     };
-    update: {
+    mappers_update: {
         parameters: {
             query?: never;
             header?: never;
@@ -4933,7 +4933,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    clients_list: {
         parameters: {
             query?: {
                 search?: string;
@@ -4995,7 +4995,7 @@ export interface operations {
             };
         };
     };
-    create: {
+    clients_create: {
         parameters: {
             query?: never;
             header?: never;
@@ -5057,7 +5057,7 @@ export interface operations {
             };
         };
     };
-    get_one: {
+    clients_get_one: {
         parameters: {
             query?: never;
             header?: never;
@@ -5116,7 +5116,7 @@ export interface operations {
             };
         };
     };
-    delete: {
+    clients_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -5174,7 +5174,7 @@ export interface operations {
             };
         };
     };
-    update: {
+    clients_update: {
         parameters: {
             query?: never;
             header?: never;
@@ -5238,7 +5238,7 @@ export interface operations {
             };
         };
     };
-    registration_token: {
+    clients_registration_token: {
         parameters: {
             query?: never;
             header?: never;
@@ -5297,7 +5297,7 @@ export interface operations {
             };
         };
     };
-    rotate_secret: {
+    clients_rotate_secret: {
         parameters: {
             query?: never;
             header?: never;
@@ -5361,7 +5361,7 @@ export interface operations {
             };
         };
     };
-    revoke_secret: {
+    clients_revoke_secret: {
         parameters: {
             query?: never;
             header?: never;
@@ -5421,7 +5421,7 @@ export interface operations {
             };
         };
     };
-    enable_service_account: {
+    clients_enable_service_account: {
         parameters: {
             query?: never;
             header?: never;
@@ -5480,7 +5480,7 @@ export interface operations {
             };
         };
     };
-    disable_service_account: {
+    clients_disable_service_account: {
         parameters: {
             query?: never;
             header?: never;
@@ -5539,7 +5539,7 @@ export interface operations {
             };
         };
     };
-    export: {
+    tenant_config_export: {
         parameters: {
             query?: never;
             header?: never;
@@ -5597,7 +5597,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    groups_list: {
         parameters: {
             query?: never;
             header?: never;
@@ -5655,7 +5655,7 @@ export interface operations {
             };
         };
     };
-    create: {
+    groups_create: {
         parameters: {
             query?: never;
             header?: never;
@@ -5717,7 +5717,7 @@ export interface operations {
             };
         };
     };
-    get_one: {
+    groups_get_one: {
         parameters: {
             query?: never;
             header?: never;
@@ -5776,7 +5776,7 @@ export interface operations {
             };
         };
     };
-    delete: {
+    groups_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -5834,7 +5834,7 @@ export interface operations {
             };
         };
     };
-    update: {
+    groups_update: {
         parameters: {
             query?: never;
             header?: never;
@@ -5897,7 +5897,7 @@ export interface operations {
             };
         };
     };
-    members: {
+    groups_members: {
         parameters: {
             query?: never;
             header?: never;
@@ -5956,7 +5956,7 @@ export interface operations {
             };
         };
     };
-    add_member: {
+    groups_add_member: {
         parameters: {
             query?: never;
             header?: never;
@@ -6015,7 +6015,7 @@ export interface operations {
             };
         };
     };
-    remove_member: {
+    groups_remove_member: {
         parameters: {
             query?: never;
             header?: never;
@@ -6074,7 +6074,7 @@ export interface operations {
             };
         };
     };
-    group_roles: {
+    groups_group_roles: {
         parameters: {
             query?: never;
             header?: never;
@@ -6133,7 +6133,7 @@ export interface operations {
             };
         };
     };
-    assign_role: {
+    groups_assign_role: {
         parameters: {
             query?: never;
             header?: never;
@@ -6192,7 +6192,7 @@ export interface operations {
             };
         };
     };
-    unassign_role: {
+    groups_unassign_role: {
         parameters: {
             query?: never;
             header?: never;
@@ -6251,7 +6251,7 @@ export interface operations {
             };
         };
     };
-    import: {
+    tenant_config_import: {
         parameters: {
             query?: {
                 /** @description Plan only. */
@@ -6318,7 +6318,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    invitations_list: {
         parameters: {
             query?: {
                 /** @description Only invitations that can still be accepted. */
@@ -6381,7 +6381,7 @@ export interface operations {
             };
         };
     };
-    create: {
+    invitations_create: {
         parameters: {
             query?: never;
             header?: never;
@@ -6443,7 +6443,7 @@ export interface operations {
             };
         };
     };
-    get_one: {
+    invitations_get_one: {
         parameters: {
             query?: never;
             header?: never;
@@ -6502,7 +6502,7 @@ export interface operations {
             };
         };
     };
-    revoke: {
+    invitations_revoke: {
         parameters: {
             query?: never;
             header?: never;
@@ -6560,7 +6560,7 @@ export interface operations {
             };
         };
     };
-    resend: {
+    invitations_resend: {
         parameters: {
             query?: never;
             header?: never;
@@ -6619,7 +6619,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    ip_rules_list: {
         parameters: {
             query?: {
                 /** @description Only rules bound to this client. */
@@ -6682,7 +6682,7 @@ export interface operations {
             };
         };
     };
-    create: {
+    ip_rules_create: {
         parameters: {
             query?: never;
             header?: never;
@@ -6744,7 +6744,7 @@ export interface operations {
             };
         };
     };
-    get_one: {
+    ip_rules_get_one: {
         parameters: {
             query?: never;
             header?: never;
@@ -6803,7 +6803,7 @@ export interface operations {
             };
         };
     };
-    delete: {
+    ip_rules_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -6861,7 +6861,7 @@ export interface operations {
             };
         };
     };
-    update: {
+    ip_rules_update: {
         parameters: {
             query?: never;
             header?: never;
@@ -6924,7 +6924,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    keys_list: {
         parameters: {
             query?: {
                 status?: "pending" | "active" | "retiring" | "revoked";
@@ -6984,7 +6984,7 @@ export interface operations {
             };
         };
     };
-    create: {
+    keys_create: {
         parameters: {
             query?: never;
             header?: never;
@@ -7047,7 +7047,7 @@ export interface operations {
             };
         };
     };
-    rotate: {
+    keys_rotate: {
         parameters: {
             query?: never;
             header?: never;
@@ -7105,7 +7105,7 @@ export interface operations {
             };
         };
     };
-    get_one: {
+    keys_get_one: {
         parameters: {
             query?: never;
             header?: never;
@@ -7164,7 +7164,7 @@ export interface operations {
             };
         };
     };
-    activate: {
+    keys_activate: {
         parameters: {
             query?: never;
             header?: never;
@@ -7223,7 +7223,7 @@ export interface operations {
             };
         };
     };
-    retire: {
+    keys_retire: {
         parameters: {
             query?: never;
             header?: never;
@@ -7282,7 +7282,7 @@ export interface operations {
             };
         };
     };
-    revoke: {
+    keys_revoke: {
         parameters: {
             query?: never;
             header?: never;
@@ -7341,7 +7341,7 @@ export interface operations {
             };
         };
     };
-    email_get: {
+    messaging_email_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -7399,7 +7399,7 @@ export interface operations {
             };
         };
     };
-    email_put: {
+    messaging_email_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -7461,7 +7461,7 @@ export interface operations {
             };
         };
     };
-    email_delete: {
+    messaging_email_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -7519,7 +7519,7 @@ export interface operations {
             };
         };
     };
-    email_test: {
+    messaging_email_test: {
         parameters: {
             query?: never;
             header?: never;
@@ -7581,7 +7581,7 @@ export interface operations {
             };
         };
     };
-    log: {
+    messaging_log: {
         parameters: {
             query?: {
                 status?: "queued" | "sending" | "sent" | "dead";
@@ -7642,7 +7642,7 @@ export interface operations {
             };
         };
     };
-    redeliver: {
+    messaging_redeliver: {
         parameters: {
             query?: never;
             header?: never;
@@ -7700,7 +7700,7 @@ export interface operations {
             };
         };
     };
-    sms_get: {
+    messaging_sms_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -7758,7 +7758,7 @@ export interface operations {
             };
         };
     };
-    sms_put: {
+    messaging_sms_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -7820,7 +7820,7 @@ export interface operations {
             };
         };
     };
-    sms_delete: {
+    messaging_sms_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -7878,7 +7878,7 @@ export interface operations {
             };
         };
     };
-    sms_test: {
+    messaging_sms_test: {
         parameters: {
             query?: never;
             header?: never;
@@ -7940,7 +7940,7 @@ export interface operations {
             };
         };
     };
-    templates: {
+    messaging_templates: {
         parameters: {
             query?: never;
             header?: never;
@@ -7998,7 +7998,7 @@ export interface operations {
             };
         };
     };
-    preview: {
+    messaging_preview: {
         parameters: {
             query?: never;
             header?: never;
@@ -8060,7 +8060,7 @@ export interface operations {
             };
         };
     };
-    template_get: {
+    messaging_template_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -8121,7 +8121,7 @@ export interface operations {
             };
         };
     };
-    template_put: {
+    messaging_template_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -8186,7 +8186,7 @@ export interface operations {
             };
         };
     };
-    template_delete: {
+    messaging_template_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -8246,7 +8246,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    resource_servers_list: {
         parameters: {
             query?: never;
             header?: never;
@@ -8304,7 +8304,7 @@ export interface operations {
             };
         };
     };
-    create: {
+    resource_servers_create: {
         parameters: {
             query?: never;
             header?: never;
@@ -8366,7 +8366,7 @@ export interface operations {
             };
         };
     };
-    get_one: {
+    resource_servers_get_one: {
         parameters: {
             query?: never;
             header?: never;
@@ -8425,7 +8425,7 @@ export interface operations {
             };
         };
     };
-    delete: {
+    resource_servers_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -8483,7 +8483,7 @@ export interface operations {
             };
         };
     };
-    update: {
+    resource_servers_update: {
         parameters: {
             query?: never;
             header?: never;
@@ -8546,7 +8546,7 @@ export interface operations {
             };
         };
     };
-    permissions: {
+    resource_servers_permissions: {
         parameters: {
             query?: never;
             header?: never;
@@ -8605,7 +8605,7 @@ export interface operations {
             };
         };
     };
-    create_permission: {
+    resource_servers_create_permission: {
         parameters: {
             query?: never;
             header?: never;
@@ -8668,7 +8668,7 @@ export interface operations {
             };
         };
     };
-    delete_permission: {
+    resource_servers_delete_permission: {
         parameters: {
             query?: never;
             header?: never;
@@ -8727,7 +8727,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    roles_list: {
         parameters: {
             query?: {
                 /** @description Only this client's roles. */
@@ -8790,7 +8790,7 @@ export interface operations {
             };
         };
     };
-    create: {
+    roles_create: {
         parameters: {
             query?: never;
             header?: never;
@@ -8852,7 +8852,7 @@ export interface operations {
             };
         };
     };
-    get_one: {
+    roles_get_one: {
         parameters: {
             query?: never;
             header?: never;
@@ -8911,7 +8911,7 @@ export interface operations {
             };
         };
     };
-    delete: {
+    roles_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -8969,7 +8969,7 @@ export interface operations {
             };
         };
     };
-    update: {
+    roles_update: {
         parameters: {
             query?: never;
             header?: never;
@@ -9032,7 +9032,7 @@ export interface operations {
             };
         };
     };
-    composites: {
+    roles_composites: {
         parameters: {
             query?: never;
             header?: never;
@@ -9091,7 +9091,7 @@ export interface operations {
             };
         };
     };
-    add_composite: {
+    roles_add_composite: {
         parameters: {
             query?: never;
             header?: never;
@@ -9150,7 +9150,7 @@ export interface operations {
             };
         };
     };
-    remove_composite: {
+    roles_remove_composite: {
         parameters: {
             query?: never;
             header?: never;
@@ -9209,7 +9209,7 @@ export interface operations {
             };
         };
     };
-    holders: {
+    roles_holders: {
         parameters: {
             query?: never;
             header?: never;
@@ -9268,7 +9268,7 @@ export interface operations {
             };
         };
     };
-    permissions: {
+    roles_permissions: {
         parameters: {
             query?: never;
             header?: never;
@@ -9327,7 +9327,7 @@ export interface operations {
             };
         };
     };
-    grant_permission: {
+    roles_grant_permission: {
         parameters: {
             query?: never;
             header?: never;
@@ -9386,7 +9386,7 @@ export interface operations {
             };
         };
     };
-    revoke_permission: {
+    roles_revoke_permission: {
         parameters: {
             query?: never;
             header?: never;
@@ -9445,7 +9445,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    scopes_list: {
         parameters: {
             query?: never;
             header?: never;
@@ -9503,7 +9503,7 @@ export interface operations {
             };
         };
     };
-    create: {
+    scopes_create: {
         parameters: {
             query?: never;
             header?: never;
@@ -9565,7 +9565,7 @@ export interface operations {
             };
         };
     };
-    get_one: {
+    scopes_get_one: {
         parameters: {
             query?: never;
             header?: never;
@@ -9624,7 +9624,7 @@ export interface operations {
             };
         };
     };
-    delete: {
+    scopes_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -9682,7 +9682,7 @@ export interface operations {
             };
         };
     };
-    update: {
+    scopes_update: {
         parameters: {
             query?: never;
             header?: never;
@@ -9745,7 +9745,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    users_list: {
         parameters: {
             query?: {
                 search?: string;
@@ -9810,7 +9810,7 @@ export interface operations {
             };
         };
     };
-    create: {
+    users_create: {
         parameters: {
             query?: never;
             header?: never;
@@ -9873,7 +9873,7 @@ export interface operations {
             };
         };
     };
-    export: {
+    users_export: {
         parameters: {
             query?: {
                 format?: "json" | "csv";
@@ -9932,7 +9932,7 @@ export interface operations {
             };
         };
     };
-    import: {
+    users_import: {
         parameters: {
             query?: {
                 /** @description Validate only; nothing is written. */
@@ -9998,7 +9998,7 @@ export interface operations {
             };
         };
     };
-    get_one: {
+    users_get_one: {
         parameters: {
             query?: never;
             header?: never;
@@ -10057,7 +10057,7 @@ export interface operations {
             };
         };
     };
-    delete: {
+    users_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -10115,7 +10115,7 @@ export interface operations {
             };
         };
     };
-    update: {
+    users_update: {
         parameters: {
             query?: never;
             header?: never;
@@ -10178,7 +10178,7 @@ export interface operations {
             };
         };
     };
-    user_audit: {
+    users_user_audit: {
         parameters: {
             query?: {
                 from?: string;
@@ -10246,7 +10246,7 @@ export interface operations {
             };
         };
     };
-    user_consents: {
+    users_user_consents: {
         parameters: {
             query?: never;
             header?: never;
@@ -10305,7 +10305,7 @@ export interface operations {
             };
         };
     };
-    revoke_consent: {
+    users_revoke_consent: {
         parameters: {
             query?: never;
             header?: never;
@@ -10364,7 +10364,7 @@ export interface operations {
             };
         };
     };
-    credentials: {
+    users_credentials: {
         parameters: {
             query?: never;
             header?: never;
@@ -10423,7 +10423,7 @@ export interface operations {
             };
         };
     };
-    delete_credential: {
+    users_delete_credential: {
         parameters: {
             query?: never;
             header?: never;
@@ -10482,7 +10482,7 @@ export interface operations {
             };
         };
     };
-    devices: {
+    users_devices: {
         parameters: {
             query?: never;
             header?: never;
@@ -10541,7 +10541,7 @@ export interface operations {
             };
         };
     };
-    revoke_devices: {
+    users_revoke_devices: {
         parameters: {
             query?: never;
             header?: never;
@@ -10600,7 +10600,7 @@ export interface operations {
             };
         };
     };
-    revoke_device: {
+    users_revoke_device: {
         parameters: {
             query?: never;
             header?: never;
@@ -10659,7 +10659,7 @@ export interface operations {
             };
         };
     };
-    force_password_change: {
+    users_force_password_change: {
         parameters: {
             query?: never;
             header?: never;
@@ -10718,7 +10718,7 @@ export interface operations {
             };
         };
     };
-    user_groups: {
+    users_user_groups: {
         parameters: {
             query?: never;
             header?: never;
@@ -10777,7 +10777,7 @@ export interface operations {
             };
         };
     };
-    join_group: {
+    users_join_group: {
         parameters: {
             query?: never;
             header?: never;
@@ -10837,7 +10837,7 @@ export interface operations {
             };
         };
     };
-    leave_group: {
+    users_leave_group: {
         parameters: {
             query?: never;
             header?: never;
@@ -10896,7 +10896,7 @@ export interface operations {
             };
         };
     };
-    set_password: {
+    users_set_password: {
         parameters: {
             query?: never;
             header?: never;
@@ -10960,7 +10960,7 @@ export interface operations {
             };
         };
     };
-    user_roles: {
+    users_user_roles: {
         parameters: {
             query?: never;
             header?: never;
@@ -11019,7 +11019,7 @@ export interface operations {
             };
         };
     };
-    assign_role: {
+    users_assign_role: {
         parameters: {
             query?: never;
             header?: never;
@@ -11079,7 +11079,7 @@ export interface operations {
             };
         };
     };
-    unassign_role: {
+    users_unassign_role: {
         parameters: {
             query?: never;
             header?: never;
@@ -11138,7 +11138,7 @@ export interface operations {
             };
         };
     };
-    list_sessions: {
+    users_list_sessions: {
         parameters: {
             query?: never;
             header?: never;
@@ -11197,7 +11197,7 @@ export interface operations {
             };
         };
     };
-    revoke_sessions: {
+    users_revoke_sessions: {
         parameters: {
             query?: never;
             header?: never;
@@ -11256,7 +11256,7 @@ export interface operations {
             };
         };
     };
-    revoke_session: {
+    users_revoke_session: {
         parameters: {
             query?: never;
             header?: never;
@@ -11315,7 +11315,7 @@ export interface operations {
             };
         };
     };
-    unlock: {
+    users_unlock: {
         parameters: {
             query?: never;
             header?: never;
@@ -11374,7 +11374,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    webhooks_list: {
         parameters: {
             query?: never;
             header?: never;
@@ -11432,7 +11432,7 @@ export interface operations {
             };
         };
     };
-    create: {
+    webhooks_create: {
         parameters: {
             query?: never;
             header?: never;
@@ -11494,7 +11494,7 @@ export interface operations {
             };
         };
     };
-    get_one: {
+    webhooks_get_one: {
         parameters: {
             query?: never;
             header?: never;
@@ -11553,7 +11553,7 @@ export interface operations {
             };
         };
     };
-    delete: {
+    webhooks_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -11611,7 +11611,7 @@ export interface operations {
             };
         };
     };
-    update: {
+    webhooks_update: {
         parameters: {
             query?: never;
             header?: never;
@@ -11674,7 +11674,7 @@ export interface operations {
             };
         };
     };
-    deliveries: {
+    webhooks_deliveries: {
         parameters: {
             query?: {
                 status?: "pending" | "sending" | "delivered" | "failed" | "dead";
@@ -11736,7 +11736,7 @@ export interface operations {
             };
         };
     };
-    delivery: {
+    webhooks_delivery: {
         parameters: {
             query?: never;
             header?: never;
@@ -11796,7 +11796,7 @@ export interface operations {
             };
         };
     };
-    redeliver: {
+    webhooks_redeliver: {
         parameters: {
             query?: never;
             header?: never;
@@ -11856,7 +11856,7 @@ export interface operations {
             };
         };
     };
-    rotate_secret: {
+    webhooks_rotate_secret: {
         parameters: {
             query?: never;
             header?: never;
@@ -11915,7 +11915,7 @@ export interface operations {
             };
         };
     };
-    test: {
+    webhooks_test: {
         parameters: {
             query?: never;
             header?: never;

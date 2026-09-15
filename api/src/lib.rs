@@ -31,7 +31,8 @@ pub fn build_router(state: AppState) -> Router {
 /// Build the application router plus `extra` routes (used by integration
 /// tests to exercise extractors and middleware in isolation).
 pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
-    let (admin, api) = openapi::admin_router().split_for_parts();
+    let (admin, mut api) = openapi::admin_router().split_for_parts();
+    openapi::finalize(&mut api);
     let docs = if state.config.docs_enabled {
         Router::new()
             .merge(utoipa_swagger_ui::SwaggerUi::new("/docs").url("/openapi.json", api.clone()))

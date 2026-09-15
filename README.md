@@ -80,6 +80,12 @@ tenant reach that tenant only. Permissions are re-read from the caller's effecti
 roles on every request, so revoking a role takes effect immediately. See
 [Admin API access](#admin-api-access).
 
+The admin console at `/console/` signs administrators in through their own tenant's
+login page (authorization code with PKCE against a built-in `ridm-admin-console`
+client), then works the admin API with a tenant switcher for global administrators,
+global search (`Ctrl`/`⌘ K`), keyboard shortcuts, light and dark themes and a phone
+layout. See [Admin console](#admin-console).
+
 ## Quick start (docker-compose)
 
 ```bash
@@ -178,6 +184,14 @@ query or form parameter). The token may come from any tenant, but it must:
   effective roles grant at least one `ridm:*` permission;
 - still have a live browser session when it was issued in one, so signing out ends
   admin access before the token expires.
+
+Every tenant carries a built-in public client, `ridm-admin-console`, that the bundled
+console signs in with: authorization code with PKCE, no consent step, `urn:ridm:admin`
+as its only audience, and redirect URIs derived from `UI_URL` (`/console/callback/`,
+`/console/`). It is created at startup and with every new tenant, its URIs are
+brought back in line whenever `UI_URL` changes, and it cannot be deleted or carried
+in a tenant document (exports leave it out, imports refuse it, prune never plans its
+deletion). Everything else on it (token lifetimes, CORS origins) is tunable.
 
 Missing or invalid tokens get `401` with a `WWW-Authenticate: Bearer` challenge; a valid
 token without the needed permission gets `403` `application/problem+json`. Tokens from
@@ -282,8 +296,10 @@ and drives the generated client against the live API.
 `GET /openapi.json` serves the admin API document; `ridm-api openapi` prints the same
 document without a database. It is derived from the routers with utoipa, so every route
 is documented or the build fails, and a test keeps the committed `api/openapi.json` equal
-to what the binary produces. The UI's typed client (`ui/lib/api/client.ts`, built on
-`openapi-fetch`) is generated from that file:
+to what the binary produces. Operation ids are the handler names prefixed with their tag
+(`users_list`, `clients_create`), unique across the document as generated clients
+require. The UI's typed client (`ui/lib/api/client.ts`, built on `openapi-fetch`) is
+generated from that file:
 
 ```bash
 cargo run -p ridm-api -- openapi > api/openapi.json
@@ -348,6 +364,29 @@ same-origin (session cookies work without CORS) and point the API back at it:
 UI_URL=http://localhost:3110 cargo run -p ridm-api             # API on :8090
 cd ui && API_PROXY=http://localhost:8090 npx next dev -p 3110   # UI on :3110
 ```
+
+### Admin console
+
+The console lives under `/console/` (the `/admin/*` paths are the API). Signed out, every
+console page shows a card asking which tenant to sign in through (global administrators
+use `master`); the browser then goes through that tenant's normal login page, including
+any forced password change or MFA, and comes back to `/console/callback/` with an
+authorization code that the page exchanges with PKCE. No consent step is shown for the
+console's own client. Tokens live in the tab's `sessionStorage`; the access token is
+refreshed ahead of expiry through refresh-token rotation, and because admin tokens are
+bound to the browser session, "Sign out" (RP-initiated logout with the ID token as hint)
+ends both at once. A 401 the API still returns, for a revoked session or a removed role,
+drops the console back to the sign-in card with a notice.
+
+The frame: sidebar navigation filtered by the administrator's permissions (`/admin/me`),
+a tenant switcher for global administrators (the chosen tenant travels as `?tenant=` so
+links deep-link), global search over pages, users and clients of the current tenant,
+theme switch (system, light, dark; kept in `localStorage` and applied before first
+paint), and keyboard shortcuts: `Ctrl`/`⌘ K` or `/` search, `t` tenant switcher, `g o`
+overview, `?` the shortcut list. Below the `md` breakpoint the navigation is a drawer.
+Console code sits in `ui/src/app/console/`, `ui/src/components/console/` and
+`ui/src/lib/console/` (`auth.ts` holds the PKCE flow, `session.tsx` the token store the
+typed client reads from).
 
 ### Container image
 

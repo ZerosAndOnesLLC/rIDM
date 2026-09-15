@@ -12,6 +12,7 @@
     "build": "next build",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "gen:api": "npx -y -p typescript@5.9.3 -p openapi-typescript@7.13.0 openapi-typescript ../api/openapi.json -o lib/api/openapi.d.ts",
     "serve": "npx serve@latest out",
     "e2e": "playwright test",
     "e2e:report": "playwright show-report"

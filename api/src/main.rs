@@ -84,6 +84,8 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
             tracing::debug!("bootstrap: already done, skipping");
         }
     }
+    // Every tenant carries the console's client; its redirect URIs follow UI_URL.
+    ridm_api::services::admin_console::ensure_all(&state).await?;
     let _invalidation_listener = state.cache.spawn_invalidation_listener();
     let _audit_writer = ridm_api::services::audit::spawn_writer(state.clone());
     let _webhook_dispatcher = ridm_api::services::webhooks::spawn_dispatcher(state.clone());

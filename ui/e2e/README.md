@@ -15,7 +15,8 @@ cd ui && npm run e2e            # starts `next dev -p 3110` itself
 
 Global setup prepares the `master` tenant directly in the database (password,
 magic-link and registration enabled, dynamic client registration open), registers a
-client, and creates one user through the registration flow. Settings:
+client, creates one user through the registration flow and makes them a global
+owner (`ridm:owner` in `master`) so the console specs can sign in as them. Settings:
 
 | Variable | Default |
 |----------|---------|
@@ -41,6 +42,7 @@ client, and creates one user through the registration flow. Settings:
 | `lockout` | account lock after repeated failures; right password refused while locked |
 | `consent` | consent denied returns `access_denied` (approval runs inside every sign-in) |
 | `logout` | RP-initiated logout with confirmation |
+| `console` | admin console: sign-in card validation, PKCE sign-in through the tenant login page back to a deep link, session reuse on reload, global search (pages, users, clients), tenant switcher and `t`/`?`/`g o` shortcuts, theme switch persistence, sign-out ending the SSO session, refused stray callback, phone navigation drawer |
 | `a11y` | error, device, invite, verify and logout pages, and login without a tenant |
 | `openapi-contract` | the live `/openapi.json` equals the committed `api/openapi.json` the typed admin client is generated from; the `openapi-fetch` client reaches the live API and types its 401 problem body |
 

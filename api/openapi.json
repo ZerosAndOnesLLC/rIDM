@@ -14,7 +14,7 @@
         "tags": [
           "audit"
         ],
-        "operationId": "global_list",
+        "operationId": "audit_global_list",
         "parameters": [
           {
             "name": "from",
@@ -152,7 +152,7 @@
         "tags": [
           "audit"
         ],
-        "operationId": "global_export",
+        "operationId": "audit_global_export",
         "parameters": [
           {
             "name": "from",
@@ -274,7 +274,7 @@
         "tags": [
           "audit"
         ],
-        "operationId": "global_verify",
+        "operationId": "audit_global_verify",
         "responses": {
           "200": {
             "description": "",
@@ -340,7 +340,7 @@
           "keys"
         ],
         "summary": "Which master-key generation every encrypted row is under. Spans all\ntenants, so global administrators only.",
-        "operationId": "master_status",
+        "operationId": "keys_master_status",
         "responses": {
           "200": {
             "description": "",
@@ -406,7 +406,7 @@
           "keys"
         ],
         "summary": "Re-encrypt every row still under an older generation with the current\nmaster key (the new key itself comes from the environment).",
-        "operationId": "master_rotate",
+        "operationId": "keys_master_rotate",
         "responses": {
           "200": {
             "description": "",
@@ -472,7 +472,7 @@
           "auth"
         ],
         "summary": "Who the caller is and what they may do; the admin UI reads this after login.",
-        "operationId": "me",
+        "operationId": "auth_me",
         "responses": {
           "200": {
             "description": "",
@@ -518,7 +518,7 @@
           "auth"
         ],
         "summary": "The permission catalogue and built-in roles (for role editors and docs).",
-        "operationId": "permissions",
+        "operationId": "auth_permissions",
         "responses": {
           "200": {
             "description": "",
@@ -564,7 +564,7 @@
           "tenants"
         ],
         "summary": "Global administrators see every tenant; tenant-scoped ones see their own.",
-        "operationId": "list",
+        "operationId": "tenants_list",
         "parameters": [
           {
             "name": "cursor",
@@ -647,7 +647,7 @@
         "tags": [
           "tenants"
         ],
-        "operationId": "create",
+        "operationId": "tenants_create",
         "requestBody": {
           "content": {
             "application/json": {
@@ -722,7 +722,7 @@
         "tags": [
           "tenants"
         ],
-        "operationId": "get_one",
+        "operationId": "tenants_get_one",
         "parameters": [
           {
             "name": "slug",
@@ -796,7 +796,7 @@
         "tags": [
           "tenants"
         ],
-        "operationId": "delete",
+        "operationId": "tenants_delete",
         "parameters": [
           {
             "name": "slug",
@@ -863,7 +863,7 @@
         "tags": [
           "tenants"
         ],
-        "operationId": "update",
+        "operationId": "tenants_update",
         "parameters": [
           {
             "name": "slug",
@@ -950,7 +950,7 @@
           "audit"
         ],
         "summary": "`?from=&to=&name=&actor_id=&subject_id=&user_id=&cursor=&limit=`; `name`\nmatches exactly, or as a prefix when it ends with `.` or `*`.",
-        "operationId": "list",
+        "operationId": "audit_list",
         "parameters": [
           {
             "name": "slug",
@@ -1098,7 +1098,7 @@
           "audit"
         ],
         "summary": "Oldest first, streamed, with the chain hashes so the file can be verified offline.",
-        "operationId": "export",
+        "operationId": "audit_export",
         "parameters": [
           {
             "name": "slug",
@@ -1229,7 +1229,7 @@
         "tags": [
           "audit"
         ],
-        "operationId": "verify",
+        "operationId": "audit_verify",
         "parameters": [
           {
             "name": "slug",
@@ -1305,7 +1305,7 @@
         "tags": [
           "tenants"
         ],
-        "operationId": "captcha_get",
+        "operationId": "tenants_captcha_get",
         "parameters": [
           {
             "name": "slug",
@@ -1379,7 +1379,7 @@
         "tags": [
           "tenants"
         ],
-        "operationId": "captcha_put",
+        "operationId": "tenants_captcha_put",
         "parameters": [
           {
             "name": "slug",
@@ -1456,7 +1456,7 @@
         "tags": [
           "tenants"
         ],
-        "operationId": "captcha_delete",
+        "operationId": "tenants_captcha_delete",
         "parameters": [
           {
             "name": "slug",
@@ -1525,7 +1525,7 @@
         "tags": [
           "mappers"
         ],
-        "operationId": "list",
+        "operationId": "mappers_list",
         "parameters": [
           {
             "name": "slug",
@@ -1622,7 +1622,7 @@
           "mappers"
         ],
         "summary": "Body: `{name, client_id?, config}` where `config` is `{type, ..., include_in}`.",
-        "operationId": "create",
+        "operationId": "mappers_create",
         "parameters": [
           {
             "name": "slug",
@@ -1708,7 +1708,7 @@
         "tags": [
           "mappers"
         ],
-        "operationId": "get_one",
+        "operationId": "mappers_get_one",
         "parameters": [
           {
             "name": "slug",
@@ -1791,7 +1791,7 @@
         "tags": [
           "mappers"
         ],
-        "operationId": "delete",
+        "operationId": "mappers_delete",
         "parameters": [
           {
             "name": "slug",
@@ -1868,7 +1868,7 @@
           "mappers"
         ],
         "summary": "`config` replaces the whole document (mapper types differ too much to merge).",
-        "operationId": "update",
+        "operationId": "mappers_update",
         "parameters": [
           {
             "name": "slug",
@@ -1963,7 +1963,7 @@
         "tags": [
           "clients"
         ],
-        "operationId": "list",
+        "operationId": "clients_list",
         "parameters": [
           {
             "name": "slug",
@@ -2063,7 +2063,7 @@
         "tags": [
           "clients"
         ],
-        "operationId": "create",
+        "operationId": "clients_create",
         "parameters": [
           {
             "name": "slug",
@@ -2149,7 +2149,7 @@
         "tags": [
           "clients"
         ],
-        "operationId": "get_one",
+        "operationId": "clients_get_one",
         "parameters": [
           {
             "name": "slug",
@@ -2231,7 +2231,7 @@
         "tags": [
           "clients"
         ],
-        "operationId": "delete",
+        "operationId": "clients_delete",
         "parameters": [
           {
             "name": "slug",
@@ -2307,7 +2307,7 @@
           "clients"
         ],
         "summary": "Merge patch over the client's metadata document (every field a `POST`\naccepts): send only what changed; `null` clears an optional field or\nresets a defaulted one to its type-driven default. `status` may be sent\nalongside. Switching to a secret-based auth method mints a secret that is\nreturned once in `client_secret`.",
-        "operationId": "update",
+        "operationId": "clients_update",
         "parameters": [
           {
             "name": "slug",
@@ -2401,7 +2401,7 @@
           "clients"
         ],
         "summary": "Issue (replacing any previous one) the RFC 7592 registration access token\nso the client's owner can manage its metadata without admin access.",
-        "operationId": "registration_token",
+        "operationId": "clients_registration_token",
         "parameters": [
           {
             "name": "slug",
@@ -2486,7 +2486,7 @@
           "clients"
         ],
         "summary": "Generate a new secret (first one, or a rotation with a grace window for\nthe previous secret). The secret is in the response and nowhere else.",
-        "operationId": "rotate_secret",
+        "operationId": "clients_rotate_secret",
         "parameters": [
           {
             "name": "slug",
@@ -2581,7 +2581,7 @@
         "tags": [
           "clients"
         ],
-        "operationId": "revoke_secret",
+        "operationId": "clients_revoke_secret",
         "parameters": [
           {
             "name": "slug",
@@ -2675,7 +2675,7 @@
           "clients"
         ],
         "summary": "Create (or return) the user the client acts as under `client_credentials`.",
-        "operationId": "enable_service_account",
+        "operationId": "clients_enable_service_account",
         "parameters": [
           {
             "name": "slug",
@@ -2757,7 +2757,7 @@
         "tags": [
           "clients"
         ],
-        "operationId": "disable_service_account",
+        "operationId": "clients_disable_service_account",
         "parameters": [
           {
             "name": "slug",
@@ -2842,7 +2842,7 @@
           "tenant_config"
         ],
         "summary": "Deterministic JSON (sorted keys and collections, natural keys, no secrets).",
-        "operationId": "export",
+        "operationId": "tenant_config_export",
         "parameters": [
           {
             "name": "slug",
@@ -2919,7 +2919,7 @@
           "groups"
         ],
         "summary": "Flat list with `parent_id`; the UI builds the tree.",
-        "operationId": "list",
+        "operationId": "groups_list",
         "parameters": [
           {
             "name": "slug",
@@ -2996,7 +2996,7 @@
         "tags": [
           "groups"
         ],
-        "operationId": "create",
+        "operationId": "groups_create",
         "parameters": [
           {
             "name": "slug",
@@ -3082,7 +3082,7 @@
         "tags": [
           "groups"
         ],
-        "operationId": "get_one",
+        "operationId": "groups_get_one",
         "parameters": [
           {
             "name": "slug",
@@ -3165,7 +3165,7 @@
         "tags": [
           "groups"
         ],
-        "operationId": "delete",
+        "operationId": "groups_delete",
         "parameters": [
           {
             "name": "slug",
@@ -3242,7 +3242,7 @@
           "groups"
         ],
         "summary": "`parent_id: null` moves the group to the top level.",
-        "operationId": "update",
+        "operationId": "groups_update",
         "parameters": [
           {
             "name": "slug",
@@ -3337,7 +3337,7 @@
         "tags": [
           "groups"
         ],
-        "operationId": "members",
+        "operationId": "groups_members",
         "parameters": [
           {
             "name": "slug",
@@ -3425,7 +3425,7 @@
         "tags": [
           "groups"
         ],
-        "operationId": "add_member",
+        "operationId": "groups_add_member",
         "parameters": [
           {
             "name": "slug",
@@ -3510,7 +3510,7 @@
         "tags": [
           "groups"
         ],
-        "operationId": "remove_member",
+        "operationId": "groups_remove_member",
         "parameters": [
           {
             "name": "slug",
@@ -3597,7 +3597,7 @@
         "tags": [
           "groups"
         ],
-        "operationId": "group_roles",
+        "operationId": "groups_group_roles",
         "parameters": [
           {
             "name": "slug",
@@ -3686,7 +3686,7 @@
           "groups"
         ],
         "summary": "Every member (and members of descendant groups) gains the role.",
-        "operationId": "assign_role",
+        "operationId": "groups_assign_role",
         "parameters": [
           {
             "name": "slug",
@@ -3771,7 +3771,7 @@
         "tags": [
           "groups"
         ],
-        "operationId": "unassign_role",
+        "operationId": "groups_unassign_role",
         "parameters": [
           {
             "name": "slug",
@@ -3859,7 +3859,7 @@
           "tenant_config"
         ],
         "summary": "`?dry_run=true` returns the plan (creates, updates with field diffs, and\nwith `prune` deletes). Without it the plan is applied; the report lists\nwhat was applied, any per-item errors, and the secrets of clients and\nwebhooks the import created (shown once). Applying the same document\nagain yields an empty plan.",
-        "operationId": "import",
+        "operationId": "tenant_config_import",
         "parameters": [
           {
             "name": "slug",
@@ -3963,7 +3963,7 @@
         "tags": [
           "invitations"
         ],
-        "operationId": "list",
+        "operationId": "invitations_list",
         "parameters": [
           {
             "name": "slug",
@@ -4065,7 +4065,7 @@
           "invitations"
         ],
         "summary": "Emails the invitee; roles and groups are granted on acceptance, so they\nare checked against the caller's own admin permissions here.",
-        "operationId": "create",
+        "operationId": "invitations_create",
         "parameters": [
           {
             "name": "slug",
@@ -4151,7 +4151,7 @@
         "tags": [
           "invitations"
         ],
-        "operationId": "get_one",
+        "operationId": "invitations_get_one",
         "parameters": [
           {
             "name": "slug",
@@ -4234,7 +4234,7 @@
         "tags": [
           "invitations"
         ],
-        "operationId": "revoke",
+        "operationId": "invitations_revoke",
         "parameters": [
           {
             "name": "slug",
@@ -4313,7 +4313,7 @@
           "invitations"
         ],
         "summary": "New token and expiry, emailed again; the previous link stops working.",
-        "operationId": "resend",
+        "operationId": "invitations_resend",
         "parameters": [
           {
             "name": "slug",
@@ -4398,7 +4398,7 @@
         "tags": [
           "ip_rules"
         ],
-        "operationId": "list",
+        "operationId": "ip_rules_list",
         "parameters": [
           {
             "name": "slug",
@@ -4495,7 +4495,7 @@
           "ip_rules"
         ],
         "summary": "`{cidr, action?: allow|deny (default deny), client_id?, description?}`.",
-        "operationId": "create",
+        "operationId": "ip_rules_create",
         "parameters": [
           {
             "name": "slug",
@@ -4581,7 +4581,7 @@
         "tags": [
           "ip_rules"
         ],
-        "operationId": "get_one",
+        "operationId": "ip_rules_get_one",
         "parameters": [
           {
             "name": "slug",
@@ -4664,7 +4664,7 @@
         "tags": [
           "ip_rules"
         ],
-        "operationId": "delete",
+        "operationId": "ip_rules_delete",
         "parameters": [
           {
             "name": "slug",
@@ -4740,7 +4740,7 @@
         "tags": [
           "ip_rules"
         ],
-        "operationId": "update",
+        "operationId": "ip_rules_update",
         "parameters": [
           {
             "name": "slug",
@@ -4835,7 +4835,7 @@
         "tags": [
           "keys"
         ],
-        "operationId": "list",
+        "operationId": "keys_list",
         "parameters": [
           {
             "name": "slug",
@@ -4927,7 +4927,7 @@
         "tags": [
           "keys"
         ],
-        "operationId": "create",
+        "operationId": "keys_create",
         "parameters": [
           {
             "name": "slug",
@@ -5015,7 +5015,7 @@
           "keys"
         ],
         "summary": "New key with the tenant's default algorithm, active at once; the previous\nactive key retires with the policy's overlap.",
-        "operationId": "rotate",
+        "operationId": "keys_rotate",
         "parameters": [
           {
             "name": "slug",
@@ -5091,7 +5091,7 @@
         "tags": [
           "keys"
         ],
-        "operationId": "get_one",
+        "operationId": "keys_get_one",
         "parameters": [
           {
             "name": "slug",
@@ -5176,7 +5176,7 @@
         "tags": [
           "keys"
         ],
-        "operationId": "activate",
+        "operationId": "keys_activate",
         "parameters": [
           {
             "name": "slug",
@@ -5261,7 +5261,7 @@
         "tags": [
           "keys"
         ],
-        "operationId": "retire",
+        "operationId": "keys_retire",
         "parameters": [
           {
             "name": "slug",
@@ -5347,7 +5347,7 @@
           "keys"
         ],
         "summary": "Unpublish now: tokens signed with the key stop verifying.",
-        "operationId": "revoke",
+        "operationId": "keys_revoke",
         "parameters": [
           {
             "name": "slug",
@@ -5432,7 +5432,7 @@
         "tags": [
           "messaging"
         ],
-        "operationId": "email_get",
+        "operationId": "messaging_email_get",
         "parameters": [
           {
             "name": "slug",
@@ -5507,7 +5507,7 @@
           "messaging"
         ],
         "summary": "`{type: \"smtp\", host, port, username?, password?, from, security?}` or\n`{type: \"http\", url, auth_header?, from}`; an omitted secret keeps the stored one.",
-        "operationId": "email_put",
+        "operationId": "messaging_email_put",
         "parameters": [
           {
             "name": "slug",
@@ -5591,7 +5591,7 @@
         "tags": [
           "messaging"
         ],
-        "operationId": "email_delete",
+        "operationId": "messaging_email_delete",
         "parameters": [
           {
             "name": "slug",
@@ -5667,7 +5667,7 @@
         "tags": [
           "messaging"
         ],
-        "operationId": "email_test",
+        "operationId": "messaging_email_test",
         "parameters": [
           {
             "name": "slug",
@@ -5753,7 +5753,7 @@
         "tags": [
           "messaging"
         ],
-        "operationId": "log",
+        "operationId": "messaging_log",
         "parameters": [
           {
             "name": "slug",
@@ -5856,7 +5856,7 @@
           "messaging"
         ],
         "summary": "Put a dead message back in the queue.",
-        "operationId": "redeliver",
+        "operationId": "messaging_redeliver",
         "parameters": [
           {
             "name": "slug",
@@ -5934,7 +5934,7 @@
         "tags": [
           "messaging"
         ],
-        "operationId": "sms_get",
+        "operationId": "messaging_sms_get",
         "parameters": [
           {
             "name": "slug",
@@ -6008,7 +6008,7 @@
         "tags": [
           "messaging"
         ],
-        "operationId": "sms_put",
+        "operationId": "messaging_sms_put",
         "parameters": [
           {
             "name": "slug",
@@ -6092,7 +6092,7 @@
         "tags": [
           "messaging"
         ],
-        "operationId": "sms_delete",
+        "operationId": "messaging_sms_delete",
         "parameters": [
           {
             "name": "slug",
@@ -6168,7 +6168,7 @@
         "tags": [
           "messaging"
         ],
-        "operationId": "sms_test",
+        "operationId": "messaging_sms_test",
         "parameters": [
           {
             "name": "slug",
@@ -6254,7 +6254,7 @@
         "tags": [
           "messaging"
         ],
-        "operationId": "templates",
+        "operationId": "messaging_templates",
         "parameters": [
           {
             "name": "slug",
@@ -6331,7 +6331,7 @@
           "messaging"
         ],
         "summary": "Render a stored template or an unsaved draft with sample variables.",
-        "operationId": "preview",
+        "operationId": "messaging_preview",
         "parameters": [
           {
             "name": "slug",
@@ -6417,7 +6417,7 @@
         "tags": [
           "messaging"
         ],
-        "operationId": "template_get",
+        "operationId": "messaging_template_get",
         "parameters": [
           {
             "name": "slug",
@@ -6515,7 +6515,7 @@
         "tags": [
           "messaging"
         ],
-        "operationId": "template_put",
+        "operationId": "messaging_template_put",
         "parameters": [
           {
             "name": "slug",
@@ -6623,7 +6623,7 @@
         "tags": [
           "messaging"
         ],
-        "operationId": "template_delete",
+        "operationId": "messaging_template_delete",
         "parameters": [
           {
             "name": "slug",
@@ -6716,7 +6716,7 @@
         "tags": [
           "resource_servers"
         ],
-        "operationId": "list",
+        "operationId": "resource_servers_list",
         "parameters": [
           {
             "name": "slug",
@@ -6793,7 +6793,7 @@
         "tags": [
           "resource_servers"
         ],
-        "operationId": "create",
+        "operationId": "resource_servers_create",
         "parameters": [
           {
             "name": "slug",
@@ -6879,7 +6879,7 @@
         "tags": [
           "resource_servers"
         ],
-        "operationId": "get_one",
+        "operationId": "resource_servers_get_one",
         "parameters": [
           {
             "name": "slug",
@@ -6962,7 +6962,7 @@
         "tags": [
           "resource_servers"
         ],
-        "operationId": "delete",
+        "operationId": "resource_servers_delete",
         "parameters": [
           {
             "name": "slug",
@@ -7038,7 +7038,7 @@
         "tags": [
           "resource_servers"
         ],
-        "operationId": "update",
+        "operationId": "resource_servers_update",
         "parameters": [
           {
             "name": "slug",
@@ -7133,7 +7133,7 @@
         "tags": [
           "resource_servers"
         ],
-        "operationId": "permissions",
+        "operationId": "resource_servers_permissions",
         "parameters": [
           {
             "name": "slug",
@@ -7219,7 +7219,7 @@
         "tags": [
           "resource_servers"
         ],
-        "operationId": "create_permission",
+        "operationId": "resource_servers_create_permission",
         "parameters": [
           {
             "name": "slug",
@@ -7314,7 +7314,7 @@
         "tags": [
           "resource_servers"
         ],
-        "operationId": "delete_permission",
+        "operationId": "resource_servers_delete_permission",
         "parameters": [
           {
             "name": "slug",
@@ -7401,7 +7401,7 @@
         "tags": [
           "roles"
         ],
-        "operationId": "list",
+        "operationId": "roles_list",
         "parameters": [
           {
             "name": "slug",
@@ -7497,7 +7497,7 @@
         "tags": [
           "roles"
         ],
-        "operationId": "create",
+        "operationId": "roles_create",
         "parameters": [
           {
             "name": "slug",
@@ -7583,7 +7583,7 @@
         "tags": [
           "roles"
         ],
-        "operationId": "get_one",
+        "operationId": "roles_get_one",
         "parameters": [
           {
             "name": "slug",
@@ -7666,7 +7666,7 @@
         "tags": [
           "roles"
         ],
-        "operationId": "delete",
+        "operationId": "roles_delete",
         "parameters": [
           {
             "name": "slug",
@@ -7742,7 +7742,7 @@
         "tags": [
           "roles"
         ],
-        "operationId": "update",
+        "operationId": "roles_update",
         "parameters": [
           {
             "name": "slug",
@@ -7837,7 +7837,7 @@
         "tags": [
           "roles"
         ],
-        "operationId": "composites",
+        "operationId": "roles_composites",
         "parameters": [
           {
             "name": "slug",
@@ -7926,7 +7926,7 @@
           "roles"
         ],
         "summary": "Everyone holding `role` gains `child_id`, so the child's permissions\nmust be within the caller's reach.",
-        "operationId": "add_composite",
+        "operationId": "roles_add_composite",
         "parameters": [
           {
             "name": "slug",
@@ -8011,7 +8011,7 @@
         "tags": [
           "roles"
         ],
-        "operationId": "remove_composite",
+        "operationId": "roles_remove_composite",
         "parameters": [
           {
             "name": "slug",
@@ -8099,7 +8099,7 @@
           "roles"
         ],
         "summary": "Users and groups the role is assigned to directly.",
-        "operationId": "holders",
+        "operationId": "roles_holders",
         "parameters": [
           {
             "name": "slug",
@@ -8187,7 +8187,7 @@
         "tags": [
           "roles"
         ],
-        "operationId": "permissions",
+        "operationId": "roles_permissions",
         "parameters": [
           {
             "name": "slug",
@@ -8276,7 +8276,7 @@
           "roles"
         ],
         "summary": "Admin-catalogue permissions can only be granted by someone who holds them.",
-        "operationId": "grant_permission",
+        "operationId": "roles_grant_permission",
         "parameters": [
           {
             "name": "slug",
@@ -8361,7 +8361,7 @@
         "tags": [
           "roles"
         ],
-        "operationId": "revoke_permission",
+        "operationId": "roles_revoke_permission",
         "parameters": [
           {
             "name": "slug",
@@ -8448,7 +8448,7 @@
         "tags": [
           "scopes"
         ],
-        "operationId": "list",
+        "operationId": "scopes_list",
         "parameters": [
           {
             "name": "slug",
@@ -8525,7 +8525,7 @@
         "tags": [
           "scopes"
         ],
-        "operationId": "create",
+        "operationId": "scopes_create",
         "parameters": [
           {
             "name": "slug",
@@ -8611,7 +8611,7 @@
         "tags": [
           "scopes"
         ],
-        "operationId": "get_one",
+        "operationId": "scopes_get_one",
         "parameters": [
           {
             "name": "slug",
@@ -8694,7 +8694,7 @@
         "tags": [
           "scopes"
         ],
-        "operationId": "delete",
+        "operationId": "scopes_delete",
         "parameters": [
           {
             "name": "slug",
@@ -8770,7 +8770,7 @@
         "tags": [
           "scopes"
         ],
-        "operationId": "update",
+        "operationId": "scopes_update",
         "parameters": [
           {
             "name": "slug",
@@ -8865,7 +8865,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "list",
+        "operationId": "users_list",
         "parameters": [
           {
             "name": "slug",
@@ -8998,7 +8998,7 @@
           "users"
         ],
         "summary": "Body: every `NewUser` field plus `password` or `temporary_password: true`.\nA temporary password is returned exactly once and must be changed at\nfirst login; an explicit password is checked against the tenant policy.",
-        "operationId": "create",
+        "operationId": "users_create",
         "parameters": [
           {
             "name": "slug",
@@ -9084,7 +9084,7 @@
           "users"
         ],
         "summary": "`GET .../users/export?format=json|csv`: every live user, streamed page by\npage, without credentials.",
-        "operationId": "export",
+        "operationId": "users_export",
         "parameters": [
           {
             "name": "slug",
@@ -9166,7 +9166,7 @@
           "users"
         ],
         "summary": "`POST .../users/import` with `application/json` (an array of users or\n`{\"users\": [...]}`) or `text/csv` (header row; `attr.<name>` columns become\nprofile attributes). Rows are processed independently; the report names\nevery row that failed and why.",
-        "operationId": "import",
+        "operationId": "users_import",
         "parameters": [
           {
             "name": "slug",
@@ -9265,7 +9265,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "get_one",
+        "operationId": "users_get_one",
         "parameters": [
           {
             "name": "slug",
@@ -9349,7 +9349,7 @@
           "users"
         ],
         "summary": "Soft delete; sessions and trusted devices end at once.",
-        "operationId": "delete",
+        "operationId": "users_delete",
         "parameters": [
           {
             "name": "slug",
@@ -9426,7 +9426,7 @@
           "users"
         ],
         "summary": "Partial update: absent = unchanged, `null` clears. `status` covers\nenable/disable (`active` / `disabled`); `locked` and `deleted` are set by\nthe system, use the unlock and delete routes instead.",
-        "operationId": "update",
+        "operationId": "users_update",
         "parameters": [
           {
             "name": "slug",
@@ -9522,7 +9522,7 @@
           "users"
         ],
         "summary": "Audit rows where the user is the actor or the subject (`ridm:audit:read`).",
-        "operationId": "user_audit",
+        "operationId": "users_user_audit",
         "parameters": [
           {
             "name": "slug",
@@ -9678,7 +9678,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "user_consents",
+        "operationId": "users_user_consents",
         "parameters": [
           {
             "name": "slug",
@@ -9766,7 +9766,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "revoke_consent",
+        "operationId": "users_revoke_consent",
         "parameters": [
           {
             "name": "slug",
@@ -9853,7 +9853,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "credentials",
+        "operationId": "users_credentials",
         "parameters": [
           {
             "name": "slug",
@@ -9939,7 +9939,7 @@
           "users"
         ],
         "summary": "Remove a factor (the user lost the device, say). The password is not a\nrow here; replace it through `PUT .../password`.",
-        "operationId": "delete_credential",
+        "operationId": "users_delete_credential",
         "parameters": [
           {
             "name": "slug",
@@ -10026,7 +10026,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "devices",
+        "operationId": "users_devices",
         "parameters": [
           {
             "name": "slug",
@@ -10112,7 +10112,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "revoke_devices",
+        "operationId": "users_revoke_devices",
         "parameters": [
           {
             "name": "slug",
@@ -10197,7 +10197,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "revoke_device",
+        "operationId": "users_revoke_device",
         "parameters": [
           {
             "name": "slug",
@@ -10285,7 +10285,7 @@
           "users"
         ],
         "summary": "Flag the account so the next login demands a new password.",
-        "operationId": "force_password_change",
+        "operationId": "users_force_password_change",
         "parameters": [
           {
             "name": "slug",
@@ -10370,7 +10370,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "user_groups",
+        "operationId": "users_user_groups",
         "parameters": [
           {
             "name": "slug",
@@ -10455,7 +10455,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "join_group",
+        "operationId": "users_join_group",
         "parameters": [
           {
             "name": "slug",
@@ -10547,7 +10547,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "leave_group",
+        "operationId": "users_leave_group",
         "parameters": [
           {
             "name": "slug",
@@ -10634,7 +10634,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "set_password",
+        "operationId": "users_set_password",
         "parameters": [
           {
             "name": "slug",
@@ -10730,7 +10730,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "user_roles",
+        "operationId": "users_user_roles",
         "parameters": [
           {
             "name": "slug",
@@ -10815,7 +10815,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "assign_role",
+        "operationId": "users_assign_role",
         "parameters": [
           {
             "name": "slug",
@@ -10907,7 +10907,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "unassign_role",
+        "operationId": "users_unassign_role",
         "parameters": [
           {
             "name": "slug",
@@ -10994,7 +10994,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "list_sessions",
+        "operationId": "users_list_sessions",
         "parameters": [
           {
             "name": "slug",
@@ -11080,7 +11080,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "revoke_sessions",
+        "operationId": "users_revoke_sessions",
         "parameters": [
           {
             "name": "slug",
@@ -11165,7 +11165,7 @@
         "tags": [
           "users"
         ],
-        "operationId": "revoke_session",
+        "operationId": "users_revoke_session",
         "parameters": [
           {
             "name": "slug",
@@ -11253,7 +11253,7 @@
           "users"
         ],
         "summary": "Clear a lockout (failed-attempt counter and `locked` status).",
-        "operationId": "unlock",
+        "operationId": "users_unlock",
         "parameters": [
           {
             "name": "slug",
@@ -11338,7 +11338,7 @@
         "tags": [
           "webhooks"
         ],
-        "operationId": "list",
+        "operationId": "webhooks_list",
         "parameters": [
           {
             "name": "slug",
@@ -11416,7 +11416,7 @@
           "webhooks"
         ],
         "summary": "`{name, url, events, enabled?, headers?, max_attempts?}`; the signing\n`secret` is in the response and nowhere else.",
-        "operationId": "create",
+        "operationId": "webhooks_create",
         "parameters": [
           {
             "name": "slug",
@@ -11502,7 +11502,7 @@
         "tags": [
           "webhooks"
         ],
-        "operationId": "get_one",
+        "operationId": "webhooks_get_one",
         "parameters": [
           {
             "name": "slug",
@@ -11585,7 +11585,7 @@
         "tags": [
           "webhooks"
         ],
-        "operationId": "delete",
+        "operationId": "webhooks_delete",
         "parameters": [
           {
             "name": "slug",
@@ -11661,7 +11661,7 @@
         "tags": [
           "webhooks"
         ],
-        "operationId": "update",
+        "operationId": "webhooks_update",
         "parameters": [
           {
             "name": "slug",
@@ -11756,7 +11756,7 @@
         "tags": [
           "webhooks"
         ],
-        "operationId": "deliveries",
+        "operationId": "webhooks_deliveries",
         "parameters": [
           {
             "name": "slug",
@@ -11868,7 +11868,7 @@
         "tags": [
           "webhooks"
         ],
-        "operationId": "delivery",
+        "operationId": "webhooks_delivery",
         "parameters": [
           {
             "name": "slug",
@@ -11963,7 +11963,7 @@
           "webhooks"
         ],
         "summary": "Requeue and attempt at once; the returned delivery shows the outcome.",
-        "operationId": "redeliver",
+        "operationId": "webhooks_redeliver",
         "parameters": [
           {
             "name": "slug",
@@ -12057,7 +12057,7 @@
         "tags": [
           "webhooks"
         ],
-        "operationId": "rotate_secret",
+        "operationId": "webhooks_rotate_secret",
         "parameters": [
           {
             "name": "slug",
@@ -12143,7 +12143,7 @@
           "webhooks"
         ],
         "summary": "Deliver a `webhook.test` event now and report the attempt.",
-        "operationId": "test",
+        "operationId": "webhooks_test",
         "parameters": [
           {
             "name": "slug",

@@ -316,7 +316,7 @@ impl Config {
         let base = u.path().trim_end_matches('/').to_string();
         u.set_path(&format!("{base}/{}/", page.trim_matches('/')));
         u.set_query(None);
-        {
+        if !params.is_empty() {
             let mut q = u.query_pairs_mut();
             for (k, v) in params {
                 q.append_pair(k, v);

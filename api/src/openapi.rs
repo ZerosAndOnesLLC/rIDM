@@ -83,9 +83,36 @@ pub fn admin_router() -> OpenApiRouter<AppState> {
         .merge(admin::ip_rules_router())
 }
 
-/// The admin API document, version-stamped from the crate.
+/// The admin API document as served and committed.
 pub fn openapi() -> utoipa::openapi::OpenApi {
     let mut doc = admin_router().into_openapi();
-    doc.info.version = env!("CARGO_PKG_VERSION").to_string();
+    finalize(&mut doc);
     doc
+}
+
+/// Version-stamp the document from the crate and make operation ids unique:
+/// the handler names prefixed with their tag (`users_list`), as generated
+/// clients require. Applied to the served document and the CLI output alike.
+pub fn finalize(doc: &mut utoipa::openapi::OpenApi) {
+    doc.info.version = env!("CARGO_PKG_VERSION").to_string();
+    for item in doc.paths.paths.values_mut() {
+        for op in [
+            &mut item.get,
+            &mut item.put,
+            &mut item.post,
+            &mut item.delete,
+            &mut item.patch,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if let (Some(tag), Some(id)) = (
+                op.tags.as_ref().and_then(|t| t.first()),
+                op.operation_id.as_ref(),
+            ) && !id.starts_with(&format!("{tag}_"))
+            {
+                op.operation_id = Some(format!("{tag}_{id}"));
+            }
+        }
+    }
 }
