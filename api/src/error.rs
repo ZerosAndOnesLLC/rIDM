@@ -214,6 +214,7 @@ pub enum OAuthErrorCode {
     InvalidClientMetadata,
     InvalidDpopProof,
     UseDpopNonce,
+    InvalidTarget,
 }
 
 impl OAuthErrorCode {
@@ -247,6 +248,7 @@ impl OAuthErrorCode {
             Self::InvalidClientMetadata => "invalid_client_metadata",
             Self::InvalidDpopProof => "invalid_dpop_proof",
             Self::UseDpopNonce => "use_dpop_nonce",
+            Self::InvalidTarget => "invalid_target",
         }
     }
 

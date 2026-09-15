@@ -67,3 +67,15 @@ pub fn mappers(tenant_id: Uuid, client_id: Option<Uuid>) -> String {
 pub fn discovery(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:discovery")
 }
+
+pub fn sso_session(tenant_id: Uuid, session_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:session:{session_id}")
+}
+
+pub fn auth_code(tenant_id: Uuid, code_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:code:{code_hash}")
+}
+
+pub fn login_flow(tenant_id: Uuid, flow_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:flow:{flow_id}")
+}

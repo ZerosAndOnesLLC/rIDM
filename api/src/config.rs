@@ -65,6 +65,9 @@ pub struct Config {
     /// Externally visible base URL, e.g. `https://id.example.com`. Issuer URLs
     /// are derived from it: `{PUBLIC_URL}/t/{tenant_slug}`.
     pub public_url: Url,
+    /// Base URL of the static UI (login, consent, ... pages). Defaults to
+    /// `PUBLIC_URL` (embedded mode); set when the UI is hosted elsewhere.
+    pub ui_url: Url,
     /// 32-byte key that encrypts secrets at rest (current generation).
     pub master_key: SecretBytes,
     /// Generation number of `master_key`; stored with every ciphertext.
@@ -137,6 +140,10 @@ impl Config {
                 Ok(u)
             })
         })?;
+        let ui_url = match optional("UI_URL") {
+            Some(v) => parse("UI_URL", v, |v| Url::parse(&v).map_err(|e| e.to_string()))?,
+            None => public_url.clone(),
+        };
         let master_key = load_master_key()?;
         let master_key_version = parse_u32("MASTER_KEY_VERSION", 1)?;
         if master_key_version == 0 {
@@ -259,6 +266,7 @@ impl Config {
             database_url,
             redis_url,
             public_url,
+            ui_url,
             master_key,
             master_key_version,
             master_key_previous,
@@ -274,6 +282,21 @@ impl Config {
             argon2,
             bootstrap,
         })
+    }
+
+    /// URL of a UI page (`/login/`, `/consent/`, ...) with query parameters.
+    pub fn ui_page(&self, page: &str, params: &[(&str, &str)]) -> String {
+        let mut u = self.ui_url.clone();
+        let base = u.path().trim_end_matches('/').to_string();
+        u.set_path(&format!("{base}/{}/", page.trim_matches('/')));
+        u.set_query(None);
+        {
+            let mut q = u.query_pairs_mut();
+            for (k, v) in params {
+                q.append_pair(k, v);
+            }
+        }
+        u.to_string()
     }
 
     /// Issuer URL for a tenant: `{PUBLIC_URL}/t/{slug}` (no trailing slash).

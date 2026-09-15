@@ -172,6 +172,21 @@ pub enum EventKind {
         child_role_id: Uuid,
     },
 
+    // Sessions and authorization
+    SessionCreated {
+        session_id: Uuid,
+        user_id: Uuid,
+    },
+    SessionRevoked {
+        session_id: Uuid,
+        user_id: Uuid,
+    },
+    AuthorizationGranted {
+        user_id: Uuid,
+        client_id: Uuid,
+        scopes: Vec<String>,
+    },
+
     // Tokens
     RefreshTokenReuseDetected {
         family_id: Uuid,
@@ -238,6 +253,9 @@ impl EventKind {
             Self::RoleUnassigned { .. } => "role.unassigned",
             Self::RoleCompositeAdded { .. } => "role.composite_added",
             Self::RoleCompositeRemoved { .. } => "role.composite_removed",
+            Self::SessionCreated { .. } => "session.created",
+            Self::SessionRevoked { .. } => "session.revoked",
+            Self::AuthorizationGranted { .. } => "authorization.granted",
             Self::RefreshTokenReuseDetected { .. } => "token.refresh_reuse_detected",
             Self::TokensRevoked { .. } => "token.revoked",
             Self::SigningKeyCreated { .. } => "signing_key.created",
