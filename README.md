@@ -267,6 +267,16 @@ pagination with `?cursor=&limit=`):
 | `GET /openapi.json`, `GET /docs` | none | the admin API's OpenAPI 3 document, derived from the routers; Swagger UI at `/docs` when `DOCS_ENABLED=true` |
 | `POST /admin/tenants/{slug}/import?dry_run=&prune=` | `ridm:tenants:import` | `dry_run` returns the plan (creates, updates with field-level diffs, and with `prune` deletes of unmentioned configuration); otherwise applies it and reports what was applied, per-item errors, and the secrets of clients and webhooks it created (shown once); applying the same document twice is a no-op |
 
+### Admin API test coverage
+
+Besides one suite per resource (`api/tests/admin_*.rs`), `admin_matrix.rs` derives every
+admin operation and the permission it requires from the route sources and checks all
+five built-in roles, the global owner and anonymous callers against each one, then calls
+every tenant-scoped operation across tenants; `admin_pagination.rs` walks listings with
+inserts in the middle; `openapi.rs` keeps `api/openapi.json` current; and the Playwright
+spec `ui/e2e/openapi-contract.spec.ts` compares the live document with the committed one
+and drives the generated client against the live API.
+
 ### OpenAPI and the TypeScript client
 
 `GET /openapi.json` serves the admin API document; `ridm-api openapi` prints the same

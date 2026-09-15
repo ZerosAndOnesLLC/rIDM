@@ -42,6 +42,7 @@ client, and creates one user through the registration flow. Settings:
 | `consent` | consent denied returns `access_denied` (approval runs inside every sign-in) |
 | `logout` | RP-initiated logout with confirmation |
 | `a11y` | error, device, invite, verify and logout pages, and login without a tenant |
+| `openapi-contract` | the live `/openapi.json` equals the committed `api/openapi.json` the typed admin client is generated from; the `openapi-fetch` client reaches the live API and types its 401 problem body |
 
 MFA, passkeys and the device page get their journeys with Phases 7 and 8.
 
