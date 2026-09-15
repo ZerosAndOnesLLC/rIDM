@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use ridm_core::events::EventBus;
 
-use crate::cache::Cache;
+use crate::cache::{Cache, CacheLayer};
 use crate::config::Config;
 use crate::db::Db;
 
@@ -12,6 +12,22 @@ use crate::db::Db;
 pub struct AppState {
     pub config: Arc<Config>,
     pub db: Db,
-    pub cache: Cache,
+    /// Raw Redis pool for sessions, flows, rate limits and other keyed state.
+    pub redis: Cache,
+    /// Read-through cache (L1 + Redis) for hot objects such as tenants.
+    pub cache: CacheLayer,
     pub events: EventBus,
+}
+
+impl AppState {
+    pub fn new(config: Config, db: Db, redis: Cache) -> Self {
+        let cache = CacheLayer::new(redis.clone(), &config.redis_url);
+        Self {
+            config: Arc::new(config),
+            db,
+            redis,
+            cache,
+            events: EventBus::default(),
+        }
+    }
 }

@@ -14,13 +14,12 @@
 #![allow(dead_code)]
 
 use std::net::SocketAddr;
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
 use ridm_api::config::{Config, LogFormat};
 use ridm_api::db::Db;
 use ridm_api::state::AppState;
 use ridm_api::util::secret::SecretBytes;
-use ridm_core::events::EventBus;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ImageExt, ReuseDirective};
 use testcontainers_modules::postgres::Postgres;
@@ -204,6 +203,11 @@ pub struct TestApp {
 
 impl TestApp {
     pub async fn spawn() -> Self {
+        Self::spawn_with(axum::Router::new()).await
+    }
+
+    /// Spawn with extra routes merged into the application router.
+    pub async fn spawn_with(extra: axum::Router<AppState>) -> Self {
         let infra = infra().await;
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -211,22 +215,13 @@ impl TestApp {
         let addr = listener.local_addr().expect("local addr");
         let base_url = format!("http://{addr}");
 
-        let config = Arc::new(test_config(
-            &infra.database_url,
-            &infra.redis_url,
-            &base_url,
-        ));
+        let config = test_config(&infra.database_url, &infra.redis_url, &base_url);
         let db = ridm_api::db::connect(&config)
             .await
             .expect("connect postgres");
-        let cache = ridm_api::cache::connect(&config).expect("connect redis");
-        let state = AppState {
-            config,
-            db,
-            cache,
-            events: EventBus::default(),
-        };
-        let app = ridm_api::build_router(state.clone());
+        let redis = ridm_api::cache::connect(&config).expect("connect redis");
+        let state = AppState::new(config, db, redis);
+        let app = ridm_api::build_router_with(state.clone(), extra);
         tokio::spawn(async move {
             axum::serve(
                 listener,

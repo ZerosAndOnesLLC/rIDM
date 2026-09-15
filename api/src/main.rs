@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum_server::Handle;
 use axum_server::tls_rustls::RustlsConfig;
 use ridm_api::config::Config;
@@ -46,12 +44,8 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     let cache = cache::connect(&config)?;
     cache::ping(&cache).await?;
 
-    let state = AppState {
-        config: Arc::new(config),
-        db,
-        cache,
-        events: ridm_core::events::EventBus::default(),
-    };
+    let state = AppState::new(config, db, cache);
+    let _invalidation_listener = state.cache.spawn_invalidation_listener();
     let bind_addr = state.config.bind_addr;
     let tls = state.config.tls.clone();
     let app = build_router(state);

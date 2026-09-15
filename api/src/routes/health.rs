@@ -44,7 +44,7 @@ async fn healthz() -> Json<Health> {
 
 /// Process can serve traffic: database and cache both answer.
 async fn readyz(State(state): State<AppState>) -> Response {
-    let (db_res, cache_res) = tokio::join!(db::ping(&state.db), cache::ping(&state.cache));
+    let (db_res, cache_res) = tokio::join!(db::ping(&state.db), cache::ping(&state.redis));
     let database = match db_res {
         Ok(()) => "ok",
         Err(err) => {

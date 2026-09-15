@@ -1,0 +1,212 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use sqlx::types::Json;
+use uuid::Uuid;
+
+/// Fixed id of the `master` tenant (seeded by migration 0001).
+pub const MASTER_TENANT_ID: Uuid = Uuid::from_u128(0x0000_0000_0000_7000_8000_0000_0000_0001);
+pub const MASTER_TENANT_SLUG: &str = "master";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "text", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+pub enum TenantStatus {
+    Active,
+    Disabled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Tenant {
+    pub id: Uuid,
+    pub slug: String,
+    pub display_name: String,
+    pub status: TenantStatus,
+    pub settings: Json<TenantSettings>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl Tenant {
+    pub fn is_active(&self) -> bool {
+        self.status == TenantStatus::Active
+    }
+}
+
+/// Per-tenant configuration stored as JSONB. Every field has a default so that
+/// settings written by older versions keep deserializing.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TenantSettings {
+    pub password: PasswordPolicy,
+    pub session: SessionPolicy,
+    pub mfa: MfaPolicy,
+    pub registration: RegistrationPolicy,
+    pub locale: LocaleSettings,
+    pub branding: Branding,
+    /// Custom issuer host (Phase 9.3). `None` means `{PUBLIC_URL}/t/{slug}`.
+    pub custom_domain: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PasswordPolicy {
+    pub min_length: u32,
+    pub max_length: u32,
+    pub require_uppercase: bool,
+    pub require_lowercase: bool,
+    pub require_digit: bool,
+    pub require_symbol: bool,
+    /// Number of previous hashes a new password must differ from (0 = off).
+    pub history: u32,
+    /// Days until a password expires (None = never).
+    pub max_age_days: Option<u32>,
+    /// Reject passwords found in breach corpora (Phase 7.5).
+    pub check_breached: bool,
+}
+
+impl Default for PasswordPolicy {
+    fn default() -> Self {
+        Self {
+            min_length: 12,
+            max_length: 128,
+            require_uppercase: false,
+            require_lowercase: false,
+            require_digit: false,
+            require_symbol: false,
+            history: 5,
+            max_age_days: None,
+            check_breached: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SessionPolicy {
+    pub idle_timeout_secs: u64,
+    pub absolute_timeout_secs: u64,
+    /// 0 = unlimited.
+    pub max_concurrent: u32,
+    pub remember_device_days: u32,
+    pub access_token_ttl_secs: u64,
+    pub refresh_token_ttl_secs: u64,
+    pub id_token_ttl_secs: u64,
+}
+
+impl Default for SessionPolicy {
+    fn default() -> Self {
+        Self {
+            idle_timeout_secs: 30 * 60,
+            absolute_timeout_secs: 12 * 60 * 60,
+            max_concurrent: 0,
+            remember_device_days: 30,
+            access_token_ttl_secs: 5 * 60,
+            refresh_token_ttl_secs: 30 * 24 * 60 * 60,
+            id_token_ttl_secs: 5 * 60,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum MfaPolicy {
+    #[default]
+    Off,
+    Optional,
+    Required,
+    RequiredForAdmins,
+    RequiredForRoles {
+        roles: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RegistrationPolicy {
+    pub enabled: bool,
+    pub require_email_verification: bool,
+    pub require_terms: bool,
+    pub terms_url: Option<String>,
+    pub privacy_url: Option<String>,
+    /// Only these email domains may self-register (empty = any).
+    pub allowed_email_domains: Vec<String>,
+    pub captcha: bool,
+}
+
+impl Default for RegistrationPolicy {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            require_email_verification: true,
+            require_terms: false,
+            terms_url: None,
+            privacy_url: None,
+            allowed_email_domains: vec![],
+            captcha: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LocaleSettings {
+    pub default: String,
+    pub supported: Vec<String>,
+}
+
+impl Default for LocaleSettings {
+    fn default() -> Self {
+        Self {
+            default: "en".into(),
+            supported: vec!["en".into()],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Branding {
+    pub logo_url: Option<String>,
+    pub favicon_url: Option<String>,
+    pub primary_color: Option<String>,
+    pub background_color: Option<String>,
+    pub support_url: Option<String>,
+    pub custom_css: Option<String>,
+    pub links: Vec<BrandingLink>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BrandingLink {
+    pub label: String,
+    pub url: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_settings_document_deserializes_to_defaults() {
+        let s: TenantSettings = serde_json::from_str("{}").unwrap();
+        assert_eq!(s, TenantSettings::default());
+        assert_eq!(s.password.min_length, 12);
+        assert_eq!(s.mfa, MfaPolicy::Off);
+    }
+
+    #[test]
+    fn unknown_fields_are_ignored_for_forward_compat() {
+        let s: TenantSettings =
+            serde_json::from_str(r#"{"future_feature": {"x": 1}, "locale": {"default": "de"}}"#)
+                .unwrap();
+        assert_eq!(s.locale.default, "de");
+    }
+
+    #[test]
+    fn mfa_policy_is_tagged() {
+        let json = serde_json::to_value(MfaPolicy::RequiredForRoles {
+            roles: vec!["admin".into()],
+        })
+        .unwrap();
+        assert_eq!(json["mode"], "required_for_roles");
+    }
+}
