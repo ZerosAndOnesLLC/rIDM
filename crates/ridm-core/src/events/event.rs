@@ -82,6 +82,16 @@ pub enum EventKind {
     UserDeleted {
         user_id: Uuid,
     },
+    /// Password set by an admin, reset flow, or the user; `by_user` tells which.
+    PasswordChanged {
+        user_id: Uuid,
+        by_user: bool,
+    },
+    /// A legacy or weaker hash was replaced after a successful verification.
+    PasswordHashUpgraded {
+        user_id: Uuid,
+        from_algo: String,
+    },
 
     // Groups
     GroupCreated {
@@ -153,6 +163,8 @@ impl EventKind {
             Self::UserCreated { .. } => "user.created",
             Self::UserUpdated { .. } => "user.updated",
             Self::UserDeleted { .. } => "user.deleted",
+            Self::PasswordChanged { .. } => "user.password_changed",
+            Self::PasswordHashUpgraded { .. } => "user.password_hash_upgraded",
             Self::GroupCreated { .. } => "group.created",
             Self::GroupUpdated { .. } => "group.updated",
             Self::GroupDeleted { .. } => "group.deleted",

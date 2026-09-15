@@ -36,6 +36,9 @@ rsa = { workspace = true }
 p256 = { workspace = true }
 ed25519-dalek = { workspace = true }
 argon2 = { workspace = true }
+bcrypt = { workspace = true }
+pbkdf2 = { workspace = true }
+md-5 = { workspace = true }
 totp-rs = { workspace = true }
 webauthn-rs = { workspace = true }
 openssl-sys = { workspace = true }

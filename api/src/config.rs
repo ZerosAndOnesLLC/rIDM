@@ -81,6 +81,29 @@ pub struct Config {
     pub db_pool_max: u32,
     /// Apply pending migrations at startup.
     pub migrate_on_start: bool,
+    pub argon2: Argon2Params,
+}
+
+/// argon2id cost parameters. Defaults follow the OWASP minimum recommendation
+/// (19 MiB, 2 iterations, 1 lane); raise them on capable hardware.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Argon2Params {
+    /// Memory in KiB.
+    pub m_cost: u32,
+    /// Iterations.
+    pub t_cost: u32,
+    /// Parallelism (lanes).
+    pub p_cost: u32,
+}
+
+impl Default for Argon2Params {
+    fn default() -> Self {
+        Self {
+            m_cost: 19 * 1024,
+            t_cost: 2,
+            p_cost: 1,
+        }
+    }
 }
 
 impl Config {
@@ -148,6 +171,18 @@ impl Config {
             });
         }
         let migrate_on_start = parse_bool("MIGRATE_ON_START", false)?;
+        let defaults = Argon2Params::default();
+        let argon2 = Argon2Params {
+            m_cost: parse_u32("ARGON2_M_COST_KIB", defaults.m_cost)?,
+            t_cost: parse_u32("ARGON2_T_COST", defaults.t_cost)?,
+            p_cost: parse_u32("ARGON2_P_COST", defaults.p_cost)?,
+        };
+        if argon2.m_cost < 8 * 1024 || argon2.t_cost == 0 || argon2.p_cost == 0 {
+            return Err(ConfigError::Invalid {
+                name: "ARGON2_M_COST_KIB",
+                reason: "argon2 parameters below the minimum (8 MiB, 1 iteration, 1 lane)".into(),
+            });
+        }
 
         Ok(Self {
             database_url,
@@ -163,6 +198,7 @@ impl Config {
             db_pool_min,
             db_pool_max,
             migrate_on_start,
+            argon2,
         })
     }
 

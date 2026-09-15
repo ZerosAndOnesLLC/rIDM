@@ -56,7 +56,8 @@ pub struct PasswordPolicy {
     pub require_lowercase: bool,
     pub require_digit: bool,
     pub require_symbol: bool,
-    /// Number of previous hashes a new password must differ from (0 = off).
+    /// A new password must differ from the last `history` passwords, counting
+    /// the current one (0 = off, 1 = only the current password).
     pub history: u32,
     /// Days until a password expires (None = never).
     pub max_age_days: Option<u32>,

@@ -244,7 +244,7 @@ Operations
 - [x] 1.1 Migrations: users, user_profile_schema, password_history, credentials, groups, group_members, roles, role_assignments, role_composites (indexes lead with tenant_id; RLS policies; `org_id` reserved columns).
 - [x] 1.2 Tenant resolver extractor (`/t/{slug}` → cached `Tenant`), RLS `SET LOCAL` per request tx; Redis pub/sub cache invalidation.
 - [x] 1.3 Repos + services: tenant CRUD, user CRUD, group CRUD + membership, role CRUD + assignment, effective-roles resolution (user + groups + composites, cached).
-- [ ] 1.4 Password service: argon2id hash/verify; legacy verifiers (bcrypt, pbkdf2-sha256/512, sha256/sha512 salted, md5 for migration only) with transparent upgrade on successful login; password policy (length, classes, history N, expiry, must_change_password).
+- [x] 1.4 Password service: argon2id hash/verify; legacy verifiers (bcrypt, pbkdf2-sha256/512, sha256/sha512 salted, md5 for migration only) with transparent upgrade on successful login; password policy (length, classes, history N, expiry, must_change_password).
 - [ ] 1.5 Profile schema service: validate attributes on create/update; enforce editable_by; expose schema to UI forms.
 - [ ] 1.6 Bootstrap: first-run creates master tenant + global admin from env or interactive CLI.
 - [ ] 1.7 Unit tests (password, policy, role resolution); integration test harness (testcontainers).
