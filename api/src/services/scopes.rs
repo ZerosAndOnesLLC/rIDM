@@ -92,7 +92,10 @@ pub async fn create(
     tx.commit().await?;
     state
         .cache
-        .invalidate(&[cache_keys::scopes(tenant_id)])
+        .invalidate(&[
+            cache_keys::scopes(tenant_id),
+            cache_keys::discovery(tenant_id),
+        ])
         .await?;
     Ok(scope)
 }
@@ -114,7 +117,10 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, _actor: Actor, id: Uuid) 
     }
     state
         .cache
-        .invalidate(&[cache_keys::scopes(tenant_id)])
+        .invalidate(&[
+            cache_keys::scopes(tenant_id),
+            cache_keys::discovery(tenant_id),
+        ])
         .await?;
     Ok(())
 }

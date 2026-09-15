@@ -252,3 +252,163 @@ async fn webfinger_resolves_issuer_by_email_domain_and_issuer_url() {
     .unwrap();
     assert_eq!(wf(format!("acct:alice@{domain}"), None).await.status(), 404);
 }
+
+#[tokio::test]
+async fn openid_configuration_is_complete_cached_and_tenant_specific() {
+    let app = TestApp::spawn().await;
+    let url = app.tenant_url("/.well-known/openid-configuration");
+    let issuer = format!("{}/t/{}", app.base_url, app.tenant.slug);
+
+    let res = app.http.get(&url).send().await.unwrap();
+    assert_eq!(res.status(), 200);
+    assert_eq!(res.headers()["content-type"], "application/json");
+    let etag = res.headers()["etag"].to_str().unwrap().to_string();
+    let doc: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(doc["issuer"], issuer);
+    assert_eq!(doc["authorization_endpoint"], format!("{issuer}/authorize"));
+    assert_eq!(doc["token_endpoint"], format!("{issuer}/token"));
+    assert_eq!(doc["jwks_uri"], format!("{issuer}/.well-known/jwks.json"));
+    assert_eq!(doc["response_types_supported"], serde_json::json!(["code"]));
+    assert_eq!(
+        doc["code_challenge_methods_supported"],
+        serde_json::json!(["S256"])
+    );
+    assert_eq!(
+        doc["subject_types_supported"],
+        serde_json::json!(["public", "pairwise"])
+    );
+    assert!(
+        doc["id_token_signing_alg_values_supported"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a == "EdDSA")
+    );
+    assert!(
+        doc["grant_types_supported"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|g| g != "implicit" && g != "password")
+    );
+    assert!(
+        doc["token_endpoint_auth_methods_supported"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m == "private_key_jwt")
+    );
+    let scopes: Vec<&str> = doc["scopes_supported"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s.as_str().unwrap())
+        .collect();
+    for s in ["openid", "profile", "email", "offline_access"] {
+        assert!(scopes.contains(&s), "{s}");
+    }
+    assert_eq!(doc["authorization_response_iss_parameter_supported"], true);
+    // Every advertised *_endpoint lives under the issuer.
+    for (k, v) in doc.as_object().unwrap() {
+        if k.ends_with("_endpoint") || k == "jwks_uri" {
+            assert!(v.as_str().unwrap().starts_with(&issuer), "{k} = {v}");
+        }
+    }
+    // The document's jwks_uri really answers.
+    let jwks = app
+        .http
+        .get(doc["jwks_uri"].as_str().unwrap())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(jwks.status(), 200);
+
+    // Conditional request and cache invalidation when a scope is added.
+    assert_eq!(
+        app.http
+            .get(&url)
+            .header("If-None-Match", &etag)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        304
+    );
+    ridm_api::services::scopes::create(
+        &app.state,
+        app.tenant.id,
+        Actor::System,
+        ridm_api::models::NewScope {
+            name: "read:things".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let res = app
+        .http
+        .get(&url)
+        .header("If-None-Match", &etag)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let doc: serde_json::Value = res.json().await.unwrap();
+    assert!(
+        doc["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s == "read:things")
+    );
+
+    // Tenant settings show up (policy / tos URIs) after invalidation.
+    let mut settings = TenantSettings::default();
+    settings.registration.terms_url = Some("https://acme.example/tos".into());
+    tenants::update(
+        &app.state,
+        Actor::System,
+        app.tenant.id,
+        TenantUpdate {
+            settings: Some(settings),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let doc: serde_json::Value = app
+        .http
+        .get(&url)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(doc["op_tos_uri"], "https://acme.example/tos");
+
+    // Another tenant has its own issuer; unknown tenants 404.
+    let other = common::create_tenant(&app.state.db).await;
+    let doc: serde_json::Value = app
+        .http
+        .get(app.url(&format!(
+            "/t/{}/.well-known/openid-configuration",
+            other.slug
+        )))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(doc["issuer"], format!("{}/t/{}", app.base_url, other.slug));
+    assert_eq!(
+        app.http
+            .get(app.url("/t/ghost/.well-known/openid-configuration"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        404
+    );
+}

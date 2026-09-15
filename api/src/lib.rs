@@ -8,6 +8,7 @@ pub mod error;
 pub mod jobs;
 pub mod middleware;
 pub mod models;
+pub mod oidc;
 pub mod repos;
 pub mod routes;
 pub mod services;
@@ -33,6 +34,7 @@ pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
         .merge(routes::wellknown::router())
         .merge(routes::webfinger::router())
         .merge(routes::jwks::router())
+        .merge(oidc::discovery::router())
         .merge(extra)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
