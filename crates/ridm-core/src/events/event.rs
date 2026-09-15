@@ -71,6 +71,9 @@ pub enum EventKind {
     TenantDeleted {
         tenant_id: Uuid,
     },
+    ProfileSchemaUpdated {
+        tenant_id: Uuid,
+    },
 
     // Users
     UserCreated {
@@ -160,6 +163,7 @@ impl EventKind {
             Self::TenantCreated { .. } => "tenant.created",
             Self::TenantUpdated { .. } => "tenant.updated",
             Self::TenantDeleted { .. } => "tenant.deleted",
+            Self::ProfileSchemaUpdated { .. } => "tenant.profile_schema_updated",
             Self::UserCreated { .. } => "user.created",
             Self::UserUpdated { .. } => "user.updated",
             Self::UserDeleted { .. } => "user.deleted",

@@ -162,16 +162,20 @@ async fn user_crud_normalization_and_conflicts() {
     }
 
     // PATCH semantics: absent = keep, null = clear, value = set.
-    let patch: UserUpdate =
-        serde_json::from_str(r#"{"phone": null, "locale": "de", "attributes": {"dept": "eng"}}"#)
-            .unwrap();
+    let patch: UserUpdate = serde_json::from_str(r#"{"phone": null, "locale": "de"}"#).unwrap();
     let u2 = users::update(&app.state, tid, Actor::System, u.id, patch)
         .await
         .unwrap();
     assert_eq!(u2.phone, None);
     assert_eq!(u2.email.as_deref(), Some("alice@example.com"));
     assert_eq!(u2.locale.as_deref(), Some("de"));
-    assert_eq!(u2.attributes["dept"], "eng");
+    // Undeclared attributes are rejected by the (empty) profile schema.
+    let undeclared: UserUpdate =
+        serde_json::from_str(r#"{"attributes": {"dept": "eng"}}"#).unwrap();
+    assert!(matches!(
+        users::update(&app.state, tid, Actor::System, u.id, undeclared).await,
+        Err(AppError::Validation(_))
+    ));
 
     let bad: UserUpdate = serde_json::from_str(r#"{"attributes": [1,2]}"#).unwrap();
     assert!(matches!(

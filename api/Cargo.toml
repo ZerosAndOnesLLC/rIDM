@@ -62,6 +62,7 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 thiserror = { workspace = true }
 validator = { workspace = true }
+regex = { workspace = true }
 url = { workspace = true }
 ipnet = { workspace = true }
 async-trait = { workspace = true }

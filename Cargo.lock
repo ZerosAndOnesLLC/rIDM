@@ -3648,6 +3648,7 @@ dependencies = [
  "pbkdf2",
  "rand 0.10.2",
  "redis",
+ "regex",
  "reqwest",
  "ridm-core",
  "rsa",

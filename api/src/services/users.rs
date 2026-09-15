@@ -8,6 +8,7 @@ use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::models::{NewUser, User, UserFilter, UserUpdate};
 use crate::repos;
+use crate::services::profile_schema;
 use crate::state::AppState;
 use crate::util::cursor::{Cursor, Page, page_size};
 
@@ -49,15 +50,6 @@ pub fn normalize_phone(raw: &str) -> AppResult<String> {
     Ok(p)
 }
 
-fn validate_attributes(attrs: &serde_json::Value) -> AppResult<()> {
-    if !attrs.is_object() {
-        return Err(AppError::BadRequest(
-            "attributes must be a JSON object".into(),
-        ));
-    }
-    Ok(())
-}
-
 pub async fn create(
     state: &AppState,
     tenant_id: Uuid,
@@ -67,9 +59,15 @@ pub async fn create(
     input.username = normalize_username(&input.username)?;
     input.email = input.email.as_deref().map(normalize_email).transpose()?;
     input.phone = input.phone.as_deref().map(normalize_phone).transpose()?;
-    if let Some(attrs) = &input.attributes {
-        validate_attributes(attrs)?;
-    }
+    let schema = profile_schema::get(state, tenant_id).await?;
+    let editor = profile_schema::Editor::from(&actor);
+    let incoming = input
+        .attributes
+        .take()
+        .unwrap_or_else(|| serde_json::Value::Object(Default::default()));
+    input.attributes = Some(profile_schema::validate_attributes(
+        &schema, &incoming, editor, None,
+    )?);
 
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let user = repos::users::insert(&mut *tx, tenant_id, Uuid::now_v7(), &input)
@@ -129,11 +127,22 @@ pub async fn update(
     if let Some(Some(p)) = &patch.phone {
         patch.phone = Some(Some(normalize_phone(p)?));
     }
-    if let Some(attrs) = &patch.attributes {
-        validate_attributes(attrs)?;
-    }
 
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    if let Some(incoming) = patch.attributes.take() {
+        let current = repos::users::find_by_id(&mut *tx, tenant_id, id)
+            .await?
+            .filter(|u| u.deleted_at.is_none())
+            .ok_or(AppError::NotFound("user"))?;
+        let schema = profile_schema::get(state, tenant_id).await?;
+        let editor = profile_schema::Editor::from(&actor);
+        patch.attributes = Some(profile_schema::validate_attributes(
+            &schema,
+            &incoming,
+            editor,
+            Some(&current.attributes),
+        )?);
+    }
     let user = repos::users::update(&mut *tx, tenant_id, id, &patch)
         .await
         .map_err(|e| match AppError::from_db(e) {
