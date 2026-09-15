@@ -84,6 +84,9 @@ pub async fn update(
             "the master tenant cannot be disabled".into(),
         ));
     }
+    // Cache keys derived from settings (e.g. discovery domains) can change
+    // with this update: evict both the old and the new derivations.
+    let before = get(state, id).await?;
     let tenant = repos::tenants::update(
         &state.db,
         id,
@@ -94,7 +97,11 @@ pub async fn update(
     .await
     .map_err(AppError::from_db)?
     .ok_or(AppError::NotFound("tenant"))?;
-    state.cache.invalidate(&tenant_cache_keys(&tenant)).await?;
+    let mut keys = tenant_cache_keys(&before);
+    keys.extend(tenant_cache_keys(&tenant));
+    keys.sort();
+    keys.dedup();
+    state.cache.invalidate(&keys).await?;
     state.events.publish(Event::new(
         Some(tenant.id),
         actor,

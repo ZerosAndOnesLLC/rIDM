@@ -1,0 +1,432 @@
+//! JWT issuance and verification.
+//!
+//! * Access tokens: RFC 9068 (`typ: at+jwt`), short-lived, audience-scoped.
+//! * ID tokens: OIDC Core §2, with `at_hash`/`c_hash`, optional JWE per client.
+//! * Verification: by `kid` against the tenant's published keys (revoked keys
+//!   are not published, so their tokens fail immediately).
+//!
+//! Parsed private keys are cached in the in-process L1 only, never in Redis.
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use chrono::{DateTime, Utc};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use serde_json::{Map, Value, json};
+use sha2::{Digest as _, Sha256, Sha384, Sha512};
+use uuid::Uuid;
+
+use crate::cache::keys as cache_keys;
+use crate::error::{AppError, AppResult};
+use crate::models::{ClaimMapper, Group, Role, SigningAlg, SigningKey, Tenant, TokenKind, User};
+use crate::services::claims::{ClaimContext, apply_mappers, standard_claims};
+use crate::services::{jwe, keys};
+use crate::state::AppState;
+
+const MATERIAL_L1_TTL: Duration = Duration::from_secs(300);
+
+/// Minimal client view the token service needs (built from the DB client in Phase 3).
+#[derive(Debug, Clone)]
+pub struct TokenClient {
+    pub client_id: String,
+    pub subject_type: SubjectType,
+    /// Host used for pairwise subjects (sector identifier or first redirect URI host).
+    pub sector_identifier: Option<String>,
+    /// Encrypt ID tokens for this client with its RSA public JWK.
+    pub id_token_encryption: Option<IdTokenEncryption>,
+    pub access_token_ttl: Duration,
+    pub id_token_ttl: Duration,
+    pub mappers: Vec<ClaimMapper>,
+}
+
+impl TokenClient {
+    pub fn public(client_id: impl Into<String>) -> Self {
+        Self {
+            client_id: client_id.into(),
+            subject_type: SubjectType::Public,
+            sector_identifier: None,
+            id_token_encryption: None,
+            access_token_ttl: Duration::from_secs(300),
+            id_token_ttl: Duration::from_secs(300),
+            mappers: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubjectType {
+    Public,
+    Pairwise,
+}
+
+#[derive(Debug, Clone)]
+pub struct IdTokenEncryption {
+    pub alg: jwe::KeyAlg,
+    pub enc: jwe::ContentEnc,
+    pub recipient_jwk: Value,
+}
+
+/// Inputs for an access token.
+pub struct AccessTokenRequest<'a> {
+    pub tenant: &'a Tenant,
+    pub client: &'a TokenClient,
+    /// `None` for client_credentials without a service-account user.
+    pub user: Option<&'a User>,
+    pub scopes: &'a [String],
+    /// Resource servers / audiences requested (validated by the caller).
+    pub audiences: &'a [String],
+    pub roles: &'a [Role],
+    pub groups: &'a [Group],
+    pub session_id: Option<Uuid>,
+    pub auth_time: Option<DateTime<Utc>>,
+    pub amr: &'a [String],
+    pub acr: Option<&'a str>,
+}
+
+pub struct IdTokenRequest<'a> {
+    pub tenant: &'a Tenant,
+    pub client: &'a TokenClient,
+    pub user: &'a User,
+    pub scopes: &'a [String],
+    pub roles: &'a [Role],
+    pub groups: &'a [Group],
+    pub session_id: Option<Uuid>,
+    pub auth_time: DateTime<Utc>,
+    pub nonce: Option<&'a str>,
+    pub amr: &'a [String],
+    pub acr: Option<&'a str>,
+    /// Access token issued alongside (for `at_hash`).
+    pub access_token: Option<&'a str>,
+    /// Authorization code (for `c_hash`, hybrid-less: only when returned with a code).
+    pub code: Option<&'a str>,
+}
+
+pub struct IssuedToken {
+    pub token: String,
+    pub claims: Map<String, Value>,
+    pub kid: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// Subject identifier for a user as seen by a client (OIDC Core §8).
+pub fn subject_for(tenant: &Tenant, client: &TokenClient, user: &User) -> String {
+    match client.subject_type {
+        SubjectType::Public => user.id.to_string(),
+        SubjectType::Pairwise => {
+            let sector = client
+                .sector_identifier
+                .as_deref()
+                .unwrap_or(&client.client_id);
+            let mut h = Sha256::new();
+            h.update(sector.as_bytes());
+            h.update(b"|");
+            h.update(user.id.as_bytes());
+            h.update(b"|");
+            h.update(&tenant.pairwise_salt);
+            URL_SAFE_NO_PAD.encode(h.finalize())
+        }
+    }
+}
+
+/// `at_hash` / `c_hash`: left half of the hash matching the signing alg.
+pub fn half_hash(alg: SigningAlg, input: &str) -> String {
+    let digest: Vec<u8> = match alg {
+        SigningAlg::RS256 | SigningAlg::ES256 => Sha256::digest(input.as_bytes()).to_vec(),
+        SigningAlg::RS384 => Sha384::digest(input.as_bytes()).to_vec(),
+        // Ed25519 uses SHA-512 (OpenID Connect Core errata for EdDSA).
+        SigningAlg::RS512 | SigningAlg::EdDSA => Sha512::digest(input.as_bytes()).to_vec(),
+    };
+    URL_SAFE_NO_PAD.encode(&digest[..digest.len() / 2])
+}
+
+fn jwt_alg(alg: SigningAlg) -> Algorithm {
+    match alg {
+        SigningAlg::RS256 => Algorithm::RS256,
+        SigningAlg::RS384 => Algorithm::RS384,
+        SigningAlg::RS512 => Algorithm::RS512,
+        SigningAlg::ES256 => Algorithm::ES256,
+        SigningAlg::EdDSA => Algorithm::EdDSA,
+    }
+}
+
+/// Parsed signing material, cached per node.
+async fn encoding_key(state: &AppState, key: &SigningKey) -> AppResult<Arc<EncodingKey>> {
+    let cache_key = cache_keys::signing_key_material(key.id);
+    if let Some(k) = state.cache.l1().get::<EncodingKey>(&cache_key) {
+        return Ok(k);
+    }
+    let der = keys::private_der(state, key).await?;
+    let encoding = match key.alg {
+        SigningAlg::RS256 | SigningAlg::RS384 | SigningAlg::RS512 => {
+            // jsonwebtoken (aws-lc-rs) wants PKCS#1 for RSA; we store PKCS#8.
+            use rsa::pkcs1::EncodeRsaPrivateKey as _;
+            use rsa::pkcs8::DecodePrivateKey as _;
+            let private = rsa::RsaPrivateKey::from_pkcs8_der(&der)
+                .map_err(|e| AppError::Internal(format!("rsa key parse: {e}")))?;
+            let pkcs1 = private
+                .to_pkcs1_der()
+                .map_err(|e| AppError::Internal(format!("rsa pkcs1: {e}")))?;
+            EncodingKey::from_rsa_der(pkcs1.as_bytes())
+        }
+        SigningAlg::ES256 => EncodingKey::from_ec_der(&der),
+        SigningAlg::EdDSA => EncodingKey::from_ed_der(&der),
+    };
+    let encoding = Arc::new(encoding);
+    state
+        .cache
+        .l1()
+        .insert(cache_key, encoding.clone(), MATERIAL_L1_TTL);
+    Ok(encoding)
+}
+
+/// Sign arbitrary claims with `key`. `typ` is the JOSE header type.
+pub async fn sign(
+    state: &AppState,
+    key: &SigningKey,
+    typ: &str,
+    claims: &Map<String, Value>,
+) -> AppResult<String> {
+    let mut header = Header::new(jwt_alg(key.alg));
+    header.kid = Some(key.kid.clone());
+    header.typ = Some(typ.to_string());
+    let enc = encoding_key(state, key).await?;
+    jsonwebtoken::encode(&header, claims, &enc)
+        .map_err(|e| AppError::Internal(format!("jwt sign: {e}")))
+}
+
+fn issuer(state: &AppState, tenant: &Tenant) -> String {
+    match &tenant.settings.custom_domain {
+        Some(host) => format!("https://{host}"),
+        None => state.config.issuer_for(&tenant.slug),
+    }
+}
+
+pub async fn issue_access_token(
+    state: &AppState,
+    req: AccessTokenRequest<'_>,
+) -> AppResult<IssuedToken> {
+    let key = keys::ensure_active(state, req.tenant.id, &req.tenant.settings.keys).await?;
+    let now = Utc::now();
+    let exp = now + chrono::Duration::from_std(req.client.access_token_ttl).unwrap_or_default();
+
+    let mut claims = Map::new();
+    let ctx = ClaimContext {
+        tenant: req.tenant,
+        user: req.user,
+        client_id: &req.client.client_id,
+        scopes: req.scopes,
+        roles: req.roles,
+        groups: req.groups,
+    };
+    let extra_aud = apply_mappers(&req.client.mappers, &ctx, TokenKind::Access, &mut claims)?;
+
+    let mut aud: Vec<String> = req.audiences.to_vec();
+    aud.extend(extra_aud);
+    if aud.is_empty() {
+        aud.push(req.client.client_id.clone());
+    }
+    aud.dedup();
+
+    claims.insert("iss".into(), json!(issuer(state, req.tenant)));
+    let sub = match req.user {
+        Some(u) => subject_for(req.tenant, req.client, u),
+        None => req.client.client_id.clone(),
+    };
+    claims.insert("sub".into(), json!(sub));
+    claims.insert(
+        "aud".into(),
+        if aud.len() == 1 {
+            json!(aud[0])
+        } else {
+            json!(aud)
+        },
+    );
+    claims.insert("client_id".into(), json!(req.client.client_id));
+    claims.insert("azp".into(), json!(req.client.client_id));
+    claims.insert("iat".into(), json!(now.timestamp()));
+    claims.insert("nbf".into(), json!(now.timestamp()));
+    claims.insert("exp".into(), json!(exp.timestamp()));
+    claims.insert("jti".into(), json!(Uuid::now_v7()));
+    claims.insert("tid".into(), json!(req.tenant.id));
+    claims.insert("scope".into(), json!(req.scopes.join(" ")));
+    if req.user.is_some() {
+        let roles: Vec<&str> = req.roles.iter().map(|r| r.name.as_str()).collect();
+        claims.insert("roles".into(), json!(roles));
+        let groups: Vec<&str> = req.groups.iter().map(|g| g.name.as_str()).collect();
+        claims.insert("groups".into(), json!(groups));
+    }
+    if let Some(sid) = req.session_id {
+        claims.insert("sid".into(), json!(sid));
+    }
+    if let Some(t) = req.auth_time {
+        claims.insert("auth_time".into(), json!(t.timestamp()));
+    }
+    if !req.amr.is_empty() {
+        claims.insert("amr".into(), json!(req.amr));
+    }
+    if let Some(acr) = req.acr {
+        claims.insert("acr".into(), json!(acr));
+    }
+
+    let token = sign(state, &key, "at+jwt", &claims).await?;
+    Ok(IssuedToken {
+        token,
+        claims,
+        kid: key.kid,
+        expires_at: exp,
+    })
+}
+
+pub async fn issue_id_token(state: &AppState, req: IdTokenRequest<'_>) -> AppResult<IssuedToken> {
+    let key = keys::ensure_active(state, req.tenant.id, &req.tenant.settings.keys).await?;
+    let now = Utc::now();
+    let exp = now + chrono::Duration::from_std(req.client.id_token_ttl).unwrap_or_default();
+
+    let mut claims = standard_claims(req.user, req.scopes);
+    let ctx = ClaimContext {
+        tenant: req.tenant,
+        user: Some(req.user),
+        client_id: &req.client.client_id,
+        scopes: req.scopes,
+        roles: req.roles,
+        groups: req.groups,
+    };
+    apply_mappers(&req.client.mappers, &ctx, TokenKind::Id, &mut claims)?;
+
+    claims.insert("iss".into(), json!(issuer(state, req.tenant)));
+    claims.insert(
+        "sub".into(),
+        json!(subject_for(req.tenant, req.client, req.user)),
+    );
+    claims.insert("aud".into(), json!(req.client.client_id));
+    claims.insert("azp".into(), json!(req.client.client_id));
+    claims.insert("iat".into(), json!(now.timestamp()));
+    claims.insert("exp".into(), json!(exp.timestamp()));
+    claims.insert("auth_time".into(), json!(req.auth_time.timestamp()));
+    claims.insert("tid".into(), json!(req.tenant.id));
+    if let Some(n) = req.nonce {
+        claims.insert("nonce".into(), json!(n));
+    }
+    if let Some(sid) = req.session_id {
+        claims.insert("sid".into(), json!(sid));
+    }
+    if !req.amr.is_empty() {
+        claims.insert("amr".into(), json!(req.amr));
+    }
+    if let Some(acr) = req.acr {
+        claims.insert("acr".into(), json!(acr));
+    }
+    if let Some(at) = req.access_token {
+        claims.insert("at_hash".into(), json!(half_hash(key.alg, at)));
+    }
+    if let Some(code) = req.code {
+        claims.insert("c_hash".into(), json!(half_hash(key.alg, code)));
+    }
+
+    let jws = sign(state, &key, "JWT", &claims).await?;
+    let token = match &req.client.id_token_encryption {
+        Some(e) => jwe::encrypt(jws.as_bytes(), &e.recipient_jwk, e.alg, e.enc)?,
+        None => jws,
+    };
+    Ok(IssuedToken {
+        token,
+        claims,
+        kid: key.kid,
+        expires_at: exp,
+    })
+}
+
+/// What a verified token must satisfy.
+#[derive(Debug, Clone)]
+pub struct VerifyOptions {
+    pub audience: Option<String>,
+    /// `at+jwt` for access tokens, `JWT` for ID tokens; `None` accepts any.
+    pub typ: Option<String>,
+    pub leeway_secs: u64,
+    /// Accept expired tokens (introspection reports `active: false` itself).
+    pub allow_expired: bool,
+    /// Reject tokens whose `jti` was revoked before expiry.
+    pub check_denylist: bool,
+}
+
+impl Default for VerifyOptions {
+    fn default() -> Self {
+        Self {
+            audience: None,
+            typ: None,
+            leeway_secs: 30,
+            allow_expired: false,
+            check_denylist: true,
+        }
+    }
+}
+
+/// Verify a JWS issued by `tenant` and return its claims.
+pub async fn verify(
+    state: &AppState,
+    tenant: &Tenant,
+    token: &str,
+    opts: &VerifyOptions,
+) -> AppResult<Map<String, Value>> {
+    let header = jsonwebtoken::decode_header(token).map_err(|_| AppError::Unauthorized)?;
+    let kid = header.kid.as_deref().ok_or(AppError::Unauthorized)?;
+    if let Some(expected) = &opts.typ
+        && header.typ.as_deref() != Some(expected)
+    {
+        return Err(AppError::Unauthorized);
+    }
+    // Only published keys verify; revoked keys are gone from this set.
+    let jwks = keys::published_jwks(state, tenant.id).await?;
+    let jwk = jwks
+        .into_iter()
+        .find(|j| j["kid"] == kid)
+        .ok_or(AppError::Unauthorized)?;
+    let alg: SigningAlg = jwk["alg"]
+        .as_str()
+        .unwrap_or_default()
+        .parse()
+        .map_err(|_| AppError::Unauthorized)?;
+    if jwt_alg(alg) != header.alg {
+        return Err(AppError::Unauthorized);
+    }
+    let parsed: jsonwebtoken::jwk::Jwk =
+        serde_json::from_value(jwk).map_err(|_| AppError::Unauthorized)?;
+    let decoding = DecodingKey::from_jwk(&parsed).map_err(|_| AppError::Unauthorized)?;
+
+    let mut validation = Validation::new(header.alg);
+    validation.leeway = opts.leeway_secs;
+    validation.validate_exp = !opts.allow_expired;
+    validation.validate_nbf = true;
+    validation.set_issuer(&[issuer(state, tenant)]);
+    match &opts.audience {
+        Some(a) => validation.set_audience(&[a]),
+        None => validation.validate_aud = false,
+    }
+    validation.set_required_spec_claims(&["exp", "iss", "sub"]);
+    let data =
+        jsonwebtoken::decode::<Map<String, Value>>(token, &decoding, &validation).map_err(|e| {
+            tracing::debug!(error = %e, "jwt verification failed");
+            AppError::Unauthorized
+        })?;
+    if opts.check_denylist
+        && let Some(jti) = data.claims.get("jti").and_then(Value::as_str)
+        && crate::services::denylist::is_denied(state, tenant.id, jti).await?
+    {
+        return Err(AppError::Unauthorized);
+    }
+    Ok(data.claims)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn at_hash_matches_spec_example() {
+        // OpenID Connect Core §A.3 example: RS256 over the sample access token.
+        let at = "jHkWEdUXMU1BwAsC4vtUsZwnNvTIxEl0z9K3vx5KF0Y";
+        assert_eq!(half_hash(SigningAlg::RS256, at), "77QmUPtjPfzWtF2AnpK9RQ");
+    }
+}

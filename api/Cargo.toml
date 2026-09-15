@@ -46,7 +46,9 @@ chacha20poly1305 = { workspace = true }
 sha2 = { workspace = true }
 hmac = { workspace = true }
 rand = { workspace = true }
+rand_core_06 = { workspace = true }
 rustls = { workspace = true }
+aws-lc-rs = { workspace = true }
 subtle = { workspace = true }
 zeroize = { workspace = true }
 base64 = { workspace = true }
@@ -83,6 +85,7 @@ rust-embed = { workspace = true }
 
 [dev-dependencies]
 ridm-core = { workspace = true, features = ["test-support"] }
-reqwest = { workspace = true, features = ["cookies"] }
+reqwest = { workspace = true, features = ["cookies", "query"] }
 testcontainers-modules = { workspace = true }
 testcontainers = { workspace = true }
+proptest = { workspace = true }

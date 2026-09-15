@@ -23,6 +23,9 @@ async fn main() {
     if args.first().map(String::as_str) == Some("migrate") {
         std::process::exit(migrate_command().await);
     }
+    if args.first().map(String::as_str) == Some("rotate-master-key") {
+        std::process::exit(rotate_master_key_command(&args[1..]).await);
+    }
 
     let config = match Config::from_env() {
         Ok(c) => c,
@@ -70,6 +73,7 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     let _invalidation_listener = state.cache.spawn_invalidation_listener();
+    let _jobs = ridm_api::jobs::spawn_all(state.clone());
     let bind_addr = state.config.bind_addr;
     let tls = state.config.tls.clone();
     let app = build_router(state);
@@ -305,6 +309,76 @@ async fn migrate_command() -> i32 {
         }
         Err(err) => {
             tracing::error!(error = %err, "migration failed");
+            1
+        }
+    }
+}
+
+/// `ridm-api rotate-master-key [--status]`: re-encrypt secrets at rest under the
+/// current `MASTER_KEY_VERSION` (see README, "Master key rotation").
+async fn rotate_master_key_command(args: &[String]) -> i32 {
+    let status_only = args.iter().any(|a| a == "--status");
+    let config = match Config::from_env() {
+        Ok(c) => c,
+        Err(err) => {
+            eprintln!("configuration error: {err}");
+            return 2;
+        }
+    };
+    telemetry::init(config.log_format);
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let db = match db::connect(&config).await {
+        Ok(d) => d,
+        Err(err) => {
+            eprintln!("database: {err}");
+            return 1;
+        }
+    };
+    let cache = match cache::connect(&config) {
+        Ok(c) => c,
+        Err(err) => {
+            eprintln!("redis: {err}");
+            return 1;
+        }
+    };
+    let state = AppState::new(config, db, cache);
+    use ridm_api::services::master_key;
+    let status = match master_key::status(&state).await {
+        Ok(s) => s,
+        Err(err) => {
+            eprintln!("status failed: {err}");
+            return 1;
+        }
+    };
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&status).unwrap_or_default()
+    );
+    if status_only {
+        return 0;
+    }
+    if status.pending() == 0 {
+        println!(
+            "nothing to rotate: every row is on generation {}",
+            status.current_version
+        );
+        return 0;
+    }
+    match master_key::rotate_all(&state).await {
+        Ok(report) => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).unwrap_or_default()
+            );
+            if report.failed.values().sum::<u64>() > 0 {
+                eprintln!("some rows could not be re-encrypted; check MASTER_KEY_PREVIOUS");
+                1
+            } else {
+                0
+            }
+        }
+        Err(err) => {
+            eprintln!("rotation failed: {err}");
             1
         }
     }

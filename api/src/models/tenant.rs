@@ -22,6 +22,9 @@ pub struct Tenant {
     pub display_name: String,
     pub status: TenantStatus,
     pub settings: Json<TenantSettings>,
+    /// Random per-tenant salt for pairwise subject identifiers. Never exported.
+    #[serde(skip)]
+    pub pairwise_salt: Vec<u8>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -43,8 +46,19 @@ pub struct TenantSettings {
     pub registration: RegistrationPolicy,
     pub locale: LocaleSettings,
     pub branding: Branding,
+    pub keys: KeyPolicy,
+    pub discovery: DiscoverySettings,
     /// Custom issuer host (Phase 9.3). `None` means `{PUBLIC_URL}/t/{slug}`.
     pub custom_domain: Option<String>,
+}
+
+/// WebFinger issuer discovery (OIDC Discovery §2).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DiscoverySettings {
+    /// `acct:user@<domain>` resources with one of these domains resolve to
+    /// this tenant's issuer.
+    pub email_domains: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -144,6 +158,30 @@ impl Default for RegistrationPolicy {
             privacy_url: None,
             allowed_email_domains: vec![],
             captcha: false,
+        }
+    }
+}
+
+/// Signing key lifecycle policy.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct KeyPolicy {
+    /// Algorithm for new keys created by rotation / on demand.
+    pub default_alg: crate::models::SigningAlg,
+    pub rsa_bits: crate::models::RsaBits,
+    /// Rotate the active key after this many days (0 = never automatically).
+    pub rotation_interval_days: u32,
+    /// How long a retired key stays published for verification.
+    pub retire_overlap_hours: u32,
+}
+
+impl Default for KeyPolicy {
+    fn default() -> Self {
+        Self {
+            default_alg: crate::models::SigningAlg::RS256,
+            rsa_bits: crate::models::RsaBits::B2048,
+            rotation_interval_days: 90,
+            retire_overlap_hours: 24,
         }
     }
 }

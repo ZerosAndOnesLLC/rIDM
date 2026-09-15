@@ -290,6 +290,8 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
         redis_url: redis_url.to_string(),
         public_url: public_url.parse().expect("public url"),
         master_key: SecretBytes::new(vec![7u8; 32]),
+        master_key_version: 1,
+        master_key_previous: vec![],
         bind_addr: "127.0.0.1:0".parse().expect("bind addr"),
         log_format: LogFormat::Pretty,
         docs_enabled: true,

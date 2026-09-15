@@ -82,8 +82,12 @@ All versions are the latest **stable** release as of the date above. Verified by
 | jsonwebtoken | 11.0.0 | `aws_lc_rs` — constant-time RSA; avoids RUSTSEC-2023-0071 exposure |
 | rsa | 0.9.10 | `pem` — 0.10 is still RC, do not use |
 | p256 | 0.14.0 | `ecdsa`, `pem` |
-| ed25519-dalek | 3.0.0 | `rand_core`, `pkcs8` |
+| ed25519-dalek | 3.0.0 | `rand_core`, `pkcs8`, `alloc` |
 | argon2 | 0.6.0 | |
+| bcrypt / pbkdf2 / md-5 | 0.19.3 / 0.13.0 / 0.11.0 | legacy hash verification only (imported users) |
+| regex | 1.13.1 | profile schema patterns |
+| rpassword | 7.5.4 | interactive `ridm-api bootstrap` prompt |
+| rand_core (0.6, aliased `rand_core_06`) | 0.6.4 | `getrandom` — rsa 0.9 keygen still takes a rand_core 0.6 RNG |
 | totp-rs | 6.0.0 | `qr`, `gen_secret` |
 | webauthn-rs | 0.5.5 | `danger-allow-state-serialisation` — 0.6 is still dev, do not use. Requires OpenSSL: `openssl-sys 0.9.117` with `vendored` so the distroless image is self-contained |
 | chacha20poly1305 | 0.11.0 | |
@@ -108,6 +112,7 @@ All versions are the latest **stable** release as of the date above. Verified by
 | utoipa-swagger-ui | 9.0.2 | `axum` |
 | rust-embed | 8.12.0 | embedded UI mode |
 | testcontainers-modules (dev) | 0.15.0 | `postgres`, `redis` |
+| proptest (dev) | 1.11.0 | property tests for token/blob/cursor parsing |
 | testcontainers (dev) | 0.27.3 | `reusable-containers` — no Ryuk in testcontainers-rs; named reusable containers instead |
 | cargo-llvm-cov / cargo-fuzz / cargo-audit / cargo-deny (tools) | latest stable at Phase 0.9 (verify then) | coverage, fuzzing, supply chain |
 
@@ -251,13 +256,13 @@ Operations
 - [x] 1.8 Tests: tenant isolation suite v1 (every repo query cross-tenant → empty/404; direct RLS bypass attempt fails); profile schema validation; legacy-hash upgrade-on-login; migration test applying all migrations to seeded snapshot and checking constraints/row counts.
 
 ### Phase 2 — Keys, JWT issuance, encryption
-- [ ] 2.1 Migration: signing_keys. Keygen (RSA-2048/3072, P-256, Ed25519); private keys encrypted via `KeyEncryptor`.
-- [ ] 2.2 Rotation service: create → activate → retire → revoke with overlap; scheduled rotation job.
-- [ ] 2.3 JWKS endpoint (cached, ETag). WebFinger endpoint for issuer discovery.
-- [ ] 2.4 Token service: sign/verify access + ID tokens; claim-mapper pipeline; pairwise `sub` derivation; optional JWE encryption of ID tokens per client.
-- [ ] 2.5 Refresh token service: opaque, hashed, rotation, family reuse detection; `jti` denylist for instant access-token revocation.
-- [ ] 2.6 Master key rotation command: re-encrypt all `*_enc` columns under a new key version, zero downtime.
-- [ ] 2.7 Tests: sign/verify for every alg; rotation overlap (old kid still verifies until retired); revoked kid rejected; JWKS shape and ETag; pairwise `sub` stability; JWE round trip; master-key rotation re-encrypts and verifies; property tests on JWT decoding.
+- [x] 2.1 Migration: signing_keys. Keygen (RSA-2048/3072, P-256, Ed25519); private keys encrypted via `KeyEncryptor`.
+- [x] 2.2 Rotation service: create → activate → retire → revoke with overlap; scheduled rotation job.
+- [x] 2.3 JWKS endpoint (cached, ETag). WebFinger endpoint for issuer discovery.
+- [x] 2.4 Token service: sign/verify access + ID tokens; claim-mapper pipeline; pairwise `sub` derivation; optional JWE encryption of ID tokens per client.
+- [x] 2.5 Refresh token service: opaque, hashed, rotation, family reuse detection; `jti` denylist for instant access-token revocation.
+- [x] 2.6 Master key rotation command: re-encrypt all `*_enc` columns under a new key version, zero downtime.
+- [x] 2.7 Tests: sign/verify for every alg; rotation overlap (old kid still verifies until retired); revoked kid rejected; JWKS shape and ETag; pairwise `sub` stability; JWE round trip; master-key rotation re-encrypts and verifies; property tests on JWT decoding.
 
 ### Phase 3 — OIDC provider core
 - [ ] 3.1 Migrations: clients (all fields incl. client_type, dual secrets, subject_type, logout URIs), scopes, claim_mappers, consents, refresh_tokens, resource_servers, permissions, permission_assignments. Default scopes seeded per tenant.

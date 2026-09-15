@@ -336,6 +336,12 @@ impl From<AppError> for OAuthError {
     }
 }
 
+impl From<sqlx::Error> for OAuthError {
+    fn from(err: sqlx::Error) -> Self {
+        Self::from(AppError::from_db(err))
+    }
+}
+
 impl IntoResponse for OAuthError {
     fn into_response(self) -> Response {
         let status = self.error.status();

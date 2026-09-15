@@ -61,6 +61,11 @@ pub trait KeyEncryptor: Send + Sync {
     /// `key_version` is older are candidates for re-encryption.
     fn current_version(&self) -> u32;
 
+    /// Generations this encryptor can decrypt, if it knows (for status output).
+    fn known_versions_hint(&self) -> Option<Vec<u32>> {
+        None
+    }
+
     /// Encrypt `plaintext`, binding it to `aad` (typically the row's table name
     /// and id so a ciphertext cannot be moved between rows).
     async fn encrypt(
