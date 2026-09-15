@@ -177,7 +177,7 @@ impl Client {
 
 /// Input for creating a client. Missing fields take type-driven defaults.
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct NewClient {
     /// Generated when absent.
     pub client_id: Option<String>,

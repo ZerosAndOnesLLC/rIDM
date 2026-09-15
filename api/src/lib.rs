@@ -34,6 +34,7 @@ pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
         .merge(routes::health::router())
         .merge(routes::admin::auth_router())
         .merge(routes::admin::tenants_router())
+        .merge(routes::admin::clients_router())
         .merge(routes::branding::router())
         .merge(routes::wellknown::router())
         .merge(routes::webfinger::router())

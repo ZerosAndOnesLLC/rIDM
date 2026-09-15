@@ -19,7 +19,7 @@ use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::models::{
     AccessTokenFormat, Client, ClientSecretHash, ClientStatus, ClientSubjectType, ClientType,
-    NewClient, STANDARD_SCOPES, TokenEndpointAuthMethod, grants,
+    NewClient, NewUser, STANDARD_SCOPES, TokenEndpointAuthMethod, User, grants,
 };
 use crate::repos;
 use crate::state::AppState;
@@ -531,31 +531,44 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
 }
 
 /// Replace a client's metadata (RFC 7592 PUT, admin "replace"). The public
-/// `client_id`, secrets, status, service account and timestamps are kept.
+/// `client_id`, status, service account and timestamps are kept. Secrets are
+/// kept when the client goes on using them, dropped when it switches to
+/// `none` or `private_key_jwt`, and a fresh one is generated (and returned,
+/// shown exactly once) when it switches to a secret-based method.
 pub async fn update_metadata(
     state: &AppState,
     tenant_id: Uuid,
     actor: Actor,
     id: Uuid,
     mut input: NewClient,
-) -> AppResult<Client> {
+) -> AppResult<(Client, Option<Zeroizing<String>>)> {
     let current = get(state, tenant_id, id).await?;
     input.client_id = Some(current.client_id.clone());
-    let (mut resolved, _secret) = resolve(tenant_id, input)?;
-    // A confidential client keeps its secrets; a switch to/from `none` is a
-    // metadata change the caller must follow with a secret rotation.
+    let (mut resolved, fresh_secret) = resolve(tenant_id, input)?;
     resolved.id = current.id;
-    resolved.secret_hashes = current.secret_hashes.clone();
-    if resolved.token_endpoint_auth_method.uses_secret() && resolved.secret_hashes.is_empty() {
-        return Err(AppError::BadRequest(
-            "switching to a secret-based auth method requires rotating a secret first".into(),
-        ));
-    }
+    let secret = if !resolved.token_endpoint_auth_method.uses_secret() {
+        resolved.secret_hashes = Json(vec![]);
+        None
+    } else if current.active_secrets().is_empty() {
+        // `resolve` already minted one for a secret-based method.
+        fresh_secret
+    } else {
+        resolved.secret_hashes = current.secret_hashes.clone();
+        None
+    };
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let client = repos::clients::update_metadata(&mut *tx, &resolved)
         .await
         .map_err(AppError::from_db)?
         .ok_or(AppError::NotFound("client"))?;
+    if resolved.secret_hashes.0 != current.secret_hashes.0 {
+        repos::clients::set_secret_hashes(&mut *tx, tenant_id, id, &resolved.secret_hashes.0)
+            .await?;
+    }
+    let client = Client {
+        secret_hashes: resolved.secret_hashes,
+        ..client
+    };
     tx.commit().await?;
     state
         .cache
@@ -569,7 +582,153 @@ pub async fn update_metadata(
         actor,
         EventKind::ClientUpdated { client_id: id },
     ));
+    Ok((client, secret))
+}
+
+/// Revoke one secret by id (ends a rotation grace early or drops a leaked
+/// secret). The last secret of a secret-based client cannot be revoked:
+/// rotate instead so the client never ends up unable to authenticate.
+pub async fn revoke_secret(
+    state: &AppState,
+    tenant_id: Uuid,
+    actor: Actor,
+    id: Uuid,
+    secret_id: Uuid,
+) -> AppResult<Client> {
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let client = repos::clients::find_by_id(&mut *tx, tenant_id, id)
+        .await?
+        .ok_or(AppError::NotFound("client"))?;
+    if !client.secret_hashes.iter().any(|s| s.id == secret_id) {
+        return Err(AppError::NotFound("client secret"));
+    }
+    let hashes: Vec<ClientSecretHash> = client
+        .secret_hashes
+        .iter()
+        .filter(|s| s.id != secret_id)
+        .cloned()
+        .collect();
+    if client.token_endpoint_auth_method.uses_secret() && hashes.is_empty() {
+        return Err(AppError::BadRequest(
+            "the last secret cannot be revoked; rotate it instead".into(),
+        ));
+    }
+    repos::clients::set_secret_hashes(&mut *tx, tenant_id, id, &hashes).await?;
+    let client = repos::clients::find_by_id(&mut *tx, tenant_id, id)
+        .await?
+        .ok_or(AppError::NotFound("client"))?;
+    tx.commit().await?;
+    state
+        .cache
+        .invalidate(&[cache_keys::client_by_client_id(
+            tenant_id,
+            &client.client_id,
+        )])
+        .await?;
+    state.events.publish(Event::new(
+        Some(tenant_id),
+        actor,
+        EventKind::ClientSecretRotated { client_id: id },
+    ));
     Ok(client)
+}
+
+/// Username of the user a client acts as under `client_credentials`.
+pub fn service_account_username(client_id: &str) -> String {
+    format!("svc-{}", client_id.to_lowercase())
+}
+
+/// Give the client a service account: a user of its own that
+/// `client_credentials` tokens are issued for, so roles, groups and
+/// permissions can be assigned to the client like to any user. Idempotent.
+pub async fn enable_service_account(
+    state: &AppState,
+    tenant_id: Uuid,
+    actor: Actor,
+    id: Uuid,
+) -> AppResult<(Client, User)> {
+    let client = get(state, tenant_id, id).await?;
+    if !client.allows_grant(grants::CLIENT_CREDENTIALS) {
+        return Err(AppError::BadRequest(
+            "a service account needs the client_credentials grant".into(),
+        ));
+    }
+    if let Some(uid) = client.service_account_user_id
+        && let Ok(user) = crate::services::users::get(state, tenant_id, uid).await
+        && user.deleted_at.is_none()
+    {
+        return Ok((client, user));
+    }
+    let user = crate::services::users::create(
+        state,
+        tenant_id,
+        actor.clone(),
+        NewUser {
+            username: service_account_username(&client.client_id),
+            ..Default::default()
+        },
+    )
+    .await
+    .map_err(|e| match e {
+        AppError::Conflict(_) => AppError::Conflict(format!(
+            "user `{}` already exists",
+            service_account_username(&client.client_id)
+        )),
+        other => other,
+    })?;
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let ok = repos::clients::set_service_account(&mut *tx, tenant_id, id, Some(user.id)).await?;
+    tx.commit().await?;
+    if !ok {
+        return Err(AppError::NotFound("client"));
+    }
+    state
+        .cache
+        .invalidate(&[cache_keys::client_by_client_id(
+            tenant_id,
+            &client.client_id,
+        )])
+        .await?;
+    state.events.publish(Event::new(
+        Some(tenant_id),
+        actor,
+        EventKind::ClientUpdated { client_id: id },
+    ));
+    let client = get(state, tenant_id, id).await?;
+    Ok((client, user))
+}
+
+/// Remove the client's service account (the user is deleted). Idempotent.
+pub async fn disable_service_account(
+    state: &AppState,
+    tenant_id: Uuid,
+    actor: Actor,
+    id: Uuid,
+) -> AppResult<Client> {
+    let client = get(state, tenant_id, id).await?;
+    let Some(uid) = client.service_account_user_id else {
+        return Ok(client);
+    };
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    repos::clients::set_service_account(&mut *tx, tenant_id, id, None).await?;
+    tx.commit().await?;
+    match crate::services::users::delete(state, tenant_id, actor.clone(), uid).await {
+        Ok(()) | Err(AppError::NotFound(_)) => {}
+        Err(e) => return Err(e),
+    }
+    state
+        .cache
+        .invalidate(&[cache_keys::client_by_client_id(
+            tenant_id,
+            &client.client_id,
+        )])
+        .await?;
+    state.events.publish(Event::new(
+        Some(tenant_id),
+        actor,
+        EventKind::ClientUpdated { client_id: id },
+    ));
+    get(state, tenant_id, id).await
 }
 
 const REGISTRATION_TOKEN_PREFIX: &str = "rat_";
@@ -588,12 +747,20 @@ pub async fn issue_registration_token(
     ));
     let hash = Sha256::digest(token.as_bytes()).to_vec();
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    let ok =
-        repos::clients::set_registration_token_hash(&mut *tx, tenant_id, id, Some(&hash)).await?;
+    let client = repos::clients::find_by_id(&mut *tx, tenant_id, id)
+        .await?
+        .ok_or(AppError::NotFound("client"))?;
+    repos::clients::set_registration_token_hash(&mut *tx, tenant_id, id, Some(&hash)).await?;
     tx.commit().await?;
-    if !ok {
-        return Err(AppError::NotFound("client"));
-    }
+    // RFC 7592 management authenticates against the cached client; a replaced
+    // token must stop working at once.
+    state
+        .cache
+        .invalidate(&[cache_keys::client_by_client_id(
+            tenant_id,
+            &client.client_id,
+        )])
+        .await?;
     Ok(token)
 }
 

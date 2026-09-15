@@ -210,6 +210,15 @@ pagination with `?cursor=&limit=`):
 | `PATCH /admin/tenants/{slug}` | `ridm:tenants:write` | `display_name`, `status`, and `settings` as a JSON merge patch (RFC 7396): send only what changed, `null` clears; unknown settings fields are rejected |
 | `DELETE /admin/tenants/{slug}` | `ridm:tenants:delete` (global only) | cascades; `master` cannot be deleted or disabled |
 | `GET/PUT/DELETE /admin/tenants/{slug}/captcha` | read / write | provider, site key and secret (stored encrypted; reads return `secret_set` instead of the secret) |
+| `GET /admin/tenants/{slug}/clients` | `ridm:clients:read` | `?search=` prefix-matches `client_id` and name |
+| `POST /admin/tenants/{slug}/clients` | `ridm:clients:write` | any field of the client model; missing ones take type-driven defaults (`spa`, `web`, `native`, `machine`, `device`); scopes and audiences must exist; the secret is in the `201` body and nowhere else |
+| `GET /admin/tenants/{slug}/clients/{client}` | `ridm:clients:read` | `{client}` is the id or the public `client_id`; `secrets` lists ids and validity, never hashes |
+| `PATCH /admin/tenants/{slug}/clients/{client}` | `ridm:clients:write` | merge patch over the metadata plus `status`; `null` clears a field or resets a defaulted one; `client_id` is immutable; switching to a secret-based auth method mints a secret, returned once |
+| `DELETE /admin/tenants/{slug}/clients/{client}` | `ridm:clients:write` | cascades to roles scoped to the client, refresh tokens and consents |
+| `POST /admin/tenants/{slug}/clients/{client}/secrets` | `ridm:clients:write` | rotate: `{grace_secs?}` keeps the previous secret working (default 24h, `0` retires it, max 30 days); the new secret is shown once |
+| `DELETE /admin/tenants/{slug}/clients/{client}/secrets/{id}` | `ridm:clients:write` | revoke one secret early; the last secret of a confidential client cannot be revoked, rotate instead |
+| `PUT/DELETE /admin/tenants/{slug}/clients/{client}/service-account` | `ridm:clients:write` | create / remove the user (`svc-<client_id>`) that `client_credentials` tokens are issued for, so the client can hold roles and groups; needs the `client_credentials` grant |
+| `POST /admin/tenants/{slug}/clients/{client}/registration-token` | `ridm:clients:write` | issue (replacing) the RFC 7592 registration access token and `registration_client_uri` |
 
 Tenant settings cover the password, session, MFA, registration, locale, branding,
 key, discovery, DCR, auth-method, lockout, CAPTCHA and notification policies plus a
