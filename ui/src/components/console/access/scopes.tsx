@@ -60,7 +60,7 @@ export function ScopesPage({ tenant, selected }: { tenant: string; selected: str
             )}
           </Card>
         }
-        detail={selected ? <ScopeView tenant={tenant} id={selected} /> : <p className="text-[0.9rem] text-muted">Choose a scope.</p>}
+        detail={selected ? <ScopeView key={selected} tenant={tenant} id={selected} /> : <p className="text-[0.9rem] text-muted">Choose a scope.</p>}
       />
       <CreateScope tenant={tenant} open={creating} onOpenChange={setCreating} />
     </>
@@ -109,13 +109,8 @@ function ScopeView({ tenant, id }: { tenant: string; id: string }) {
     },
   });
   const [draft, setDraft] = useState<Scope | null>(null);
-  const [seenId, setSeenId] = useState(id);
   const [resetCount, setResetCount] = useState(0);
   const [seenReset, setSeenReset] = useState(0);
-  if (seenId !== id) {
-    setSeenId(id);
-    setDraft(null);
-  }
   if (seenReset !== resetCount) {
     setSeenReset(resetCount);
     setDraft(query.data ?? null);

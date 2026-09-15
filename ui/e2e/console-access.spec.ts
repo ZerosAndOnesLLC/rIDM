@@ -21,6 +21,7 @@ test.describe("access model", () => {
     await dialog.getByLabel("Identifier").fill(`https://${rs}.example.com`);
     await dialog.getByRole("button", { name: "Create" }).click();
     await page.waitForURL(/resource-servers\/\?tenant=master&rs=/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: `E2E API ${suffix}`, level: 2 })).toBeVisible({ timeout: 15_000 });
     await page.getByLabel("Token lifetime").fill("600");
     await page.getByRole("switch", { name: "Allow offline access" }).click();
     await expect(page.getByRole("status").filter({ hasText: /^Saved$/ })).toBeVisible({ timeout: 10_000 });
@@ -41,6 +42,7 @@ test.describe("access model", () => {
     await rd.getByLabel("Description").fill("Reads orders");
     await rd.getByRole("button", { name: "Create role" }).click();
     await page.waitForURL(/roles\/\?tenant=master&role=/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: role, level: 2 })).toBeVisible({ timeout: 15_000 });
     await page.getByLabel("Permission to grant").selectOption({ label: `E2E API ${suffix}: orders:read` });
     await page.getByRole("button", { name: "Grant" }).click();
     await expect(page.getByRole("listitem").filter({ hasText: "orders:read" })).toBeVisible({ timeout: 10_000 });
@@ -62,6 +64,7 @@ test.describe("access model", () => {
     await page.getByRole("dialog", { name: "New group" }).getByLabel("Name").fill(g);
     await page.getByRole("dialog", { name: "New group" }).getByRole("button", { name: "Create group" }).click();
     await page.waitForURL(/groups\/\?tenant=master&group=/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: g, level: 2 })).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: "Subgroup" }).click();
     const sub = page.getByRole("dialog", { name: "New group" });
     await expect(sub.getByLabel("Parent")).toHaveValue(/.+/);
@@ -98,6 +101,7 @@ test.describe("access model", () => {
     await sd.getByLabel("Description").fill("Read your orders");
     await sd.getByRole("button", { name: "Create scope" }).click();
     await page.waitForURL(/scopes\/\?tenant=master&scope=/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: scope, level: 2 })).toBeVisible({ timeout: 15_000 });
     await page.getByLabel("Claims").fill("orders");
     await page.keyboard.press("Enter");
     await page.getByRole("switch", { name: "Granted by default" }).click();
@@ -117,7 +121,7 @@ test.describe("access model", () => {
     await md.getByLabel("Template").fill("{{user.username}} of {{tenant.slug}}");
     await md.getByRole("button", { name: "Create mapper" }).click();
     await page.waitForURL(/claim-mappers\/\?tenant=master&mapper=/, { timeout: 15_000 });
-    await expect(page.getByRole("heading", { level: 2 }).filter({ hasText: mapper })).toContainText("tenant-wide");
+    await expect(page.getByRole("heading", { level: 2 }).filter({ hasText: mapper })).toContainText("tenant-wide", { timeout: 15_000 });
     // A template that does not compile is refused and the stored one comes back.
     await page.getByLabel("Template").fill("{{#if}}");
     await expect(page.getByRole("alert").filter({ hasText: /template|compile/i })).toBeVisible({ timeout: 10_000 });
