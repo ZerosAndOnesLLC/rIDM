@@ -14,6 +14,9 @@
   --accent: #3451b2;
   --accent-ink: #ffffff;
   --link: #2f49a6;
+  /* Chart series (validated categorical slots 1 and 2, see dataviz). */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
   --danger: #b42318;
   --danger-soft: #fdecea;
   --ok: #166a3f;
@@ -36,6 +39,8 @@
     --line: #2c323b;
     --accent-ink: #ffffff;
     --link: #9db0f5;
+    --series-1: #3987e5;
+    --series-2: #d95926;
     --danger: #f58a7d;
     --danger-soft: #3a1d1a;
     --ok: #6fd39a;
@@ -51,6 +56,8 @@
   --line: #2c323b;
   --accent-ink: #ffffff;
   --link: #9db0f5;
+  --series-1: #3987e5;
+  --series-2: #d95926;
   --danger: #f58a7d;
   --danger-soft: #3a1d1a;
   --ok: #6fd39a;

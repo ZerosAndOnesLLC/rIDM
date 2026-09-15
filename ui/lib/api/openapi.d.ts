@@ -1088,6 +1088,26 @@ export interface paths {
         patch: operations["scopes_update"];
         trace?: never;
     };
+    "/admin/tenants/{slug}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sign-ins and failures per day, live sessions, users and second-factor
+         *     adoption, and the most authorized clients, for the dashboard.
+         */
+        get: operations["tenants_tenant_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/tenants/{slug}/users": {
         parameters: {
             query?: never;
@@ -1847,6 +1867,17 @@ export interface components {
             service_account?: boolean;
             status?: components["schemas"]["ClientStatus"];
         };
+        ClientStats: {
+            /**
+             * Format: int64
+             * @description Authorizations granted in the window.
+             */
+            authorizations: number;
+            client_id: string;
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
         /** @enum {string} */
         ClientStatus: "active" | "disabled";
         /** @enum {string} */
@@ -1923,6 +1954,14 @@ export interface components {
             /** @description MFA factors, passkeys and recovery codes (metadata only). */
             credentials: components["schemas"]["Credential"][];
             password: components["schemas"]["PasswordSummary"];
+        };
+        DayStats: {
+            /** Format: date */
+            date: string;
+            /** Format: int64 */
+            failed: number;
+            /** Format: int64 */
+            logins: number;
         };
         /** @enum {string} */
         DcrMode: "disabled" | "open" | "initial_access_token";
@@ -3403,6 +3442,24 @@ export interface components {
              */
             session: components["schemas"]["SessionPolicy"];
         };
+        TenantStats: {
+            /** Format: int64 */
+            active_sessions: number;
+            /** @description One entry per day of the window, oldest first, zeros included. */
+            days: components["schemas"]["DayStats"][];
+            /** Format: int64 */
+            failed_total: number;
+            /** Format: date-time */
+            from: string;
+            /** Format: int64 */
+            logins_total: number;
+            /** Format: date-time */
+            to: string;
+            top_clients: components["schemas"]["ClientStats"][];
+            users: components["schemas"]["UserStats"];
+            /** Format: int32 */
+            window_days: number;
+        };
         /** @enum {string} */
         TenantStatus: "active" | "disabled";
         TestSend: {
@@ -3487,6 +3544,20 @@ export interface components {
             direct: components["schemas"]["Role"][];
             /** @description Direct plus inherited through groups and composites. */
             effective: components["schemas"]["Role"][];
+        };
+        UserStats: {
+            /** Format: int64 */
+            active: number;
+            /**
+             * Format: int64
+             * @description Users holding at least one second factor (TOTP or passkey).
+             */
+            mfa_enrolled: number;
+            /**
+             * Format: int64
+             * @description Users that are not soft-deleted.
+             */
+            total: number;
         };
         /** @enum {string} */
         UserStatus: "active" | "disabled" | "locked" | "pending" | "deleted";
@@ -9840,6 +9911,67 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Scope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    tenants_tenant_stats: {
+        parameters: {
+            query?: {
+                /** @description Window in days ending now (default 30, at most 365). */
+                days?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantStats"];
                 };
             };
             /** @description Bad request */

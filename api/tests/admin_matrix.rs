@@ -41,6 +41,7 @@ const SOURCES: &[(&str, &str)] = &[
     ),
     ("roles", include_str!("../src/routes/admin/roles.rs")),
     ("scopes", include_str!("../src/routes/admin/scopes.rs")),
+    ("stats", include_str!("../src/routes/admin/stats.rs")),
     (
         "tenant_config",
         include_str!("../src/routes/admin/tenant_config.rs"),

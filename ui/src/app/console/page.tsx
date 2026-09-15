@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { KeyRound, Search, UserRound } from "lucide-react";
 import { useState } from "react";
+import { Dashboard } from "@/components/console/dashboard";
 import { Badge, Card, Kbd, PageHeader, Row } from "@/components/console/ui";
 import { useConsole } from "@/lib/console/session";
 import { modKey } from "@/lib/console/shortcuts";
@@ -29,6 +30,11 @@ export default function Overview() {
   return (
     <>
       <PageHeader title="Overview" sub={detail.data ? `${detail.data.display_name} · ${detail.data.slug}` : tenant ?? undefined} />
+      {tenant && (
+        <div className="mb-6">
+          <Dashboard tenant={tenant} />
+        </div>
+      )}
       <div className="grid gap-4 md:grid-cols-2">
         <Card title="Signed in as">
           <dl>

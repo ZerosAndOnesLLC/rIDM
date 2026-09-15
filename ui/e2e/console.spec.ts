@@ -35,6 +35,14 @@ test.describe("admin console shell", () => {
     await expect(page.getByRole("button", { name: /Tenant: master/ })).toBeVisible();
     await expect(page.getByText("Global administrator")).toBeVisible();
     await expect(page.getByText("ridm:owner")).toBeVisible();
+    // The dashboard: tiles, the sign-ins chart with its table view, top clients.
+    await expect(page.getByText("Live sessions")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("img", { name: /Sign-ins and failed sign-ins per day/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Most authorized clients" })).toBeVisible();
+    await page.getByText("Table view").click();
+    await expect(page.getByRole("columnheader", { name: "Failed" })).toBeVisible();
+    await page.getByLabel("Window").selectOption("7");
+    await expect(page.getByText("Sign-ins · 7 days", { exact: true })).toBeVisible({ timeout: 10_000 });
     await expectAccessible(page);
 
     // The session survives a reload in the same tab (no second login round trip).

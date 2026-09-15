@@ -224,6 +224,7 @@ pagination with `?cursor=&limit=`):
 | `PATCH /admin/tenants/{slug}` | `ridm:tenants:write` | `display_name`, `status`, and `settings` as a JSON merge patch (RFC 7396): send only what changed, `null` clears; unknown settings fields are rejected |
 | `DELETE /admin/tenants/{slug}` | `ridm:tenants:delete` (global only) | cascades; `master` cannot be deleted or disabled |
 | `GET/PUT/DELETE /admin/tenants/{slug}/captcha` | read / write | provider, site key and secret (stored encrypted; reads return `secret_set` instead of the secret) |
+| `GET /admin/tenants/{slug}/stats` | `ridm:tenants:read` | `?days=` (1–365, default 30): sign-ins and failures per day, live sessions, user counts and second-factor adoption, most authorized clients |
 | `GET/PUT /admin/tenants/{slug}/profile-schema` | read / write | the user profile schema (declared attributes with type, validation, editability and exposure); `PUT` replaces it after structural validation |
 | `GET /admin/tenants/{slug}/clients` | `ridm:clients:read` | `?search=` prefix-matches `client_id` and name |
 | `POST /admin/tenants/{slug}/clients` | `ridm:clients:write` | any field of the client model; missing ones take type-driven defaults (`spa`, `web`, `native`, `machine`, `device`); scopes and audiences must exist; the secret is in the `201` body and nowhere else |
@@ -450,6 +451,12 @@ tenant-wide or per client, of kind user attribute, groups, roles, fixed value, H
 template (must compile) or audience, with the tokens they are included in. Detail fields
 save as you go; membership-style changes apply at once. Identity providers arrive with
 brokering in Phase 8.3.
+
+**Overview** (`/console/`): the dashboard — sign-ins, failed sign-ins and live sessions
+for the chosen window (7, 30 or 90 days), two-step adoption, a sign-ins-per-day line
+chart with a table view, the most authorized clients, and user counts — fed by the new
+`GET /admin/tenants/{slug}/stats?days=` route (`ridm:tenants:read`), which derives
+everything from login attempts, sessions, credentials and audit events.
 
 **Signing keys** (`/console/keys/`): every key on a timeline (created → signs from →
 published until) with status, algorithm and public JWK; rotate now, create a pending key

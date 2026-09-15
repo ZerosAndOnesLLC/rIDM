@@ -74,6 +74,7 @@ pub fn admin_router() -> OpenApiRouter<AppState> {
         .merge(admin::roles_router())
         .merge(admin::resource_servers_router())
         .merge(admin::scopes_router())
+        .merge(admin::stats_router())
         .merge(admin::mappers_router())
         .merge(admin::keys_router())
         .merge(admin::invitations_router())
