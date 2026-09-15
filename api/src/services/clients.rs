@@ -373,14 +373,21 @@ pub fn verify_secret(client: &Client, presented: &str) -> bool {
     ok
 }
 
-/// Add a new secret; the previous one keeps working for the grace window.
-/// At most two secrets exist at any time.
+/// Add a new secret; the previous one keeps working for `grace` (default 24h,
+/// `Some(0)` retires it immediately). At most two secrets exist at any time.
 pub async fn rotate_secret(
     state: &AppState,
     tenant_id: Uuid,
     actor: Actor,
     id: Uuid,
+    grace: Option<chrono::Duration>,
 ) -> AppResult<(Client, Zeroizing<String>)> {
+    let grace = grace.unwrap_or(SECRET_ROTATION_GRACE);
+    if grace < chrono::Duration::zero() || grace > chrono::Duration::days(30) {
+        return Err(AppError::BadRequest(
+            "grace must be between 0 and 30 days".into(),
+        ));
+    }
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let client = repos::clients::find_by_id(&mut *tx, tenant_id, id)
         .await?
@@ -401,8 +408,11 @@ pub async fn rotate_secret(
     // Newest existing secret gets the grace window; anything older is dropped.
     hashes.sort_by_key(|s| std::cmp::Reverse(s.created_at));
     hashes.truncate(1);
+    if grace.is_zero() {
+        hashes.clear();
+    }
     for h in &mut hashes {
-        h.expires_at = Some(now + SECRET_ROTATION_GRACE);
+        h.expires_at = Some(now + grace);
     }
     hashes.insert(
         0,

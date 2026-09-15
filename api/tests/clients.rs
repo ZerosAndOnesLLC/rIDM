@@ -260,7 +260,7 @@ async fn secret_rotation_grace_and_cached_lookup() {
             .is_none()
     );
 
-    let (rotated, second) = clients::rotate_secret(&app.state, tid, Actor::System, id)
+    let (rotated, second) = clients::rotate_secret(&app.state, tid, Actor::System, id, None)
         .await
         .unwrap();
     assert_eq!(rotated.secret_hashes.len(), 2);
@@ -283,7 +283,7 @@ async fn secret_rotation_grace_and_cached_lookup() {
     assert!(clients::verify_secret(&cached, &second));
 
     // A third rotation drops the oldest secret; only two ever exist.
-    let (again, third) = clients::rotate_secret(&app.state, tid, Actor::System, id)
+    let (again, third) = clients::rotate_secret(&app.state, tid, Actor::System, id, None)
         .await
         .unwrap();
     assert_eq!(again.secret_hashes.len(), 2);
@@ -313,7 +313,7 @@ async fn secret_rotation_grace_and_cached_lookup() {
     .await
     .unwrap();
     assert!(matches!(
-        clients::rotate_secret(&app.state, tid, Actor::System, spa.client.id).await,
+        clients::rotate_secret(&app.state, tid, Actor::System, spa.client.id, None).await,
         Err(AppError::BadRequest(_))
     ));
 

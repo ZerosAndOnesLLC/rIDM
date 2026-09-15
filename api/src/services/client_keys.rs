@@ -13,6 +13,9 @@ use crate::state::AppState;
 
 const JWKS_CACHE_SECS: u64 = 3600;
 const MAX_JWKS_BYTES: usize = 256 * 1024;
+/// Minimum interval between forced re-fetches of one client's `jwks_uri`, so
+/// unknown-`kid` probes cannot turn rIDM into a request amplifier.
+const REFRESH_THROTTLE_SECS: u64 = 60;
 
 /// The client's JWK set (`keys` array). `refresh` forces a re-fetch of `jwks_uri`
 /// (used once when a `kid` is unknown, so rotated client keys are picked up).
@@ -24,18 +27,42 @@ pub async fn jwks(state: &AppState, client: &Client, refresh: bool) -> AppResult
         return Ok(vec![]);
     };
     let key = cache_keys::client_jwks(client.tenant_id, client.id);
-    if !refresh {
-        let mut conn = state.redis.get().await?;
-        if let Some(raw) = conn.get::<_, Option<String>>(&key).await?
-            && let Ok(v) = serde_json::from_str::<Value>(&raw)
-        {
-            return Ok(v["keys"].as_array().cloned().unwrap_or_default());
+    let mut conn = state.redis.get().await?;
+    let cached: Option<Value> = conn
+        .get::<_, Option<String>>(&key)
+        .await?
+        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok());
+    if !refresh && let Some(v) = &cached {
+        return Ok(v["keys"].as_array().cloned().unwrap_or_default());
+    }
+    if refresh && cached.is_some() {
+        // Only one forced refresh per throttle window; otherwise serve the cache.
+        let throttle = format!("{key}:refreshed");
+        let allowed: bool = redis::cmd("SET")
+            .arg(&throttle)
+            .arg(1u8)
+            .arg("NX")
+            .arg("EX")
+            .arg(REFRESH_THROTTLE_SECS)
+            .query_async(&mut conn)
+            .await?;
+        if !allowed {
+            return Ok(cached
+                .map(|v| v["keys"].as_array().cloned().unwrap_or_default())
+                .unwrap_or_default());
         }
     }
     let doc = fetch(uri).await?;
-    let mut conn = state.redis.get().await?;
     let _: () = conn.set_ex(&key, doc.to_string(), JWKS_CACHE_SECS).await?;
     Ok(doc["keys"].as_array().cloned().unwrap_or_default())
+}
+
+/// Drop the cached JWKS (e.g. after an admin changed `jwks_uri`).
+pub async fn forget(state: &AppState, client: &Client) -> AppResult<()> {
+    let key = cache_keys::client_jwks(client.tenant_id, client.id);
+    let mut conn = state.redis.get().await?;
+    let _: () = conn.del(&[key.clone(), format!("{key}:refreshed")]).await?;
+    Ok(())
 }
 
 async fn fetch(uri: &str) -> AppResult<Value> {
