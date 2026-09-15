@@ -24,7 +24,7 @@ function ErrorPage() {
       <Title sub={t("error.description")}>{t("error.title")}</Title>
       <Alert tone="error">
         {description ?? t("common.error_generic")}
-        {code && <span className="mt-1 block font-mono text-[0.8125rem] opacity-80">{code}</span>}
+        {code && <span className="mt-1 block font-mono text-[0.8125rem]">{code}</span>}
       </Alert>
     </AuthShell>
   );

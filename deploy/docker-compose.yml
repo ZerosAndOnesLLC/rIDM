@@ -123,6 +123,8 @@ services:
       MP_SMTP_AUTH_ALLOW_INSECURE: "1"
     ports:
       - "${RIDM_MAILPIT_UI_PORT:-8025}:8025"
+      # SMTP on the host too, for an API running outside compose (dev, e2e).
+      - "${RIDM_MAILPIT_SMTP_PORT:-1025}:1025"
     restart: unless-stopped
 
   api-dev:

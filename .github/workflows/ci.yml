@@ -171,6 +171,87 @@ jobs:
           path: ui/out
           retention-days: 7
 
+  ui-e2e:
+    name: ui-e2e
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_DB: ridm
+          POSTGRES_USER: ridm
+          POSTGRES_PASSWORD: ridm
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ridm -d ridm"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:8.10.1-alpine3.23
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      mailpit:
+        image: axllent/mailpit:v1.31.1
+        ports: ["1025:1025", "8025:8025"]
+    env:
+      DATABASE_URL: postgres://ridm:ridm@localhost:5432/ridm
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: npm ci
+        working-directory: ui
+        run: npm ci
+      - name: playwright browsers
+        working-directory: ui
+        run: npx playwright install --with-deps chromium
+      - name: redis-cli (global setup clears the tenant cache)
+        run: sudo apt-get update -q && sudo apt-get install -y -q redis-tools
+      - name: build api
+        run: cargo build -p ridm-api --locked
+      - name: start api
+        env:
+          PUBLIC_URL: http://localhost:8090
+          UI_URL: http://localhost:3110
+          BIND_ADDR: 127.0.0.1:8090
+          MASTER_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          COOKIE_SECURE: "false"
+          MIGRATE_ON_START: "true"
+          SMTP_HOST: localhost
+          SMTP_PORT: "1025"
+          SMTP_SECURITY: none
+          SMTP_FROM: "rIDM <no-reply@ridm.local>"
+          BOOTSTRAP_ADMIN_EMAIL: admin@ridm.local
+          BOOTSTRAP_ADMIN_PASSWORD: ChangeMe-Now-1234-e2e
+        run: |
+          nohup target/debug/ridm-api > api.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf localhost:8090/readyz && break; sleep 2; done
+          curl -sf localhost:8090/readyz
+      - name: playwright
+        working-directory: ui
+        env:
+          CI: "true"
+          E2E_API_URL: http://localhost:8090
+          E2E_MAILPIT_URL: http://localhost:8025
+          E2E_DATABASE_URL: postgres://ridm:ridm@localhost:5432/ridm
+          E2E_REDIS_URL: redis://localhost:6379
+        run: npm run e2e
+      - name: api log
+        if: failure()
+        run: tail -200 api.log
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report
+          path: ui/playwright-report
+
   packaging:
     name: packaging
     runs-on: ubuntu-latest

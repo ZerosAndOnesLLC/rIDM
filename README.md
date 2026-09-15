@@ -170,6 +170,10 @@ npm run build          # static export to ui/out
 `NEXT_PUBLIC_API_URL` is empty by default (same origin, for the embedded single-binary
 mode). Set it at build time when hosting `ui/out` on a separate static host or CDN.
 
+`npm run e2e` runs the Playwright suite (password, magic-link, registration, recovery,
+consent and logout journeys, with axe-core accessibility checks on every page) against
+a running API and Mailpit; see [`ui/e2e/README.md`](ui/e2e/README.md).
+
 The end-user pages live under `ui/src/app`: `/login/`, `/register/`, `/invite/`,
 `/consent/`, `/mfa/`, `/recover/`, `/verify/`, `/logout/`, `/device/` and `/error/`.
 Every page is driven by query parameters (`tenant`, `flow`, `token`, ...), loads the
