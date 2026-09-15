@@ -269,7 +269,7 @@ Operations
 - [x] 3.2 Discovery document, complete and accurate for every supported feature.
 - [x] 3.3 `/authorize`: full validation (client, exact redirect_uri incl. loopback rules for native, response_type=code, scope, state, nonce, PKCE, prompt incl. `create`, max_age, acr_values, login_hint, ui_locales, `claims` param, `resource` indicators, `response_mode` query|fragment|form_post|jwt); SSO-session check → code or `login_flow` redirect.
 - [x] 3.4 `/token`: authorization_code (+PKCE), refresh_token (rotation), client_credentials (service account roles), with client auth basic/post/private_key_jwt; audience-scoped access tokens for resource servers.
-- [ ] 3.5 `/userinfo`, `/introspect`, `/revoke`, `/end_session` (RP-initiated logout), back-channel logout and front-channel logout.
+- [x] 3.5 `/userinfo`, `/introspect`, `/revoke`, `/end_session` (RP-initiated logout), back-channel logout and front-channel logout.
 - [ ] 3.6 PAR (RFC 9126), JAR (RFC 9101), JARM.
 - [ ] 3.7 Dynamic client registration (RFC 7591) and management (RFC 7592) with per-tenant policy (open|initial-access-token|disabled).
 - [ ] 3.8 Client secret rotation (two active secrets, grace window) and `jwks_uri` refresh.

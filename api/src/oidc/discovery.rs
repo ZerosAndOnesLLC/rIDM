@@ -50,12 +50,12 @@ pub struct Capabilities {
 
 pub const CAPABILITIES: Capabilities = Capabilities {
     authorization_code: true,
-    userinfo: false,
-    introspection: false,
-    revocation: false,
-    end_session: false,
-    backchannel_logout: false,
-    frontchannel_logout: false,
+    userinfo: true,
+    introspection: true,
+    revocation: true,
+    end_session: true,
+    backchannel_logout: true,
+    frontchannel_logout: true,
     form_post: false,
     claims_parameter: false,
     par: false,
@@ -226,7 +226,8 @@ pub fn build(
         id_token_signing_alg_values_supported: signing_algs(),
         id_token_encryption_alg_values_supported: vec!["RSA-OAEP-256", "RSA-OAEP"],
         id_token_encryption_enc_values_supported: vec!["A256GCM", "A128GCM"],
-        userinfo_signing_alg_values_supported: caps.userinfo.then(signing_algs),
+        // userinfo responses are plain JSON (no signed userinfo yet).
+        userinfo_signing_alg_values_supported: None,
         token_endpoint_auth_methods_supported: auth_methods.clone(),
         token_endpoint_auth_signing_alg_values_supported: signing_algs(),
         introspection_endpoint_auth_methods_supported: caps

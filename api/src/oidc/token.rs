@@ -141,6 +141,17 @@ async fn load_subject(
     })
 }
 
+/// Mappers applying to a client (tenant-wide plus its own), cached.
+pub async fn effective_mappers_for(
+    state: &AppState,
+    tenant_id: Uuid,
+    client: &Client,
+) -> Result<Vec<ClaimMapper>, AppError> {
+    effective_mappers(state, tenant_id, client)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
 async fn effective_mappers(
     state: &AppState,
     tenant_id: Uuid,

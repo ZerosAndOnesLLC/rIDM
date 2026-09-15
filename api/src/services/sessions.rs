@@ -232,3 +232,24 @@ pub fn remaining(session: &SsoSession) -> Duration {
         .max(0);
     Duration::from_secs(secs as u64)
 }
+
+/// Remember that `client_id` (public id) took part in this session.
+pub async fn add_client(state: &AppState, session: &SsoSession, client_id: &str) -> AppResult<()> {
+    let key = keys::session_clients(session.tenant_id, session.id);
+    let mut conn = state.redis.get().await?;
+    let _: () = conn.sadd(&key, client_id).await?;
+    let ttl = remaining(session).as_secs().max(60);
+    let _: () = conn.expire(&key, ttl as i64).await?;
+    Ok(())
+}
+
+pub async fn clients_of(
+    state: &AppState,
+    tenant_id: Uuid,
+    session_id: Uuid,
+) -> AppResult<Vec<String>> {
+    let mut conn = state.redis.get().await?;
+    Ok(conn
+        .smembers(keys::session_clients(tenant_id, session_id))
+        .await?)
+}

@@ -91,3 +91,12 @@ pub fn client_assertion_jti(tenant_id: Uuid, client_id: Uuid, jti: &str) -> Stri
 pub fn code_family(tenant_id: Uuid, code_hash: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:code_family:{code_hash}")
 }
+
+/// Clients that obtained tokens within a browser session (for logout notification).
+pub fn session_clients(tenant_id: Uuid, session_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:session:{session_id}:clients")
+}
+
+pub fn logout_flow(tenant_id: Uuid, flow_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:logout:{flow_id}")
+}

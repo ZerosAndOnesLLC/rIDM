@@ -633,6 +633,7 @@ pub async fn issue_code(
         },
     )
     .await?;
+    sessions::add_client(state, session, &client.client_id).await?;
     state.events.publish(Event::new(
         Some(tenant.id()),
         Actor::User {

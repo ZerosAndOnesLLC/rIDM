@@ -10,6 +10,7 @@ pub mod jwe;
 pub mod key_encryptor;
 pub mod keys;
 pub mod login_flows;
+pub mod logout;
 pub mod master_key;
 pub mod password;
 pub mod profile_schema;
