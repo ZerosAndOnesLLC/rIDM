@@ -72,6 +72,14 @@ change, never the initial password), an email address change (sent to the previo
 address), and MFA changes once Phase 7 lands. Each notice can be switched off per
 tenant under `settings.notifications`.
 
+The admin API (`/admin/...`) is guarded by `ridm:<resource>:<action>` permissions that
+every tenant carries on a built-in resource server, `urn:ridm:admin`, with five built-in
+roles: `ridm:owner`, `ridm:admin`, `ridm:user-manager`, `ridm:client-manager` and
+`ridm:viewer`. Roles held in `master` reach every tenant; roles held in any other
+tenant reach that tenant only. Permissions are re-read from the caller's effective
+roles on every request, so revoking a role takes effect immediately. See
+[Admin API access](#admin-api-access).
+
 ## Quick start (docker-compose)
 
 ```bash
@@ -157,6 +165,38 @@ ridm-api bootstrap --email admin@example.com [--username admin] [--password-stdi
 Bootstrap is idempotent: once any user in `master` holds the `ridm:owner` role it does
 nothing. The password must satisfy the master tenant's policy, and admins created
 from the environment must change it at first login.
+
+### Admin API access
+
+Admin endpoints take a bearer access token in the `Authorization` header (never a
+query or form parameter). The token may come from any tenant, but it must:
+
+- carry `urn:ridm:admin` in `aud`, which the token endpoint only grants to clients
+  that list it in `allowed_audiences` (it is never implied, even for otherwise
+  unrestricted clients);
+- belong to an active user, or to a machine client's service-account user, whose
+  effective roles grant at least one `ridm:*` permission;
+- still have a live browser session when it was issued in one, so signing out ends
+  admin access before the token expires.
+
+Missing or invalid tokens get `401` with a `WWW-Authenticate: Bearer` challenge; a valid
+token without the needed permission gets `403` `application/problem+json`. Tokens from
+`master` are global; tokens from any other tenant only reach that tenant.
+
+Every tenant is seeded with the same permission catalogue and built-in roles, which are
+immutable (they cannot be renamed or deleted, but can be assigned and used as
+composites). Custom roles may be granted any catalogue permission or a wildcard such as
+`ridm:users:*` or `ridm:*` on the `urn:ridm:admin` resource server. The catalogue and
+the roles are served at `GET /admin/permissions`; `GET /admin/me` reports the caller's
+scope, roles and permissions.
+
+| Role | Grants |
+|------|--------|
+| `ridm:owner` | everything, including creating, deleting and importing tenants |
+| `ridm:admin` | everything except `ridm:tenants:create`, `ridm:tenants:delete`, `ridm:tenants:import` |
+| `ridm:user-manager` | users, invitations, groups; read roles, tenant settings and audit |
+| `ridm:client-manager` | clients, scopes, claim mappers, resource servers; read roles, tenant settings and audit |
+| `ridm:viewer` | every `*:read` permission |
 
 ### UI
 

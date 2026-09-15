@@ -5,7 +5,8 @@ use uuid::Uuid;
 
 use crate::models::{NewRole, Principal, Role, RoleAssignment, RoleUpdate};
 
-const COLUMNS: &str = "id, tenant_id, client_id, name, description, created_at, updated_at";
+const COLUMNS: &str =
+    "id, tenant_id, client_id, name, description, built_in, created_at, updated_at";
 const ASSIGNMENT_COLUMNS: &str = "id, tenant_id, role_id, user_id, group_id, org_id, created_at";
 
 pub async fn find_by_id<'e>(
@@ -223,7 +224,8 @@ pub async fn composites_of<'e>(
     parent_role_id: Uuid,
 ) -> Result<Vec<Role>, sqlx::Error> {
     sqlx::query_as::<_, Role>(
-        "SELECT r.id, r.tenant_id, r.client_id, r.name, r.description, r.created_at, r.updated_at \
+        "SELECT r.id, r.tenant_id, r.client_id, r.name, r.description, r.built_in, r.created_at, \
+         r.updated_at \
          FROM role_composites rc JOIN roles r ON r.tenant_id = rc.tenant_id AND r.id = rc.child_role_id \
          WHERE rc.tenant_id = $1 AND rc.parent_role_id = $2 ORDER BY r.name",
     )
@@ -283,7 +285,8 @@ pub async fn effective_roles_of_user<'e>(
             UNION \
             SELECT rc.child_role_id, e.depth + 1 FROM role_composites rc \
               JOIN effective e ON rc.parent_role_id = e.role_id WHERE rc.tenant_id = $1 AND e.depth < 64) \
-         SELECT r.id, r.tenant_id, r.client_id, r.name, r.description, r.created_at, r.updated_at \
+         SELECT r.id, r.tenant_id, r.client_id, r.name, r.description, r.built_in, r.created_at, \
+         r.updated_at \
          FROM roles r JOIN (SELECT DISTINCT role_id FROM effective) e ON e.role_id = r.id \
          WHERE r.tenant_id = $1 ORDER BY r.name, r.id",
     )

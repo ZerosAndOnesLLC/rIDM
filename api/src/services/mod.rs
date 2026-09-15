@@ -1,3 +1,4 @@
+pub mod admin_access;
 pub mod auth_codes;
 pub mod bootstrap;
 pub mod captcha;

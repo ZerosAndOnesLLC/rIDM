@@ -26,6 +26,11 @@ pub fn effective_roles(tenant_id: Uuid, version: &str, user_id: Uuid) -> String 
     format!("{PREFIX}:t:{tenant_id}:roles:{version}:user:{user_id}")
 }
 
+/// Admin permissions of a user, derived from effective roles (same version token).
+pub fn admin_permissions(tenant_id: Uuid, version: &str, user_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:admin_perms:{version}:user:{user_id}")
+}
+
 pub fn profile_schema(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:profile_schema")
 }

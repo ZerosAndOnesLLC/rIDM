@@ -225,7 +225,15 @@ async fn resolve_audience(
                 format!("unknown resource `{identifier}`"),
             ));
         };
-        if !client.allowed_audiences.is_empty() && !client.allowed_audiences.contains(identifier) {
+        // Built-in resource servers (the admin API) are never implied: a client
+        // has to be allowed the audience explicitly, even when it is otherwise
+        // unrestricted, so that a third-party client cannot mint admin tokens.
+        let allowed = if rs.built_in {
+            client.allowed_audiences.contains(identifier)
+        } else {
+            client.allowed_audiences.is_empty() || client.allowed_audiences.contains(identifier)
+        };
+        if !allowed {
             return Err(OAuthError::new(
                 OAuthErrorCode::InvalidTarget,
                 format!("resource `{identifier}` is not allowed for this client"),

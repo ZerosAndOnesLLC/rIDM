@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::models::{Permission, ResourceServer};
 
 const RS_COLUMNS: &str = "id, tenant_id, identifier, name, token_ttl_secs, signing_alg, \
-    allow_offline_access, created_at, updated_at";
+    allow_offline_access, built_in, created_at, updated_at";
 const PERM_COLUMNS: &str = "id, tenant_id, resource_server_id, name, description, created_at";
 
 pub async fn list<'e>(
@@ -68,7 +68,7 @@ pub async fn insert<'e>(
         "INSERT INTO resource_servers (id, tenant_id, identifier, name, token_ttl_secs, signing_alg, \
          allow_offline_access) VALUES ($1, $2, $3, $4, $5, $6, $7) \
          RETURNING id, tenant_id, identifier, name, token_ttl_secs, signing_alg, allow_offline_access, \
-         created_at, updated_at",
+         built_in, created_at, updated_at",
     )
     .bind(id)
     .bind(tenant_id)

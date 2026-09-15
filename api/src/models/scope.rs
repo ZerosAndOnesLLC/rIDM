@@ -54,6 +54,8 @@ pub struct ResourceServer {
     pub token_ttl_secs: Option<i32>,
     pub signing_alg: Option<String>,
     pub allow_offline_access: bool,
+    /// Seeded by a migration (`urn:ridm:admin`); cannot be changed or deleted.
+    pub built_in: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

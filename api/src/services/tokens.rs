@@ -404,6 +404,34 @@ pub async fn issue_id_token(state: &AppState, req: IdTokenRequest<'_>) -> AppRes
     })
 }
 
+/// The user an access token was issued to. `sub` is the user id for public
+/// subjects; pairwise subjects cannot be reversed, so those resolve through the
+/// session (`sid`) the token was issued in. `Ok(None)` for client-only tokens
+/// or when the session has ended.
+pub async fn subject_user_id(
+    state: &AppState,
+    tenant: &Tenant,
+    claims: &Map<String, Value>,
+) -> AppResult<Option<Uuid>> {
+    if let Some(id) = claims
+        .get("sub")
+        .and_then(Value::as_str)
+        .and_then(|s| Uuid::parse_str(s).ok())
+    {
+        return Ok(Some(id));
+    }
+    let Some(sid) = claims
+        .get("sid")
+        .and_then(Value::as_str)
+        .and_then(|s| Uuid::parse_str(s).ok())
+    else {
+        return Ok(None);
+    };
+    let session =
+        crate::services::sessions::get(state, tenant.id, sid, &tenant.settings.session).await?;
+    Ok(session.map(|s| s.user_id))
+}
+
 /// What a verified token must satisfy.
 #[derive(Debug, Clone)]
 pub struct VerifyOptions {

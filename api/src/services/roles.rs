@@ -88,6 +88,7 @@ pub async fn update(
         patch.name = Some(validate_name(n)?);
     }
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    ensure_not_built_in(&mut tx, tenant_id, id).await?;
     let role = repos::roles::update(&mut *tx, tenant_id, id, &patch)
         .await
         .map_err(|e| match AppError::from_db(e) {
@@ -110,6 +111,7 @@ pub async fn update(
 
 pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -> AppResult<()> {
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    ensure_not_built_in(&mut tx, tenant_id, id).await?;
     let ok = repos::roles::delete(&mut *tx, tenant_id, id).await?;
     tx.commit().await?;
     if !ok {
@@ -122,6 +124,22 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
         EventKind::RoleDeleted { role_id: id },
     ));
     Ok(())
+}
+
+/// Built-in admin roles (`ridm:*`) are seeded by migrations and are immutable;
+/// they can still be assigned and used as composites.
+async fn ensure_not_built_in(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: Uuid,
+    id: Uuid,
+) -> AppResult<()> {
+    match repos::roles::find_by_id(&mut **tx, tenant_id, id).await? {
+        Some(r) if r.built_in => Err(AppError::Forbidden(
+            "built-in roles cannot be renamed or deleted".into(),
+        )),
+        Some(_) => Ok(()),
+        None => Err(AppError::NotFound("role")),
+    }
 }
 
 fn principal_ids(p: Principal) -> (Option<Uuid>, Option<Uuid>) {

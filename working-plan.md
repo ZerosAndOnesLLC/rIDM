@@ -291,11 +291,11 @@ Operations
 - [x] 4.12 Tests (trusted-device MFA skip is covered with 7.7 once a second factor exists): flow state machine transitions (every step, every error), CSRF on each step, brute-force lockout timing, CAPTCHA gate, magic-link/OTP single-use + expiry, registration with schema validation, invitation acceptance, recovery token single-use, session idle/absolute/concurrent limits, trusted-device skip, locale negotiation, message queue retry/dead-letter with mock senders. Playwright e2e: password login, magic link (via Mailpit), registration, recovery, consent, logout.
 
 ### Phase 5 — Admin API
-- [ ] 5.1 Admin auth middleware + admin permission model (`ridm:tenants:*`, `ridm:users:read|write`, `ridm:clients:*`, `ridm:keys:*`, `ridm:audit:read`, …) with built-in admin roles: owner, admin, user-manager, client-manager, viewer.
+- [x] 5.1 Admin auth middleware + admin permission model (`ridm:tenants:*`, `ridm:users:read|write`, `ridm:clients:*`, `ridm:keys:*`, `ridm:audit:read`, …) with built-in admin roles: owner, admin, user-manager, client-manager, viewer. Built as: per-tenant built-in resource server `urn:ridm:admin` + permission catalogue + `ridm:*` roles seeded by migration (Rust mirror in `services/admin_access.rs`, contract-tested); `AdminCtx` bearer extractor (audience-bound, session-bound, permissions re-resolved per request, master = global scope); `GET /admin/me`, `GET /admin/permissions`.
 - [ ] 5.2 Tenants: CRUD, settings (password, session, MFA, registration, locale, branding, captcha, ip rules, feature flags).
 - [ ] 5.3 Clients: CRUD, type-driven defaults, secret generate/rotate (reveal-once), URIs, grants, scopes, audiences, token settings, encryption, logout URIs, CORS, service account.
 - [ ] 5.4 Users: cursor-paginated list/search, CRUD, set/temp password, force reset, enable/disable/unlock, sessions + revoke, credentials, trusted devices, PATs, role/group assignment, federated identities, consents, per-user audit.
-- [ ] 5.5 Groups, roles, resource servers + permissions, scopes, claim mappers, identity providers CRUD.
+- [ ] 5.5 Groups, roles, resource servers + permissions, scopes, claim mappers, identity providers CRUD. Guard `built_in` resource servers/permissions from change or deletion; bump the tenant roles version on every permission grant/revoke (admin permissions are cached under it); use `AdminCtx::require_can_grant` so nobody grants permissions they do not hold.
 - [ ] 5.6 Keys: list, rotate, revoke. Master-key rotation status.
 - [ ] 5.7 Invitations: create/list/revoke/resend. Bulk user import (CSV/JSON, legacy hashes) and export.
 - [ ] 5.8 Messaging admin: SMTP/SMS settings with test-send, template CRUD per locale with preview.

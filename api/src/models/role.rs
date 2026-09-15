@@ -12,6 +12,8 @@ pub struct Role {
     pub client_id: Option<Uuid>,
     pub name: String,
     pub description: Option<String>,
+    /// Seeded by a migration (the `ridm:*` admin roles); cannot be renamed or deleted.
+    pub built_in: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

@@ -1,12 +1,15 @@
 //! Tenant lifecycle. `tenants` is global, so no RLS binding is needed, but
 //! every write invalidates the tenant cache on all nodes.
 
+use std::sync::Arc;
+
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use serde::Deserialize;
 use uuid::Uuid;
 
+use crate::cache::keys;
 use crate::error::{AppError, AppResult};
-use crate::middleware::{is_valid_slug, tenant_cache_keys};
+use crate::middleware::{TENANT_CACHE_TTL, is_valid_slug, tenant_cache_keys};
 use crate::models::{MASTER_TENANT_ID, Tenant, TenantSettings, TenantStatus};
 use crate::repos;
 use crate::services::locale;
@@ -60,6 +63,17 @@ pub async fn create(state: &AppState, actor: Actor, input: NewTenant) -> AppResu
         },
     ));
     Ok(tenant)
+}
+
+/// Cached lookup by id (same cache the slug resolver uses; evicted on every write).
+pub async fn get_cached(state: &AppState, id: Uuid) -> AppResult<Option<Arc<Tenant>>> {
+    let db = state.db.clone();
+    state
+        .cache
+        .get_or_load(&keys::tenant_by_id(id), TENANT_CACHE_TTL, || async move {
+            Ok(repos::tenants::find_by_id(&db, id).await?)
+        })
+        .await
 }
 
 pub async fn get(state: &AppState, id: Uuid) -> AppResult<Tenant> {

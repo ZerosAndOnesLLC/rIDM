@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod branding;
 pub mod flows;
 pub mod health;
