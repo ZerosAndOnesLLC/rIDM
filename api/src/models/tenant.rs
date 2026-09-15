@@ -49,8 +49,56 @@ pub struct TenantSettings {
     pub keys: KeyPolicy,
     pub discovery: DiscoverySettings,
     pub dcr: DcrPolicy,
+    pub auth: AuthMethods,
+    pub lockout: LockoutPolicy,
     /// Custom issuer host (Phase 9.3). `None` means `{PUBLIC_URL}/t/{slug}`.
     pub custom_domain: Option<String>,
+}
+
+/// Which first-factor login methods the tenant offers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AuthMethods {
+    pub password: bool,
+    pub magic_link: bool,
+    pub email_otp: bool,
+    pub sms_otp: bool,
+    pub passkey: bool,
+}
+
+impl Default for AuthMethods {
+    fn default() -> Self {
+        Self {
+            password: true,
+            magic_link: false,
+            email_otp: false,
+            sms_otp: false,
+            passkey: false,
+        }
+    }
+}
+
+/// Brute-force protection.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LockoutPolicy {
+    /// Consecutive failures before a user is temporarily locked (0 = off).
+    pub max_failures: u32,
+    pub lock_minutes: u32,
+    /// Failures from one IP within the window before it is throttled (0 = off).
+    pub ip_max_failures: u32,
+    pub ip_window_minutes: u32,
+}
+
+impl Default for LockoutPolicy {
+    fn default() -> Self {
+        Self {
+            max_failures: 10,
+            lock_minutes: 15,
+            ip_max_failures: 100,
+            ip_window_minutes: 15,
+        }
+    }
 }
 
 /// Dynamic client registration policy (RFC 7591).

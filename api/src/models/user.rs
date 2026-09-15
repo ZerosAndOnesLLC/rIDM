@@ -39,6 +39,7 @@ pub struct User {
     pub failed_attempts: i32,
     pub locked_until: Option<DateTime<Utc>>,
     pub deleted_at: Option<DateTime<Utc>>,
+    pub terms_accepted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -139,6 +140,7 @@ mod tests {
             failed_attempts: 0,
             locked_until: None,
             deleted_at: None,
+            terms_accepted_at: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

@@ -6,6 +6,7 @@ pub mod clients;
 pub mod consents;
 pub mod dcr;
 pub mod denylist;
+pub mod flows;
 pub mod groups;
 pub mod jwe;
 pub mod key_encryptor;

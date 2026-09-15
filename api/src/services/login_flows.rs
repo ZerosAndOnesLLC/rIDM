@@ -78,7 +78,7 @@ impl ResponseMode {
     }
 }
 
-/// Where the flow currently is. Phase 4 adds the intermediate steps.
+/// Where the flow currently is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FlowStage {
@@ -86,9 +86,17 @@ pub enum FlowStage {
     Authenticate,
     /// User must register (`prompt=create`).
     Register,
+    /// Password expired or flagged: a new one is required before continuing.
+    PasswordChange,
+    /// Second factor required (Phase 7).
+    Mfa,
+    /// Required profile attributes are missing.
+    Profile,
+    /// Terms of service must be accepted.
+    Terms,
     /// Authenticated; consent for `pending_scopes` is required.
     Consent,
-    /// Everything done; the completion redirect can be built.
+    /// Everything done; `GET /flows/{id}/finish` completes the authorization.
     Done,
 }
 
@@ -107,6 +115,12 @@ pub struct LoginFlow {
     pub require_auth_after: Option<DateTime<Utc>>,
     /// Opaque CSRF token bound to the flow; every step must echo it.
     pub csrf: String,
+    /// Failed authentication attempts within this flow.
+    #[serde(default)]
+    pub attempts: u32,
+    /// Method that authenticated the user in this flow (`pwd`, `otp`, ...).
+    #[serde(default)]
+    pub amr: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
 }

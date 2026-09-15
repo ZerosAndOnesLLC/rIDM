@@ -172,6 +172,23 @@ pub enum EventKind {
         child_role_id: Uuid,
     },
 
+    // Authentication
+    LoginSucceeded {
+        user_id: Uuid,
+        method: String,
+    },
+    LoginFailed {
+        identifier: String,
+        reason: String,
+    },
+    UserLocked {
+        user_id: Uuid,
+        until_secs: i64,
+    },
+    TermsAccepted {
+        user_id: Uuid,
+    },
+
     // Sessions and authorization
     SessionCreated {
         session_id: Uuid,
@@ -253,6 +270,10 @@ impl EventKind {
             Self::RoleUnassigned { .. } => "role.unassigned",
             Self::RoleCompositeAdded { .. } => "role.composite_added",
             Self::RoleCompositeRemoved { .. } => "role.composite_removed",
+            Self::LoginSucceeded { .. } => "login.succeeded",
+            Self::LoginFailed { .. } => "login.failed",
+            Self::UserLocked { .. } => "user.locked",
+            Self::TermsAccepted { .. } => "user.terms_accepted",
             Self::SessionCreated { .. } => "session.created",
             Self::SessionRevoked { .. } => "session.revoked",
             Self::AuthorizationGranted { .. } => "authorization.granted",
