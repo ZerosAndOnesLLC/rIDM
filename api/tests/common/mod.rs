@@ -7,9 +7,9 @@
 //! Set `RIDM_TEST_DATABASE_URL` and `RIDM_TEST_REDIS_URL` to use existing
 //! servers (CI service containers, or the docker-compose stack). Otherwise
 //! testcontainers starts `postgres:18.6-alpine` and `redis:8.10.1-alpine3.23`
-//! as named, reusable containers (`ridm-test-postgres`, `ridm-test-redis`) that
+//! as named, reusable containers (`ridm-test-postgres`, `ridm-test-valkey`) that
 //! later test binaries and runs pick up again. Remove them with
-//! `docker rm -f ridm-test-postgres ridm-test-redis`.
+//! `docker rm -f ridm-test-postgres ridm-test-valkey`.
 
 #![allow(dead_code)]
 
@@ -28,7 +28,9 @@ use tokio::sync::OnceCell;
 use uuid::Uuid;
 
 pub const POSTGRES_TAG: &str = "18.6-alpine";
-pub const REDIS_TAG: &str = "8.10.1-alpine3.23";
+/// Valkey speaks the Redis protocol; the testcontainers `redis` module drives it.
+pub const VALKEY_IMAGE: &str = "valkey/valkey";
+pub const VALKEY_TAG: &str = "9.1.2-alpine3.24";
 
 /// Every `#[tokio::test]` runs on its own short-lived runtime. Anything that
 /// must outlive a single test (containers, their Docker client, the
@@ -84,8 +86,9 @@ async fn start_infra() -> Infra {
                 .await
                 .expect("start postgres container");
             let redis = Redis::default()
-                .with_tag(REDIS_TAG)
-                .with_container_name("ridm-test-redis")
+                .with_name(VALKEY_IMAGE)
+                .with_tag(VALKEY_TAG)
+                .with_container_name("ridm-test-valkey")
                 .with_label("dev.ridm.test", "true")
                 .with_reuse(ReuseDirective::Always)
                 .start()

@@ -84,11 +84,11 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U ridm -d ridm"
           --health-interval 5s --health-timeout 3s --health-retries 20
-      redis:
-        image: redis:8.10.1-alpine3.23
+      valkey:
+        image: valkey/valkey:9.1.2-alpine3.24
         ports: ["6379:6379"]
         options: >-
-          --health-cmd "redis-cli ping"
+          --health-cmd "valkey-cli ping"
           --health-interval 5s --health-timeout 3s --health-retries 20
     env:
       RIDM_TEST_DATABASE_URL: postgres://ridm:ridm@localhost:5432/ridm
@@ -114,11 +114,11 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U ridm -d ridm"
           --health-interval 5s --health-timeout 3s --health-retries 20
-      redis:
-        image: redis:8.10.1-alpine3.23
+      valkey:
+        image: valkey/valkey:9.1.2-alpine3.24
         ports: ["6379:6379"]
         options: >-
-          --health-cmd "redis-cli ping"
+          --health-cmd "valkey-cli ping"
           --health-interval 5s --health-timeout 3s --health-retries 20
     env:
       RIDM_TEST_DATABASE_URL: postgres://ridm:ridm@localhost:5432/ridm
@@ -185,11 +185,11 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U ridm -d ridm"
           --health-interval 5s --health-timeout 3s --health-retries 20
-      redis:
-        image: redis:8.10.1-alpine3.23
+      valkey:
+        image: valkey/valkey:9.1.2-alpine3.24
         ports: ["6379:6379"]
         options: >-
-          --health-cmd "redis-cli ping"
+          --health-cmd "valkey-cli ping"
           --health-interval 5s --health-timeout 3s --health-retries 20
       mailpit:
         image: axllent/mailpit:v1.31.1
@@ -212,7 +212,7 @@ jobs:
       - name: playwright browsers
         working-directory: ui
         run: npx playwright install --with-deps chromium
-      - name: redis-cli (global setup clears the tenant cache)
+      - name: redis-cli (protocol-compatible client; global setup clears the tenant cache in Valkey)
         run: sudo apt-get update -q && sudo apt-get install -y -q redis-tools
       - name: build api
         run: cargo build -p ridm-api --locked

@@ -13,7 +13,7 @@ end-user account console.
 
 ## Why rIDM
 
-- **Cloud-agnostic.** Runs anywhere a container, Postgres, and Redis run: bare metal,
+- **Cloud-agnostic.** Runs anywhere a container, Postgres, and Valkey run: bare metal,
   docker-compose, Kubernetes, any cloud. No provider-specific dependencies in the
   default build.
 - **Multi-tenant from the first migration.** Every tenant has its own issuer
@@ -25,10 +25,10 @@ end-user account console.
   back-channel and front-channel logout, token exchange, DPoP. No implicit, hybrid, or
   password grants.
 - **Single binary.** The API embeds the built UI, so a deployment is one image plus
-  Postgres and Redis. The UI can also be hosted on any static host or CDN.
+  Postgres and Valkey. The UI can also be hosted on any static host or CDN.
 - **Config as code.** Every tenant exports to one JSON document and imports
   idempotently, for GitOps and reproducible environments.
-- **Built for scale.** Stateless API nodes, cache-first reads, short-lived JWTs, Redis
+- **Built for scale.** Stateless API nodes, cache-first reads, short-lived JWTs, Valkey
   for sessions and flow state, indexes that lead with `tenant_id`.
 
 ## What works today
@@ -91,7 +91,7 @@ curl http://localhost:8080/readyz
 The `dev` profile adds [Mailpit](http://localhost:8025) to catch outbound email and
 seeds a `master` tenant, a global admin, and a sample client on first run. Use
 `--profile prod` for a stack without those extras. Ports are overridable with
-`RIDM_HTTP_PORT`, `RIDM_PG_PORT`, `RIDM_REDIS_PORT`, `RIDM_MAILPIT_UI_PORT`.
+`RIDM_HTTP_PORT`, `RIDM_PG_PORT`, `RIDM_VALKEY_PORT`, `RIDM_MAILPIT_UI_PORT`.
 
 ## Configuration
 
@@ -121,7 +121,7 @@ Requirements: Rust 1.98+ (pinned in `rust-toolchain.toml`), Node.js 24 LTS, Dock
 
 ```bash
 cp .env.example .env                           # set MASTER_KEY and the URLs
-docker compose -f deploy/docker-compose.yml up -d postgres redis
+docker compose -f deploy/docker-compose.yml up -d postgres valkey
 DATABASE_URL=postgres://ridm_migrator:ridm_migrator@localhost:5432/ridm \
   sqlx migrate run --source api/migrations     # or: cargo run -p ridm-api -- migrate
 cargo run -p ridm-api                          # runs as the DML-only ridm_app role
@@ -244,7 +244,7 @@ The image is distroless, runs as non-root, has no dynamic OpenSSL dependency, an
 
 Every pull request runs the `ci` workflow: rustfmt, `cargo check`, clippy with warnings
 denied, `cargo audit`, `cargo deny`, ESLint, `tsc`, unit tests, integration tests
-against Postgres and Redis, the UI static export, and a container image boot test.
+against Postgres and Valkey, the UI static export, and a container image boot test.
 `main` is protected; all checks are required. Dependencies are exact-pinned and updated
 by Renovate.
 
@@ -252,7 +252,7 @@ by Renovate.
 
 | Path | Purpose |
 |------|---------|
-| `api/` | `ridm-api`: the identity server (axum, sqlx, Redis) |
+| `api/` | `ridm-api`: the identity server (axum, sqlx, Valkey) |
 | `api/migrations/` | sqlx migrations (forward-only) |
 | `crates/ridm-core/` | shared types, provider traits, event definitions |
 | `ui/` | Next.js 16 static export: admin console, account console, auth pages |

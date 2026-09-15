@@ -3,10 +3,10 @@
 Playwright drives the real end-user pages against a running rIDM API, with
 [Mailpit](https://mailpit.axllent.org/) catching the emails the flows send.
 
-Prerequisites (the compose `dev` profile provides Postgres, Redis and Mailpit):
+Prerequisites (the compose `dev` profile provides Postgres, Valkey and Mailpit):
 
 ```bash
-docker compose -f deploy/docker-compose.yml --profile dev up -d postgres redis mailpit
+docker compose -f deploy/docker-compose.yml --profile dev up -d postgres valkey mailpit
 # API on :8090 that sends the browser to the dev UI and mail to Mailpit
 UI_URL=http://localhost:3110 SMTP_HOST=localhost SMTP_PORT=1025 SMTP_SECURITY=none \
   SMTP_FROM='rIDM <no-reply@ridm.local>' cargo run -p ridm-api

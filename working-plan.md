@@ -4,9 +4,9 @@ A modern, multi-tenant Identity Management (IDM) server: OpenID Connect provider
 JWT issuer, user/group/role management, MFA, and identity brokering, with a bundled
 admin UI and end-user account console.
 
-Stack: Rust (`api/`) + Next.js static export (`ui/`). Postgres + Redis.
+Stack: Rust (`api/`) + Next.js static export (`ui/`). Postgres + Valkey.
 
-Open source (MIT). Cloud-agnostic: runs anywhere a container, Postgres, and Redis run
+Open source (MIT). Cloud-agnostic: runs anywhere a container, Postgres, and Valkey run
 (bare metal, docker-compose, Kubernetes, any cloud). No provider-specific dependencies.
 
 Rules for executing this plan (from global CLAUDE.md): one sub-phase at a time,
@@ -21,7 +21,7 @@ no version bumps outside a release.
 |------|----------|-------|
 | HTTP framework | **axum 0.8** + tower-http | tower middleware composes cleanly for per-tenant extractors, rate limiting, tracing. Alternative: actix-web for parity with tv/api. Decide before Phase 1. |
 | DB | Postgres via **sqlx 0.9** (runtime-tokio, tls-rustls-ring) | Migrations via `sqlx migrate`. No `SELECT *`. |
-| Cache / sessions | **Redis** (deadpool-redis) | Cache-first for tenants, clients, keys, sessions, rate limits, auth-flow state. Invalidate on every write. |
+| Cache / sessions | **Valkey** (Redis protocol via deadpool-redis; Redis 7.2+/8 also works) | Cache-first for tenants, clients, keys, sessions, rate limits, auth-flow state. Invalidate on every write. |
 | Tenancy model | **Shared DB, `tenant_id` on every tenant-scoped table** | Composite indexes lead with `tenant_id`. Postgres RLS enabled as defence-in-depth (`SET LOCAL app.tenant_id`). |
 | Tenant resolution | **Path prefix**: issuer = `https://{host}/t/{tenant_slug}` | Discovery at `/t/{slug}/.well-known/openid-configuration`. Custom domain per tenant in Phase 9 (host → tenant lookup, cached). |
 | Master tenant | Tenant `master` hosts global admins | Global admin roles live here; per-tenant admins live in their tenant. |
@@ -64,7 +64,7 @@ All versions are the latest **stable** release as of the date above. Verified by
 | Node.js | 24.21.0 (LTS) | 26.x is current but not LTS |
 | npm | 12.0.2 | |
 | PostgreSQL | 18.6 | minimum supported: 16 |
-| Redis | 8.10.1 | Valkey 9.1.2 is a drop-in alternative |
+| Valkey | 9.1.2 | image `valkey/valkey:9.1.2-alpine3.24`; Redis 8.x is protocol-compatible |
 | Helm | 4.3.0 | |
 
 ### Backend crates (`api/Cargo.toml`)
