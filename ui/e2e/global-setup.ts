@@ -1,4 +1,4 @@
-import { API, CHALLENGE, TENANT, clearTenantCache, mailpit, saveState, sql, t } from "./helpers";
+import { API, TENANT, clearTenantCache, mailpit, registerVerifiedUser, saveState, sql, t } from "./helpers";
 
 const UI_PORT = Number(process.env.E2E_UI_PORT ?? 3110);
 const UI = process.env.E2E_UI_URL ?? `http://localhost:${UI_PORT}`;
@@ -38,36 +38,7 @@ export default async function globalSetup() {
   const client_id = ((await reg.json()) as { client_id: string }).client_id;
 
   // A verified user, created through the registration flow like a real one.
-  const email = `e2e-${Date.now()}@example.com`;
-  const password = "correct-horse-battery-staple";
-  const q = new URLSearchParams({
-    response_type: "code",
-    client_id,
-    redirect_uri: `${UI}/callback/`,
-    scope: "openid",
-    state: "st",
-    code_challenge: CHALLENGE,
-    code_challenge_method: "S256",
-    prompt: "create",
-  });
-  const auth = await fetch(`${API}${t("/authorize")}?${q}`, { redirect: "manual" });
-  const flow = new URL(auth.headers.get("location") ?? "", UI).searchParams.get("flow");
-  if (!flow) throw new Error(`no flow from /authorize: ${auth.status}`);
-  const state = (await (await fetch(`${API}${t(`/flows/${flow}`)}`)).json()) as { csrf: string };
-  const res = await fetch(`${API}${t(`/flows/${flow}/register`)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ csrf: state.csrf, email, password, terms_accepted: true }),
-  });
-  if (!res.ok) throw new Error(`registration failed: ${res.status} ${await res.text()}`);
-  const mail = await mailpit.waitFor(email);
-  const token = new URL(mail.links.find((l) => l.includes("token="))!).searchParams.get("token");
-  const confirm = await fetch(`${API}${t("/verification/email/confirm")}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token }),
-  });
-  if (!confirm.ok) throw new Error(`verification failed: ${confirm.status} ${await confirm.text()}`);
+  const { email, password } = await registerVerifiedUser(client_id, UI);
 
   saveState({ ui: UI, client_id, email, password });
 }

@@ -53,18 +53,77 @@ export function sql(statement: string): string {
   }).trim();
 }
 
-/** Drop cached tenant documents so settings written by SQL take effect. */
+/**
+ * Run SQL against a tenant-scoped (row-level-secured) table. psql sends the
+ * whole string as one transaction, so the bypass stays local to it.
+ */
+export function tenantSql(statement: string): string {
+  // psql prints every statement's result; only the caller's (the last) matters.
+  return sql(`SELECT set_config('app.bypass_rls', 'on', true); ${statement}`).split("\n").pop() ?? "";
+}
+
+/** The tenant id, for statements that need it. */
+export function tenantId(): string {
+  return sql(`SELECT id FROM tenants WHERE slug = '${TENANT}'`);
+}
+
+/** Drop cached tenant documents and profile schemas so rows written by SQL take effect. */
 export function clearTenantCache() {
   try {
-    const keys = execFileSync("redis-cli", ["-u", REDIS_URL, "--scan", "--pattern", "ridm:*tenant*"], {
-      encoding: "utf8",
-    })
-      .split("\n")
-      .filter(Boolean);
-    if (keys.length) execFileSync("redis-cli", ["-u", REDIS_URL, "del", ...keys]);
+    const keys = ["ridm:*tenant*", "ridm:t:*:profile_schema"].flatMap((pattern) =>
+      execFileSync("redis-cli", ["-u", REDIS_URL, "--scan", "--pattern", pattern], { encoding: "utf8" })
+        .split("\n")
+        .filter(Boolean),
+    );
+    if (keys.length) {
+      execFileSync("redis-cli", ["-u", REDIS_URL, "del", ...keys]);
+      // Every API node also holds a short-lived in-process copy; the same
+      // pub/sub message the nodes send each other evicts it.
+      const message = JSON.stringify({ node_id: "00000000-0000-0000-0000-000000000000", keys });
+      execFileSync("redis-cli", ["-u", REDIS_URL, "publish", "ridm:cache:invalidate", message]);
+    }
   } catch (e) {
     console.warn("redis-cli unavailable; tenant cache not cleared:", String(e).split("\n")[0]);
   }
+}
+
+/** A verified user with a password, created through the real registration flow. */
+export async function registerVerifiedUser(
+  clientId: string,
+  ui: string,
+  prefix = "e2e",
+): Promise<{ email: string; password: string }> {
+  const email = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
+  const password = "correct-horse-battery-staple";
+  const q = new URLSearchParams({
+    response_type: "code",
+    client_id: clientId,
+    redirect_uri: `${ui}/callback/`,
+    scope: "openid",
+    state: "st",
+    code_challenge: CHALLENGE,
+    code_challenge_method: "S256",
+    prompt: "create",
+  });
+  const auth = await fetch(`${API}${t("/authorize")}?${q}`, { redirect: "manual" });
+  const flow = new URL(auth.headers.get("location") ?? "", ui).searchParams.get("flow");
+  if (!flow) throw new Error(`no flow from /authorize: ${auth.status}`);
+  const state = (await (await fetch(`${API}${t(`/flows/${flow}`)}`)).json()) as { csrf: string };
+  const res = await fetch(`${API}${t(`/flows/${flow}/register`)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ csrf: state.csrf, email, password, terms_accepted: true }),
+  });
+  if (!res.ok) throw new Error(`registration failed: ${res.status} ${await res.text()}`);
+  const mail = await mailpit.waitFor(email);
+  const token = new URL(mail.links.find((l) => l.includes("token="))!).searchParams.get("token");
+  const confirm = await fetch(`${API}${t("/verification/email/confirm")}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  if (!confirm.ok) throw new Error(`verification failed: ${confirm.status} ${await confirm.text()}`);
+  return { email, password };
 }
 
 interface MailpitMessage {
