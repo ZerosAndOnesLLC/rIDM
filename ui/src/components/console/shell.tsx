@@ -111,6 +111,7 @@ function Frame({ children }: { children: ReactNode }) {
           <p className="min-w-0 flex-1 truncate text-[0.9375rem] font-medium text-ink">{current?.label ?? PAGE_TITLES[pathname] ?? "Console"}</p>
           <button
             type="button"
+            aria-label="Search"
             onClick={() => setPalette(true)}
             className="flex min-h-9 items-center gap-2 rounded-[var(--radius)] border border-line bg-ground px-3 text-[0.875rem] text-muted hover:text-ink"
           >
