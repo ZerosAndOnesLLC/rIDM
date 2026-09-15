@@ -165,11 +165,15 @@ export function alertOf(page: Page) {
   return page.locator("[role=alert]:not(#__next-route-announcer__)");
 }
 
-/** Fail on serious or critical accessibility violations on the current page. */
-export async function expectAccessible(page: Page) {
+/**
+ * Fail on serious or critical accessibility violations on the current page.
+ * `iframes: false` skips frames axe cannot enter (a fully sandboxed srcdoc
+ * preview, say); same-origin frames are analysed by default.
+ */
+export async function expectAccessible(page: Page, { iframes = true }: { iframes?: boolean } = {}) {
   // The card fades in; sampling colours mid-animation gives false contrast failures.
   await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))));
-  const results = await new AxeBuilder({ page }).analyze();
+  const results = await new AxeBuilder({ page }).options({ iframes }).analyze();
   const bad = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   expect(bad, JSON.stringify(bad, null, 2)).toEqual([]);
 }

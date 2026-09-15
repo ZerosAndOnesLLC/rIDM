@@ -2,7 +2,7 @@
 // the sidebar and the command palette only show what the administrator can
 // actually open. Entries are added as their pages land.
 
-import { AppWindow, Building2, FolderTree, KeySquare, LayoutDashboard, Server, Settings2, ShieldCheck, Tags, UsersRound, type LucideIcon } from "lucide-react";
+import { AppWindow, Building2, FolderTree, KeyRound, KeySquare, LayoutDashboard, Mail, Network, ScrollText, Server, Settings2, ShieldCheck, Tags, UsersRound, Webhook, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   label: string;
@@ -42,6 +42,21 @@ export const NAV: NavGroup[] = [
       { label: "Resource servers", href: "/console/resource-servers/", icon: Server, permission: "ridm:resource-servers:read", key: "a" },
       { label: "Scopes", href: "/console/scopes/", icon: Tags, permission: "ridm:scopes:read", key: "p" },
       { label: "Claim mappers", href: "/console/claim-mappers/", icon: KeySquare, permission: "ridm:mappers:read", key: "m" },
+    ],
+  },
+  {
+    title: "Security",
+    items: [
+      { label: "Signing keys", href: "/console/keys/", icon: KeyRound, permission: "ridm:keys:read", key: "k" },
+      { label: "Audit log", href: "/console/audit/", icon: ScrollText, permission: "ridm:audit:read", key: "l" },
+      { label: "IP rules", href: "/console/ip-rules/", icon: Network, permission: "ridm:tenants:read", key: "i" },
+    ],
+  },
+  {
+    title: "Integrations",
+    items: [
+      { label: "Webhooks", href: "/console/webhooks/", icon: Webhook, permission: "ridm:webhooks:read", key: "w" },
+      { label: "Messaging", href: "/console/messaging/", icon: Mail, permission: "ridm:messaging:read", key: "e" },
     ],
   },
   {

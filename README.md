@@ -451,6 +451,24 @@ template (must compile) or audience, with the tokens they are included in. Detai
 save as you go; membership-style changes apply at once. Identity providers arrive with
 brokering in Phase 8.3.
 
+**Signing keys** (`/console/keys/`): every key on a timeline (created → signs from →
+published until) with status, algorithm and public JWK; rotate now, create a pending key
+(algorithm, RSA size, activate at once) and activate, retire or revoke each key. Global
+administrators also see the master-key status (current generation, rows still under
+older ones) and can re-encrypt pending rows. **Audit log** (`/console/audit/`): the
+tenant's chain or, for global administrators, the global one; filters by event, time
+window, actor, subject and user; newer/older paging; expandable rows with the payload
+and hashes; JSON and CSV export; chain verification. **IP rules** (`/console/ip-rules/`):
+allow and deny networks per tenant or client, edited in place (stored now, enforced from
+Phase 9.2). **Webhooks** (`/console/webhooks/`): create (signing secret shown once),
+events as exact names, prefixes or `*`, static headers, attempt limit, enable/disable,
+rotate the secret, send a test ping, and the delivery log with status filter, details
+and redelivery. **Messaging** (`/console/messaging/`): email provider (SMTP or HTTP
+webhook; secrets kept, never shown), SMS gateway, a test send for each, templates per
+channel, event and locale with a live preview of the draft (text, optional HTML
+rendering, sample variables), save as a tenant override or reset to the built-in, and the
+outbound log with redelivery of dead messages.
+
 The profile schema itself is edited under Settings → Profile attributes (name, type,
 label, description, who may edit, position, required, multiple values, where the value
 surfaces, validation per type), saved whole through the new
