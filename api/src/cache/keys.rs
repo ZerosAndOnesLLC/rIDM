@@ -79,3 +79,15 @@ pub fn auth_code(tenant_id: Uuid, code_hash: &str) -> String {
 pub fn login_flow(tenant_id: Uuid, flow_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:flow:{flow_id}")
 }
+
+pub fn client_jwks(tenant_id: Uuid, client_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:client:{client_id}:jwks")
+}
+
+pub fn client_assertion_jti(tenant_id: Uuid, client_id: Uuid, jti: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:client:{client_id}:assertion:{jti}")
+}
+
+pub fn code_family(tenant_id: Uuid, code_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:code_family:{code_hash}")
+}

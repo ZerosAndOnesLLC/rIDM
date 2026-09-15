@@ -1,6 +1,7 @@
 pub mod auth_codes;
 pub mod bootstrap;
 pub mod claims;
+pub mod client_keys;
 pub mod clients;
 pub mod consents;
 pub mod denylist;

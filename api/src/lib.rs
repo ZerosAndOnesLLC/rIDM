@@ -36,6 +36,7 @@ pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
         .merge(routes::jwks::router())
         .merge(oidc::discovery::router())
         .merge(oidc::authorize::router())
+        .merge(oidc::token::router())
         .merge(extra)
         .layer(TraceLayer::new_for_http())
         .with_state(state)

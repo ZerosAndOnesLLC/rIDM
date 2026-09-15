@@ -49,7 +49,7 @@ pub struct Capabilities {
 }
 
 pub const CAPABILITIES: Capabilities = Capabilities {
-    authorization_code: false,
+    authorization_code: true,
     userinfo: false,
     introspection: false,
     revocation: false,

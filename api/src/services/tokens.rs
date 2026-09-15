@@ -42,6 +42,68 @@ pub struct TokenClient {
 }
 
 impl TokenClient {
+    /// Build from a stored client and the tenant's defaults.
+    pub fn from_client(
+        client: &crate::models::Client,
+        tenant: &Tenant,
+        mappers: Vec<ClaimMapper>,
+    ) -> Self {
+        let policy = &tenant.settings.session;
+        let sector_identifier = client
+            .sector_identifier_uri
+            .as_deref()
+            .and_then(|u| url::Url::parse(u).ok())
+            .and_then(|u| u.host_str().map(str::to_string))
+            .or_else(|| {
+                client
+                    .redirect_uris
+                    .first()
+                    .and_then(|u| url::Url::parse(u).ok())
+                    .and_then(|u| u.host_str().map(str::to_string))
+            });
+        let id_token_encryption = client.id_token_encryption.as_ref().and_then(|cfg| {
+            let alg = jwe::KeyAlg::parse(&cfg.alg)?;
+            let enc = jwe::ContentEnc::parse(&cfg.enc)?;
+            let recipient_jwk = client
+                .jwks
+                .as_ref()
+                .and_then(|j| j["keys"].as_array().cloned())
+                .and_then(|keys| {
+                    keys.iter()
+                        .find(|k| k["kty"] == "RSA" && k["use"] == "enc")
+                        .or_else(|| keys.iter().find(|k| k["kty"] == "RSA"))
+                        .cloned()
+                })?;
+            Some(IdTokenEncryption {
+                alg,
+                enc,
+                recipient_jwk,
+            })
+        });
+        Self {
+            client_id: client.client_id.clone(),
+            subject_type: match client.subject_type {
+                crate::models::ClientSubjectType::Public => SubjectType::Public,
+                crate::models::ClientSubjectType::Pairwise => SubjectType::Pairwise,
+            },
+            sector_identifier,
+            id_token_encryption,
+            access_token_ttl: Duration::from_secs(
+                client
+                    .access_token_ttl_secs
+                    .map(|s| s.max(1) as u64)
+                    .unwrap_or(policy.access_token_ttl_secs),
+            ),
+            id_token_ttl: Duration::from_secs(
+                client
+                    .id_token_ttl_secs
+                    .map(|s| s.max(1) as u64)
+                    .unwrap_or(policy.id_token_ttl_secs),
+            ),
+            mappers,
+        }
+    }
+
     pub fn public(client_id: impl Into<String>) -> Self {
         Self {
             client_id: client_id.into(),
@@ -141,7 +203,7 @@ pub fn half_hash(alg: SigningAlg, input: &str) -> String {
     URL_SAFE_NO_PAD.encode(&digest[..digest.len() / 2])
 }
 
-fn jwt_alg(alg: SigningAlg) -> Algorithm {
+pub fn jwt_alg(alg: SigningAlg) -> Algorithm {
     match alg {
         SigningAlg::RS256 => Algorithm::RS256,
         SigningAlg::RS384 => Algorithm::RS384,
@@ -151,6 +213,25 @@ fn jwt_alg(alg: SigningAlg) -> Algorithm {
     }
 }
 
+/// jsonwebtoken encoding key from a PKCS#8 DER private key.
+pub fn encoding_key_from_der(alg: SigningAlg, der: &[u8]) -> AppResult<EncodingKey> {
+    Ok(match alg {
+        SigningAlg::RS256 | SigningAlg::RS384 | SigningAlg::RS512 => {
+            // jsonwebtoken (aws-lc-rs) wants PKCS#1 for RSA; we store PKCS#8.
+            use rsa::pkcs1::EncodeRsaPrivateKey as _;
+            use rsa::pkcs8::DecodePrivateKey as _;
+            let private = rsa::RsaPrivateKey::from_pkcs8_der(der)
+                .map_err(|e| AppError::Internal(format!("rsa key parse: {e}")))?;
+            let pkcs1 = private
+                .to_pkcs1_der()
+                .map_err(|e| AppError::Internal(format!("rsa pkcs1: {e}")))?;
+            EncodingKey::from_rsa_der(pkcs1.as_bytes())
+        }
+        SigningAlg::ES256 => EncodingKey::from_ec_der(der),
+        SigningAlg::EdDSA => EncodingKey::from_ed_der(der),
+    })
+}
+
 /// Parsed signing material, cached per node.
 async fn encoding_key(state: &AppState, key: &SigningKey) -> AppResult<Arc<EncodingKey>> {
     let cache_key = cache_keys::signing_key_material(key.id);
@@ -158,22 +239,7 @@ async fn encoding_key(state: &AppState, key: &SigningKey) -> AppResult<Arc<Encod
         return Ok(k);
     }
     let der = keys::private_der(state, key).await?;
-    let encoding = match key.alg {
-        SigningAlg::RS256 | SigningAlg::RS384 | SigningAlg::RS512 => {
-            // jsonwebtoken (aws-lc-rs) wants PKCS#1 for RSA; we store PKCS#8.
-            use rsa::pkcs1::EncodeRsaPrivateKey as _;
-            use rsa::pkcs8::DecodePrivateKey as _;
-            let private = rsa::RsaPrivateKey::from_pkcs8_der(&der)
-                .map_err(|e| AppError::Internal(format!("rsa key parse: {e}")))?;
-            let pkcs1 = private
-                .to_pkcs1_der()
-                .map_err(|e| AppError::Internal(format!("rsa pkcs1: {e}")))?;
-            EncodingKey::from_rsa_der(pkcs1.as_bytes())
-        }
-        SigningAlg::ES256 => EncodingKey::from_ec_der(&der),
-        SigningAlg::EdDSA => EncodingKey::from_ed_der(&der),
-    };
-    let encoding = Arc::new(encoding);
+    let encoding = Arc::new(encoding_key_from_der(key.alg, &der)?);
     state
         .cache
         .l1()
