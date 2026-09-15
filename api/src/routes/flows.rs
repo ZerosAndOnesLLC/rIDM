@@ -1,0 +1,350 @@
+//! Login flow API used by the static UI: `/t/{slug}/flows/{id}[/{step}]`.
+//!
+//! Every mutating step carries the flow's CSRF token. Responses return the
+//! public flow state; when the stage is `done`, the UI navigates the browser
+//! to `finish_url`, which issues the code and returns to the client.
+
+use axum::Router;
+use axum::extract::{ConnectInfo, Path, State};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, post};
+use serde::Deserialize;
+use serde_json::json;
+use uuid::Uuid;
+use zeroize::Zeroizing;
+
+use crate::error::AppError;
+use crate::middleware::TenantCtx;
+use crate::services::flows::{self, AuthStep, ConsentOutcome};
+use crate::services::login_flows::FlowStage;
+use crate::services::sessions;
+use crate::state::AppState;
+
+pub fn router() -> Router<AppState> {
+    Router::new()
+        .route("/t/{slug}/flows/{id}", get(get_flow))
+        .route("/t/{slug}/flows/{id}/password", post(password))
+        .route(
+            "/t/{slug}/flows/{id}/password-change",
+            post(password_change),
+        )
+        .route("/t/{slug}/flows/{id}/profile", post(profile))
+        .route("/t/{slug}/flows/{id}/terms", post(terms))
+        .route("/t/{slug}/flows/{id}/consent", post(consent))
+        .route("/t/{slug}/flows/{id}/cancel", post(cancel))
+        .route("/t/{slug}/flows/{id}/finish", get(finish))
+}
+
+fn no_store(mut res: Response) -> Response {
+    res.headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    res
+}
+
+/// Client IP honouring `X-Forwarded-For` only from trusted proxies.
+pub fn client_ip(
+    state: &AppState,
+    headers: &HeaderMap,
+    peer: Option<std::net::SocketAddr>,
+) -> Option<String> {
+    let peer_ip = peer.map(|p| p.ip());
+    let trusted = peer_ip.is_some_and(|ip| {
+        state
+            .config
+            .trusted_proxies
+            .iter()
+            .any(|net| net.contains(&ip))
+    });
+    if trusted
+        && let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok())
+        && let Some(first) = xff.split(',').next().map(str::trim)
+        && let Ok(ip) = first.parse::<std::net::IpAddr>()
+    {
+        return Some(ip.to_string());
+    }
+    peer_ip.map(|ip| ip.to_string())
+}
+
+async fn respond_state(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &crate::services::login_flows::LoginFlow,
+) -> Response {
+    match flows::public_state(state, &tenant.tenant, flow).await {
+        Ok(mut public) => {
+            let mut body = serde_json::to_value(&public).unwrap_or_default();
+            if public.stage == FlowStage::Done {
+                body["finish_url"] =
+                    json!(format!("{}/flows/{}/finish", tenant.issuer(state), flow.id));
+            }
+            // The csrf token is only needed by the UI; keep it in the body.
+            public.csrf.clear();
+            no_store(axum::Json(body).into_response())
+        }
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn get_flow(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+) -> Response {
+    match flows::load(&state, tenant.id(), id).await {
+        Ok(flow) => respond_state(&state, &tenant, &flow).await,
+        Err(e) => e.into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct PasswordBody {
+    csrf: String,
+    identifier: String,
+    password: String,
+}
+
+async fn password(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<PasswordBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    let ip = client_ip(&state, &headers, Some(peer));
+    let ua = headers
+        .get(header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.chars().take(512).collect());
+    let existing = sessions::from_request(&state, &tenant.tenant, &headers)
+        .await
+        .ok()
+        .flatten();
+    let attempt = flows::PasswordAttempt {
+        identifier: body.identifier,
+        password: Zeroizing::new(body.password),
+        ip,
+        user_agent: ua,
+        existing_session: existing,
+    };
+    match flows::password_step(&state, &tenant, flow, attempt).await {
+        Ok(AuthStep::Authenticated { session, flow }) => {
+            let mut res = respond_state(&state, &tenant, &flow).await;
+            if let Ok(v) = HeaderValue::from_str(&sessions::set_cookie_header(
+                &state,
+                &tenant.tenant,
+                &session,
+            )) {
+                res.headers_mut().append(header::SET_COOKIE, v);
+            }
+            res
+        }
+        Ok(AuthStep::Rejected { flow, locked }) => {
+            let (code, message) = if locked {
+                (
+                    "account_locked",
+                    "too many failed attempts; try again later",
+                )
+            } else {
+                ("invalid_credentials", "incorrect identifier or password")
+            };
+            no_store(
+                (
+                    StatusCode::UNAUTHORIZED,
+                    axum::Json(json!({"error": code, "error_description": message, "attempts": flow.attempts})),
+                )
+                    .into_response(),
+            )
+        }
+        Err(e) => e.into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct PasswordChangeBody {
+    csrf: String,
+    new_password: String,
+}
+
+async fn password_change(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    axum::Json(body): axum::Json<PasswordChangeBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    match flows::password_change_step(
+        &state,
+        &tenant.tenant,
+        flow,
+        Zeroizing::new(body.new_password),
+    )
+    .await
+    {
+        Ok(flow) => respond_state(&state, &tenant, &flow).await,
+        Err(e) => e.into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct ProfileBody {
+    csrf: String,
+    attributes: serde_json::Value,
+}
+
+async fn profile(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    axum::Json(body): axum::Json<ProfileBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    match flows::profile_step(&state, &tenant.tenant, flow, body.attributes).await {
+        Ok(flow) => respond_state(&state, &tenant, &flow).await,
+        Err(e) => e.into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct TermsBody {
+    csrf: String,
+    accepted: bool,
+}
+
+async fn terms(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    axum::Json(body): axum::Json<TermsBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    match flows::terms_step(&state, &tenant.tenant, flow, body.accepted).await {
+        Ok(flow) => respond_state(&state, &tenant, &flow).await,
+        Err(e) => e.into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct ConsentBody {
+    csrf: String,
+    approve: bool,
+    #[serde(default)]
+    scopes: Option<Vec<String>>,
+}
+
+async fn consent(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    axum::Json(body): axum::Json<ConsentBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    match flows::consent_step(&state, &tenant.tenant, flow, body.approve, body.scopes).await {
+        Ok(ConsentOutcome::Granted { flow }) => respond_state(&state, &tenant, &flow).await,
+        Ok(ConsentOutcome::Denied { redirect_to }) => {
+            let _ = crate::services::login_flows::delete(&state, tenant.id(), id).await;
+            no_store(
+                axum::Json(json!({"stage": "denied", "redirect_to": redirect_to})).into_response(),
+            )
+        }
+        Err(e) => e.into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct CancelBody {
+    csrf: String,
+}
+
+async fn cancel(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    axum::Json(body): axum::Json<CancelBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    match flows::cancel(&state, &flow).await {
+        Ok(redirect_to) => no_store(
+            axum::Json(json!({"stage": "cancelled", "redirect_to": redirect_to})).into_response(),
+        ),
+        Err(e) => e.into_response(),
+    }
+}
+
+/// Browser navigation that completes the authorization: the session cookie
+/// must belong to the user who completed the flow.
+async fn finish(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    headers: HeaderMap,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if flow.stage != FlowStage::Done {
+        return AppError::BadRequest("flow is not complete".into()).into_response();
+    }
+    let session = match sessions::from_request(&state, &tenant.tenant, &headers).await {
+        Ok(Some(s)) if Some(s.id) == flow.session_id && Some(s.user_id) == flow.user_id => s,
+        Ok(_) => return AppError::Unauthorized.into_response(),
+        Err(e) => return e.into_response(),
+    };
+    let client = match crate::services::clients::find_by_client_id(
+        &state,
+        tenant.id(),
+        &flow.request.client_public_id,
+    )
+    .await
+    {
+        Ok(Some(c)) if c.is_active() => c,
+        Ok(_) => return AppError::NotFound("client").into_response(),
+        Err(e) => return e.into_response(),
+    };
+    let _ = crate::services::login_flows::delete(&state, tenant.id(), id).await;
+    match crate::oidc::authorize::issue_code(&state, &tenant, &client, &flow.request, &session)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => e.into_response(),
+    }
+}

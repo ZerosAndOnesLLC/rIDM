@@ -34,6 +34,7 @@ pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
         .merge(routes::wellknown::router())
         .merge(routes::webfinger::router())
         .merge(routes::jwks::router())
+        .merge(routes::flows::router())
         .merge(oidc::discovery::router())
         .merge(oidc::authorize::router())
         .merge(oidc::par::router())
