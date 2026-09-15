@@ -100,6 +100,30 @@ pub enum EventKind {
         from_algo: String,
     },
 
+    // Clients
+    ClientCreated {
+        client_id: Uuid,
+        public_id: String,
+    },
+    ClientUpdated {
+        client_id: Uuid,
+    },
+    ClientDeleted {
+        client_id: Uuid,
+    },
+    ClientSecretRotated {
+        client_id: Uuid,
+    },
+    ConsentGranted {
+        user_id: Uuid,
+        client_id: Uuid,
+        scopes: Vec<String>,
+    },
+    ConsentRevoked {
+        user_id: Uuid,
+        client_id: Uuid,
+    },
+
     // Groups
     GroupCreated {
         group_id: Uuid,
@@ -196,6 +220,12 @@ impl EventKind {
             Self::UserDeleted { .. } => "user.deleted",
             Self::PasswordChanged { .. } => "user.password_changed",
             Self::PasswordHashUpgraded { .. } => "user.password_hash_upgraded",
+            Self::ClientCreated { .. } => "client.created",
+            Self::ClientUpdated { .. } => "client.updated",
+            Self::ClientDeleted { .. } => "client.deleted",
+            Self::ClientSecretRotated { .. } => "client.secret_rotated",
+            Self::ConsentGranted { .. } => "consent.granted",
+            Self::ConsentRevoked { .. } => "consent.revoked",
             Self::GroupCreated { .. } => "group.created",
             Self::GroupUpdated { .. } => "group.updated",
             Self::GroupDeleted { .. } => "group.deleted",

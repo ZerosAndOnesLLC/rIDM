@@ -1,5 +1,7 @@
 pub mod bootstrap;
 pub mod claims;
+pub mod clients;
+pub mod consents;
 pub mod denylist;
 pub mod groups;
 pub mod jwe;
@@ -10,6 +12,7 @@ pub mod password;
 pub mod profile_schema;
 pub mod refresh_tokens;
 pub mod roles;
+pub mod scopes;
 pub mod tenants;
 pub mod tokens;
 pub mod users;

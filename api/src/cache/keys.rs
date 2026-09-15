@@ -48,3 +48,18 @@ pub fn signing_key_material(key_id: Uuid) -> String {
 pub fn jti_denied(tenant_id: Uuid, jti: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:jti:{jti}")
 }
+
+pub fn client_by_client_id(tenant_id: Uuid, client_id: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:client:{client_id}")
+}
+
+pub fn scopes(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:scopes")
+}
+
+pub fn mappers(tenant_id: Uuid, client_id: Option<Uuid>) -> String {
+    match client_id {
+        Some(c) => format!("{PREFIX}:t:{tenant_id}:mappers:{c}"),
+        None => format!("{PREFIX}:t:{tenant_id}:mappers:global"),
+    }
+}

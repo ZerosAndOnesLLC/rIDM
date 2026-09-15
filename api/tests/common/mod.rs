@@ -132,6 +132,11 @@ async fn start_infra() -> Infra {
                 .expect("connect postgres");
             ridm_api::db::migrate(&db).await.expect("migrate");
             db.close().await;
+            if migrate_as == admin_url {
+                // Objects we just created belong to whoever owns the schema
+                // (e.g. the compose stack's migrator), not to the superuser.
+                transfer_ownership_to_schema_owner(&admin_url).await;
+            }
             grant_existing_objects(&admin_url).await;
         }
         None => {
@@ -245,6 +250,39 @@ async fn migrations_owned_by_other(admin_url: &str, role: &str) -> bool {
     .expect("query owner");
     conn.close().await.expect("close");
     owner.is_some_and(|o| o != role)
+}
+
+/// Hand every table/sequence/function owned by the admin role to the owner of
+/// `_sqlx_migrations`, so a database migrated by another role stays consistent.
+async fn transfer_ownership_to_schema_owner(admin_url: &str) {
+    use sqlx::Connection as _;
+    let mut conn = sqlx::PgConnection::connect(admin_url)
+        .await
+        .expect("connect admin");
+    let owner: Option<String> = sqlx::query_scalar(
+        "SELECT tableowner FROM pg_tables WHERE schemaname = 'public' AND tablename = '_sqlx_migrations'",
+    )
+    .fetch_optional(&mut conn)
+    .await
+    .expect("query owner");
+    let Some(owner) = owner else { return };
+    let stmt = format!(
+        "DO $$ DECLARE r record; BEGIN \
+           FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tableowner = current_user LOOP \
+             EXECUTE format('ALTER TABLE public.%I OWNER TO {owner}', r.tablename); END LOOP; \
+           FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname = 'public' AND sequenceowner = current_user LOOP \
+             EXECUTE format('ALTER SEQUENCE public.%I OWNER TO {owner}', r.sequencename); END LOOP; \
+           FOR r IN SELECT p.proname, pg_get_function_identity_arguments(p.oid) AS args \
+                    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
+                    WHERE n.nspname = 'public' AND p.proowner = (SELECT oid FROM pg_roles WHERE rolname = current_user) LOOP \
+             EXECUTE format('ALTER FUNCTION public.%I(%s) OWNER TO {owner}', r.proname, r.args); END LOOP; \
+         END $$"
+    );
+    sqlx::raw_sql(sqlx::AssertSqlSafe(stmt))
+        .execute(&mut conn)
+        .await
+        .expect("transfer ownership");
+    conn.close().await.expect("close");
 }
 
 /// Grant the test app role DML on everything that already exists (objects

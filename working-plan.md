@@ -265,7 +265,7 @@ Operations
 - [x] 2.7 Tests: sign/verify for every alg; rotation overlap (old kid still verifies until retired); revoked kid rejected; JWKS shape and ETag; pairwise `sub` stability; JWE round trip; master-key rotation re-encrypts and verifies; property tests on JWT decoding.
 
 ### Phase 3 — OIDC provider core
-- [ ] 3.1 Migrations: clients (all fields incl. client_type, dual secrets, subject_type, logout URIs), scopes, claim_mappers, consents, refresh_tokens, resource_servers, permissions, permission_assignments. Default scopes seeded per tenant.
+- [x] 3.1 Migrations: clients (all fields incl. client_type, dual secrets, subject_type, logout URIs), scopes, claim_mappers, consents, refresh_tokens, resource_servers, permissions, permission_assignments. Default scopes seeded per tenant.
 - [ ] 3.2 Discovery document, complete and accurate for every supported feature.
 - [ ] 3.3 `/authorize`: full validation (client, exact redirect_uri incl. loopback rules for native, response_type=code, scope, state, nonce, PKCE, prompt incl. `create`, max_age, acr_values, login_hint, ui_locales, `claims` param, `resource` indicators, `response_mode` query|fragment|form_post|jwt); SSO-session check → code or `login_flow` redirect.
 - [ ] 3.4 `/token`: authorization_code (+PKCE), refresh_token (rotation), client_credentials (service account roles), with client auth basic/post/private_key_jwt; audience-scoped access tokens for resource servers.
