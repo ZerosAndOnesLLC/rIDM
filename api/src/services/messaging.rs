@@ -21,7 +21,7 @@ use crate::state::AppState;
 // --- email -------------------------------------------------------------------
 
 /// Where email for the tenant goes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EmailSource {
     /// The tenant's own configuration.
@@ -33,7 +33,7 @@ pub enum EmailSource {
 }
 
 /// Email settings as shown to administrators (no password or auth header).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EmailSettingsView {
     Smtp {
@@ -51,7 +51,7 @@ pub enum EmailSettingsView {
     },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct EmailSettings {
     pub source: EmailSource,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
@@ -184,7 +184,7 @@ pub async fn clear_email(state: &AppState, tenant_id: Uuid) -> AppResult<EmailSe
     email_settings(state, tenant_id).await
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct TestSendResult {
     /// Backend that took the message (`smtp`, `http`, `mock`).
     pub sender: &'static str,
@@ -227,7 +227,7 @@ pub async fn test_email(state: &AppState, tenant: &Tenant, to: &str) -> AppResul
 
 // --- sms ----------------------------------------------------------------------
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct SmsSettings {
     pub configured: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -332,7 +332,7 @@ pub fn validate_locale(locale: &str) -> AppResult<String> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TemplateSource {
     /// Stored by an administrator for this exact locale.
@@ -341,7 +341,7 @@ pub enum TemplateSource {
     Builtin,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct TemplateView {
     pub source: TemplateSource,
     pub channel: MessageChannel,
@@ -403,7 +403,7 @@ pub async fn get_template(
     })
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct TemplateBody {
     pub subject: Option<String>,
@@ -494,7 +494,7 @@ pub async fn delete_template(
     Ok(())
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct PreviewRequest {
     pub channel: Option<MessageChannel>,
@@ -507,7 +507,7 @@ pub struct PreviewRequest {
     pub vars: Option<Value>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct Preview {
     pub subject: Option<String>,
     pub body_text: String,

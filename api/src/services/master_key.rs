@@ -58,7 +58,7 @@ impl EncryptedTable {
     }
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, utoipa::ToSchema)]
 pub struct RotationReport {
     pub target_version: u32,
     /// Rows re-encrypted per table.
@@ -67,7 +67,7 @@ pub struct RotationReport {
     pub failed: BTreeMap<String, u64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct StatusReport {
     pub current_version: u32,
     pub known_versions: Vec<u32>,

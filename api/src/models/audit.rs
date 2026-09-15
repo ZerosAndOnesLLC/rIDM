@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 /// One audit row: a domain event as recorded, with its place in the
 /// tenant's hash chain.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct AuditEvent {
     pub id: Uuid,
     /// `None` for global (cross-tenant) events.
@@ -25,8 +25,10 @@ pub struct AuditEvent {
     /// The event's `kind` document (`type` plus its fields).
     pub payload: serde_json::Value,
     #[serde(with = "hex_bytes")]
+    #[schema(value_type = Option<String>)]
     pub prev_hash: Option<Vec<u8>>,
     #[serde(with = "hex_bytes")]
+    #[schema(value_type = String)]
     pub hash: Vec<u8>,
 }
 
@@ -71,7 +73,7 @@ mod hex_bytes {
 }
 
 /// Filters for listing audit events.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct AuditFilter {
     pub from: Option<DateTime<Utc>>,
@@ -85,7 +87,7 @@ pub struct AuditFilter {
 }
 
 /// Audit retention, per tenant.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct AuditPolicy {
     /// Days to keep audit rows (0 = forever).

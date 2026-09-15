@@ -2,7 +2,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum IpRuleAction {
@@ -12,7 +14,7 @@ pub enum IpRuleAction {
 
 /// An allow or deny rule for a CIDR, for the whole tenant or one client.
 /// Enforcement is Phase 9.2; this is the configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct IpRule {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -25,7 +27,7 @@ pub struct IpRule {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct NewIpRule {
     pub client_id: Option<Uuid>,
@@ -35,7 +37,7 @@ pub struct NewIpRule {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct IpRuleUpdate {
     pub action: Option<IpRuleAction>,

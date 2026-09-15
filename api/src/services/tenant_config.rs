@@ -33,7 +33,7 @@ pub const FORMAT: &str = "ridm.tenant/1";
 
 // --- document ------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TenantConfig {
     pub format: String,
@@ -60,7 +60,7 @@ pub struct TenantConfig {
     pub ip_rules: Vec<IpRuleDoc>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TenantSection {
     /// Informational: an import applies to the tenant in the URL.
@@ -70,7 +70,7 @@ pub struct TenantSection {
     pub settings: TenantSettings,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct ResourceServerDoc {
     pub identifier: String,
@@ -94,14 +94,14 @@ impl Default for ResourceServerDoc {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct PermissionDoc {
     pub name: String,
     pub description: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct ScopeDoc {
     pub name: String,
@@ -114,7 +114,7 @@ pub struct ScopeDoc {
 
 /// A client's metadata document: every field `POST /clients` accepts, plus
 /// `status` and whether it has a service account. Never a secret.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ClientDoc {
     pub client_id: String,
     #[serde(default = "default_status")]
@@ -122,6 +122,7 @@ pub struct ClientDoc {
     #[serde(default)]
     pub service_account: bool,
     #[serde(flatten)]
+    #[schema(value_type = Object)]
     pub metadata: serde_json::Map<String, Value>,
 }
 
@@ -129,7 +130,7 @@ fn default_status() -> ClientStatus {
     ClientStatus::Active
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct RoleDoc {
     pub name: String,
@@ -142,7 +143,7 @@ pub struct RoleDoc {
     pub permissions: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct GroupDoc {
     /// Names from the root down; the last element is the group's own name.
@@ -153,7 +154,7 @@ pub struct GroupDoc {
     pub roles: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct MapperDoc {
     pub name: String,
@@ -161,7 +162,7 @@ pub struct MapperDoc {
     pub config: Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TemplateDoc {
     pub channel: MessageChannel,
@@ -174,7 +175,7 @@ pub struct TemplateDoc {
     pub body_html: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct WebhookDoc {
     pub name: String,
@@ -198,7 +199,7 @@ impl Default for WebhookDoc {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct IpRuleDoc {
     pub cidr: String,
@@ -465,7 +466,7 @@ pub async fn export(state: &AppState, tenant: &Tenant) -> AppResult<TenantConfig
 
 // --- plan ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Op {
     Create,
@@ -473,14 +474,14 @@ pub enum Op {
     Delete,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct FieldChange {
     pub field: String,
     pub from: Value,
     pub to: Value,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct Change {
     pub resource: &'static str,
     pub key: String,
@@ -489,7 +490,7 @@ pub struct Change {
     pub fields: Vec<FieldChange>,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, utoipa::ToSchema)]
 pub struct Summary {
     pub create: usize,
     pub update: usize,
@@ -497,7 +498,7 @@ pub struct Summary {
     pub unchanged: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct Plan {
     pub prune: bool,
     pub changes: Vec<Change>,
@@ -760,7 +761,7 @@ pub async fn plan(
 
 // --- apply ----------------------------------------------------------------------------
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, utoipa::ToSchema)]
 pub struct Secrets {
     /// Secrets of clients this import created (public `client_id` → secret).
     pub clients: BTreeMap<String, String>,
@@ -768,14 +769,14 @@ pub struct Secrets {
     pub webhooks: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ApplyError {
     pub resource: &'static str,
     pub key: String,
     pub error: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ApplyReport {
     pub dry_run: bool,
     #[serde(flatten)]

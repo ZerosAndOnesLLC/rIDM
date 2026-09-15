@@ -6,16 +6,16 @@
 //! role or a group membership is additionally checked against the caller's
 //! own admin permissions so nobody can grant what they do not hold.
 
-use axum::Router;
 use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::StatusCode;
 use axum::http::header::{self, HeaderMap};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete as delete_route, get, post, put};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -27,6 +27,7 @@ use crate::models::{
     UserStatus, UserUpdate,
 };
 use crate::repos;
+use crate::routes::admin::AuditFilterQuery;
 use crate::services::admin_access::{self, Grant};
 use crate::services::bulk_users::{self, ExportFormat, ImportReport};
 use crate::services::password::{self, SetPasswordOptions};
@@ -35,62 +36,29 @@ use crate::services::{consents, groups, roles, trusted_devices, users};
 use crate::state::AppState;
 use crate::util::cursor::Page;
 
-pub fn users_router() -> Router<AppState> {
-    let base = "/admin/tenants/{slug}/users";
-    Router::new()
-        .route(base, get(list).post(create))
-        .route(
-            &format!("{base}/import"),
-            post(import).layer(DefaultBodyLimit::max(IMPORT_BODY_LIMIT)),
-        )
-        .route(&format!("{base}/export"), get(export))
-        .route(
-            &format!("{base}/{{user}}"),
-            get(get_one).patch(update).delete(delete),
-        )
-        .route(&format!("{base}/{{user}}/password"), put(set_password))
-        .route(
-            &format!("{base}/{{user}}/force-password-change"),
-            post(force_password_change),
-        )
-        .route(&format!("{base}/{{user}}/unlock"), post(unlock))
-        .route(
-            &format!("{base}/{{user}}/sessions"),
-            get(list_sessions).delete(revoke_sessions),
-        )
-        .route(
-            &format!("{base}/{{user}}/sessions/{{session_id}}"),
-            delete_route(revoke_session),
-        )
-        .route(&format!("{base}/{{user}}/credentials"), get(credentials))
-        .route(
-            &format!("{base}/{{user}}/credentials/{{credential_id}}"),
-            delete_route(delete_credential),
-        )
-        .route(
-            &format!("{base}/{{user}}/devices"),
-            get(devices).delete(revoke_devices),
-        )
-        .route(
-            &format!("{base}/{{user}}/devices/{{device_id}}"),
-            delete_route(revoke_device),
-        )
-        .route(&format!("{base}/{{user}}/roles"), get(user_roles))
-        .route(
-            &format!("{base}/{{user}}/roles/{{role_id}}"),
-            put(assign_role).delete(unassign_role),
-        )
-        .route(&format!("{base}/{{user}}/groups"), get(user_groups))
-        .route(
-            &format!("{base}/{{user}}/groups/{{group_id}}"),
-            put(join_group).delete(leave_group),
-        )
-        .route(&format!("{base}/{{user}}/consents"), get(user_consents))
-        .route(&format!("{base}/{{user}}/audit"), get(user_audit))
-        .route(
-            &format!("{base}/{{user}}/consents/{{client_id}}"),
-            delete_route(revoke_consent),
-        )
+pub fn users_router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(import))
+        .route_layer(DefaultBodyLimit::max(IMPORT_BODY_LIMIT))
+        .routes(routes!(list, create))
+        .routes(routes!(export))
+        .routes(routes!(get_one, update, delete))
+        .routes(routes!(set_password))
+        .routes(routes!(force_password_change))
+        .routes(routes!(unlock))
+        .routes(routes!(list_sessions, revoke_sessions))
+        .routes(routes!(revoke_session))
+        .routes(routes!(credentials))
+        .routes(routes!(delete_credential))
+        .routes(routes!(devices, revoke_devices))
+        .routes(routes!(revoke_device))
+        .routes(routes!(user_roles))
+        .routes(routes!(assign_role, unassign_role))
+        .routes(routes!(user_groups))
+        .routes(routes!(join_group, leave_group))
+        .routes(routes!(user_consents))
+        .routes(routes!(user_audit))
+        .routes(routes!(revoke_consent))
 }
 
 const P_READ: &str = "ridm:users:read";
@@ -117,10 +85,12 @@ async fn load(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<User> {
 
 /// `UserFilter` spelled out: a flattened struct would read every query
 /// value as a string and reject the booleans.
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 #[serde(default)]
 struct ListQuery {
     search: Option<String>,
+    #[param(inline)]
     status: Option<UserStatus>,
     org_id: Option<Uuid>,
     include_deleted: bool,
@@ -128,6 +98,7 @@ struct ListQuery {
     limit: Option<u32>,
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/users", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ListQuery), responses((status = 200, body = Page<User>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -156,7 +127,7 @@ struct CreatePassword {
 }
 
 /// Response to a create or password change that minted a temporary password.
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 struct CreatedUser {
     #[serde(flatten)]
     user: User,
@@ -175,6 +146,7 @@ fn no_store(mut res: Response) -> Response {
 /// Body: every `NewUser` field plus `password` or `temporary_password: true`.
 /// A temporary password is returned exactly once and must be changed at
 /// first login; an explicit password is checked against the tenant policy.
+#[utoipa::path(post, path = "/admin/tenants/{slug}/users", tag = "users", params(("slug" = String, Path, description = "Tenant slug")), request_body(content = serde_json::Value, description = "NewUser fields plus `password` or `temporary_password: true`"), responses((status = 201, body = CreatedUser), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -256,7 +228,7 @@ async fn create(
 }
 
 /// The user plus what an admin page shows at a glance.
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 struct UserDetail {
     #[serde(flatten)]
     user: User,
@@ -266,7 +238,7 @@ struct UserDetail {
     groups: Vec<Group>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 struct PasswordSummary {
     set: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -300,6 +272,7 @@ async fn direct_roles(state: &AppState, tenant_id: Uuid, user_id: Uuid) -> AppRe
     Ok(out)
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/users/{user}", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), responses((status = 200, body = UserDetail), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn get_one(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -323,6 +296,7 @@ async fn get_one(
 /// Partial update: absent = unchanged, `null` clears. `status` covers
 /// enable/disable (`active` / `disabled`); `locked` and `deleted` are set by
 /// the system, use the unlock and delete routes instead.
+#[utoipa::path(patch, path = "/admin/tenants/{slug}/users/{user}", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), request_body = UserUpdate, responses((status = 200, body = User), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn update(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -349,6 +323,7 @@ async fn update(
 }
 
 /// Soft delete; sessions and trusted devices end at once.
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/users/{user}", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn delete(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -363,7 +338,7 @@ async fn delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 struct PasswordBody {
     /// Absent: generate a temporary password and return it once.
@@ -378,11 +353,12 @@ struct PasswordBody {
     revoke_sessions: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 struct TemporaryPassword {
     temporary_password: String,
 }
 
+#[utoipa::path(put, path = "/admin/tenants/{slug}/users/{user}/password", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), request_body(content = PasswordBody, description = "Optional"), responses((status = 200, body = TemporaryPassword), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn set_password(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -436,6 +412,7 @@ async fn set_password(
 }
 
 /// Flag the account so the next login demands a new password.
+#[utoipa::path(post, path = "/admin/tenants/{slug}/users/{user}/force-password-change", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), responses((status = 200, body = User), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn force_password_change(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -459,6 +436,7 @@ async fn force_password_change(
 }
 
 /// Clear a lockout (failed-attempt counter and `locked` status).
+#[utoipa::path(post, path = "/admin/tenants/{slug}/users/{user}/unlock", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), responses((status = 200, body = User), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn unlock(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -473,6 +451,7 @@ async fn unlock(
 
 // --- sessions ---------------------------------------------------------------
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/users/{user}/sessions", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), responses((status = 200, body = Vec<SsoSession>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list_sessions(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -486,11 +465,12 @@ async fn list_sessions(
     ))
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 struct Revoked {
     revoked: u64,
 }
 
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/users/{user}/sessions", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), responses((status = 200, body = Revoked), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn revoke_sessions(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -509,6 +489,7 @@ struct SessionPath {
     session_id: Uuid,
 }
 
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/users/{user}/sessions/{session_id}", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path), ("session_id" = Uuid, Path)), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn revoke_session(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -526,13 +507,14 @@ async fn revoke_session(
 
 // --- credentials and devices ------------------------------------------------
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 struct Credentials {
     password: PasswordSummary,
     /// MFA factors, passkeys and recovery codes (metadata only).
     credentials: Vec<Credential>,
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/users/{user}/credentials", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), responses((status = 200, body = Credentials), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn credentials(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -558,6 +540,7 @@ struct CredentialPath {
 
 /// Remove a factor (the user lost the device, say). The password is not a
 /// row here; replace it through `PUT .../password`.
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/users/{user}/credentials/{credential_id}", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path), ("credential_id" = Uuid, Path)), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn delete_credential(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -579,6 +562,7 @@ async fn delete_credential(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/users/{user}/devices", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), responses((status = 200, body = Vec<TrustedDevice>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn devices(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -590,6 +574,7 @@ async fn devices(
     Ok(Json(trusted_devices::list(&state, tenant.id, user).await?))
 }
 
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/users/{user}/devices", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), responses((status = 200, body = Revoked), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn revoke_devices(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -608,6 +593,7 @@ struct DevicePath {
     device_id: Uuid,
 }
 
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/users/{user}/devices/{device_id}", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path), ("device_id" = Uuid, Path)), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn revoke_device(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -624,7 +610,7 @@ async fn revoke_device(
 
 // --- roles and groups -------------------------------------------------------
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 struct UserRoles {
     /// Assigned to the user directly.
     direct: Vec<Role>,
@@ -632,6 +618,7 @@ struct UserRoles {
     effective: Vec<Role>,
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/users/{user}/roles", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), responses((status = 200, body = UserRoles), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn user_roles(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -654,6 +641,7 @@ struct RolePath {
     role_id: Uuid,
 }
 
+#[utoipa::path(put, path = "/admin/tenants/{slug}/users/{user}/roles/{role_id}", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path), ("role_id" = Uuid, Path)), responses((status = 200, body = UserRoles), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn assign_role(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -682,6 +670,7 @@ async fn assign_role(
     }))
 }
 
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/users/{user}/roles/{role_id}", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path), ("role_id" = Uuid, Path)), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn unassign_role(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -701,7 +690,7 @@ async fn unassign_role(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 struct UserGroups {
     /// Groups the user is a member of.
     direct: Vec<Group>,
@@ -709,6 +698,7 @@ struct UserGroups {
     effective: Vec<Group>,
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/users/{user}/groups", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), responses((status = 200, body = UserGroups), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn user_groups(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -729,6 +719,7 @@ struct GroupPath {
     group_id: Uuid,
 }
 
+#[utoipa::path(put, path = "/admin/tenants/{slug}/users/{user}/groups/{group_id}", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path), ("group_id" = Uuid, Path)), responses((status = 200, body = UserGroups), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn join_group(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -748,6 +739,7 @@ async fn join_group(
     }))
 }
 
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/users/{user}/groups/{group_id}", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path), ("group_id" = Uuid, Path)), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn leave_group(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -762,6 +754,7 @@ async fn leave_group(
 
 // --- consents ---------------------------------------------------------------
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/users/{user}/consents", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), responses((status = 200, body = Vec<Consent>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn user_consents(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -781,6 +774,7 @@ struct ConsentPath {
     client_id: Uuid,
 }
 
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/users/{user}/consents/{client_id}", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path), ("client_id" = Uuid, Path)), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn revoke_consent(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -797,7 +791,8 @@ async fn revoke_consent(
 
 // --- bulk import and export -------------------------------------------------
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 #[serde(default)]
 struct ImportQuery {
     /// Validate only; nothing is written.
@@ -808,6 +803,7 @@ struct ImportQuery {
 /// `{"users": [...]}`) or `text/csv` (header row; `attr.<name>` columns become
 /// profile attributes). Rows are processed independently; the report names
 /// every row that failed and why.
+#[utoipa::path(post, path = "/admin/tenants/{slug}/users/import", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ImportQuery), request_body(content = Vec<crate::services::bulk_users::ImportRow>, description = "JSON array (or {\"users\": [...]}) as application/json, or CSV with a header row as text/csv"), responses((status = 200, body = ImportReport), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn import(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -837,9 +833,11 @@ async fn import(
     ))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ExportQuery {
     #[serde(default = "default_format")]
+    #[param(inline)]
     format: ExportFormat,
 }
 
@@ -849,6 +847,7 @@ fn default_format() -> ExportFormat {
 
 /// `GET .../users/export?format=json|csv`: every live user, streamed page by
 /// page, without credentials.
+#[utoipa::path(get, path = "/admin/tenants/{slug}/users/export", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ExportQuery), responses((status = 200, description = "Streamed file"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn export(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -878,6 +877,7 @@ async fn export(
 // --- audit ------------------------------------------------------------------
 
 /// Audit rows where the user is the actor or the subject (`ridm:audit:read`).
+#[utoipa::path(get, path = "/admin/tenants/{slug}/users/{user}/audit", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path), AuditFilterQuery, ("cursor" = Option<String>, Query), ("limit" = Option<u32>, Query)), responses((status = 200, body = crate::util::cursor::Page<crate::models::AuditEvent>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn user_audit(
     State(state): State<AppState>,
     admin: AdminCtx,

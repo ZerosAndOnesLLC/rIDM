@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Kinds of per-tenant provider configuration held encrypted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
     Captcha,
@@ -19,7 +19,7 @@ impl ProviderKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CaptchaProvider {
     Turnstile,
@@ -28,7 +28,7 @@ pub enum CaptchaProvider {
 
 /// CAPTCHA provider configuration. `secret` is only ever handled decrypted
 /// inside the process; the admin API returns it redacted.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct CaptchaConfig {
     pub provider: CaptchaProvider,
     pub site_key: String,

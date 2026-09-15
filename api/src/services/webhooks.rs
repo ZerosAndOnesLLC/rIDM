@@ -151,7 +151,7 @@ fn validate_max_attempts(n: i32) -> AppResult<()> {
 }
 
 /// A created or rotated webhook with its secret, shown exactly once.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct WebhookWithSecret {
     #[serde(flatten)]
     pub webhook: Webhook,

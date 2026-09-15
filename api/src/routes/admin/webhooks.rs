@@ -2,39 +2,29 @@
 //! secret (shown once on create and rotate), the delivery log, redelivery
 //! and test pings.
 
-use axum::Router;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
 use serde::Deserialize;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 use uuid::Uuid;
 
 use crate::error::AppResult;
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
 use crate::models::{DeliveryStatus, NewWebhook, Webhook, WebhookDelivery, WebhookUpdate};
-use crate::services::webhooks;
+use crate::services::webhooks::{self, WebhookWithSecret};
 use crate::state::AppState;
 
-pub fn webhooks_router() -> Router<AppState> {
-    let base = "/admin/tenants/{slug}/webhooks";
-    Router::new()
-        .route(base, get(list).post(create))
-        .route(
-            &format!("{base}/{{webhook}}"),
-            get(get_one).patch(update).delete(delete),
-        )
-        .route(&format!("{base}/{{webhook}}/secret"), post(rotate_secret))
-        .route(&format!("{base}/{{webhook}}/test"), post(test))
-        .route(&format!("{base}/{{webhook}}/deliveries"), get(deliveries))
-        .route(
-            &format!("{base}/{{webhook}}/deliveries/{{delivery}}"),
-            get(delivery),
-        )
-        .route(
-            &format!("{base}/{{webhook}}/deliveries/{{delivery}}/redeliver"),
-            post(redeliver),
-        )
+pub fn webhooks_router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(list, create))
+        .routes(routes!(get_one, update, delete))
+        .routes(routes!(rotate_secret))
+        .routes(routes!(test))
+        .routes(routes!(deliveries))
+        .routes(routes!(delivery))
+        .routes(routes!(redeliver))
 }
 
 const P_READ: &str = "ridm:webhooks:read";
@@ -53,6 +43,7 @@ fn no_store(mut res: Response) -> Response {
     res
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/webhooks", tag = "webhooks", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Vec<Webhook>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -64,6 +55,7 @@ async fn list(
 
 /// `{name, url, events, enabled?, headers?, max_attempts?}`; the signing
 /// `secret` is in the response and nowhere else.
+#[utoipa::path(post, path = "/admin/tenants/{slug}/webhooks", tag = "webhooks", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewWebhook, responses((status = 201, body = WebhookWithSecret), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -77,6 +69,7 @@ async fn create(
     ))
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/webhooks/{webhook}", tag = "webhooks", params(("slug" = String, Path, description = "Tenant slug"), ("webhook" = Uuid, Path)), responses((status = 200, body = Webhook), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn get_one(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -87,6 +80,7 @@ async fn get_one(
     Ok(Json(webhooks::get(&state, tenant.id, webhook).await?))
 }
 
+#[utoipa::path(patch, path = "/admin/tenants/{slug}/webhooks/{webhook}", tag = "webhooks", params(("slug" = String, Path, description = "Tenant slug"), ("webhook" = Uuid, Path)), request_body = WebhookUpdate, responses((status = 200, body = Webhook), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn update(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -100,6 +94,7 @@ async fn update(
     ))
 }
 
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/webhooks/{webhook}", tag = "webhooks", params(("slug" = String, Path, description = "Tenant slug"), ("webhook" = Uuid, Path)), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn delete(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -111,6 +106,7 @@ async fn delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(post, path = "/admin/tenants/{slug}/webhooks/{webhook}/secret", tag = "webhooks", params(("slug" = String, Path, description = "Tenant slug"), ("webhook" = Uuid, Path)), responses((status = 201, body = WebhookWithSecret), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn rotate_secret(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -125,6 +121,7 @@ async fn rotate_secret(
 }
 
 /// Deliver a `webhook.test` event now and report the attempt.
+#[utoipa::path(post, path = "/admin/tenants/{slug}/webhooks/{webhook}/test", tag = "webhooks", params(("slug" = String, Path, description = "Tenant slug"), ("webhook" = Uuid, Path)), responses((status = 200, body = WebhookDelivery), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn test(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -137,13 +134,16 @@ async fn test(
     ))
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 #[serde(default)]
 struct DeliveriesQuery {
+    #[param(inline)]
     status: Option<DeliveryStatus>,
     limit: Option<i64>,
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/webhooks/{webhook}/deliveries", tag = "webhooks", params(("slug" = String, Path, description = "Tenant slug"), ("webhook" = Uuid, Path), DeliveriesQuery), responses((status = 200, body = Vec<WebhookDelivery>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn deliveries(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -164,6 +164,7 @@ struct DeliveryPath {
     delivery: Uuid,
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/webhooks/{webhook}/deliveries/{delivery}", tag = "webhooks", params(("slug" = String, Path, description = "Tenant slug"), ("webhook" = Uuid, Path), ("delivery" = Uuid, Path)), responses((status = 200, body = WebhookDelivery), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn delivery(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -177,6 +178,7 @@ async fn delivery(
 }
 
 /// Requeue and attempt at once; the returned delivery shows the outcome.
+#[utoipa::path(post, path = "/admin/tenants/{slug}/webhooks/{webhook}/deliveries/{delivery}/redeliver", tag = "webhooks", params(("slug" = String, Path, description = "Tenant slug"), ("webhook" = Uuid, Path), ("delivery" = Uuid, Path)), responses((status = 200, body = WebhookDelivery), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn redeliver(
     State(state): State<AppState>,
     admin: AdminCtx,

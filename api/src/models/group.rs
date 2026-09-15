@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::util::patch::double_option;
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct Group {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -16,7 +16,7 @@ pub struct Group {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct NewGroup {
     pub name: String,
@@ -25,7 +25,7 @@ pub struct NewGroup {
     pub attributes: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct GroupUpdate {
     pub name: Option<String>,

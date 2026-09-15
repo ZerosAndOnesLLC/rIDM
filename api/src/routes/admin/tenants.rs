@@ -5,12 +5,12 @@
 //! operations. Settings are changed with a JSON merge patch (RFC 7396) so an
 //! auto-saving UI can send just the fields that changed.
 
-use axum::Router;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
 use serde::{Deserialize, Serialize};
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use crate::error::{AppError, AppResult};
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
@@ -23,17 +23,11 @@ use crate::state::AppState;
 use crate::util::cursor::Page;
 use crate::util::patch::{diff_paths, merge_patch};
 
-pub fn tenants_router() -> Router<AppState> {
-    Router::new()
-        .route("/admin/tenants", get(list).post(create))
-        .route(
-            "/admin/tenants/{slug}",
-            get(get_one).patch(update).delete(delete),
-        )
-        .route(
-            "/admin/tenants/{slug}/captcha",
-            get(captcha_get).put(captcha_put).delete(captcha_delete),
-        )
+pub fn tenants_router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(list, create))
+        .routes(routes!(get_one, update, delete))
+        .routes(routes!(captcha_get, captcha_put, captcha_delete))
 }
 
 const P_READ: &str = "ridm:tenants:read";
@@ -41,13 +35,15 @@ const P_WRITE: &str = "ridm:tenants:write";
 const P_CREATE: &str = "ridm:tenants:create";
 const P_DELETE: &str = "ridm:tenants:delete";
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ListQuery {
     cursor: Option<String>,
     limit: Option<u32>,
 }
 
 /// Global administrators see every tenant; tenant-scoped ones see their own.
+#[utoipa::path(get, path = "/admin/tenants", tag = "tenants", params(ListQuery), responses((status = 200, body = Page<Tenant>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -67,6 +63,7 @@ async fn list(
     }))
 }
 
+#[utoipa::path(post, path = "/admin/tenants", tag = "tenants", request_body = NewTenant, responses((status = 201, body = Tenant), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -77,6 +74,7 @@ async fn create(
     Ok((StatusCode::CREATED, axum::Json(tenant)).into_response())
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Tenant), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn get_one(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -87,7 +85,7 @@ async fn get_one(
     Ok(Json(tenants::get(&state, tenant.id).await?))
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 struct TenantPatch {
     display_name: Option<String>,
@@ -96,6 +94,7 @@ struct TenantPatch {
     settings: Option<serde_json::Value>,
 }
 
+#[utoipa::path(patch, path = "/admin/tenants/{slug}", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), request_body = TenantPatch, responses((status = 200, body = Tenant), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn update(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -140,6 +139,7 @@ async fn update(
     Ok(Json(updated))
 }
 
+#[utoipa::path(delete, path = "/admin/tenants/{slug}", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn delete(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -151,7 +151,7 @@ async fn delete(
 }
 
 /// CAPTCHA provider configuration with the secret redacted.
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 struct CaptchaView {
     provider: CaptchaProvider,
     site_key: String,
@@ -161,6 +161,7 @@ struct CaptchaView {
     verify_url: Option<String>,
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/captcha", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = CaptchaView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn captcha_get(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -179,6 +180,7 @@ async fn captcha_get(
     }
 }
 
+#[utoipa::path(put, path = "/admin/tenants/{slug}/captcha", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), request_body = CaptchaConfig, responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn captcha_put(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -195,6 +197,7 @@ async fn captcha_put(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/captcha", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn captcha_delete(
     State(state): State<AppState>,
     admin: AdminCtx,

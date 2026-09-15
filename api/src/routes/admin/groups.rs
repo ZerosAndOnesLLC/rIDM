@@ -2,12 +2,12 @@
 //! roles a group carries. Adding a member or a role is checked against the
 //! caller's own admin permissions (no escalation through groups).
 
-use axum::Router;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, put};
 use serde::Serialize;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 use uuid::Uuid;
 
 use crate::error::AppResult;
@@ -17,24 +17,14 @@ use crate::services::admin_access::{self, Grant};
 use crate::services::{groups, roles, users};
 use crate::state::AppState;
 
-pub fn groups_router() -> Router<AppState> {
-    let base = "/admin/tenants/{slug}/groups";
-    Router::new()
-        .route(base, get(list).post(create))
-        .route(
-            &format!("{base}/{{group}}"),
-            get(get_one).patch(update).delete(delete),
-        )
-        .route(&format!("{base}/{{group}}/members"), get(members))
-        .route(
-            &format!("{base}/{{group}}/members/{{user_id}}"),
-            put(add_member).delete(remove_member),
-        )
-        .route(&format!("{base}/{{group}}/roles"), get(group_roles))
-        .route(
-            &format!("{base}/{{group}}/roles/{{role_id}}"),
-            put(assign_role).delete(unassign_role),
-        )
+pub fn groups_router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(list, create))
+        .routes(routes!(get_one, update, delete))
+        .routes(routes!(members))
+        .routes(routes!(add_member, remove_member))
+        .routes(routes!(group_roles))
+        .routes(routes!(assign_role, unassign_role))
 }
 
 const P_READ: &str = "ridm:groups:read";
@@ -46,6 +36,7 @@ struct GroupPath {
 }
 
 /// Flat list with `parent_id`; the UI builds the tree.
+#[utoipa::path(get, path = "/admin/tenants/{slug}/groups", tag = "groups", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Vec<Group>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -55,6 +46,7 @@ async fn list(
     Ok(Json(groups::list(&state, tenant.id).await?))
 }
 
+#[utoipa::path(post, path = "/admin/tenants/{slug}/groups", tag = "groups", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewGroup, responses((status = 201, body = Group), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -66,7 +58,7 @@ async fn create(
     Ok((StatusCode::CREATED, axum::Json(g)).into_response())
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 struct GroupDetail {
     #[serde(flatten)]
     group: Group,
@@ -87,6 +79,7 @@ async fn roles_of_group(state: &AppState, tenant_id: Uuid, group_id: Uuid) -> Ap
     Ok(out)
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/groups/{group}", tag = "groups", params(("slug" = String, Path, description = "Tenant slug"), ("group" = Uuid, Path)), responses((status = 200, body = GroupDetail), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn get_one(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -104,6 +97,7 @@ async fn get_one(
 }
 
 /// `parent_id: null` moves the group to the top level.
+#[utoipa::path(patch, path = "/admin/tenants/{slug}/groups/{group}", tag = "groups", params(("slug" = String, Path, description = "Tenant slug"), ("group" = Uuid, Path)), request_body = GroupUpdate, responses((status = 200, body = Group), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn update(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -117,6 +111,7 @@ async fn update(
     ))
 }
 
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/groups/{group}", tag = "groups", params(("slug" = String, Path, description = "Tenant slug"), ("group" = Uuid, Path)), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn delete(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -128,6 +123,7 @@ async fn delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/groups/{group}/members", tag = "groups", params(("slug" = String, Path, description = "Tenant slug"), ("group" = Uuid, Path)), responses((status = 200, body = Vec<User>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn members(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -144,6 +140,7 @@ struct MemberPath {
     user_id: Uuid,
 }
 
+#[utoipa::path(put, path = "/admin/tenants/{slug}/groups/{group}/members/{user_id}", tag = "groups", params(("slug" = String, Path, description = "Tenant slug"), ("group" = Uuid, Path), ("user_id" = Uuid, Path)), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn add_member(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -163,6 +160,7 @@ async fn add_member(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/groups/{group}/members/{user_id}", tag = "groups", params(("slug" = String, Path, description = "Tenant slug"), ("group" = Uuid, Path), ("user_id" = Uuid, Path)), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn remove_member(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -174,6 +172,7 @@ async fn remove_member(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/groups/{group}/roles", tag = "groups", params(("slug" = String, Path, description = "Tenant slug"), ("group" = Uuid, Path)), responses((status = 200, body = Vec<Role>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn group_roles(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -192,6 +191,7 @@ struct GroupRolePath {
 }
 
 /// Every member (and members of descendant groups) gains the role.
+#[utoipa::path(put, path = "/admin/tenants/{slug}/groups/{group}/roles/{role_id}", tag = "groups", params(("slug" = String, Path, description = "Tenant slug"), ("group" = Uuid, Path), ("role_id" = Uuid, Path)), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn assign_role(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -215,6 +215,7 @@ async fn assign_role(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/groups/{group}/roles/{role_id}", tag = "groups", params(("slug" = String, Path, description = "Tenant slug"), ("group" = Uuid, Path), ("role_id" = Uuid, Path)), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn unassign_role(
     State(state): State<AppState>,
     admin: AdminCtx,

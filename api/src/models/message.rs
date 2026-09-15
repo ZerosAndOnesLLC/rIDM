@@ -2,7 +2,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum MessageChannel {
@@ -19,7 +21,9 @@ impl MessageChannel {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum MessageStatus {
@@ -29,7 +33,7 @@ pub enum MessageStatus {
     Dead,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct MessageTemplate {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -43,7 +47,7 @@ pub struct MessageTemplate {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct OutboundMessage {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -64,7 +68,7 @@ pub struct OutboundMessage {
 }
 
 /// Per-tenant SMTP configuration (encrypted at rest).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SmtpConfig {
     pub host: String,
     pub port: u16,
@@ -83,7 +87,7 @@ fn default_security() -> String {
 }
 
 /// Per-tenant email delivery: SMTP, or an HTTP webhook receiving JSON.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EmailProviderConfig {
     Smtp(SmtpConfig),
@@ -96,7 +100,7 @@ pub enum EmailProviderConfig {
 }
 
 /// SMS delivery through any HTTP gateway.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SmsProviderConfig {
     pub url: String,
     #[serde(default)]

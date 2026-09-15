@@ -20,6 +20,18 @@ async fn main() {
     if args.first().map(String::as_str) == Some("bootstrap") {
         std::process::exit(bootstrap_command(&args[1..]).await);
     }
+    if args.first().map(String::as_str) == Some("openapi") {
+        match ridm_api::openapi::openapi().to_pretty_json() {
+            Ok(json) => {
+                println!("{json}");
+                std::process::exit(0);
+            }
+            Err(err) => {
+                eprintln!("openapi: {err}");
+                std::process::exit(1);
+            }
+        }
+    }
     if args.first().map(String::as_str) == Some("migrate") {
         std::process::exit(migrate_command().await);
     }

@@ -7,7 +7,9 @@ use uuid::Uuid;
 pub const MASTER_TENANT_ID: Uuid = Uuid::from_u128(0x0000_0000_0000_7000_8000_0000_0000_0001);
 pub const MASTER_TENANT_SLUG: &str = "master";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum TenantStatus {
@@ -15,12 +17,13 @@ pub enum TenantStatus {
     Disabled,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct Tenant {
     pub id: Uuid,
     pub slug: String,
     pub display_name: String,
     pub status: TenantStatus,
+    #[schema(value_type = TenantSettings)]
     pub settings: Json<TenantSettings>,
     /// Random per-tenant salt for pairwise subject identifiers. Never exported.
     #[serde(skip)]
@@ -37,7 +40,7 @@ impl Tenant {
 
 /// Per-tenant configuration stored as JSONB. Every field has a default so that
 /// settings written by older versions keep deserializing.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct TenantSettings {
     pub password: PasswordPolicy,
@@ -61,7 +64,7 @@ pub struct TenantSettings {
 }
 
 /// Which security notices users receive (email, or SMS when they have no email).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct NotificationPolicy {
     pub new_device: bool,
@@ -82,7 +85,7 @@ impl Default for NotificationPolicy {
 }
 
 /// Which first-factor login methods the tenant offers.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct AuthMethods {
     pub password: bool,
@@ -106,7 +109,7 @@ impl Default for AuthMethods {
 
 /// When to demand a CAPTCHA (the provider itself is configured with its
 /// secret in `tenant_provider_settings`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct CaptchaPolicy {
     /// Require a challenge after this many failed attempts in a flow (0 = never).
@@ -124,7 +127,7 @@ impl Default for CaptchaPolicy {
 }
 
 /// Brute-force protection.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct LockoutPolicy {
     /// Consecutive failures before a user is temporarily locked (0 = off).
@@ -147,7 +150,7 @@ impl Default for LockoutPolicy {
 }
 
 /// Dynamic client registration policy (RFC 7591).
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct DcrPolicy {
     pub mode: DcrMode,
@@ -155,7 +158,7 @@ pub struct DcrPolicy {
     pub allowed_grants: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DcrMode {
     #[default]
@@ -167,7 +170,7 @@ pub enum DcrMode {
 }
 
 /// WebFinger issuer discovery (OIDC Discovery §2).
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct DiscoverySettings {
     /// `acct:user@<domain>` resources with one of these domains resolve to
@@ -175,7 +178,7 @@ pub struct DiscoverySettings {
     pub email_domains: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct PasswordPolicy {
     pub min_length: u32,
@@ -209,7 +212,7 @@ impl Default for PasswordPolicy {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct SessionPolicy {
     pub idle_timeout_secs: u64,
@@ -236,7 +239,7 @@ impl Default for SessionPolicy {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum MfaPolicy {
     #[default]
@@ -249,7 +252,7 @@ pub enum MfaPolicy {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct RegistrationPolicy {
     pub enabled: bool,
@@ -277,7 +280,7 @@ impl Default for RegistrationPolicy {
 }
 
 /// Signing key lifecycle policy.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct KeyPolicy {
     /// Algorithm for new keys created by rotation / on demand.
@@ -300,7 +303,7 @@ impl Default for KeyPolicy {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct LocaleSettings {
     pub default: String,
@@ -316,7 +319,7 @@ impl Default for LocaleSettings {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct Branding {
     pub logo_url: Option<String>,
@@ -328,7 +331,7 @@ pub struct Branding {
     pub links: Vec<BrandingLink>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct BrandingLink {
     pub label: String,
     pub url: String,

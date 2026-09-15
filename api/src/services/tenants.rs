@@ -16,7 +16,7 @@ use crate::services::locale;
 use crate::state::AppState;
 use crate::util::cursor::{Cursor, Page, page_size};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 pub struct NewTenant {
     pub slug: String,
     pub display_name: String,
@@ -24,7 +24,7 @@ pub struct NewTenant {
     pub settings: Option<TenantSettings>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct TenantUpdate {
     pub display_name: Option<String>,

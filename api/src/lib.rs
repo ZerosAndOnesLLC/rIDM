@@ -10,6 +10,7 @@ pub mod messaging;
 pub mod middleware;
 pub mod models;
 pub mod oidc;
+pub mod openapi;
 pub mod repos;
 pub mod routes;
 pub mod services;
@@ -30,24 +31,24 @@ pub fn build_router(state: AppState) -> Router {
 /// Build the application router plus `extra` routes (used by integration
 /// tests to exercise extractors and middleware in isolation).
 pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
+    let (admin, api) = openapi::admin_router().split_for_parts();
+    let docs = if state.config.docs_enabled {
+        Router::new()
+            .merge(utoipa_swagger_ui::SwaggerUi::new("/docs").url("/openapi.json", api.clone()))
+    } else {
+        let served = api.clone();
+        Router::new().route(
+            "/openapi.json",
+            axum::routing::get(move || {
+                let doc = served.clone();
+                async move { axum::Json(doc) }
+            }),
+        )
+    };
     Router::new()
         .merge(routes::health::router())
-        .merge(routes::admin::auth_router())
-        .merge(routes::admin::tenants_router())
-        .merge(routes::admin::clients_router())
-        .merge(routes::admin::users_router())
-        .merge(routes::admin::groups_router())
-        .merge(routes::admin::roles_router())
-        .merge(routes::admin::resource_servers_router())
-        .merge(routes::admin::scopes_router())
-        .merge(routes::admin::mappers_router())
-        .merge(routes::admin::keys_router())
-        .merge(routes::admin::invitations_router())
-        .merge(routes::admin::messaging_router())
-        .merge(routes::admin::audit_router())
-        .merge(routes::admin::webhooks_router())
-        .merge(routes::admin::ip_rules_router())
-        .merge(routes::admin::tenant_config_router())
+        .merge(admin)
+        .merge(docs)
         .merge(routes::branding::router())
         .merge(routes::wellknown::router())
         .merge(routes::webfinger::router())

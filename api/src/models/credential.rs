@@ -5,7 +5,7 @@ use uuid::Uuid;
 /// A user's non-password credential (MFA factors, passkeys, recovery codes),
 /// as listed to administrators and the user: the encrypted material stays
 /// in the row and is never part of this view.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct Credential {
     pub id: Uuid,
     pub tenant_id: Uuid,

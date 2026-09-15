@@ -172,7 +172,7 @@ pub async fn list(
     }))
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct Verification {
     /// Rows checked, oldest retained first.
     pub checked: u64,
@@ -244,7 +244,7 @@ pub async fn verify(state: &AppState, tenant_id: Option<Uuid>) -> AppResult<Veri
     Ok(out)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ExportFormat {
     Json,

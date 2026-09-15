@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::util::patch::double_option;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct Role {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -18,7 +18,7 @@ pub struct Role {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct NewRole {
     pub name: String,
@@ -26,7 +26,7 @@ pub struct NewRole {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct RoleUpdate {
     pub name: Option<String>,
@@ -41,14 +41,14 @@ impl RoleUpdate {
 }
 
 /// Who a role is assigned to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Principal {
     User { id: Uuid },
     Group { id: Uuid },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct RoleAssignment {
     pub id: Uuid,
     pub tenant_id: Uuid,

@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct Scope {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -25,7 +25,7 @@ pub const STANDARD_SCOPES: [&str; 6] = [
     "offline_access",
 ];
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct NewScope {
     pub name: String,
@@ -36,7 +36,7 @@ pub struct NewScope {
 }
 
 /// Partial scope update; the name is immutable.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct ScopeUpdate {
     #[serde(deserialize_with = "crate::util::patch::double_option")]
@@ -57,7 +57,7 @@ impl ScopeUpdate {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct NewResourceServer {
     /// Audience value (`aud`) tokens for this API carry; 1-512 characters.
@@ -69,7 +69,7 @@ pub struct NewResourceServer {
 }
 
 /// Partial resource server update; the identifier is immutable.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct ResourceServerUpdate {
     pub name: Option<String>,
@@ -89,14 +89,14 @@ impl ResourceServerUpdate {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct NewPermission {
     pub name: String,
     pub description: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct Consent {
     pub tenant_id: Uuid,
     pub user_id: Uuid,
@@ -106,7 +106,7 @@ pub struct Consent {
     pub revoked_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct ResourceServer {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -121,7 +121,7 @@ pub struct ResourceServer {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct Permission {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -132,7 +132,7 @@ pub struct Permission {
 }
 
 /// A stored claim mapper row; `config` is the [`crate::models::ClaimMapper`] document.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct ClaimMapperRow {
     pub id: Uuid,
     pub tenant_id: Uuid,

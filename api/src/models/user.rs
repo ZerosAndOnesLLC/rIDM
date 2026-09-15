@@ -4,7 +4,9 @@ use uuid::Uuid;
 
 use crate::util::patch::double_option;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema,
+)]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum UserStatus {
@@ -15,7 +17,7 @@ pub enum UserStatus {
     Deleted,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct User {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -55,7 +57,7 @@ impl User {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct NewUser {
     pub username: String,
@@ -69,7 +71,7 @@ pub struct NewUser {
     pub org_id: Option<Uuid>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct UserUpdate {
     pub username: Option<String>,
@@ -104,7 +106,7 @@ impl UserUpdate {
 }
 
 /// Filters for listing users.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct UserFilter {
     /// Case-insensitive prefix match on username or email.

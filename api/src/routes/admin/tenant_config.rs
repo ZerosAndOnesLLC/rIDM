@@ -1,25 +1,26 @@
 //! Admin API: tenant configuration as code (`/admin/tenants/{slug}/export`
 //! and `/import`).
 
-use axum::Router;
 use axum::extract::{Query, State};
 use axum::http::header;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
 use serde::Deserialize;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use crate::error::AppResult;
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
 use crate::services::tenant_config::{self, ApplyReport, TenantConfig};
 use crate::state::AppState;
 
-pub fn tenant_config_router() -> Router<AppState> {
-    Router::new()
-        .route("/admin/tenants/{slug}/export", get(export))
-        .route("/admin/tenants/{slug}/import", post(import))
+pub fn tenant_config_router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(export))
+        .routes(routes!(import))
 }
 
 /// Deterministic JSON (sorted keys and collections, natural keys, no secrets).
+#[utoipa::path(get, path = "/admin/tenants/{slug}/export", tag = "tenant_config", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = TenantConfig), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn export(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -42,7 +43,8 @@ async fn export(
     Ok(res)
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 #[serde(default)]
 struct ImportQuery {
     /// Plan only.
@@ -56,6 +58,7 @@ struct ImportQuery {
 /// what was applied, any per-item errors, and the secrets of clients and
 /// webhooks the import created (shown once). Applying the same document
 /// again yields an empty plan.
+#[utoipa::path(post, path = "/admin/tenants/{slug}/import", tag = "tenant_config", params(("slug" = String, Path, description = "Tenant slug"), ImportQuery), request_body = TenantConfig, responses((status = 200, body = ApplyReport), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn import(
     State(state): State<AppState>,
     admin: AdminCtx,

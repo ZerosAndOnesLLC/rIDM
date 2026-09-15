@@ -264,7 +264,28 @@ pagination with `?cursor=&limit=`):
 | `GET .../webhooks/{id}/deliveries?status=&limit=`, `GET .../deliveries/{id}`, `POST .../deliveries/{id}/redeliver` | read / read / write | delivery log with status, attempts, last status code, error and a response snippet; redeliver requeues and attempts at once |
 | `GET/POST /admin/tenants/{slug}/ip-rules`, `GET/PATCH/DELETE .../{id}` | `ridm:tenants:read` / `write` | `{cidr, action?: allow|deny, client_id?, description?}`; networks are normalized; `?client_id=` or `?tenant_wide=true`; enforced from Phase 9.2 |
 | `GET /admin/tenants/{slug}/export` | `ridm:tenants:export` | the tenant's configuration as one deterministic JSON document (`ridm.tenant/1`): settings, profile schema, resource servers and permissions, scopes, clients, roles (composites, permission grants), groups (by path, with roles), claim mappers, message templates, webhooks and IP rules, keyed by natural identifiers; no secrets, users or provider credentials |
+| `GET /openapi.json`, `GET /docs` | none | the admin API's OpenAPI 3 document, derived from the routers; Swagger UI at `/docs` when `DOCS_ENABLED=true` |
 | `POST /admin/tenants/{slug}/import?dry_run=&prune=` | `ridm:tenants:import` | `dry_run` returns the plan (creates, updates with field-level diffs, and with `prune` deletes of unmentioned configuration); otherwise applies it and reports what was applied, per-item errors, and the secrets of clients and webhooks it created (shown once); applying the same document twice is a no-op |
+
+### OpenAPI and the TypeScript client
+
+`GET /openapi.json` serves the admin API document; `ridm-api openapi` prints the same
+document without a database. It is derived from the routers with utoipa, so every route
+is documented or the build fails, and a test keeps the committed `api/openapi.json` equal
+to what the binary produces. The UI's typed client (`ui/lib/api/client.ts`, built on
+`openapi-fetch`) is generated from that file:
+
+```bash
+cargo run -p ridm-api -- openapi > api/openapi.json
+cd ui && npm run gen:api        # writes lib/api/openapi.d.ts
+```
+
+Every write through the admin API evicts what it changes: tenant documents (slug, id,
+discovery, JWKS, email-domain), clients, client JWKS, scopes, provider settings,
+webhooks and the profile schema are evicted by key; roles, groups, memberships,
+composites and permission grants bump the tenant's roles version (effective roles and
+admin permissions hang off it); claim mappers bump a mappers version; all of it
+propagates to every node's in-process cache through Valkey.
 
 Webhook deliveries are queued by an in-process subscriber of the event bus and sent by
 the `webhook_delivery` job (every 30 s, one runner per cluster): `POST` with a JSON body

@@ -20,7 +20,7 @@ use crate::repos;
 use crate::services::refresh_tokens;
 use crate::state::AppState;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SsoSession {
     pub id: Uuid,
     pub tenant_id: Uuid,

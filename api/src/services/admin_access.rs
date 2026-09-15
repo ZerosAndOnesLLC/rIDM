@@ -38,7 +38,7 @@ pub const VIEWER_ROLE: &str = "ridm:viewer";
 
 const PERMISSIONS_TTL: Duration = Duration::from_secs(60);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, utoipa::ToSchema)]
 pub struct PermissionDef {
     pub name: &'static str,
     pub description: &'static str,

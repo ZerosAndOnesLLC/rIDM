@@ -2,12 +2,12 @@
 //! delivery settings with test sends, template overrides per locale with
 //! preview, and the outbound delivery log.
 
-use axum::Router;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::{get, post};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
@@ -23,35 +23,23 @@ use crate::services::messaging::{
 };
 use crate::state::AppState;
 
-pub fn messaging_router() -> Router<AppState> {
-    let base = "/admin/tenants/{slug}/messaging";
-    Router::new()
-        .route(
-            &format!("{base}/email"),
-            get(email_get).put(email_put).delete(email_delete),
-        )
-        .route(&format!("{base}/email/test"), post(email_test))
-        .route(
-            &format!("{base}/sms"),
-            get(sms_get).put(sms_put).delete(sms_delete),
-        )
-        .route(&format!("{base}/sms/test"), post(sms_test))
-        .route(&format!("{base}/templates"), get(templates))
-        .route(&format!("{base}/templates/preview"), post(preview))
-        .route(
-            &format!("{base}/templates/{{channel}}/{{event}}/{{locale}}"),
-            get(template_get).put(template_put).delete(template_delete),
-        )
-        .route(&format!("{base}/log"), get(log))
-        .route(
-            &format!("{base}/log/{{message}}/redeliver"),
-            post(redeliver),
-        )
+pub fn messaging_router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(email_get, email_put, email_delete))
+        .routes(routes!(email_test))
+        .routes(routes!(sms_get, sms_put, sms_delete))
+        .routes(routes!(sms_test))
+        .routes(routes!(templates))
+        .routes(routes!(preview))
+        .routes(routes!(template_get, template_put, template_delete))
+        .routes(routes!(log))
+        .routes(routes!(redeliver))
 }
 
 const P_READ: &str = "ridm:messaging:read";
 const P_WRITE: &str = "ridm:messaging:write";
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/messaging/email", tag = "messaging", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = EmailSettings), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn email_get(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -65,6 +53,7 @@ async fn email_get(
 
 /// `{type: "smtp", host, port, username?, password?, from, security?}` or
 /// `{type: "http", url, auth_header?, from}`; an omitted secret keeps the stored one.
+#[utoipa::path(put, path = "/admin/tenants/{slug}/messaging/email", tag = "messaging", params(("slug" = String, Path, description = "Tenant slug")), request_body = EmailProviderConfig, responses((status = 200, body = EmailSettings), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn email_put(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -77,6 +66,7 @@ async fn email_put(
     ))
 }
 
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/messaging/email", tag = "messaging", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = EmailSettings), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn email_delete(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -86,12 +76,13 @@ async fn email_delete(
     Ok(Json(admin_messaging::clear_email(&state, tenant.id).await?))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 struct TestSend {
     to: String,
 }
 
+#[utoipa::path(post, path = "/admin/tenants/{slug}/messaging/email/test", tag = "messaging", params(("slug" = String, Path, description = "Tenant slug")), request_body = TestSend, responses((status = 200, body = TestSendResult), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn email_test(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -104,6 +95,7 @@ async fn email_test(
     ))
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/messaging/sms", tag = "messaging", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = SmsSettings), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn sms_get(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -115,6 +107,7 @@ async fn sms_get(
     ))
 }
 
+#[utoipa::path(put, path = "/admin/tenants/{slug}/messaging/sms", tag = "messaging", params(("slug" = String, Path, description = "Tenant slug")), request_body = SmsProviderConfig, responses((status = 200, body = SmsSettings), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn sms_put(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -127,6 +120,7 @@ async fn sms_put(
     ))
 }
 
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/messaging/sms", tag = "messaging", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = SmsSettings), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn sms_delete(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -136,6 +130,7 @@ async fn sms_delete(
     Ok(Json(admin_messaging::clear_sms(&state, tenant.id).await?))
 }
 
+#[utoipa::path(post, path = "/admin/tenants/{slug}/messaging/sms/test", tag = "messaging", params(("slug" = String, Path, description = "Tenant slug")), request_body = TestSend, responses((status = 200, body = TestSendResult), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn sms_test(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -148,7 +143,7 @@ async fn sms_test(
     ))
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 struct Templates {
     /// Events rIDM sends messages for; every one has a built-in English template.
     events: Vec<&'static str>,
@@ -157,6 +152,7 @@ struct Templates {
     overrides: Vec<MessageTemplate>,
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/messaging/templates", tag = "messaging", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Templates), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn templates(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -187,6 +183,7 @@ fn channel(s: &str) -> AppResult<MessageChannel> {
     }
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/messaging/templates/{channel}/{event}/{locale}", tag = "messaging", params(("slug" = String, Path, description = "Tenant slug"), ("channel" = String, Path), ("event" = String, Path), ("locale" = String, Path)), responses((status = 200, body = TemplateView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn template_get(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -200,6 +197,7 @@ async fn template_get(
     ))
 }
 
+#[utoipa::path(put, path = "/admin/tenants/{slug}/messaging/templates/{channel}/{event}/{locale}", tag = "messaging", params(("slug" = String, Path, description = "Tenant slug"), ("channel" = String, Path), ("event" = String, Path), ("locale" = String, Path)), request_body = TemplateBody, responses((status = 200, body = TemplateView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn template_put(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -221,6 +219,7 @@ async fn template_put(
     ))
 }
 
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/messaging/templates/{channel}/{event}/{locale}", tag = "messaging", params(("slug" = String, Path, description = "Tenant slug"), ("channel" = String, Path), ("event" = String, Path), ("locale" = String, Path)), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn template_delete(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -234,6 +233,7 @@ async fn template_delete(
 }
 
 /// Render a stored template or an unsaved draft with sample variables.
+#[utoipa::path(post, path = "/admin/tenants/{slug}/messaging/templates/preview", tag = "messaging", params(("slug" = String, Path, description = "Tenant slug")), request_body = PreviewRequest, responses((status = 200, body = Preview), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn preview(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -246,7 +246,7 @@ async fn preview(
 
 /// A delivery log entry without the message body (bodies carry links and
 /// codes that must not be readable after the fact).
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 struct LogEntry {
     id: Uuid,
     channel: MessageChannel,
@@ -281,13 +281,16 @@ impl From<OutboundMessage> for LogEntry {
     }
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 #[serde(default)]
 struct LogQuery {
+    #[param(inline)]
     status: Option<MessageStatus>,
     limit: Option<i64>,
 }
 
+#[utoipa::path(get, path = "/admin/tenants/{slug}/messaging/log", tag = "messaging", params(("slug" = String, Path, description = "Tenant slug"), LogQuery), responses((status = 200, body = Vec<LogEntry>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn log(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -305,6 +308,7 @@ struct MessagePath {
 }
 
 /// Put a dead message back in the queue.
+#[utoipa::path(post, path = "/admin/tenants/{slug}/messaging/log/{message}/redeliver", tag = "messaging", params(("slug" = String, Path, description = "Tenant slug"), ("message" = Uuid, Path)), responses((status = 202, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn redeliver(
     State(state): State<AppState>,
     admin: AdminCtx,

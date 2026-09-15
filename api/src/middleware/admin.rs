@@ -34,7 +34,7 @@ use crate::state::AppState;
 const REALM: &str = "ridm-admin";
 
 /// How far an administrator's permissions reach.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AdminScope {
     /// Token issued by `master`: every tenant.

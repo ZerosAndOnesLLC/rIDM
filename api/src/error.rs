@@ -36,7 +36,7 @@ pub enum AppError {
     Internal(String),
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct FieldError {
     pub field: String,
     pub message: String,
@@ -51,7 +51,7 @@ fn format_fields(fields: &[FieldError]) -> String {
 }
 
 /// RFC 9457 problem details body.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct Problem {
     #[serde(rename = "type")]
     pub kind: &'static str,

@@ -25,7 +25,7 @@ pub const MAX_ROWS: usize = 10_000;
 /// hash produced elsewhere (argon2, bcrypt, pbkdf2, sha, md5 formats) that
 /// is upgraded transparently at first login; `password` is checked against
 /// the tenant policy.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct ImportRow {
     pub username: String,
@@ -43,7 +43,7 @@ pub struct ImportRow {
     pub must_change_password: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ImportError {
     /// 1-based position in the submitted data.
     pub row: usize,
@@ -52,7 +52,7 @@ pub struct ImportError {
     pub error: String,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, utoipa::ToSchema)]
 pub struct ImportReport {
     pub dry_run: bool,
     pub total: usize,
@@ -414,7 +414,7 @@ pub async fn import(
 }
 
 /// What an export row carries: the user record without credentials.
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct ExportRow {
     pub id: Uuid,
     pub username: String,
@@ -449,7 +449,7 @@ impl From<User> for ExportRow {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ExportFormat {
     Json,
