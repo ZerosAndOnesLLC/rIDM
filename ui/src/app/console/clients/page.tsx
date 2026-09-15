@@ -22,7 +22,7 @@ export default function ClientsPage() {
   const [goTo, setGoTo] = useState<string | null>(null);
 
   if (!tenant) return <Spinner label="Loading…" />;
-  if (id) return <ClientDetail tenant={tenant} id={id} />;
+  if (id) return <ClientDetail key={id} tenant={tenant} id={id} />;
 
   const onCreated = (created: RevealView) => {
     const target = clientHref(tenant, created.id);

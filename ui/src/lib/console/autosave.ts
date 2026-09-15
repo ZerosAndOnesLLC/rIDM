@@ -26,7 +26,10 @@ export interface SaveOptions {
  * sent once typing pauses (`delay`), or after `maxDelay` of continuous
  * editing at the latest. A save that fails reports its message and drops
  * the batch, so the caller reloads the stored state. Unsent changes are
- * flushed with `keepalive` when the page is hidden or unloaded.
+ * flushed with `keepalive` when the page is hidden or unloaded, and when
+ * the editor unmounts, so an edit made just before switching records
+ * still lands on the record it was made on. Editors are keyed by record
+ * id for that reason: a new record means a new instance and a new queue.
  */
 export function useAutoSave<P>(save: (patch: P, options: SaveOptions) => Promise<void>, delay = 600, maxDelay = 2500) {
   const [status, setStatus] = useState<SaveStatus>("idle");
@@ -97,6 +100,8 @@ export function useAutoSave<P>(save: (patch: P, options: SaveOptions) => Promise
       window.removeEventListener("pagehide", onUnload);
     };
   }, [flush]);
+
+  useEffect(() => () => void flush(), [flush]);
 
   useEffect(() => {
     if (status !== "saved") return;

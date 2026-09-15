@@ -74,7 +74,7 @@ export function WebhooksPage({ tenant, selected }: { tenant: string; selected: s
             )}
           </Card>
         }
-        detail={selected ? <WebhookView tenant={tenant} id={selected} onReveal={setRevealed} /> : <p className="text-[0.9rem] text-muted">Choose a webhook.</p>}
+        detail={selected ? <WebhookView key={selected} tenant={tenant} id={selected} onReveal={setRevealed} /> : <p className="text-[0.9rem] text-muted">Choose a webhook.</p>}
       />
       <CreateWebhook tenant={tenant} open={creating} onOpenChange={setCreating} onReveal={setRevealed} />
       <RevealModal revealed={revealed} onClose={() => setRevealed(null)} />
@@ -146,13 +146,8 @@ function WebhookView({ tenant, id, onReveal }: { tenant: string; id: string; onR
     },
   });
   const [draft, setDraft] = useState<Webhook | null>(null);
-  const [seenId, setSeenId] = useState(id);
   const [resetCount, setResetCount] = useState(0);
   const [seenReset, setSeenReset] = useState(0);
-  if (seenId !== id) {
-    setSeenId(id);
-    setDraft(null);
-  }
   if (seenReset !== resetCount) {
     setSeenReset(resetCount);
     setDraft(query.data ?? null);

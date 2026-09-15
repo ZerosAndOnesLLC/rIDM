@@ -40,13 +40,8 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
   });
 
   const [draft, setDraft] = useState<ClientView | null>(null);
-  const [seenId, setSeenId] = useState(id);
   const [resetCount, setResetCount] = useState(0);
   const [seenReset, setSeenReset] = useState(0);
-  if (seenId !== id) {
-    setSeenId(id);
-    setDraft(null);
-  }
   if (seenReset !== resetCount) {
     setSeenReset(resetCount);
     setDraft(query.data ?? null);

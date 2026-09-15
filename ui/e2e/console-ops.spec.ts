@@ -72,6 +72,7 @@ test.describe("operations", () => {
     await expect(reveal.getByTestId("secret-value")).not.toBeEmpty({ timeout: 15_000 });
     await reveal.getByRole("button", { name: "I have stored it" }).click();
     await page.waitForURL(/webhooks\/\?tenant=master&webhook=/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: `E2E hook ${suffix}`, level: 2 })).toBeVisible({ timeout: 15_000 });
     await page.getByLabel("Events").fill("user.created");
     await page.keyboard.press("Enter");
     await page.getByLabel("Maximum attempts").fill("3");

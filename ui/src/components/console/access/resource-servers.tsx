@@ -61,7 +61,7 @@ export function ResourceServersPage({ tenant, selected }: { tenant: string; sele
             )}
           </Card>
         }
-        detail={selected ? <ResourceServerView tenant={tenant} id={selected} /> : <p className="text-[0.9rem] text-muted">Choose a resource server.</p>}
+        detail={selected ? <ResourceServerView key={selected} tenant={tenant} id={selected} /> : <p className="text-[0.9rem] text-muted">Choose a resource server.</p>}
       />
       <CreateResourceServer tenant={tenant} open={creating} onOpenChange={setCreating} />
     </>
@@ -111,13 +111,8 @@ function ResourceServerView({ tenant, id }: { tenant: string; id: string }) {
     },
   });
   const [draft, setDraft] = useState<ResourceServerDetail | null>(null);
-  const [seenId, setSeenId] = useState(id);
   const [resetCount, setResetCount] = useState(0);
   const [seenReset, setSeenReset] = useState(0);
-  if (seenId !== id) {
-    setSeenId(id);
-    setDraft(null);
-  }
   if (seenReset !== resetCount) {
     setSeenReset(resetCount);
     setDraft(query.data ?? null);

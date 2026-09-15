@@ -91,7 +91,7 @@ export function MappersPage({ tenant, selected }: { tenant: string; selected: st
             )}
           </Card>
         }
-        detail={selected ? <MapperView tenant={tenant} id={selected} clientNames={names.data ?? {}} /> : <p className="text-[0.9rem] text-muted">Choose a mapper.</p>}
+        detail={selected ? <MapperView key={selected} tenant={tenant} id={selected} clientNames={names.data ?? {}} /> : <p className="text-[0.9rem] text-muted">Choose a mapper.</p>}
       />
       <CreateMapper tenant={tenant} open={creating} onOpenChange={setCreating} clientNames={names.data ?? {}} />
     </>
@@ -239,13 +239,8 @@ function MapperView({ tenant, id, clientNames }: { tenant: string; id: string; c
     },
   });
   const [draft, setDraft] = useState<ClaimMapperRow | null>(null);
-  const [seenId, setSeenId] = useState(id);
   const [resetCount, setResetCount] = useState(0);
   const [seenReset, setSeenReset] = useState(0);
-  if (seenId !== id) {
-    setSeenId(id);
-    setDraft(null);
-  }
   if (seenReset !== resetCount) {
     setSeenReset(resetCount);
     setDraft(query.data ?? null);

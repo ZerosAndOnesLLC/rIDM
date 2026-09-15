@@ -66,7 +66,7 @@ export function GroupsPage({ tenant, selected }: { tenant: string; selected: str
             {groups.isPending ? <Spinner label="Loading…" /> : groups.isError ? <ErrorLine error={groups.error} /> : all.length === 0 ? <p className="text-[0.875rem] text-muted">No groups yet.</p> : <Tree parent={null} depth={0} />}
           </Card>
         }
-        detail={selected ? <GroupDetailView tenant={tenant} id={selected} all={all} onCreateChild={() => setCreating({ parent: selected })} /> : <p className="text-[0.9rem] text-muted">Choose a group.</p>}
+        detail={selected ? <GroupDetailView key={selected} tenant={tenant} id={selected} all={all} onCreateChild={() => setCreating({ parent: selected })} /> : <p className="text-[0.9rem] text-muted">Choose a group.</p>}
       />
       <CreateGroup tenant={tenant} all={all} open={creating !== null} parent={creating?.parent ?? null} onOpenChange={(o) => !o && setCreating(null)} />
     </>
@@ -131,13 +131,8 @@ function GroupDetailView({ tenant, id, all, onCreateChild }: { tenant: string; i
     },
   });
   const [draft, setDraft] = useState<GroupDetail | null>(null);
-  const [seenId, setSeenId] = useState(id);
   const [resetCount, setResetCount] = useState(0);
   const [seenReset, setSeenReset] = useState(0);
-  if (seenId !== id) {
-    setSeenId(id);
-    setDraft(null);
-  }
   if (seenReset !== resetCount) {
     setSeenReset(resetCount);
     setDraft(query.data ?? null);

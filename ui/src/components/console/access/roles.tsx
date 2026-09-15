@@ -84,7 +84,7 @@ export function RolesPage({ tenant, selected }: { tenant: string; selected: stri
             )}
           </Card>
         }
-        detail={selected ? <RoleDetailView tenant={tenant} id={selected} clientNames={names} /> : <p className="text-[0.9rem] text-muted">Choose a role.</p>}
+        detail={selected ? <RoleDetailView key={selected} tenant={tenant} id={selected} clientNames={names} /> : <p className="text-[0.9rem] text-muted">Choose a role.</p>}
       />
       <CreateRole tenant={tenant} open={creating} onOpenChange={setCreating} clientNames={names} />
     </>
@@ -147,13 +147,8 @@ function RoleDetailView({ tenant, id, clientNames }: { tenant: string; id: strin
     },
   });
   const [draft, setDraft] = useState<RoleDetail | null>(null);
-  const [seenId, setSeenId] = useState(id);
   const [resetCount, setResetCount] = useState(0);
   const [seenReset, setSeenReset] = useState(0);
-  if (seenId !== id) {
-    setSeenId(id);
-    setDraft(null);
-  }
   if (seenReset !== resetCount) {
     setSeenReset(resetCount);
     setDraft(query.data ?? null);
