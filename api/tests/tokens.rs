@@ -314,7 +314,9 @@ async fn expired_tokens_and_revoked_keys_are_rejected() {
         "client credentials use the client id as subject"
     );
     assert_eq!(decode_payload(&at.token)["aud"], "cli");
-    tokio::time::sleep(Duration::from_millis(1500)).await;
+    // `exp` has second granularity and a token is still valid during its
+    // expiry second, so wait comfortably past it.
+    tokio::time::sleep(Duration::from_millis(2500)).await;
     let strict = VerifyOptions {
         leeway_secs: 0,
         ..Default::default()
