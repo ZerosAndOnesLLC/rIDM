@@ -102,6 +102,8 @@ struct PasswordBody {
     csrf: String,
     identifier: String,
     password: String,
+    #[serde(default)]
+    captcha_token: Option<String>,
 }
 
 async fn password(
@@ -134,6 +136,7 @@ async fn password(
         ip,
         user_agent: ua,
         existing_session: existing,
+        captcha_token: body.captcha_token,
     };
     match flows::password_step(&state, &tenant, flow, attempt).await {
         Ok(AuthStep::Authenticated { session, flow }) => {

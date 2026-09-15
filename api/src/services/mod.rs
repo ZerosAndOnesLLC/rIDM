@@ -1,5 +1,6 @@
 pub mod auth_codes;
 pub mod bootstrap;
+pub mod captcha;
 pub mod claims;
 pub mod client_keys;
 pub mod clients;
@@ -16,6 +17,7 @@ pub mod logout;
 pub mod master_key;
 pub mod password;
 pub mod profile_schema;
+pub mod provider_settings;
 pub mod refresh_tokens;
 pub mod roles;
 pub mod scopes;

@@ -108,3 +108,8 @@ pub fn par_request(tenant_id: Uuid, id: &str) -> String {
 pub fn dcr_initial_token(tenant_id: Uuid, token_hash: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:dcr:iat:{token_hash}")
 }
+
+/// Decrypted provider configuration (L1 only; never stored in Redis).
+pub fn provider_settings(tenant_id: Uuid, kind: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:provider:{kind}")
+}

@@ -5,6 +5,7 @@ pub mod groups;
 pub mod login_attempts;
 pub mod password_history;
 pub mod profile_schema;
+pub mod provider_settings;
 pub mod refresh_tokens;
 pub mod resource_servers;
 pub mod roles;

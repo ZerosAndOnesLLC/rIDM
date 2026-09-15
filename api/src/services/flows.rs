@@ -46,6 +46,64 @@ pub struct PublicFlow {
     /// Authenticated user (after the authenticate stage).
     pub user: Option<PublicUser>,
     pub attempts: u32,
+    /// Present when the next authentication attempt must include a CAPTCHA token.
+    pub captcha: Option<CaptchaChallenge>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CaptchaChallenge {
+    pub provider: ridm_core::providers::CaptchaKind,
+    pub site_key: String,
+}
+
+/// Is a CAPTCHA required for the next attempt in this flow?
+pub async fn captcha_required(
+    state: &AppState,
+    tenant: &Tenant,
+    flow: &LoginFlow,
+) -> AppResult<Option<CaptchaChallenge>> {
+    let policy = &tenant.settings.captcha;
+    let needed = (policy.after_failures > 0 && flow.attempts >= policy.after_failures)
+        || (policy.on_registration && flow.stage == FlowStage::Register);
+    if !needed {
+        return Ok(None);
+    }
+    let provider = crate::services::captcha::provider_for(state, tenant.id).await?;
+    Ok(provider.site_key().map(|k| CaptchaChallenge {
+        provider: provider.kind(),
+        site_key: k.to_string(),
+    }))
+}
+
+/// Verify a CAPTCHA token when one is required; `Ok(())` when none is needed.
+pub async fn enforce_captcha(
+    state: &AppState,
+    tenant: &Tenant,
+    flow: &LoginFlow,
+    token: Option<&str>,
+    ip: Option<&str>,
+) -> AppResult<()> {
+    if captcha_required(state, tenant, flow).await?.is_none() {
+        return Ok(());
+    }
+    let Some(token) = token.filter(|t| !t.is_empty()) else {
+        return Err(AppError::Validation(vec![FieldError {
+            field: "captcha_token".into(),
+            message: "captcha_required".into(),
+        }]));
+    };
+    let provider = crate::services::captcha::provider_for(state, tenant.id).await?;
+    let outcome = provider
+        .verify(token, ip.and_then(|s| s.parse().ok()))
+        .await
+        .map_err(|e| AppError::Unavailable(format!("captcha verification failed: {e}")))?;
+    if !outcome.success {
+        return Err(AppError::Validation(vec![FieldError {
+            field: "captcha_token".into(),
+            message: "captcha_failed".into(),
+        }]));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -165,6 +223,7 @@ pub async fn public_state(
         privacy_url: tenant.settings.registration.privacy_url.clone(),
         user,
         attempts: flow.attempts,
+        captcha: captcha_required(state, tenant, flow).await?,
     })
 }
 
@@ -259,6 +318,8 @@ pub struct PasswordAttempt {
     pub user_agent: Option<String>,
     /// An SSO session the browser already has (re-authentication).
     pub existing_session: Option<SsoSession>,
+    /// CAPTCHA response, required once the tenant policy demands one.
+    pub captcha_token: Option<String>,
 }
 
 /// `POST /flows/{id}/password`
@@ -274,6 +335,7 @@ pub async fn password_step(
         ip,
         user_agent,
         existing_session,
+        captcha_token,
     } = attempt;
     if flow.stage != FlowStage::Authenticate {
         return Err(AppError::BadRequest(
@@ -294,6 +356,15 @@ pub async fn password_step(
             message: "identifier and password are required".into(),
         }]));
     }
+
+    enforce_captcha(
+        state,
+        &tenant.tenant,
+        &flow,
+        captcha_token.as_deref(),
+        ip.as_deref(),
+    )
+    .await?;
 
     // IP throttle.
     if lockout.ip_max_failures > 0

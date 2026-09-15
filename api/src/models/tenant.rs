@@ -51,6 +51,7 @@ pub struct TenantSettings {
     pub dcr: DcrPolicy,
     pub auth: AuthMethods,
     pub lockout: LockoutPolicy,
+    pub captcha: CaptchaPolicy,
     /// Custom issuer host (Phase 9.3). `None` means `{PUBLIC_URL}/t/{slug}`.
     pub custom_domain: Option<String>,
 }
@@ -74,6 +75,25 @@ impl Default for AuthMethods {
             email_otp: false,
             sms_otp: false,
             passkey: false,
+        }
+    }
+}
+
+/// When to demand a CAPTCHA (the provider itself is configured with its
+/// secret in `tenant_provider_settings`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CaptchaPolicy {
+    /// Require a challenge after this many failed attempts in a flow (0 = never).
+    pub after_failures: u32,
+    pub on_registration: bool,
+}
+
+impl Default for CaptchaPolicy {
+    fn default() -> Self {
+        Self {
+            after_failures: 3,
+            on_registration: true,
         }
     }
 }
