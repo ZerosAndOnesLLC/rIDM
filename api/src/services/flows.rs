@@ -625,6 +625,7 @@ fn dummy_user(tenant_id: Uuid) -> User {
         status: UserStatus::Active,
         attributes: Value::Object(Default::default()),
         locale: None,
+        external_id: None,
         last_login_at: None,
         failed_attempts: 0,
         locked_until: None,

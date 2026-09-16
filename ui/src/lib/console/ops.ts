@@ -10,6 +10,7 @@ export type AuditEvent = Schemas["AuditEvent"];
 export type Webhook = Schemas["Webhook"];
 export type WebhookDelivery = Schemas["WebhookDelivery"];
 export type IpRule = Schemas["IpRule"];
+export type ScimToken = Schemas["ScimToken"];
 export type TemplateView = Schemas["TemplateView"];
 export type LogEntry = Schemas["LogEntry"];
 export type IdentityProvider = Schemas["IdentityProviderView"];

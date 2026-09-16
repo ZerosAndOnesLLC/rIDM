@@ -268,6 +268,7 @@ mod tests {
             status: UserStatus::Active,
             attributes: json!({"department": "eng", "name": "Alice A", "level": "7"}),
             locale: Some("en".into()),
+            external_id: None,
             last_login_at: None,
             failed_attempts: 0,
             locked_until: None,

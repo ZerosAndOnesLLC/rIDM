@@ -38,6 +38,7 @@ use crate::state::AppState;
         (name = "messaging", description = "Email and SMS delivery, templates, delivery log"),
         (name = "audit", description = "Audit log"),
         (name = "webhooks", description = "Webhooks and deliveries"),
+        (name = "scim", description = "SCIM provisioning tokens"),
         (name = "ip_rules", description = "IP allow and deny rules"),
         (name = "identity_providers", description = "Upstream identity providers (OpenID Connect and OAuth 2.0 brokering)"),
         (name = "account", description = "Self-service account API: the signed-in user's profile, password, contact details, second factors, trusted devices, sessions, consented applications, data export and account deletion")
@@ -85,6 +86,7 @@ pub fn admin_router() -> OpenApiRouter<AppState> {
         .merge(admin::messaging_router())
         .merge(admin::audit_router())
         .merge(admin::webhooks_router())
+        .merge(admin::scim_router())
         .merge(admin::ip_rules_router())
         .merge(admin::identity_providers_router())
         .merge(account::me_router())

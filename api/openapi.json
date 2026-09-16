@@ -9161,6 +9161,225 @@
         ]
       }
     },
+    "/admin/tenants/{slug}/scim/tokens": {
+      "get": {
+        "tags": [
+          "scim"
+        ],
+        "operationId": "scim_list",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScimTokens"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "scim"
+        ],
+        "summary": "The token is returned once, in this response.",
+        "operationId": "scim_create",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewScimToken"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedScimToken"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/scim/tokens/{token}": {
+      "delete": {
+        "tags": [
+          "scim"
+        ],
+        "operationId": "scim_revoke",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/admin/tenants/{slug}/scopes": {
       "get": {
         "tags": [
@@ -17328,6 +17547,25 @@
         ],
         "description": "A freshly minted token: the secret is only ever returned here."
       },
+      "CreatedScimToken": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ScimToken"
+          },
+          {
+            "type": "object",
+            "required": [
+              "token"
+            ],
+            "properties": {
+              "token": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "The token is returned once, here."
+      },
       "CreatedUser": {
         "allOf": [
           {
@@ -20047,6 +20285,26 @@
         },
         "additionalProperties": false
       },
+      "NewScimToken": {
+        "type": "object",
+        "properties": {
+          "expires_in_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Days until the token expires; absent for a token without expiry.",
+            "default": null,
+            "minimum": 0
+          },
+          "name": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "additionalProperties": false
+      },
       "NewScope": {
         "type": "object",
         "properties": {
@@ -20510,6 +20768,13 @@
                 },
                 "email_verified": {
                   "type": "boolean"
+                },
+                "external_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The provisioning system's identifier (SCIM `externalId`), unique per tenant."
                 },
                 "failed_attempts": {
                   "type": "integer",
@@ -21892,6 +22157,74 @@
           "B3072",
           "B4096"
         ]
+      },
+      "ScimToken": {
+        "type": "object",
+        "description": "A bearer token a provisioning system uses against `/scim/v2/{tenant}`.",
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "name": {
+            "type": "string"
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "ScimTokens": {
+        "type": "object",
+        "description": "The tenant's tokens and where a provisioning system should point.",
+        "required": [
+          "base_url",
+          "tokens"
+        ],
+        "properties": {
+          "base_url": {
+            "type": "string",
+            "description": "`{PUBLIC_URL}/scim/v2/{slug}`."
+          },
+          "tokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScimToken"
+            }
+          }
+        }
       },
       "Scope": {
         "type": "object",
@@ -23286,6 +23619,13 @@
           "email_verified": {
             "type": "boolean"
           },
+          "external_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The provisioning system's identifier (SCIM `externalId`), unique per tenant."
+          },
           "failed_attempts": {
             "type": "integer",
             "format": "int32"
@@ -23504,6 +23844,13 @@
           "email_verified": {
             "type": [
               "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "external_id": {
+            "type": [
+              "string",
               "null"
             ],
             "default": null
@@ -23919,6 +24266,10 @@
     {
       "name": "webhooks",
       "description": "Webhooks and deliveries"
+    },
+    {
+      "name": "scim",
+      "description": "SCIM provisioning tokens"
     },
     {
       "name": "ip_rules",

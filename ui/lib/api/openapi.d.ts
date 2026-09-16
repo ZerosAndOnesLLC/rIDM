@@ -1133,6 +1133,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/tenants/{slug}/scim/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["scim_list"];
+        put?: never;
+        /** The token is returned once, in this response. */
+        post: operations["scim_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/scim/tokens/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["scim_revoke"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/tenants/{slug}/scopes": {
         parameters: {
             query?: never;
@@ -2742,6 +2775,10 @@ export interface components {
             /** @description The bearer token, shown once. */
             token: string;
         };
+        /** @description The token is returned once, here. */
+        CreatedScimToken: components["schemas"]["ScimToken"] & {
+            token: string;
+        };
         /** @description Response to a create or password change that minted a temporary password. */
         CreatedUser: components["schemas"]["User"] & {
             temporary_password?: string | null;
@@ -3700,6 +3737,16 @@ export interface components {
             /** @default  */
             name: string;
         };
+        NewScimToken: {
+            /**
+             * Format: int32
+             * @description Days until the token expires; absent for a token without expiry.
+             * @default null
+             */
+            expires_in_days: number | null;
+            /** @default  */
+            name: string;
+        };
         NewScope: {
             /** @default [] */
             claims: string[];
@@ -3841,6 +3888,8 @@ export interface components {
                 deleted_at?: string | null;
                 email?: string | null;
                 email_verified: boolean;
+                /** @description The provisioning system's identifier (SCIM `externalId`), unique per tenant. */
+                external_id?: string | null;
                 /** Format: int32 */
                 failed_attempts: number;
                 /** Format: uuid */
@@ -4369,6 +4418,28 @@ export interface components {
          * @enum {string}
          */
         RsaBits: "B2048" | "B3072" | "B4096";
+        /** @description A bearer token a provisioning system uses against `/scim/v2/{tenant}`. */
+        ScimToken: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            last_used_at?: string | null;
+            name: string;
+            /** Format: date-time */
+            revoked_at?: string | null;
+            /** Format: uuid */
+            tenant_id: string;
+        };
+        /** @description The tenant's tokens and where a provisioning system should point. */
+        ScimTokens: {
+            /** @description `{PUBLIC_URL}/scim/v2/{slug}`. */
+            base_url: string;
+            tokens: components["schemas"]["ScimToken"][];
+        };
         Scope: {
             claims: string[];
             /** Format: date-time */
@@ -4916,6 +4987,8 @@ export interface components {
             deleted_at?: string | null;
             email?: string | null;
             email_verified: boolean;
+            /** @description The provisioning system's identifier (SCIM `externalId`), unique per tenant. */
+            external_id?: string | null;
             /** Format: int32 */
             failed_attempts: number;
             /** Format: uuid */
@@ -4984,6 +5057,8 @@ export interface components {
             email: string | null;
             /** @default null */
             email_verified: boolean | null;
+            /** @default null */
+            external_id: string | null;
             /** @default null */
             locale: string | null;
             /** @default null */
@@ -11443,6 +11518,166 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Problem"];
                 };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    scim_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScimTokens"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    scim_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewScimToken"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedScimToken"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    scim_revoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Missing or invalid admin token */
             401: {

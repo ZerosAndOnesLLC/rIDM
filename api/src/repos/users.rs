@@ -11,7 +11,7 @@ use crate::util::cursor::Cursor;
 
 const COLUMNS: &str = "id, tenant_id, org_id, username, email, email_verified, phone, phone_verified, \
     password_hash, password_algo, must_change_password, password_expires_at, password_changed_at, \
-    status, attributes, locale, last_login_at, failed_attempts, locked_until, deleted_at, \
+    status, attributes, locale, external_id, last_login_at, failed_attempts, locked_until, deleted_at, \
     terms_accepted_at, created_at, updated_at";
 
 pub async fn find_by_id<'e>(
@@ -86,7 +86,7 @@ pub async fn insert<'e>(
 ) -> Result<User, sqlx::Error> {
     let mut qb = QueryBuilder::new(
         "INSERT INTO users (id, tenant_id, org_id, username, email, email_verified, phone, \
-         phone_verified, status, attributes, locale) VALUES (",
+         phone_verified, status, attributes, locale, external_id) VALUES (",
     );
     let mut sep = qb.separated(", ");
     sep.push_bind(id)
@@ -104,9 +104,26 @@ pub async fn insert<'e>(
                 .clone()
                 .unwrap_or_else(|| serde_json::Value::Object(Default::default())),
         )
-        .push_bind(&input.locale);
+        .push_bind(&input.locale)
+        .push_bind(&input.external_id);
     qb.push(") RETURNING ").push(COLUMNS);
     qb.build_query_as::<User>().fetch_one(exec).await
+}
+
+/// A live user by the provisioning system's identifier.
+pub async fn find_by_external_id<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    external_id: &str,
+) -> Result<Option<User>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("SELECT ");
+    qb.push(COLUMNS)
+        .push(" FROM users WHERE tenant_id = ")
+        .push_bind(tenant_id)
+        .push(" AND external_id = ")
+        .push_bind(external_id)
+        .push(" AND deleted_at IS NULL");
+    qb.build_query_as::<User>().fetch_optional(exec).await
 }
 
 pub async fn update<'e>(
@@ -151,6 +168,9 @@ pub async fn update<'e>(
     }
     if let Some(v) = patch.must_change_password {
         qb.push(", must_change_password = ").push_bind(v);
+    }
+    if let Some(v) = &patch.external_id {
+        qb.push(", external_id = ").push_bind(v.clone());
     }
     qb.push(" WHERE tenant_id = ")
         .push_bind(tenant_id)

@@ -22,6 +22,7 @@ const PAGES: [string, string, string][] = [
   ["keys", `/console/keys/?tenant=${TENANT}`, "Signing keys"],
   ["audit", `/console/audit/?tenant=${TENANT}`, "Audit log"],
   ["ip rules", `/console/ip-rules/?tenant=${TENANT}`, "IP rules"],
+  ["provisioning", `/console/provisioning/?tenant=${TENANT}`, "Provisioning"],
   ["webhooks", `/console/webhooks/?tenant=${TENANT}`, "Webhooks"],
   ["messaging email", `/console/messaging/?tenant=${TENANT}&tab=email`, "Messaging"],
   ["messaging sms", `/console/messaging/?tenant=${TENANT}&tab=sms`, "Messaging"],

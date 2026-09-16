@@ -95,6 +95,7 @@ fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
         .merge(routes::wellknown::router())
         .merge(routes::webfinger::router())
         .merge(routes::jwks::router())
+        .merge(routes::scim::router())
         .merge(limited(flows, Category::Flows, Style::Problem))
         .merge(limited(
             routes::broker::router(),

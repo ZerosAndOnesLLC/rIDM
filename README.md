@@ -175,6 +175,43 @@ in [`.env.example`](.env.example). The essentials:
 Health probes: `GET /healthz` (liveness) and `GET /readyz` (database + cache).
 `GET /.well-known/security.txt` serves the vulnerability disclosure policy.
 
+### SCIM provisioning
+
+Each tenant exposes a SCIM 2.0 server (RFC 7643/7644) at `{PUBLIC_URL}/scim/v2/{slug}`:
+`ServiceProviderConfig`, `ResourceTypes`, `Schemas`, and `Users` and `Groups` with
+GET (filter, `startIndex`, `count`), POST, PUT, PATCH and DELETE, all as
+`application/scim+json` with SCIM error documents (`scimType`: `invalidFilter`,
+`invalidSyntax`, `invalidValue`, `noTarget`, `uniqueness`, `tooMany`). A provisioning
+system authenticates with a bearer token minted for the tenant (console: Provisioning;
+API: `/admin/tenants/{slug}/scim/tokens` under `ridm:scim:read`/`write`, which user
+managers hold): `rscim_` tokens are shown once, stored hashed, optionally expiring,
+revocable, and confined to their tenant. Changes are attributed to the token in the
+audit log.
+
+A SCIM User maps onto a user: `userName` ↔ username, `externalId` ↔ the new
+`external_id` column (unique per tenant), the primary `emails` entry ↔ email, the first
+`phoneNumbers` entry ↔ phone, `active` ↔ active/disabled, `locale` ↔ locale, and
+`name.givenName`, `name.familyName` and `displayName` ↔ the profile attributes
+`given_name`, `family_name` and `display_name` when the profile schema declares them
+(or allows undeclared attributes); `groups` is read-only. A SCIM Group maps onto a
+group: `displayName` ↔ name, `externalId` ↔ `attributes.externalId`, `members` ↔
+memberships (users). Deleting a user through SCIM soft-deletes it like the admin API.
+
+Filters follow the RFC grammar (`eq ne co sw ew gt ge lt le pr`, `and`/`or`/`not`,
+parentheses, dotted and `attr[filter].sub` paths, schema-URN prefixes, case-insensitive
+attribute names and string comparisons). A user filter that is one equality on
+`userName`, `externalId`, `emails`/`emails.value` or `id` (possibly `and`-ed with more
+conditions) is answered from the index; any other user filter is evaluated over the
+tenant's users up to 2,000 rows and refused beyond that with `tooMany`, so provisioning
+systems should look users up by those attributes (they do). Group filters run over all
+groups. `count` is clamped to 200 and `startIndex` beyond 2,000 is refused.
+
+PATCH applies RFC 7644 `add`, `replace` and `remove` operations to the resource's SCIM
+document — with or without `path`, simple and dotted paths, filtered multi-valued paths
+such as `emails[type eq "work"].value` and `members[value eq "<id>"]`, `"True"`/`"False"`
+strings for booleans — and stores the result as a full replace, so PATCH and PUT share
+one path.
+
 ### Token exchange and DPoP
 
 **Token exchange (RFC 8693)**, `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`
@@ -540,6 +577,7 @@ pagination with `?cursor=&limit=`):
 | `GET/POST /admin/tenants/{slug}/webhooks`, `GET/PATCH/DELETE .../{id}` | `ridm:webhooks:read` / `write` | `{name, url, events, enabled?, headers?, max_attempts?}`; `events` are exact names, prefixes (`user.*`) or `*`; the signing `secret` is returned once on create |
 | `POST .../webhooks/{id}/secret`, `POST .../webhooks/{id}/test` | `ridm:webhooks:write` | rotate the secret (shown once); deliver a `webhook.test` event now and report the attempt |
 | `GET .../webhooks/{id}/deliveries?status=&limit=`, `GET .../deliveries/{id}`, `POST .../deliveries/{id}/redeliver`, `POST .../deliveries/redeliver-dead` | read / read / write / write | delivery log with status, attempts, last status code, error and a response snippet; redeliver requeues and attempts at once; redeliver-dead does so for every dead delivery of the webhook and reports the count |
+| `GET/POST /admin/tenants/{slug}/scim/tokens`, `DELETE .../{id}` | `ridm:scim:read` / `write` | the tenant's SCIM base URL and provisioning tokens; `{name, expires_in_days?}` returns the `rscim_` token once; revoke stops it at once |
 | `GET/POST /admin/tenants/{slug}/ip-rules`, `GET/PATCH/DELETE .../{id}` | `ridm:tenants:read` / `write` | `{cidr, action?: allow|deny, client_id?, description?}`; networks are normalized; `?client_id=` or `?tenant_wide=true`; in force at once (see [IP rules](#ip-rules)) |
 | `GET/POST /admin/tenants/{slug}/identity-providers`, `GET/PATCH/DELETE .../{idp}` (id or alias), `GET .../presets`, `POST .../discover` | `ridm:idps:read` / `write` | upstream OpenID Connect and OAuth 2.0 providers: a `preset` (`google`, `microsoft`, `github`, `apple`, `gitlab`) fills in protocol, endpoints, scopes and mappers; an OIDC provider's endpoints are discovered from its `issuer` when left out; the `client_secret` is stored encrypted and never returned (`client_secret_set`), `null` clears it; `link_policy` (`verified_email`, `explicit`, `always_new`), `trust_email`, `mappers` (`subject`, `username`, `email`, `email_verified` claim names and `attributes` → claim), `hidden`, `sort_order`; every answer carries the `callback_url` to register upstream |
 | `GET /admin/tenants/{slug}/users/{user}/identities`, `DELETE .../identities/{idp_id}` | `ridm:users:read` / `write` | the upstream identities linked to a user, and unlinking one |

@@ -46,6 +46,8 @@ pub mod refresh_tokens;
 pub mod registration;
 pub mod resource_servers;
 pub mod roles;
+pub mod scim;
+pub mod scim_tokens;
 pub mod scopes;
 pub mod sessions;
 pub mod stats;
