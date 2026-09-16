@@ -159,7 +159,7 @@ async fn populate(app: &TestApp, slug: &str, t: &str) {
         .as_array()
         .unwrap()
         .iter()
-        .find(|r| r["built_in"] == true)
+        .find(|r| r["identifier"] == "urn:ridm:admin")
         .unwrap()["id"]
         .as_str()
         .unwrap()

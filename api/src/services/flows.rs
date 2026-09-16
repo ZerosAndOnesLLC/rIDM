@@ -918,7 +918,15 @@ pub async fn mfa_otp_enrol_begin(
     phone: Option<&str>,
 ) -> AppResult<otp_factors::Sent> {
     let user = mfa_user(state, tenant, flow).await?;
-    otp_factors::begin_enrolment(state, &tenant.tenant, flow, &user, channel, phone).await
+    otp_factors::begin_enrolment(
+        state,
+        &tenant.tenant,
+        otp_scope(flow),
+        &user,
+        channel,
+        phone,
+    )
+    .await
 }
 
 /// `POST /flows/{id}/mfa/{email|sms}/confirm`: prove the pending enrolment;
@@ -933,7 +941,16 @@ pub async fn mfa_otp_enrol_confirm(
     ip: Option<String>,
 ) -> AppResult<MfaStep> {
     let user = mfa_user(state, tenant, &flow).await?;
-    if otp_factors::confirm_enrolment(state, &tenant.tenant, &flow, &user, channel, code).await? {
+    if otp_factors::confirm_enrolment(
+        state,
+        &tenant.tenant,
+        otp_scope(&flow),
+        &user,
+        channel,
+        code,
+    )
+    .await?
+    {
         let recovery_codes = first_recovery_codes(state, tenant, &user).await?;
         pass_second_factor(
             state,
@@ -961,7 +978,7 @@ pub async fn mfa_otp_send(
     channel: otp_factors::Channel,
 ) -> AppResult<otp_factors::Sent> {
     let user = mfa_user(state, tenant, flow).await?;
-    otp_factors::send_code(state, &tenant.tenant, flow, &user, channel).await
+    otp_factors::send_code(state, &tenant.tenant, otp_scope(flow), &user, channel).await
 }
 
 /// `POST /flows/{id}/mfa/{email|sms}/verify`
@@ -975,7 +992,16 @@ pub async fn mfa_otp_verify(
     ip: Option<String>,
 ) -> AppResult<MfaStep> {
     let user = mfa_user(state, tenant, &flow).await?;
-    if otp_factors::verify(state, &tenant.tenant, &flow, &user, channel, code).await? {
+    if otp_factors::verify(
+        state,
+        &tenant.tenant,
+        otp_scope(&flow),
+        &user,
+        channel,
+        code,
+    )
+    .await?
+    {
         pass_second_factor(
             state,
             tenant,
@@ -991,6 +1017,14 @@ pub async fn mfa_otp_verify(
         })
     } else {
         mfa_reject(state, tenant, flow, &user, ip).await
+    }
+}
+
+/// Codes of a flow live under its id, in the locales it asked for.
+fn otp_scope(flow: &LoginFlow) -> otp_factors::Scope<'_> {
+    otp_factors::Scope {
+        id: flow.id,
+        ui_locales: &flow.request.ui_locales,
     }
 }
 

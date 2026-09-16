@@ -142,14 +142,14 @@ pub struct AdminRejection {
 }
 
 impl AdminRejection {
-    fn missing() -> Self {
+    pub(crate) fn missing() -> Self {
         Self {
             error: AppError::Unauthorized,
             invalid_token: false,
         }
     }
 
-    fn invalid() -> Self {
+    pub(crate) fn invalid() -> Self {
         Self {
             error: AppError::Unauthorized,
             invalid_token: true,
@@ -186,7 +186,7 @@ impl IntoResponse for AdminRejection {
     }
 }
 
-fn bearer(headers: &HeaderMap) -> Option<String> {
+pub(crate) fn bearer(headers: &HeaderMap) -> Option<String> {
     let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
     let (scheme, rest) = value.split_once(' ')?;
     if !scheme.eq_ignore_ascii_case("bearer") {
@@ -199,7 +199,7 @@ fn bearer(headers: &HeaderMap) -> Option<String> {
 /// The `tid` claim read without verification, only to pick the key set to
 /// verify with. [`tokens::verify`] then binds the token to that tenant's
 /// issuer and keys, so a forged `tid` cannot pass.
-fn unverified_tenant_id(token: &str) -> Option<Uuid> {
+pub(crate) fn unverified_tenant_id(token: &str) -> Option<Uuid> {
     let payload = token.split('.').nth(1)?;
     let bytes = URL_SAFE_NO_PAD.decode(payload).ok()?;
     let claims: serde_json::Value = serde_json::from_slice(&bytes).ok()?;

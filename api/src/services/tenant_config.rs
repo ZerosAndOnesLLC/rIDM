@@ -319,7 +319,7 @@ pub async fn export(state: &AppState, tenant: &Tenant) -> AppResult<TenantConfig
     let mut clients_out = vec![];
     for (id, public_id) in &all_clients {
         // The console's client is built in and follows `UI_URL`, not the document.
-        if admin_console::is_console_client(public_id) {
+        if admin_console::is_builtin_client(public_id) {
             continue;
         }
         let c = clients::get(state, tid, *id).await?;
@@ -620,7 +620,7 @@ fn normalize(tenant_id: Uuid, mut doc: TenantConfig) -> AppResult<TenantConfig> 
         )));
     }
     for c in &mut doc.clients {
-        if admin_console::is_console_client(&c.client_id) {
+        if admin_console::is_builtin_client(&c.client_id) {
             return Err(AppError::BadRequest(format!(
                 "clients: `{}` is built in and is not part of the document",
                 c.client_id
@@ -709,7 +709,7 @@ pub async fn plan(
         &current.clients,
         &desired.clients,
         |c| c.client_id.clone(),
-        |c| !admin_console::is_console_client(&c.client_id),
+        |c| !admin_console::is_builtin_client(&c.client_id),
     )?;
     diff_collection(
         &mut plan,

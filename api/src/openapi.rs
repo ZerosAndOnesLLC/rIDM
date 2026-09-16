@@ -7,16 +7,18 @@ use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa::{Modify, OpenApi};
 use utoipa_axum::router::OpenApiRouter;
 
-use crate::routes::admin;
+use crate::routes::{account, admin};
 use crate::state::AppState;
 
 #[derive(OpenApi)]
 #[openapi(
     info(
         title = "rIDM Admin API",
-        description = "Administration API of rIDM. Every operation needs a bearer access token \
-                       carrying the `urn:ridm:admin` audience; permissions are `ridm:<resource>:<action>`. \
-                       Errors are RFC 9457 problem documents.",
+        description = "Administration API of rIDM, plus the self-service account API. Admin operations \
+                       need a bearer access token carrying the `urn:ridm:admin` audience; permissions \
+                       are `ridm:<resource>:<action>`. Account operations (`/t/{slug}/account/...`) \
+                       need a token of that tenant carrying the `urn:ridm:account` audience and act on \
+                       its subject only. Errors are RFC 9457 problem documents.",
         license(name = "MIT")
     ),
     modifiers(&BearerAuth),
@@ -36,7 +38,8 @@ use crate::state::AppState;
         (name = "messaging", description = "Email and SMS delivery, templates, delivery log"),
         (name = "audit", description = "Audit log"),
         (name = "webhooks", description = "Webhooks and deliveries"),
-        (name = "ip_rules", description = "IP allow and deny rules")
+        (name = "ip_rules", description = "IP allow and deny rules"),
+        (name = "account", description = "Self-service account API: the signed-in user's second factors and trusted devices")
     )
 )]
 struct ApiDoc;
@@ -82,6 +85,9 @@ pub fn admin_router() -> OpenApiRouter<AppState> {
         .merge(admin::audit_router())
         .merge(admin::webhooks_router())
         .merge(admin::ip_rules_router())
+        .merge(account::me_router())
+        .merge(account::mfa_router())
+        .merge(account::devices_router())
 }
 
 /// The admin API document as served and committed.

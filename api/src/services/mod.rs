@@ -1,3 +1,4 @@
+pub mod account_console;
 pub mod admin_access;
 pub mod admin_console;
 pub mod audit;

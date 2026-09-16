@@ -10,6 +10,8 @@ import { Alert, Button, Checkbox, Spinner, TextField, Title } from "@/components
 import { useFlow } from "@/lib/flow";
 import { usePageParams, WithParams } from "@/lib/params";
 import { assertPasskey, createPasskey, passkeysSupported } from "@/lib/passkeys";
+import { RecoveryCodes } from "@/components/mfa/recovery-codes";
+import { TotpSetup } from "@/components/mfa/totp-setup";
 import type { Factor, MfaEnrolled, OtpSent, PasskeyCreationOptions, PasskeyRequestOptions, PublicFlow, TotpEnrolment } from "@/lib/types";
 
 const ACCEPTS = ["mfa", "done"] as const;
@@ -505,18 +507,7 @@ function Enrol({ flow, post, onEnrolled, onBack }: { flow: PublicFlow; post: Pos
       <Title sub={t("mfa.enroll_description", { issuer })}>{t("mfa.enroll_title")}</Title>
       <SignedInAs flow={flow} />
       {error && <Alert tone="error">{error}</Alert>}
-      {enrolment && qr ? (
-        <div className="flex flex-col items-center gap-3 rounded-[var(--radius)] border border-line bg-paper p-4">
-          {/* eslint-disable-next-line @next/next/no-img-element -- data URL rendered client-side */}
-          <img src={qr} width={192} height={192} alt={t("mfa.qr_alt", { account: enrolment.account })} className="rounded-md bg-white" />
-          <p className="text-[0.8125rem] text-muted">{t("mfa.manual_key")}</p>
-          <code data-testid="totp-secret" className="max-w-full break-all rounded-md bg-ground px-2 py-1 font-mono text-[0.875rem] text-ink select-all">
-            {enrolment.secret}
-          </code>
-        </div>
-      ) : (
-        <Spinner label={t("common.loading")} />
-      )}
+      <TotpSetup enrolment={enrolment} qr={qr} />
       <CodeInput label={t("common.code")} value={code} onChange={setCode} />
       <TextField label={t("mfa.app_label")} value={label} onChange={(e) => setLabel(e.target.value)} maxLength={80} autoComplete="off" />
       <Checkbox label={t("mfa.trust_device")} checked={trust} onChange={(e) => setTrust(e.target.checked)} />
@@ -526,47 +517,5 @@ function Enrol({ flow, post, onEnrolled, onBack }: { flow: PublicFlow; post: Pos
       {onBack && <SwitchLink onClick={onBack}>{t("mfa.choose_other")}</SwitchLink>}
       <CancelLink post={post} />
     </form>
-  );
-}
-
-function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
-  const { t } = useI18n();
-  const [copied, setCopied] = useState(false);
-  const text = codes.join("\n");
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
-  };
-  const href = `data:text/plain;charset=utf-8,${encodeURIComponent(`${text}\n`)}`;
-  return (
-    <div className="flex flex-col gap-5">
-      <Title sub={t("mfa.codes_description")}>{t("mfa.codes_title")}</Title>
-      <ul aria-label={t("mfa.codes_title")} className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-[var(--radius)] border border-line bg-paper p-4 font-mono text-[0.9375rem] text-ink">
-        {codes.map((c) => (
-          <li key={c} className="select-all">
-            {c}
-          </li>
-        ))}
-      </ul>
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="secondary" className="flex-1" onClick={() => void copy()} aria-live="polite">
-          {copied ? t("mfa.codes_copied") : t("mfa.codes_copy")}
-        </Button>
-        <a
-          href={href}
-          download="recovery-codes.txt"
-          className="inline-flex min-h-11 flex-1 items-center justify-center rounded-[var(--radius)] border border-line px-4 text-[0.9375rem] font-medium text-ink hover:bg-ground"
-        >
-          {t("mfa.codes_download")}
-        </a>
-      </div>
-      <Button type="button" onClick={onDone}>
-        {t("mfa.codes_saved")}
-      </Button>
-    </div>
   );
 }

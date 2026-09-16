@@ -194,6 +194,24 @@ for small installs.
 
 ### Master key rotation
 
+The account console at `/account/` lets users manage their own second step and
+trusted devices (the rest of the account console follows in Phase 8). It is an OIDC
+public client of the user's own tenant, `ridm-account-console` (PKCE, built in like
+the admin console's client, following `UI_URL`, undeletable and left out of exports),
+whose tokens carry the built-in `urn:ridm:account` audience and reach only the
+self-service API under `/t/{slug}/account/`: `GET me` (identity plus the session's
+`auth_time`, `acr` and `amr`), `GET mfa` (enrolled factors, recovery codes left, the
+methods the tenant offers), `POST mfa/totp/enroll|confirm`, `mfa/passkey/register[/finish]`,
+`mfa/{email|sms}/enroll|confirm` (the same services as the login-flow steps, scoped to
+the SSO session), `DELETE mfa/credentials/{id}` (the recovery codes go with the last
+factor), `POST mfa/recovery-codes` (a new set, shown once), `GET devices`,
+`DELETE devices[/{id}]`. Every change needs a sign-in from the last fifteen minutes,
+and one that passed the second step once the account has one; otherwise the API
+answers `403` with the problem type `urn:ridm:error:reauthentication-required` and the
+page sends the user back through sign-in (`max_age=0`, plus `acr_values` for the second
+step) and returns. A token may only act on its own subject and only in the tenant that
+issued it.
+
 Breached-password check: with `password.check_breached` on, every password a user
 or administrator sets (registration, recovery, forced change, admin reset, imports
 with a plaintext `password`) is looked up in a Have I Been Pwned compatible range API

@@ -21,7 +21,6 @@ use crate::messaging::{self, Outgoing};
 use crate::models::{MessageChannel, Tenant, User, UserUpdate};
 use crate::repos;
 use crate::services::credential_secrets::encrypt;
-use crate::services::login_flows::LoginFlow;
 use crate::services::passwordless::{self, OTP_TTL_SECS};
 use crate::services::{locale, notifications, users};
 use crate::state::AppState;
@@ -105,10 +104,18 @@ struct PendingEnrolment {
 }
 
 /// Where a code went, as told to the user (masked).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct Sent {
     pub sent: bool,
     pub destination: String,
+}
+
+/// Where a code lives: the login flow (or, from the account console, the
+/// session) it belongs to, plus the locales the page asked for.
+#[derive(Debug, Clone, Copy)]
+pub struct Scope<'a> {
+    pub id: Uuid,
+    pub ui_locales: &'a [String],
 }
 
 /// `alice@example.com` → `a•••@example.com`.
@@ -166,17 +173,13 @@ pub async fn enrolled(
 async fn deliver(
     state: &AppState,
     tenant: &Tenant,
-    flow: &LoginFlow,
+    ui_locales: &[String],
     user: &User,
     channel: Channel,
     destination: &str,
     code: &str,
 ) -> AppResult<()> {
-    let locale = locale::negotiate(
-        &flow.request.ui_locales,
-        user.locale.as_deref(),
-        &tenant.settings.locale,
-    );
+    let locale = locale::negotiate(ui_locales, user.locale.as_deref(), &tenant.settings.locale);
     messaging::send(state, tenant, Outgoing {
         channel: channel.message_channel(),
         event: "otp",
@@ -194,7 +197,7 @@ async fn deliver(
 async fn issue(
     state: &AppState,
     tenant: &Tenant,
-    flow: &LoginFlow,
+    scope: Scope<'_>,
     user: &User,
     channel: Channel,
     purpose: &str,
@@ -204,7 +207,7 @@ async fn issue(
     let claimed: Option<String> = redis::cmd("SET")
         .arg(keys::otp_factor_cooldown(
             tenant.id,
-            flow.id,
+            scope.id,
             channel.as_str(),
             purpose,
         ))
@@ -215,10 +218,19 @@ async fn issue(
         .query_async(&mut *conn)
         .await?;
     if claimed.is_some() {
-        let key = code_key(tenant.id, flow.id, channel, purpose);
+        let key = code_key(tenant.id, scope.id, channel, purpose);
         passwordless::check_send_limit(state, tenant.id, &format!("mfa:{}", user.id)).await?;
         let code = passwordless::store_code(state, &key, user.id).await?;
-        deliver(state, tenant, flow, user, channel, destination, &code).await?;
+        deliver(
+            state,
+            tenant,
+            scope.ui_locales,
+            user,
+            channel,
+            destination,
+            &code,
+        )
+        .await?;
     }
     Ok(Sent {
         sent: true,
@@ -232,7 +244,7 @@ async fn issue(
 pub async fn begin_enrolment(
     state: &AppState,
     tenant: &Tenant,
-    flow: &LoginFlow,
+    scope: Scope<'_>,
     user: &User,
     channel: Channel,
     phone: Option<&str>,
@@ -266,7 +278,7 @@ pub async fn begin_enrolment(
             })?,
         },
     };
-    let pending_key = keys::otp_factor_enrolment(tenant.id, flow.id, channel.as_str());
+    let pending_key = keys::otp_factor_enrolment(tenant.id, scope.id, channel.as_str());
     let mut conn = state.redis.get().await?;
     // A code sent to one destination must never prove another: switching
     // numbers mid-enrolment discards the pending code.
@@ -276,8 +288,8 @@ pub async fn begin_enrolment(
     {
         let _: () = conn
             .del(&[
-                code_key(tenant.id, flow.id, channel, "enrol"),
-                keys::otp_factor_cooldown(tenant.id, flow.id, channel.as_str(), "enrol"),
+                code_key(tenant.id, scope.id, channel, "enrol"),
+                keys::otp_factor_cooldown(tenant.id, scope.id, channel.as_str(), "enrol"),
             ])
             .await?;
     }
@@ -290,7 +302,7 @@ pub async fn begin_enrolment(
             ENROLMENT_TTL_SECS,
         )
         .await?;
-    issue(state, tenant, flow, user, channel, "enrol", &destination).await
+    issue(state, tenant, scope, user, channel, "enrol", &destination).await
 }
 
 /// Prove the pending enrolment. `Ok(false)` is a wrong code (the enrolment
@@ -299,12 +311,12 @@ pub async fn begin_enrolment(
 pub async fn confirm_enrolment(
     state: &AppState,
     tenant: &Tenant,
-    flow: &LoginFlow,
+    scope: Scope<'_>,
     user: &User,
     channel: Channel,
     code: &str,
 ) -> AppResult<bool> {
-    let pending_key = keys::otp_factor_enrolment(tenant.id, flow.id, channel.as_str());
+    let pending_key = keys::otp_factor_enrolment(tenant.id, scope.id, channel.as_str());
     let mut conn = state.redis.get().await?;
     let raw: Option<String> = conn.get(&pending_key).await?;
     let Some(raw) = raw else {
@@ -314,7 +326,7 @@ pub async fn confirm_enrolment(
         )));
     };
     let pending: PendingEnrolment = serde_json::from_str(&raw)?;
-    let key = code_key(tenant.id, flow.id, channel, "enrol");
+    let key = code_key(tenant.id, scope.id, channel, "enrol");
     match passwordless::check_code(state, &key, code).await? {
         Some(uid) if uid == user.id => {}
         _ => return Ok(false),
@@ -399,7 +411,7 @@ pub async fn confirm_enrolment(
 pub async fn send_code(
     state: &AppState,
     tenant: &Tenant,
-    flow: &LoginFlow,
+    scope: Scope<'_>,
     user: &User,
     channel: Channel,
 ) -> AppResult<Sent> {
@@ -419,19 +431,19 @@ pub async fn send_code(
             channel.name()
         )));
     };
-    issue(state, tenant, flow, user, channel, "verify", destination).await
+    issue(state, tenant, scope, user, channel, "verify", destination).await
 }
 
 /// Check a sign-in code sent by [`send_code`]; `false` when wrong or spent.
 pub async fn verify(
     state: &AppState,
     tenant: &Tenant,
-    flow: &LoginFlow,
+    scope: Scope<'_>,
     user: &User,
     channel: Channel,
     code: &str,
 ) -> AppResult<bool> {
-    let key = code_key(tenant.id, flow.id, channel, "verify");
+    let key = code_key(tenant.id, scope.id, channel, "verify");
     match passwordless::check_code(state, &key, code).await? {
         Some(uid) if uid == user.id => {}
         _ => return Ok(false),

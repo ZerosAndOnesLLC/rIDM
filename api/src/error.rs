@@ -20,6 +20,10 @@ pub enum AppError {
     Unauthorized,
     #[error("{0}")]
     Forbidden(String),
+    /// A security change needs a recent sign-in (and the second factor when
+    /// the account has one); the client re-authorizes with `max_age=0`.
+    #[error("sign in again{} to change security settings", if *mfa { " with your second step" } else { "" })]
+    ReauthenticationRequired { mfa: bool },
     #[error("{0} not found")]
     NotFound(&'static str),
     #[error("{0}")]
@@ -68,7 +72,7 @@ impl AppError {
         match self {
             Self::BadRequest(_) | Self::Validation(_) => StatusCode::BAD_REQUEST,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
-            Self::Forbidden(_) => StatusCode::FORBIDDEN,
+            Self::Forbidden(_) | Self::ReauthenticationRequired { .. } => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
@@ -85,6 +89,7 @@ impl AppError {
             Self::Validation(_) => "urn:ridm:error:validation",
             Self::Unauthorized => "urn:ridm:error:unauthorized",
             Self::Forbidden(_) => "urn:ridm:error:forbidden",
+            Self::ReauthenticationRequired { .. } => "urn:ridm:error:reauthentication-required",
             Self::NotFound(_) => "urn:ridm:error:not-found",
             Self::Conflict(_) => "urn:ridm:error:conflict",
             Self::RateLimited { .. } => "urn:ridm:error:rate-limited",
@@ -326,6 +331,9 @@ impl From<AppError> for OAuthError {
             AppError::Validation(_) => Self::invalid_request("validation failed"),
             AppError::Unauthorized => Self::code(OAuthErrorCode::InvalidToken),
             AppError::Forbidden(m) => Self::new(OAuthErrorCode::AccessDenied, m),
+            e @ AppError::ReauthenticationRequired { .. } => {
+                Self::new(OAuthErrorCode::AccessDenied, e.to_string())
+            }
             AppError::NotFound(what) => Self::invalid_request(format!("{what} not found")),
             AppError::Conflict(m) => Self::invalid_request(m),
             AppError::RateLimited { .. } => Self::code(OAuthErrorCode::SlowDown),

@@ -71,7 +71,7 @@ struct PendingEnrolment {
 }
 
 /// What the UI needs to add the account to an authenticator app.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct Enrolment {
     /// Base32 secret for manual entry.
     pub secret: String,
