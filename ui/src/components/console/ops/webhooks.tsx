@@ -266,21 +266,41 @@ function Deliveries({ tenant, id, editable }: { tenant: string; id: string; edit
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["webhook", tenant, id, "deliveries"] }),
   });
+  const redeliverDead = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await client.POST("/admin/tenants/{slug}/webhooks/{webhook}/deliveries/redeliver-dead", { params: { path: { slug: tenant, webhook: id } } });
+      if (error) throw new Error(error.detail ?? error.title);
+      return data;
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["webhook", tenant, id, "deliveries"] }),
+  });
   return (
     <Card
       title="Deliveries"
       actions={
-        <SelectInput aria-label="Delivery status" value={status} onChange={(e) => setStatus(e.target.value as WebhookDelivery["status"] | "")} className="min-h-8 w-auto text-[0.8125rem]">
-          <option value="">Any status</option>
-          {(["pending", "sending", "delivered", "failed", "dead"] as const).map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </SelectInput>
+        <div className="flex flex-wrap items-center gap-2">
+          {editable && (
+            <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={redeliverDead.isPending} onClick={() => redeliverDead.mutate()}>
+              Redeliver dead
+            </Button>
+          )}
+          <SelectInput aria-label="Delivery status" value={status} onChange={(e) => setStatus(e.target.value as WebhookDelivery["status"] | "")} className="min-h-8 w-auto text-[0.8125rem]">
+            <option value="">Any status</option>
+            {(["pending", "sending", "delivered", "failed", "dead"] as const).map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </SelectInput>
+        </div>
       }
     >
-      <ErrorLine error={redeliver.error} />
+      <ErrorLine error={redeliver.error ?? redeliverDead.error} />
+      {redeliverDead.data && (
+        <p className="mb-2 text-[0.8125rem] text-muted" role="status">
+          {redeliverDead.data.requeued} dead {redeliverDead.data.requeued === 1 ? "delivery" : "deliveries"} sent again.
+        </p>
+      )}
       {list.isPending ? (
         <Spinner label="Loading…" />
       ) : list.isError ? (

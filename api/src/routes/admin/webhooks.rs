@@ -25,6 +25,13 @@ pub fn webhooks_router() -> OpenApiRouter<AppState> {
         .routes(routes!(deliveries))
         .routes(routes!(delivery))
         .routes(routes!(redeliver))
+        .routes(routes!(redeliver_dead))
+}
+
+/// How many dead deliveries went back on the queue.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub struct Requeued {
+    pub requeued: u64,
 }
 
 const P_READ: &str = "ridm:webhooks:read";
@@ -189,4 +196,16 @@ async fn redeliver(
     Ok(Json(
         webhooks::redeliver(&state, tenant.id, webhook, delivery).await?,
     ))
+}
+
+#[utoipa::path(post, path = "/admin/tenants/{slug}/webhooks/{webhook}/deliveries/redeliver-dead", tag = "webhooks", params(("slug" = String, Path, description = "Tenant slug"), ("webhook" = Uuid, Path)), responses((status = 200, body = Requeued), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+async fn redeliver_dead(
+    State(state): State<AppState>,
+    admin: AdminCtx,
+    AdminTenantPath(tenant): AdminTenantPath,
+    Path(WebhookPath { webhook }): Path<WebhookPath>,
+) -> AppResult<Json<Requeued>> {
+    admin.require(tenant.id, P_WRITE)?;
+    let requeued = webhooks::redeliver_dead(&state, tenant.id, webhook).await?;
+    Ok(Json(Requeued { requeued }))
 }

@@ -539,7 +539,7 @@ pagination with `?cursor=&limit=`):
 | `GET /admin/audit`, `.../export`, `.../verify` | `ridm:audit:read` (global only) | the global chain: events with no tenant, such as master-key rotation |
 | `GET/POST /admin/tenants/{slug}/webhooks`, `GET/PATCH/DELETE .../{id}` | `ridm:webhooks:read` / `write` | `{name, url, events, enabled?, headers?, max_attempts?}`; `events` are exact names, prefixes (`user.*`) or `*`; the signing `secret` is returned once on create |
 | `POST .../webhooks/{id}/secret`, `POST .../webhooks/{id}/test` | `ridm:webhooks:write` | rotate the secret (shown once); deliver a `webhook.test` event now and report the attempt |
-| `GET .../webhooks/{id}/deliveries?status=&limit=`, `GET .../deliveries/{id}`, `POST .../deliveries/{id}/redeliver` | read / read / write | delivery log with status, attempts, last status code, error and a response snippet; redeliver requeues and attempts at once |
+| `GET .../webhooks/{id}/deliveries?status=&limit=`, `GET .../deliveries/{id}`, `POST .../deliveries/{id}/redeliver`, `POST .../deliveries/redeliver-dead` | read / read / write / write | delivery log with status, attempts, last status code, error and a response snippet; redeliver requeues and attempts at once; redeliver-dead does so for every dead delivery of the webhook and reports the count |
 | `GET/POST /admin/tenants/{slug}/ip-rules`, `GET/PATCH/DELETE .../{id}` | `ridm:tenants:read` / `write` | `{cidr, action?: allow|deny, client_id?, description?}`; networks are normalized; `?client_id=` or `?tenant_wide=true`; in force at once (see [IP rules](#ip-rules)) |
 | `GET/POST /admin/tenants/{slug}/identity-providers`, `GET/PATCH/DELETE .../{idp}` (id or alias), `GET .../presets`, `POST .../discover` | `ridm:idps:read` / `write` | upstream OpenID Connect and OAuth 2.0 providers: a `preset` (`google`, `microsoft`, `github`, `apple`, `gitlab`) fills in protocol, endpoints, scopes and mappers; an OIDC provider's endpoints are discovered from its `issuer` when left out; the `client_secret` is stored encrypted and never returned (`client_secret_set`), `null` clears it; `link_policy` (`verified_email`, `explicit`, `always_new`), `trust_email`, `mappers` (`subject`, `username`, `email`, `email_verified` claim names and `attributes` → claim), `hidden`, `sort_order`; every answer carries the `callback_url` to register upstream |
 | `GET /admin/tenants/{slug}/users/{user}/identities`, `DELETE .../identities/{idp_id}` | `ridm:users:read` / `write` | the upstream identities linked to a user, and unlinking one |
@@ -580,13 +580,26 @@ composites and permission grants bump the tenant's roles version (effective role
 admin permissions hang off it); claim mappers bump a mappers version; all of it
 propagates to every node's in-process cache through Valkey.
 
-Webhook deliveries are queued by an in-process subscriber of the event bus and sent by
-the `webhook_delivery` job (every 30 s, one runner per cluster): `POST` with a JSON body
-`{delivery_id, attempt, event}`, headers `X-RIDM-Event`, `X-RIDM-Delivery`, `X-RIDM-Webhook`
-and `X-RIDM-Signature: t=<unix>,v1=<hex HMAC-SHA256(secret, "<t>.<body>")>`. A 2xx
-counts as delivered; 5xx, 408, 425, 429 and network errors retry with backoff (30 s, 2 m,
-10 m, 30 m, 2 h, 6 h) up to `max_attempts`; other 4xx are dead at once. Secrets are stored
-encrypted under the master key and take part in master-key rotation.
+Webhook deliveries are queued by an in-process subscriber of the event bus and sent at
+once (one prompt pass per tenant at a time, under a short Valkey lock; on every node,
+since the queue hands each row to one sender only); retries are picked up by the
+`webhook_delivery` job (every 30 s, one runner per cluster, visiting only the tenants
+that have a delivery due, found with one query, so its cost follows the backlog rather
+than the number of tenants). A pass attempts up to eight
+deliveries at a time through one shared connection pool, so a slow endpoint does not
+hold up the others. Each delivery is a `POST` with a JSON body
+`{delivery_id, attempt, event}` and headers `X-RIDM-Event`, `X-RIDM-Delivery`,
+`X-RIDM-Webhook`, `X-RIDM-Timestamp` and
+`X-RIDM-Signature: t=<unix>,v1=<hex HMAC-SHA256(secret, "<t>.<body>")>` (verify the
+signature, then refuse stale `t` values and repeated `X-RIDM-Delivery` ids). A 2xx counts
+as delivered; 5xx, 408, 425, 429 and network errors retry with backoff (30 s, 2 m, 10 m,
+30 m, 2 h, 6 h) up to `max_attempts`; other 4xx are dead at once. A delivery that dies
+raises `webhook.delivery_dead` (audited, never itself delivered to a webhook), stays in
+the log with its last status and response snippet, and can be sent again one at a time
+or all at once (`POST .../deliveries/redeliver-dead`, the console's "Redeliver dead").
+Targets must be https (plain http only to loopback, for development) and never a
+private, link-local or unspecified address. Secrets are stored encrypted under the
+master key and take part in master-key rotation.
 
 Every domain event is appended to `audit_events` (monthly partitions, tenant RLS) by an
 in-process writer; rows are hash-chained per tenant (`SHA-256(prev_hash || row)`), so a

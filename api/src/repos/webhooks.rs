@@ -187,6 +187,17 @@ pub async fn claim_due<'e>(
     qb.build_query_as::<WebhookDelivery>().fetch_all(exec).await
 }
 
+/// Tenants that have a delivery due right now (run in a bypass transaction:
+/// the job visits only these instead of every tenant).
+pub async fn tenants_with_due<'e>(exec: impl PgExecutor<'e>) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT DISTINCT tenant_id FROM webhook_deliveries \
+         WHERE status IN ('pending', 'failed', 'sending') AND next_attempt_at <= now()",
+    )
+    .fetch_all(exec)
+    .await
+}
+
 /// Deliveries stuck in `sending` (crashed worker) go back to the queue.
 pub async fn requeue_stale<'e>(
     exec: impl PgExecutor<'e>,
@@ -294,6 +305,23 @@ pub async fn list_deliveries<'e>(
 }
 
 /// Requeue one delivery (dead or failed) for an immediate attempt.
+/// Every dead delivery of one webhook back to the queue.
+pub async fn requeue_dead<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    webhook_id: Uuid,
+) -> Result<u64, sqlx::Error> {
+    Ok(sqlx::query(
+        "UPDATE webhook_deliveries SET status = 'pending', attempts = 0, next_attempt_at = now(), \
+         last_error = NULL WHERE tenant_id = $1 AND webhook_id = $2 AND status = 'dead'",
+    )
+    .bind(tenant_id)
+    .bind(webhook_id)
+    .execute(exec)
+    .await?
+    .rows_affected())
+}
+
 pub async fn requeue<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
