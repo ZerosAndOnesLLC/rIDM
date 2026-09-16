@@ -25,7 +25,7 @@ use ridm_api::state::AppState;
 use ridm_core::events::Actor;
 use ridm_core::providers::{EmailSender, SmsSender};
 use ridm_core::test_support::{MockEmailSender, MockSmsSender};
-use serde_json::{Value, json};
+use serde_json::json;
 use totp_rs::{Algorithm, Builder, Secret};
 use uuid::Uuid;
 
