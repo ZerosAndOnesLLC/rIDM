@@ -106,7 +106,7 @@ test.describe("two-step verification", () => {
     await expectAccessible(page);
     used = freshCode(secret);
     await page.getByLabel("Code").fill(used);
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await finishAuthorization(page);
     // The session now satisfies the class: the same request needs nothing.
     await page.goto(authorizeUrl(s, STEP_UP));
@@ -119,24 +119,24 @@ test.describe("two-step verification", () => {
     await loginWithPassword(page, s, STEP_UP);
     await page.waitForURL(/\/mfa\//, { timeout: 30_000 });
     await page.getByLabel("Code").fill(used);
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(alertOf(page)).toContainText(/invalid/i);
     await page.getByRole("button", { name: "Use a recovery code" }).click();
     await expect(page.getByText(/Each works once/)).toBeVisible();
     await expectAccessible(page);
     await page.getByLabel("Recovery code").fill(first.toUpperCase());
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await finishAuthorization(page);
 
     await loginWithPassword(page, s, STEP_UP);
     await page.waitForURL(/\/mfa\//, { timeout: 30_000 });
     await page.getByRole("button", { name: "Use a recovery code" }).click();
     await page.getByLabel("Recovery code").fill(first);
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(alertOf(page)).toContainText(/invalid/i);
     await page.getByRole("button", { name: "Use your authenticator app instead" }).click();
     await page.getByLabel("Code").fill(freshCode(secret));
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await finishAuthorization(page);
   });
 });

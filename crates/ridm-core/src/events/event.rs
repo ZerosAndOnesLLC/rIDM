@@ -358,6 +358,35 @@ pub enum EventKind {
         rule_id: Uuid,
     },
 
+    // Identity brokering
+    IdentityProviderCreated {
+        idp_id: Uuid,
+    },
+    IdentityProviderUpdated {
+        idp_id: Uuid,
+    },
+    IdentityProviderDeleted {
+        idp_id: Uuid,
+    },
+    /// An upstream identity was attached to a user (first sign-in, or a
+    /// link made from the account console or by an administrator).
+    IdentityLinked {
+        user_id: Uuid,
+        idp_id: Uuid,
+        external_subject: String,
+    },
+    IdentityUnlinked {
+        user_id: Uuid,
+        idp_id: Uuid,
+    },
+    /// A sign-in through an upstream provider succeeded.
+    BrokeredLogin {
+        user_id: Uuid,
+        idp_id: Uuid,
+        /// The provider's alias.
+        provider: String,
+    },
+
     // Generic cache invalidation hint (entity kind + id), used until every
     // entity has a dedicated event.
     CacheInvalidate {
@@ -443,6 +472,12 @@ impl EventKind {
             Self::IpRuleCreated { .. } => "ip_rule.created",
             Self::IpRuleUpdated { .. } => "ip_rule.updated",
             Self::IpRuleDeleted { .. } => "ip_rule.deleted",
+            Self::IdentityProviderCreated { .. } => "identity_provider.created",
+            Self::IdentityProviderUpdated { .. } => "identity_provider.updated",
+            Self::IdentityProviderDeleted { .. } => "identity_provider.deleted",
+            Self::IdentityLinked { .. } => "identity.linked",
+            Self::IdentityUnlinked { .. } => "identity.unlinked",
+            Self::BrokeredLogin { .. } => "login.brokered",
             Self::CacheInvalidate { .. } => "cache.invalidate",
         }
     }

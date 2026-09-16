@@ -284,5 +284,21 @@
   "account.delete_description": "Signs you out everywhere and removes your account. Your organisation keeps the record for a short period before it is erased.",
   "account.delete_hint": "This cannot be undone. Applications that rely on this account stop working.",
   "account.delete_confirm": "Type your username ({username}) to confirm",
-  "account.delete_done": "Your account was deleted."
+  "account.delete_done": "Your account was deleted.",
+  "login.with_provider": "Continue with {name}",
+  "login.broker.denied": "The sign-in was cancelled at the provider.",
+  "login.broker.upstream": "The provider could not sign you in. Try again or use another method.",
+  "login.broker.invalid_state": "That sign-in has expired or was already used. Start again.",
+  "login.broker.email_in_use": "An account with that email address already exists. Sign in the usual way, then link the provider from your account page.",
+  "login.broker.already_linked": "That account is already linked to another user.",
+  "login.broker.account_disabled": "Your account is disabled. Contact your organisation.",
+  "account.identities_title": "Linked accounts",
+  "account.identities_description": "Sign in with an account you hold elsewhere. Linking one takes you to that provider and back.",
+  "account.identities_linked": "The account was linked.",
+  "account.identity_linked_at": "Linked {when}",
+  "account.identity_last_used": "last sign-in {when}",
+  "account.identity_unlink": "Unlink",
+  "account.identity_unlink_title": "Unlink {name}?",
+  "account.identity_unlink_hint": "You will no longer be able to sign in with it. Make sure you have another way to sign in.",
+  "account.identity_link": "Link {name}"
 }

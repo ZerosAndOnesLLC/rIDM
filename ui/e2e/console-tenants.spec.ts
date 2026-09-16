@@ -75,7 +75,7 @@ test.describe("tenants and settings", () => {
 
     await page.getByLabel("Primary colour", { exact: true }).fill("#8b0000");
     await expect
-      .poll(async () => preview.getByRole("button", { name: "Continue" }).evaluate((el) => getComputedStyle(el).backgroundColor), { timeout: 10_000 })
+      .poll(async () => preview.getByRole("button", { name: "Continue", exact: true }).evaluate((el) => getComputedStyle(el).backgroundColor), { timeout: 10_000 })
       .toBe("rgb(139, 0, 0)");
     await page.getByRole("button", { name: "Add link" }).click();
     await page.getByLabel("Link 1 label").fill("Status");
@@ -89,7 +89,7 @@ test.describe("tenants and settings", () => {
     await page.reload();
     await expect(preview.getByRole("heading", { name: "Sign in" })).toBeVisible({ timeout: 20_000 });
     await expect
-      .poll(async () => preview.getByRole("button", { name: "Continue" }).evaluate((el) => getComputedStyle(el).backgroundColor), { timeout: 10_000 })
+      .poll(async () => preview.getByRole("button", { name: "Continue", exact: true }).evaluate((el) => getComputedStyle(el).backgroundColor), { timeout: 10_000 })
       .toBe("rgb(139, 0, 0)");
     await expectAccessible(page);
   });

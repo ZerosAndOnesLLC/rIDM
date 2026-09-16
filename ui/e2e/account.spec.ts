@@ -54,11 +54,11 @@ test.describe("account console", () => {
     await expect(page.getByRole("heading", { name: "Manage your account" })).toBeVisible();
     await expect(page.getByLabel("Organisation")).toHaveValue(TENANT);
     await expectAccessible(page);
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await page.waitForURL(/\/login\//);
     await page.getByLabel("Email or username").fill(s.email);
     await page.getByLabel("Password", { exact: true }).fill(s.password);
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await page.waitForURL(/\/account\/security\/(\?.*)?$/, { timeout: 20_000 });
     await expect(page.getByRole("heading", { name: "Security", level: 1 })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("No second step is set up yet.")).toBeVisible();
@@ -92,14 +92,14 @@ test.describe("account console", () => {
     await page.waitForURL(/\/mfa\//, { timeout: 30_000 });
     await page.getByLabel("Code").fill(freshCode(secret));
     await page.getByLabel("Don't ask again on this device").check();
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await finishAuthorization(page);
 
     // The account console reuses that session: the sign-in is recent and passed the second step.
     await page.goto(authorizeUrl(s));
     await finishAuthorization(page);
     await page.goto(`/account/security/?tenant=${TENANT}`);
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await page.waitForURL(/\/account\/security\/(\?.*)?$/, { timeout: 20_000 });
     await expect(page.getByRole("heading", { name: "Security", level: 1 })).toBeVisible({ timeout: 15_000 });
 

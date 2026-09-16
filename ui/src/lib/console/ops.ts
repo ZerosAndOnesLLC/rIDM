@@ -12,6 +12,9 @@ export type WebhookDelivery = Schemas["WebhookDelivery"];
 export type IpRule = Schemas["IpRule"];
 export type TemplateView = Schemas["TemplateView"];
 export type LogEntry = Schemas["LogEntry"];
+export type IdentityProvider = Schemas["IdentityProviderView"];
+export type IdentityProviderPatch = Partial<Schemas["IdentityProviderUpdate"]>;
+export type IdpPreset = Schemas["Preset"];
 
 export function href(page: string, tenant: string, params: Record<string, string> = {}): string {
   return `/console/${page}/?${new URLSearchParams({ tenant, ...params })}`;

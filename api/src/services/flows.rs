@@ -63,6 +63,8 @@ pub struct PublicFlow {
     pub captcha: Option<CaptchaChallenge>,
     /// Mfa stage: what the user can verify with, or whether they must enrol first.
     pub mfa: Option<MfaInfo>,
+    /// Upstream providers offered on the login page ("Continue with ...").
+    pub identity_providers: Vec<crate::models::PublicIdentityProvider>,
 }
 
 /// Second-factor state of the signed-in user, shown at the `mfa` stage.
@@ -315,6 +317,7 @@ pub async fn public_state(
         attempts: flow.attempts,
         captcha: captcha_required(state, tenant, flow).await?,
         mfa,
+        identity_providers: crate::services::identity_providers::offered(state, tenant.id).await?,
     })
 }
 

@@ -65,7 +65,7 @@ test.describe("email code second step", () => {
     await expectAccessible(page);
     const code = await emailedCode(s.email);
     await page.getByLabel("Code").fill(code);
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await finishAuthorization(page);
   });
 });

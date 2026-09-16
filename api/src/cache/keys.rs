@@ -200,3 +200,25 @@ pub fn contact_change_code(tenant_id: Uuid, user_id: Uuid, channel: &str) -> Str
 pub fn contact_change_cooldown(tenant_id: Uuid, user_id: Uuid, channel: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:user:{user_id}:contact:{channel}:cooldown")
 }
+
+/// A pending upstream sign-in or link: the state parameter (hashed) → what
+/// the callback continues.
+pub fn broker_state(tenant_id: Uuid, state_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:broker:state:{state_hash}")
+}
+
+/// A one-time ticket the account console hands the browser to start
+/// linking an identity to the signed-in user.
+pub fn broker_link_ticket(tenant_id: Uuid, ticket_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:broker:link:{ticket_hash}")
+}
+
+/// An upstream provider's JWK set.
+pub fn idp_jwks(tenant_id: Uuid, idp_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:idp:{idp_id}:jwks")
+}
+
+/// The enabled providers of a tenant, for the login page.
+pub fn identity_providers(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:idps")
+}

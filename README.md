@@ -212,6 +212,7 @@ that issued it, and its SSO session must still be alive. The routes:
 | `GET devices`, `DELETE devices[/{id}]` | trusted browsers |
 | `GET sessions`, `DELETE sessions[/{id}]` | live sessions (the current one first) and ending one or all of them, with their refresh tokens; `?keep_current=true` keeps this one |
 | `GET apps`, `DELETE apps/{client_id}` | applications the user consented to, and withdrawing that consent along with the application's refresh tokens |
+| `GET identities`, `POST identities/link`, `DELETE identities/{idp_id}` | the upstream accounts linked to this one and the providers still available; linking hands back a one-time URL the browser takes to the broker and returns from with `?linked=1` or `?link_error=<code>`; unlinking |
 | `GET export` | everything held about the user as one JSON download: the record, credential metadata, devices, sessions, consents, roles, groups and the audit trail; never any secret material |
 | `DELETE me` | delete the account (the username typed again as confirmation): every session, token and device ends now and the row is soft-deleted, so the username and email free up at once; a daily job purges it after `settings.account.deletion_retention_days` (default 30, admin deletions too). `settings.account.self_deletion` switches it off per tenant, and administrators must be removed by another administrator |
 
@@ -223,6 +224,33 @@ the user back through sign-in (`max_age=0`, plus `acr_values` for the second ste
 returns. Contact-change codes follow the passwordless rules: hashed, single-use, ten
 minutes, five attempts, three sends per ten minutes, and a repeat inside twenty seconds
 reuses the pending code.
+
+### Identity brokering
+
+Users may sign in through an upstream OpenID Connect or OAuth 2.0 provider configured per
+tenant (`identity_providers`, above). The login page offers every enabled, non-hidden
+provider as a "Continue with ..." button that sends the browser to
+`GET /t/{slug}/broker/{alias}/start?flow={id}`; rIDM redirects to the provider's
+authorization endpoint with a fresh `state` (its record in Valkey remembers the flow),
+a `nonce` and a PKCE challenge, and receives the browser back on
+`/t/{slug}/broker/{alias}/callback` (GET, or POST for Apple's `form_post`). The code is
+redeemed at the token endpoint (`client_secret_basic`, `client_secret_post` or PKCE
+alone); an OIDC ID token is verified against the provider's JWK set (cached an hour,
+re-fetched once for an unknown `kid`), its issuer (Microsoft's `common` accepts any
+directory), audience, expiry and nonce; plain OAuth 2.0 providers are read through
+`userinfo` (GitHub's primary verified address through `/user/emails`). The identity is
+then resolved: the account linked to that provider and subject signs in (`amr: ["fed"]`);
+otherwise the `link_policy` decides — `verified_email` links an existing account whose
+address both sides verified, `explicit` never links by email (the user signs in the usual
+way and links from the account console), `always_new` always creates an account; an
+address another account holds is refused with `broker_error=email_in_use` on the login
+page. A new account takes its username from the mapped claim, else the email, else
+`{alias}-{subject}`; mapped attributes are written on every sign-in, and the login flow
+then continues like any other first factor (second step, profile completion for required
+attributes, terms, consent). Events: `identity_provider.*`, `identity.linked`,
+`identity.unlinked`, `login.brokered`. Upstream endpoints must use https (plain http is
+accepted for loopback hosts, for development and tests); providers export and import
+with the tenant configuration without their secrets.
 
 ### Breached-password check
 
@@ -376,6 +404,8 @@ pagination with `?cursor=&limit=`):
 | `POST .../webhooks/{id}/secret`, `POST .../webhooks/{id}/test` | `ridm:webhooks:write` | rotate the secret (shown once); deliver a `webhook.test` event now and report the attempt |
 | `GET .../webhooks/{id}/deliveries?status=&limit=`, `GET .../deliveries/{id}`, `POST .../deliveries/{id}/redeliver` | read / read / write | delivery log with status, attempts, last status code, error and a response snippet; redeliver requeues and attempts at once |
 | `GET/POST /admin/tenants/{slug}/ip-rules`, `GET/PATCH/DELETE .../{id}` | `ridm:tenants:read` / `write` | `{cidr, action?: allow|deny, client_id?, description?}`; networks are normalized; `?client_id=` or `?tenant_wide=true`; enforced from Phase 9.2 |
+| `GET/POST /admin/tenants/{slug}/identity-providers`, `GET/PATCH/DELETE .../{idp}` (id or alias), `GET .../presets`, `POST .../discover` | `ridm:idps:read` / `write` | upstream OpenID Connect and OAuth 2.0 providers: a `preset` (`google`, `microsoft`, `github`, `apple`, `gitlab`) fills in protocol, endpoints, scopes and mappers; an OIDC provider's endpoints are discovered from its `issuer` when left out; the `client_secret` is stored encrypted and never returned (`client_secret_set`), `null` clears it; `link_policy` (`verified_email`, `explicit`, `always_new`), `trust_email`, `mappers` (`subject`, `username`, `email`, `email_verified` claim names and `attributes` → claim), `hidden`, `sort_order`; every answer carries the `callback_url` to register upstream |
+| `GET /admin/tenants/{slug}/users/{user}/identities`, `DELETE .../identities/{idp_id}` | `ridm:users:read` / `write` | the upstream identities linked to a user, and unlinking one |
 | `GET /admin/tenants/{slug}/export` | `ridm:tenants:export` | the tenant's configuration as one deterministic JSON document (`ridm.tenant/1`): settings, profile schema, resource servers and permissions, scopes, clients, roles (composites, permission grants), groups (by path, with roles), claim mappers, message templates, webhooks and IP rules, keyed by natural identifiers; no secrets, users or provider credentials |
 | `GET /openapi.json`, `GET /docs` | none | the admin API's OpenAPI 3 document, derived from the routers; Swagger UI at `/docs` when `DOCS_ENABLED=true` |
 | `POST /admin/tenants/{slug}/import?dry_run=&prune=` | `ridm:tenants:import` | `dry_run` returns the plan (creates, updates with field-level diffs, and with `prune` deletes of unmentioned configuration); otherwise applies it and reports what was applied, per-item errors, and the secrets of clients and webhooks it created (shown once); applying the same document twice is a no-op |
@@ -466,6 +496,12 @@ UI_URL=http://localhost:3110 cargo run -p ridm-api             # API on :8090
 cd ui && API_PROXY=http://localhost:8090 npx next dev -p 3110   # UI on :3110
 ```
 
+**Identity providers** (`/console/identity-providers/`): the tenant's upstream providers
+with a create dialog (preset or OpenID Connect issuer, client credentials) and a detail
+editor (callback URL to register upstream, endpoints, client and secret, scopes, PKCE,
+link policy, trusted email, claim mappers); the user detail's credentials tab lists a
+user's linked identities with unlinking.
+
 ### Account console
 
 The account console lives under `/account/` and is the self-service API's own client
@@ -476,7 +512,8 @@ saved as they are edited, admin-only fields shown read-only; the language; the e
 address and phone number with a change proven by a code sent to the new destination,
 pending changes shown with a cancel, the number removable), **Security** (the password,
 with a change that asks for the current one and can sign out everywhere else; the second
-step and recovery codes; trusted devices; every live session with this browser marked,
+step and recovery codes; the upstream accounts linked to this one, with linking through
+the provider and unlinking; trusted devices; every live session with this browser marked,
 each one ending on its own or all but this one at once), **Applications** (the
 applications the user let in, with their scopes, privacy and terms links, and a "remove
 access" that also cancels their refresh tokens) and **Your data** (the export as a JSON

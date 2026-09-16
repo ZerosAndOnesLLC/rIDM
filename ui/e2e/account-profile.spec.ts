@@ -17,11 +17,11 @@ const SCHEMA = JSON.stringify([
 async function signIn(page: Page, path: string) {
   const s = loadState();
   await page.goto(`${path}?tenant=${TENANT}`);
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.waitForURL(/\/login\//);
   await page.getByLabel("Email or username").fill(s.email);
   await page.getByLabel("Password", { exact: true }).fill(s.password);
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.waitForURL(new RegExp(`${path.replace(/\//g, "\\/")}(\\?.*)?$`), { timeout: 20_000 });
 }
 

@@ -86,6 +86,14 @@ export interface PublicFlow {
   mfa: MfaInfo | null;
   /** Present once the stage is `done`. */
   finish_url?: string;
+  /** Upstream providers offered as "Continue with …" buttons. */
+  identity_providers: PublicIdp[];
+}
+
+export interface PublicIdp {
+  alias: string;
+  display_name: string;
+  preset: string | null;
 }
 
 export type Factor = "totp" | "webauthn" | "email_otp" | "sms_otp";

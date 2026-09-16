@@ -17,7 +17,7 @@ test("password recovery by emailed link, then login with the new password", asyn
   const newPassword = `recovered-passphrase-${Date.now()}`;
   await page.getByLabel("New password", { exact: true }).fill(newPassword);
   await page.getByLabel("Confirm new password").fill(newPassword);
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("has been reset");
   await expectAccessible(page);
 

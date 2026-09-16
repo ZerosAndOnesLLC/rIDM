@@ -25,7 +25,7 @@ test("a newly required profile attribute is collected at the next login", async 
     await expect(page.getByRole("heading", { name: "Complete your profile" })).toBeVisible();
     await expectAccessible(page);
     await page.getByLabel("Department").fill("Engineering");
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await finishAuthorization(page);
     expect(tenantSql(`SELECT attributes->>'department' FROM users WHERE email = '${s.email}'`)).toBe("Engineering");
   } finally {

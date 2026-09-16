@@ -55,6 +55,7 @@ pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
         .merge(routes::webfinger::router())
         .merge(routes::jwks::router())
         .merge(routes::flows::router())
+        .merge(routes::broker::router())
         .merge(routes::invitations::router())
         .merge(routes::verification::router())
         .merge(routes::recovery::router())

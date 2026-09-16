@@ -23,8 +23,8 @@ use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
 use crate::models::{
-    Consent, Credential, Group, NewUser, Principal, Role, TrustedDevice, User, UserFilter,
-    UserStatus, UserUpdate,
+    Consent, Credential, Group, LinkedIdentity, NewUser, Principal, Role, TrustedDevice, User,
+    UserFilter, UserStatus, UserUpdate,
 };
 use crate::repos;
 use crate::routes::admin::AuditFilterQuery;
@@ -32,7 +32,7 @@ use crate::services::admin_access::{self, Grant};
 use crate::services::bulk_users::{self, ExportFormat, ImportReport};
 use crate::services::password::{self, SetPasswordOptions};
 use crate::services::sessions::{self, SsoSession};
-use crate::services::{consents, groups, roles, trusted_devices, users};
+use crate::services::{broker, consents, groups, roles, trusted_devices, users};
 use crate::state::AppState;
 use crate::util::cursor::Page;
 
@@ -59,6 +59,8 @@ pub fn users_router() -> OpenApiRouter<AppState> {
         .routes(routes!(user_consents))
         .routes(routes!(user_audit))
         .routes(routes!(revoke_consent))
+        .routes(routes!(user_identities))
+        .routes(routes!(unlink_identity))
 }
 
 const P_READ: &str = "ridm:users:read";
@@ -785,6 +787,41 @@ async fn revoke_consent(
     load(&state, tenant.id, user).await?;
     if !consents::revoke(&state, tenant.id, admin.actor(), user, client_id).await? {
         return Err(AppError::NotFound("consent"));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// --- linked identities -------------------------------------------------------
+
+#[utoipa::path(get, path = "/admin/tenants/{slug}/users/{user}/identities", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), responses((status = 200, body = Vec<LinkedIdentity>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+async fn user_identities(
+    State(state): State<AppState>,
+    admin: AdminCtx,
+    AdminTenantPath(tenant): AdminTenantPath,
+    Path(UserPath { user }): Path<UserPath>,
+) -> AppResult<Json<Vec<LinkedIdentity>>> {
+    admin.require(tenant.id, P_READ)?;
+    load(&state, tenant.id, user).await?;
+    Ok(Json(broker::identities_of(&state, tenant.id, user).await?))
+}
+
+#[derive(Deserialize)]
+struct IdentityPath {
+    user: Uuid,
+    idp_id: Uuid,
+}
+
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/users/{user}/identities/{idp_id}", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path), ("idp_id" = Uuid, Path)), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+async fn unlink_identity(
+    State(state): State<AppState>,
+    admin: AdminCtx,
+    AdminTenantPath(tenant): AdminTenantPath,
+    Path(IdentityPath { user, idp_id }): Path<IdentityPath>,
+) -> AppResult<StatusCode> {
+    admin.require(tenant.id, P_WRITE)?;
+    load(&state, tenant.id, user).await?;
+    if !broker::unlink(&state, tenant.id, admin.actor(), user, idp_id).await? {
+        return Err(AppError::NotFound("identity"));
     }
     Ok(StatusCode::NO_CONTENT)
 }

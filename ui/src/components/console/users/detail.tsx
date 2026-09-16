@@ -14,6 +14,7 @@ import { useConsole } from "@/lib/console/session";
 import { STATUS_LABELS, TABS, TAB_LABELS, describeAgent, roleName, statusTone, userHref, type Tab, type UserDetail as Detail, type UserUpdate } from "@/lib/console/users";
 import { RevealModal, type Revealed } from "../clients/reveal";
 import { AttributeField, JsonInput } from "./attributes";
+import { LinkedIdentities } from "./identities";
 import { useRolesAndGroups } from "./invite";
 
 /** Display names of `credentials.type` values. */
@@ -430,7 +431,8 @@ function SecurityTab({ tenant, u, editable, onReveal, onChanged, onForce }: { te
             {removeCred.error.message}
           </p>
         )}
-        <p className="mt-4 border-t border-line pt-3 text-[0.8125rem] text-muted">Personal access tokens (Phase 8.5) and linked identities (Phase 8.3) will appear here.</p>
+        <LinkedIdentities tenant={tenant} id={u.id} editable={editable} />
+        <p className="mt-4 border-t border-line pt-3 text-[0.8125rem] text-muted">Personal access tokens (Phase 8.5) will appear here.</p>
       </Card>
     </div>
   );

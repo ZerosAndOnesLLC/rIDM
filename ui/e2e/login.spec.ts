@@ -11,12 +11,12 @@ test("password login: wrong password is refused, right one reaches the callback"
 
   await page.getByLabel("Email or username").fill(s.email);
   await page.getByLabel("Password", { exact: true }).fill("not-the-password");
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(alertOf(page)).toContainText("Incorrect");
   await expectAccessible(page);
 
   await page.getByLabel("Password", { exact: true }).fill(s.password);
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await finishAuthorization(page);
 });
 

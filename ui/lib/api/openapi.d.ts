@@ -490,6 +490,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/tenants/{slug}/identity-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["identity_providers_list"];
+        put?: never;
+        /**
+         * A `preset` fills in the protocol, endpoints, scopes and mappers; an OIDC
+         *     provider's endpoints are discovered from its `issuer` when left out.
+         */
+        post: operations["identity_providers_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/identity-providers/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fetch an issuer's OpenID discovery document (to preview the endpoints). */
+        post: operations["identity_providers_discover"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/identity-providers/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["identity_providers_presets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/identity-providers/{idp}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["identity_providers_get_one"];
+        put?: never;
+        post?: never;
+        /**
+         * Deleting a provider drops the identities linked through it; the users
+         *     keep their accounts.
+         */
+        delete: operations["identity_providers_delete"];
+        options?: never;
+        head?: never;
+        /**
+         * A merge patch; `client_secret: null` clears the secret. A new `issuer`
+         *     re-discovers the endpoints unless the patch names them.
+         */
+        patch: operations["identity_providers_update"];
+        trace?: never;
+    };
     "/admin/tenants/{slug}/import": {
         parameters: {
             query?: never;
@@ -1359,6 +1436,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/tenants/{slug}/users/{user}/identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["users_user_identities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/users/{user}/identities/{idp_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["users_unlink_identity"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/tenants/{slug}/users/{user}/password": {
         parameters: {
             query?: never;
@@ -1689,6 +1798,55 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["account_list_identities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/identities/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Needs a recent sign-in (with the second step once there is one). */
+        post: operations["account_start_link"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/identities/{idp_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["account_unlink_identity"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2532,6 +2690,18 @@ export interface components {
         };
         /** @enum {string} */
         DeliveryStatus: "pending" | "sending" | "delivered" | "failed" | "dead";
+        DiscoverBody: {
+            issuer: string;
+        };
+        /** @description The parts of an OpenID discovery document rIDM uses. */
+        Discovery: {
+            authorization_endpoint: string;
+            issuer: string;
+            jwks_uri: string;
+            scopes_supported?: string[];
+            token_endpoint: string;
+            userinfo_endpoint?: string | null;
+        };
         /** @description WebFinger issuer discovery (OIDC Discovery §2). */
         DiscoverySettings: {
             /**
@@ -2672,6 +2842,191 @@ export interface components {
             /** @description `A256GCM` or `A128GCM`. */
             enc: string;
         };
+        /** @description The user's linked identities and the providers they could still link. */
+        Identities: {
+            /** @description Enabled providers without a link yet. */
+            available: components["schemas"]["PublicIdentityProvider"][];
+            linked: components["schemas"]["LinkedIdentity"][];
+        };
+        IdentityProvider: {
+            alias: string;
+            authorization_endpoint?: string | null;
+            client_id: string;
+            /** @description A client secret is stored (it is never returned). */
+            client_secret_set: boolean;
+            /** Format: date-time */
+            created_at: string;
+            display_name: string;
+            enabled: boolean;
+            /** @description Not offered on the login page; reachable through a direct link. */
+            hidden: boolean;
+            /** Format: uuid */
+            id: string;
+            issuer?: string | null;
+            jwks_uri?: string | null;
+            kind: components["schemas"]["IdpKind"];
+            link_policy: components["schemas"]["LinkPolicy"];
+            mappers: components["schemas"]["IdpMappers"];
+            pkce: boolean;
+            /** @description `google`, `microsoft`, `github`, `apple`, `gitlab` or none. */
+            preset?: string | null;
+            scopes: string[];
+            /** Format: int32 */
+            sort_order: number;
+            /** Format: uuid */
+            tenant_id: string;
+            token_endpoint?: string | null;
+            token_endpoint_auth_method: components["schemas"]["IdpAuthMethod"];
+            trust_email: boolean;
+            /** Format: date-time */
+            updated_at: string;
+            userinfo_endpoint?: string | null;
+        };
+        /** @description An upstream identity provider; the client secret is never part of it. */
+        IdentityProviderDoc: {
+            /** @default  */
+            alias: string;
+            /** @default null */
+            authorization_endpoint: string | null;
+            /** @default  */
+            client_id: string;
+            /** @default  */
+            display_name: string;
+            /** @default true */
+            enabled: boolean;
+            /** @default false */
+            hidden: boolean;
+            /** @default null */
+            issuer: string | null;
+            /** @default null */
+            jwks_uri: string | null;
+            /** @default oidc */
+            kind: components["schemas"]["IdpKind"];
+            /** @default verified_email */
+            link_policy: components["schemas"]["LinkPolicy"];
+            /**
+             * @default {
+             *       "attributes": {},
+             *       "email": null,
+             *       "email_verified": null,
+             *       "subject": null,
+             *       "username": null
+             *     }
+             */
+            mappers: components["schemas"]["IdpMappers"];
+            /** @default true */
+            pkce: boolean;
+            /** @default null */
+            preset: string | null;
+            /** @default [] */
+            scopes: string[];
+            /**
+             * Format: int32
+             * @default 0
+             */
+            sort_order: number;
+            /** @default null */
+            token_endpoint: string | null;
+            /** @default client_secret_basic */
+            token_endpoint_auth_method: components["schemas"]["IdpAuthMethod"];
+            /** @default false */
+            trust_email: boolean;
+            /** @default null */
+            userinfo_endpoint: string | null;
+        };
+        IdentityProviderUpdate: {
+            /** @default null */
+            alias: string | null;
+            /** @default null */
+            authorization_endpoint: string | null;
+            /** @default null */
+            client_id: string | null;
+            /**
+             * @description A new secret, or `null` to clear it.
+             * @default null
+             */
+            client_secret: string | null;
+            /** @default null */
+            display_name: string | null;
+            /** @default null */
+            enabled: boolean | null;
+            /** @default null */
+            hidden: boolean | null;
+            /** @default null */
+            issuer: string | null;
+            /** @default null */
+            jwks_uri: string | null;
+            /** @default null */
+            kind: null | components["schemas"]["IdpKind"];
+            /** @default null */
+            link_policy: null | components["schemas"]["LinkPolicy"];
+            /** @default null */
+            mappers: null | components["schemas"]["IdpMappers"];
+            /** @default null */
+            pkce: boolean | null;
+            /** @default null */
+            scopes: string[] | null;
+            /**
+             * Format: int32
+             * @default null
+             */
+            sort_order: number | null;
+            /** @default null */
+            token_endpoint: string | null;
+            /** @default null */
+            token_endpoint_auth_method: null | components["schemas"]["IdpAuthMethod"];
+            /** @default null */
+            trust_email: boolean | null;
+            /** @default null */
+            userinfo_endpoint: string | null;
+        };
+        /** @description A provider with the callback URL the upstream must be told. */
+        IdentityProviderView: components["schemas"]["IdentityProvider"] & {
+            callback_url: string;
+        };
+        /**
+         * @description How the client authenticates at the token endpoint.
+         * @enum {string}
+         */
+        IdpAuthMethod: "client_secret_basic" | "client_secret_post" | "none";
+        /**
+         * @description The protocol an upstream provider speaks.
+         * @enum {string}
+         */
+        IdpKind: "oidc" | "oauth2";
+        /**
+         * @description Where the identity's fields come from in the upstream claims (ID token,
+         *     then userinfo). Values are claim names; a dot descends into an object.
+         */
+        IdpMappers: {
+            /**
+             * @description Profile attribute name → claim name, written on every sign-in.
+             * @default {}
+             */
+            attributes: {
+                [key: string]: string;
+            };
+            /**
+             * @description `email` when unset.
+             * @default null
+             */
+            email: string | null;
+            /**
+             * @description `email_verified` when unset.
+             * @default null
+             */
+            email_verified: string | null;
+            /**
+             * @description The stable identifier; `sub` when unset (`id` for GitHub).
+             * @default null
+             */
+            subject: string | null;
+            /**
+             * @description `preferred_username` when unset.
+             * @default null
+             */
+            username: string | null;
+        };
         ImportError: {
             error: string;
             /** @description 1-based position in the submitted data. */
@@ -2804,6 +3159,39 @@ export interface components {
          * @enum {string}
          */
         KeyStatus: "pending" | "active" | "retiring" | "revoked";
+        /**
+         * @description What happens when an upstream identity signs in for the first time and
+         *     a local account with the same email address exists.
+         * @enum {string}
+         */
+        LinkPolicy: "verified_email" | "explicit" | "always_new";
+        LinkRequest: {
+            alias: string;
+            /** @description The console page to return to (a path on the UI), default the security page. */
+            return_to?: string | null;
+        };
+        LinkStart: {
+            /**
+             * @description Send the browser here; the provider brings it back to `return_to`
+             *     with `?linked=1` or `?link_error=<code>`.
+             */
+            url: string;
+        };
+        /** @description A linked identity with its provider, for listings. */
+        LinkedIdentity: {
+            alias: string;
+            display_name: string;
+            external_email?: string | null;
+            external_subject: string;
+            external_username?: string | null;
+            /** Format: uuid */
+            idp_id: string;
+            /** Format: date-time */
+            last_login_at?: string | null;
+            /** Format: date-time */
+            linked_at: string;
+            preset?: string | null;
+        };
         LocaleSettings: {
             /** @default en */
             default: string;
@@ -3060,6 +3448,58 @@ export interface components {
              * @default null
              */
             parent_id: string | null;
+        };
+        /**
+         * @description Fields of a new provider. A `preset` fills in everything the preset
+         *     knows (kind, endpoints, scopes, mappers); explicit values win.
+         */
+        NewIdentityProvider: {
+            /** @default  */
+            alias: string;
+            /** @default null */
+            authorization_endpoint: string | null;
+            /** @default  */
+            client_id: string;
+            /** @default null */
+            client_secret: string | null;
+            /** @default null */
+            display_name: string | null;
+            /** @default null */
+            enabled: boolean | null;
+            /** @default null */
+            hidden: boolean | null;
+            /**
+             * @description OIDC: the endpoints are discovered from it when left out.
+             * @default null
+             */
+            issuer: string | null;
+            /** @default null */
+            jwks_uri: string | null;
+            /** @default null */
+            kind: null | components["schemas"]["IdpKind"];
+            /** @default null */
+            link_policy: null | components["schemas"]["LinkPolicy"];
+            /** @default null */
+            mappers: null | components["schemas"]["IdpMappers"];
+            /** @default null */
+            pkce: boolean | null;
+            /** @default null */
+            preset: string | null;
+            /** @default null */
+            scopes: string[] | null;
+            /**
+             * Format: int32
+             * @default null
+             */
+            sort_order: number | null;
+            /** @default null */
+            token_endpoint: string | null;
+            /** @default null */
+            token_endpoint_auth_method: null | components["schemas"]["IdpAuthMethod"];
+            /** @default null */
+            trust_email: boolean | null;
+            /** @default null */
+            userinfo_endpoint: string | null;
         };
         NewInvitation: {
             /** @default  */
@@ -3448,6 +3888,29 @@ export interface components {
             prune: boolean;
             summary: components["schemas"]["Summary"];
         };
+        /** @description A well-known provider: everything but the client credentials. */
+        Preset: {
+            authorization_endpoint?: string | null;
+            display_name: string;
+            /** @description Notes shown to the administrator setting it up. */
+            hint: string;
+            issuer?: string | null;
+            jwks_uri?: string | null;
+            kind: components["schemas"]["IdpKind"];
+            name: string;
+            scopes: string[];
+            /**
+             * @description Where the identity's fields come from when the provider is not
+             *     plain OpenID Connect.
+             */
+            subject_claim?: string | null;
+            token_endpoint?: string | null;
+            token_endpoint_auth_method: components["schemas"]["IdpAuthMethod"];
+            /** @description The provider vouches for the addresses it returns. */
+            trust_email: boolean;
+            userinfo_endpoint?: string | null;
+            username_claim?: string | null;
+        };
         Preview: {
             body_html?: string | null;
             body_text: string;
@@ -3517,6 +3980,12 @@ export interface components {
             allow_undeclared: boolean;
             /** @default [] */
             attributes: components["schemas"]["AttributeDef"][];
+        };
+        /** @description A provider as the login page and the account console see it. */
+        PublicIdentityProvider: {
+            alias: string;
+            display_name: string;
+            preset?: string | null;
         };
         RecoveryCodes: {
             recovery_codes: string[];
@@ -3758,6 +4227,11 @@ export interface components {
             clients: {
                 [key: string]: string;
             };
+            /**
+             * @description Identity providers this import created: their client secrets are
+             *     never exported and must be set by hand.
+             */
+            identity_providers?: string[];
             /** @description Signing secrets of webhooks this import created (name → secret). */
             webhooks: {
                 [key: string]: string;
@@ -3968,6 +4442,8 @@ export interface components {
             clients?: components["schemas"]["ClientDoc"][];
             format: string;
             groups?: components["schemas"]["GroupDoc"][];
+            /** @description Upstream providers without their client secrets (set those after an import). */
+            identity_providers?: components["schemas"]["IdentityProviderDoc"][];
             ip_rules?: components["schemas"]["IpRuleDoc"][];
             message_templates?: components["schemas"]["TemplateDoc"][];
             profile_schema?: components["schemas"]["ProfileSchema"];
@@ -7047,6 +7523,411 @@ export interface operations {
             };
             /** @description Not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityProviderView"][];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewIdentityProvider"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityProviderView"];
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Alias in use */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The issuer could not be reached */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_discover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscoverBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Discovery"];
+                };
+            };
+            /** @description Not an issuer, or its document is unusable */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The issuer could not be reached */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_presets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Preset"][];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_get_one: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                /** @description Row id or alias */
+                idp: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityProviderView"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                /** @description Row id or alias */
+                idp: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                /** @description Row id or alias */
+                idp: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentityProviderUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityProviderView"];
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Alias in use */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11873,6 +12754,124 @@ export interface operations {
             };
         };
     };
+    users_user_identities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                user: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkedIdentity"][];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    users_unlink_identity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                user: string;
+                idp_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     users_set_password: {
         parameters: {
             query?: never;
@@ -13327,6 +14326,139 @@ export interface operations {
             };
             /** @description Recent authentication required */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_list_identities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Identities"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_start_link: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkStart"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Recent authentication required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such provider */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_unlink_identity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                idp_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Recent authentication required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not linked */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

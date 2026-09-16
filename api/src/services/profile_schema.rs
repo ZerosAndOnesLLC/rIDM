@@ -185,6 +185,19 @@ pub fn validate_attributes(
     editor: Editor,
     existing: Option<&Value>,
 ) -> AppResult<Value> {
+    validate_attributes_with(schema, incoming, editor, existing, true)
+}
+
+/// [`validate_attributes`], with `require_all = false` letting required
+/// attributes be missing for now: an account created from an upstream
+/// identity completes its profile at the next step of the sign-in.
+pub fn validate_attributes_with(
+    schema: &ProfileSchema,
+    incoming: &Value,
+    editor: Editor,
+    existing: Option<&Value>,
+    require_all: bool,
+) -> AppResult<Value> {
     let Some(incoming) = incoming.as_object() else {
         return Err(AppError::BadRequest(
             "attributes must be a JSON object".into(),
@@ -270,7 +283,7 @@ pub fn validate_attributes(
     }
 
     for def in &schema.attributes {
-        if def.required && !out.get(&def.name).is_some_and(is_non_empty) {
+        if require_all && def.required && !out.get(&def.name).is_some_and(is_non_empty) {
             errors.push(FieldError {
                 field: format!("attributes.{}", def.name),
                 message: "required".into(),
