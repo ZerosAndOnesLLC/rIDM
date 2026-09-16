@@ -242,3 +242,14 @@ pub fn device_guesses(tenant_id: Uuid, ip: &str) -> String {
 pub fn pat_touched(tenant_id: Uuid, token_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:pat:{token_id}:touched")
 }
+
+/// Fixed-window rate-limit counter for one bucket (see `services::rate_limit`).
+pub fn rate_limit(bucket: &str) -> String {
+    format!("{PREFIX}:rl:{bucket}")
+}
+
+/// Union of the CORS origins of a tenant's active clients (the CORS layer's
+/// allow list); evicted with every client change.
+pub fn client_origins(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:client_origins")
+}

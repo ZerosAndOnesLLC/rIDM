@@ -154,6 +154,20 @@ pub async fn delete<'e>(
     Ok(res.rows_affected() > 0)
 }
 
+/// Every distinct CORS origin registered on an active client of the tenant.
+pub async fn active_cors_origins<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT DISTINCT o FROM clients, unnest(cors_origins) AS o \
+         WHERE tenant_id = $1 AND status = 'active'",
+    )
+    .bind(tenant_id)
+    .fetch_all(exec)
+    .await
+}
+
 /// Keyset-paginated list with optional case-insensitive prefix search on client_id / name.
 pub async fn list<'e>(
     exec: impl PgExecutor<'e>,

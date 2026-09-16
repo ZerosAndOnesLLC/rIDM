@@ -19,8 +19,12 @@ pub mod telemetry;
 pub mod util;
 
 use axum::Router;
+use axum::middleware::from_fn_with_state;
 use tower_http::trace::TraceLayer;
 
+use crate::middleware::rate_limit::{Limiter, Style, limit};
+use crate::middleware::{cors, security_headers};
+use crate::services::rate_limit::Category;
 use crate::state::AppState;
 
 /// Build the full application router.
@@ -46,6 +50,29 @@ pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
             }),
         )
     };
+    // Each endpoint family gets its own ceiling and refusal format; the layer
+    // sits on the family's router so its path parameters are already known.
+    let limited = |router: Router<AppState>, category: Category, style: Style| {
+        router.layer(from_fn_with_state(
+            Limiter::new(state.clone(), category, style),
+            limit,
+        ))
+    };
+    let flows = Router::new()
+        .merge(routes::flows::router())
+        .merge(routes::device::router())
+        .merge(routes::invitations::router())
+        .merge(routes::verification::router())
+        .merge(routes::recovery::router());
+    let oauth_tokens = Router::new()
+        .merge(oidc::token::router())
+        .merge(oidc::device::router())
+        .merge(oidc::userinfo::router())
+        .merge(oidc::introspect::router())
+        .merge(oidc::revoke::router());
+    let oauth_json = Router::new()
+        .merge(oidc::par::router())
+        .merge(oidc::register::router());
     Router::new()
         .merge(routes::health::router())
         .merge(admin)
@@ -54,23 +81,27 @@ pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
         .merge(routes::wellknown::router())
         .merge(routes::webfinger::router())
         .merge(routes::jwks::router())
-        .merge(routes::flows::router())
-        .merge(routes::broker::router())
-        .merge(routes::device::router())
-        .merge(routes::invitations::router())
-        .merge(routes::verification::router())
-        .merge(routes::recovery::router())
+        .merge(limited(flows, Category::Flows, Style::Problem))
+        .merge(limited(
+            routes::broker::router(),
+            Category::Flows,
+            Style::Html,
+        ))
         .merge(oidc::discovery::router())
-        .merge(oidc::authorize::router())
-        .merge(oidc::par::router())
-        .merge(oidc::register::router())
-        .merge(oidc::token::router())
-        .merge(oidc::device::router())
-        .merge(oidc::userinfo::router())
-        .merge(oidc::introspect::router())
-        .merge(oidc::revoke::router())
+        .merge(limited(
+            oidc::authorize::router(),
+            Category::Authorize,
+            Style::Html,
+        ))
+        .merge(limited(oauth_json, Category::Authorize, Style::OAuth))
+        .merge(limited(oauth_tokens, Category::Token, Style::OAuth))
         .merge(oidc::end_session::router())
         .merge(extra)
+        .layer(from_fn_with_state(
+            state.clone(),
+            security_headers::security_headers,
+        ))
+        .layer(cors::layer(state.clone()))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

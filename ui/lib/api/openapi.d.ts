@@ -4115,6 +4115,54 @@ export interface components {
             display_name: string;
             preset?: string | null;
         };
+        /**
+         * @description Request ceilings enforced on this tenant's OAuth and sign-in endpoints
+         *     (counted in fixed windows in Valkey, shared by every node). Each limit is
+         *     requests per `window_secs`; 0 switches that limit off. The deployment-wide
+         *     per-address ceiling (`RATE_LIMIT_IP_PER_MINUTE`) applies on top.
+         */
+        RateLimitPolicy: {
+            /**
+             * Format: int32
+             * @description `/authorize`, `/par` and dynamic registration per client address.
+             * @default 300
+             */
+            authorize_per_ip: number;
+            /** @default true */
+            enabled: boolean;
+            /**
+             * Format: int32
+             * @description The browser flow API (flows, recovery, verification, invitations,
+             *     device verification, brokering) per client address.
+             * @default 600
+             */
+            flows_per_ip: number;
+            /**
+             * Format: int32
+             * @description Every limited endpoint together, across all addresses (0 = off).
+             * @default 0
+             */
+            tenant_total: number;
+            /**
+             * Format: int32
+             * @description The same endpoints per authenticated client (counted before the
+             *     secret is checked, so guessing a secret is bounded too).
+             * @default 1200
+             */
+            token_per_client: number;
+            /**
+             * Format: int32
+             * @description `/token`, `/introspect`, `/revoke`, `/userinfo`, `/device_authorization` per client address.
+             * @default 600
+             */
+            token_per_ip: number;
+            /**
+             * Format: int32
+             * @description Window length in seconds (1..=3600).
+             * @default 60
+             */
+            window_secs: number;
+        };
         RecoveryCodes: {
             recovery_codes: string[];
         };
@@ -4733,6 +4781,18 @@ export interface components {
              *     }
              */
             password: components["schemas"]["PasswordPolicy"];
+            /**
+             * @default {
+             *       "authorize_per_ip": 300,
+             *       "enabled": true,
+             *       "flows_per_ip": 600,
+             *       "tenant_total": 0,
+             *       "token_per_client": 1200,
+             *       "token_per_ip": 600,
+             *       "window_secs": 60
+             *     }
+             */
+            rate_limits: components["schemas"]["RateLimitPolicy"];
             /**
              * @default {
              *       "allowed_email_domains": [],

@@ -21222,6 +21222,58 @@
           }
         }
       },
+      "RateLimitPolicy": {
+        "type": "object",
+        "description": "Request ceilings enforced on this tenant's OAuth and sign-in endpoints\n(counted in fixed windows in Valkey, shared by every node). Each limit is\nrequests per `window_secs`; 0 switches that limit off. The deployment-wide\nper-address ceiling (`RATE_LIMIT_IP_PER_MINUTE`) applies on top.",
+        "properties": {
+          "authorize_per_ip": {
+            "type": "integer",
+            "format": "int32",
+            "description": "`/authorize`, `/par` and dynamic registration per client address.",
+            "default": 300,
+            "minimum": 0
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "flows_per_ip": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The browser flow API (flows, recovery, verification, invitations,\ndevice verification, brokering) per client address.",
+            "default": 600,
+            "minimum": 0
+          },
+          "tenant_total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Every limited endpoint together, across all addresses (0 = off).",
+            "default": 0,
+            "minimum": 0
+          },
+          "token_per_client": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The same endpoints per authenticated client (counted before the\nsecret is checked, so guessing a secret is bounded too).",
+            "default": 1200,
+            "minimum": 0
+          },
+          "token_per_ip": {
+            "type": "integer",
+            "format": "int32",
+            "description": "`/token`, `/introspect`, `/revoke`, `/userinfo`, `/device_authorization` per client address.",
+            "default": 600,
+            "minimum": 0
+          },
+          "window_secs": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Window length in seconds (1..=3600).",
+            "default": 60,
+            "minimum": 0
+          }
+        }
+      },
       "RecoveryCodes": {
         "type": "object",
         "required": [
@@ -22835,6 +22887,23 @@
               "require_lowercase": false,
               "require_symbol": false,
               "require_uppercase": false
+            }
+          },
+          "rate_limits": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RateLimitPolicy",
+                "description": "Request ceilings on the OAuth and sign-in endpoints."
+              }
+            ],
+            "default": {
+              "authorize_per_ip": 300,
+              "enabled": true,
+              "flows_per_ip": 600,
+              "tenant_total": 0,
+              "token_per_client": 1200,
+              "token_per_ip": 600,
+              "window_secs": 60
             }
           },
           "registration": {

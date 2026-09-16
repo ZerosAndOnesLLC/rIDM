@@ -52,6 +52,7 @@ test.describe("tenants and settings", () => {
     await page.getByRole("combobox", { name: "Two-step verification" }).selectOption("required_for_roles");
     await page.getByLabel("Roles that require it").fill("finance");
     await page.keyboard.press("Enter");
+    await page.getByLabel("Token endpoints per client").fill("900");
     await expect(page.getByRole("status").filter({ hasText: /^Saved$/ })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole("status").filter({ hasText: /Unsaved|Saving/ })).toBeHidden({ timeout: 10_000 });
 
@@ -61,6 +62,7 @@ test.describe("tenants and settings", () => {
     await expect(page.getByLabel("Minimum length")).toHaveValue("14");
     await expect(page.getByRole("combobox", { name: "Two-step verification" })).toHaveValue("required_for_roles");
     await expect(page.getByText("finance", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Token endpoints per client")).toHaveValue("900");
 
     // The API refuses what it cannot store and the page says so.
     await page.getByLabel("Terms of service URL").fill("not a url");

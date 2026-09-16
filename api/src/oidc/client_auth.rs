@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, header};
 use base64::Engine as _;
 use chrono::Utc;
 use jsonwebtoken::{DecodingKey, Validation};
@@ -13,10 +13,10 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::error::{OAuthError, OAuthErrorCode};
-use crate::middleware::TenantCtx;
+use crate::middleware::{TenantCtx, cors};
 use crate::models::{Client, ClientStatus, TokenEndpointAuthMethod};
 use crate::oidc::authorize::RawParams;
-use crate::services::{client_keys, clients};
+use crate::services::{client_keys, clients, rate_limit};
 use crate::state::AppState;
 
 pub const JWT_BEARER_ASSERTION: &str = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
@@ -155,6 +155,12 @@ pub async fn authenticate(
     if client.status != ClientStatus::Active {
         return Err(invalid_client("client is disabled"));
     }
+    // Per-client ceiling, counted before the credentials are checked so that
+    // guessing a secret is bounded as well.
+    let decision = rate_limit::hit_client(state, tenant.tenant.as_ref(), client.id).await;
+    if let Some(secs) = decision.retry_after_secs {
+        return Err(OAuthError::rate_limited(secs));
+    }
 
     let method = match (&presented, client.token_endpoint_auth_method) {
         (Presented::Basic { secret, .. }, TokenEndpointAuthMethod::ClientSecretBasic)
@@ -178,6 +184,15 @@ pub async fn authenticate(
             ));
         }
     };
+    // A browser call (it carries `Origin`) must come from an origin registered
+    // on this client; the tenant-wide CORS layer only knew the union.
+    if let Some(origin) = headers.get(header::ORIGIN)
+        && !cors::origin_allowed_for_client(state, &client, origin)
+    {
+        return Err(OAuthError::invalid_request(
+            "origin is not registered for this client",
+        ));
+    }
     Ok((client, method))
 }
 

@@ -168,9 +168,50 @@ in [`.env.example`](.env.example). The essentials:
 | `LOG_FORMAT`, `RUST_LOG` | `json` or `pretty`; tracing filter |
 | `DOCS_ENABLED` | Serve Swagger UI at `/docs` (off in production) |
 | `BREACH_CHECK_URL` | Have I Been Pwned compatible range endpoint for the breached-password check (default `https://api.pwnedpasswords.com/range/`; `off` for air-gapped installs) |
+| `RATE_LIMITS` | Master switch for request ceilings (default `true`; off only for tests and local experiments) |
+| `RATE_LIMIT_IP_PER_MINUTE` | Requests per minute one client address may make to every limited endpoint of every tenant together (default 6000; 0 = off). Per-tenant ceilings are in tenant settings |
+| `HSTS_MAX_AGE` | `Strict-Transport-Security` max-age in seconds, sent when `PUBLIC_URL` is https (default two years; 0 = off) |
 
 Health probes: `GET /healthz` (liveness) and `GET /readyz` (database + cache).
 `GET /.well-known/security.txt` serves the vulnerability disclosure policy.
+
+### Rate limits, browser hardening and cross-origin policy
+
+Every OAuth and sign-in endpoint sits behind a request ceiling counted in fixed
+windows in Valkey, so all nodes share one view. Three endpoint families each have a
+per-address limit under `settings.rate_limits` (`token_per_ip` for `/token`,
+`/introspect`, `/revoke`, `/userinfo` and `/device_authorization`; `authorize_per_ip`
+for `/authorize`, `/par` and dynamic registration; `flows_per_ip` for the flow API,
+recovery, verification, invitations, device verification and brokering), the token
+family also has `token_per_client` (counted once the client is known and before its
+secret is checked, so guessing a secret is bounded), `tenant_total` caps everything
+together, and the deployment-wide `RATE_LIMIT_IP_PER_MINUTE` applies on top across
+tenants. Every limited response carries `RateLimit-Limit`, `RateLimit-Remaining` and
+`RateLimit-Reset` for the tightest bucket; a refused request is `429` with
+`Retry-After`, as `{"error": "slow_down"}` on OAuth endpoints, `application/problem+json`
+on the flow API, and a plain HTML page on browser navigations (`/authorize`,
+brokering). The client address is the TCP peer, or the first `X-Forwarded-For` /
+`Forwarded` address when the peer is in `TRUSTED_PROXIES`. Valkey being unreachable
+fails open with a warning. The admin console edits the policy under Settings → Rate
+limits; the defaults (per minute: 600 token, 1200 per client, 300 authorize, 600 flow,
+no tenant total) are meant for a busy office behind one NAT address.
+
+Every response carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+`Referrer-Policy: no-referrer` and a `Content-Security-Policy` that lets nothing load
+from or frame an API response (`frame-ancestors 'none'` alone under `/docs`, which
+needs its scripts), plus `Strict-Transport-Security` when `PUBLIC_URL` is https. The
+UI's static export carries its own hash-based policy (see [UI](#ui)).
+
+Cross-origin requests are admitted by one rule set: the UI's and the API's own origins
+may call everything (the consoles and the sign-in pages run there, with cookies);
+discovery, JWKS, WebFinger and branding answer any origin; under `/t/{slug}/` an origin
+registered in `cors_origins` on one of the tenant's active clients is admitted (the
+union is cached per tenant and evicted on every client change); everything else gets no
+CORS headers. Because a preflight cannot say which client a `/token` call is for, the
+client-authenticated endpoints check again once the client is known: a browser `Origin`
+that is neither the UI's, the API's nor registered on that very client is refused with
+`invalid_request` even though the tenant admits it. Server-side clients send no
+`Origin` and are never checked.
 
 ## Development
 
@@ -513,6 +554,17 @@ npm run build          # static export to ui/out
 `NEXT_PUBLIC_API_URL` is empty by default (same origin, for the embedded single-binary
 mode). Set it at build time when hosting `ui/out` on a separate static host or CDN.
 
+The build's `postbuild` step (`scripts/csp.mjs`, unit-tested with `npm run test:scripts`)
+gives every exported page a `Content-Security-Policy` `<meta>` tag: scripts may come
+from the page's origin, the CAPTCHA vendors, or be one of the page's own inline
+scripts (each allowed by its SHA-256 hash, since a static export has no nonces);
+connections and form posts may go to the page's origin and `NEXT_PUBLIC_API_URL`;
+styles stay inline (React style props and tenant custom CSS); images and fonts may
+come from anywhere over https (tenant logos), and objects are forbidden. A meta tag
+cannot restrict framing, so whoever serves `ui/out` (the embedded server, or your
+static host) should also send `X-Frame-Options: DENY` or
+`Content-Security-Policy: frame-ancestors 'none'`, and `Strict-Transport-Security`.
+
 `npm run e2e` runs the Playwright suite (the end-user journeys — password, magic link,
 registration, recovery, two-step verification, passkeys through a virtual
 authenticator, consent, logout — and the admin console journeys for every
@@ -586,8 +638,8 @@ typed client reads from).
 Pages so far: **Tenants** (`/console/tenants/`: every tenant for global administrators,
 filter, "New tenant" dialog that lands on the new tenant's settings) and **Settings**
 (`/console/settings/`: every tenant setting on one page, grouped as general, sign-in,
-passwords and lockout, sessions and tokens, branding, locale and notices, keys, discovery
-and audit, plus a delete-tenant zone for global owners). Settings save as you go: each
+passwords and lockout, rate limits, sessions and tokens, branding, locale and notices,
+keys, discovery and audit, plus a delete-tenant zone for global owners). Settings save as you go: each
 change is applied to the page at once and joined into one JSON merge patch that is sent
 `PATCH /admin/tenants/{slug}` once typing pauses (600 ms, at most 2.5 s into continuous
 editing, and with `keepalive` when the tab is hidden or closed); the header shows

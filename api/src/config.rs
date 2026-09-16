@@ -84,6 +84,11 @@ pub struct Config {
     pub cookie_secure: bool,
     /// Peers whose `X-Forwarded-For` / `Forwarded` headers are trusted.
     pub trusted_proxies: Vec<IpNet>,
+    /// Deployment-wide request ceilings (per-tenant policy is in tenant settings).
+    pub rate_limits: RateLimitConfig,
+    /// `Strict-Transport-Security` max-age in seconds, sent when `PUBLIC_URL`
+    /// is https; 0 disables the header.
+    pub hsts_max_age: u64,
     pub tls: Option<TlsConfig>,
     pub db_pool_min: u32,
     pub db_pool_max: u32,
@@ -99,6 +104,25 @@ pub struct Config {
     /// migrations when both email and password are set; a no-op once a global
     /// admin exists.
     pub bootstrap: Option<BootstrapConfig>,
+}
+
+/// Rate limiting switches that belong to the deployment rather than a tenant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RateLimitConfig {
+    /// Master switch; off only for tests and local experiments.
+    pub enabled: bool,
+    /// Requests per minute one client address may make to every limited
+    /// endpoint of every tenant together (0 = off).
+    pub ip_per_minute: u32,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            ip_per_minute: 6000,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -222,6 +246,14 @@ impl Config {
                     .collect::<Result<Vec<_>, _>>()
             },
         )?;
+        let rate_limits = RateLimitConfig {
+            enabled: parse_bool("RATE_LIMITS", RateLimitConfig::default().enabled)?,
+            ip_per_minute: parse_u32(
+                "RATE_LIMIT_IP_PER_MINUTE",
+                RateLimitConfig::default().ip_per_minute,
+            )?,
+        };
+        let hsts_max_age = u64::from(parse_u32("HSTS_MAX_AGE", 63_072_000)?);
         let tls = match (optional("TLS_CERT"), optional("TLS_KEY")) {
             (Some(cert), Some(key)) => Some(TlsConfig {
                 cert_path: PathBuf::from(cert),
@@ -319,6 +351,8 @@ impl Config {
             docs_enabled,
             cookie_secure,
             trusted_proxies,
+            rate_limits,
+            hsts_max_age,
             tls,
             db_pool_min,
             db_pool_max,
@@ -343,6 +377,17 @@ impl Config {
             }
         }
         u.to_string()
+    }
+
+    /// Origins (scheme, host, port) of the UI and of the API itself: browsers on
+    /// these may call every endpoint (the consoles and the sign-in pages).
+    pub fn own_origins(&self) -> Vec<String> {
+        let mut v = vec![self.public_url.origin().ascii_serialization()];
+        let ui = self.ui_url.origin().ascii_serialization();
+        if !v.contains(&ui) {
+            v.push(ui);
+        }
+        v
     }
 
     /// Issuer URL for a tenant: `{PUBLIC_URL}/t/{slug}` (no trailing slash).

@@ -11,6 +11,7 @@ import { GeneralSection } from "@/components/console/settings/general";
 import { LocaleSection } from "@/components/console/settings/locale";
 import { PasswordsSection } from "@/components/console/settings/passwords";
 import { ProfileSchemaSection } from "@/components/console/settings/profile";
+import { RateLimitsSection } from "@/components/console/settings/ratelimits";
 import { SessionsSection } from "@/components/console/settings/sessions";
 import { SignInSection } from "@/components/console/settings/signin";
 import { PageHeader } from "@/components/console/ui";
@@ -131,6 +132,7 @@ export default function SettingsPage() {
           <SignInSection />
           <ProfileSchemaSection tenant={editor.draft.slug} editable={editable} />
           <PasswordsSection />
+          <RateLimitsSection />
           <SessionsSection />
           <BrandingSection />
           <LocaleSection />

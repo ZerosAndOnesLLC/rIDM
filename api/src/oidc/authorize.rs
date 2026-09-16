@@ -930,6 +930,10 @@ pub fn error_page(status: StatusCode, code: &str, description: &str) -> Response
                 HeaderValue::from_static("text/html; charset=utf-8"),
             ),
             (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+            (
+                header::CONTENT_SECURITY_POLICY,
+                HeaderValue::from_static(crate::middleware::security_headers::HTML_PAGE_CSP),
+            ),
         ],
         html,
     )

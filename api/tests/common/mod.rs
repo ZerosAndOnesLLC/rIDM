@@ -341,6 +341,13 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
         docs_enabled: true,
         cookie_secure: false,
         trusted_proxies: vec![],
+        // Off by default so parallel tests from one address never trip a
+        // ceiling; the rate-limit suite switches it on through `spawn_configured`.
+        rate_limits: ridm_api::config::RateLimitConfig {
+            enabled: false,
+            ip_per_minute: 0,
+        },
+        hsts_max_age: 63_072_000,
         tls: None,
         db_pool_min: 1,
         db_pool_max: 8,

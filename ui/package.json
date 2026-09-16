@@ -10,6 +10,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "node scripts/csp.mjs out",
+    "test:scripts": "node --test \"scripts/**/*.test.mjs\"",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "gen:api": "npx -y -p typescript@5.9.3 -p openapi-typescript@7.13.0 openapi-typescript ../api/openapi.json -o lib/api/openapi.d.ts",

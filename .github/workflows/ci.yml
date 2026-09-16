@@ -59,6 +59,9 @@ jobs:
       - name: tsc
         working-directory: ui
         run: npm run typecheck
+      - name: build scripts
+        working-directory: ui
+        run: npm run test:scripts
 
   unit:
     name: unit

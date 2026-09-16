@@ -16,7 +16,7 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::error::AppError;
-use crate::middleware::TenantCtx;
+use crate::middleware::{TenantCtx, client_ip};
 use crate::services::flows::{self, AuthStep, ConsentOutcome};
 use crate::services::login_flows::FlowStage;
 use crate::services::{sessions, trusted_devices};
@@ -102,30 +102,6 @@ fn no_store(mut res: Response) -> Response {
     res.headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     res
-}
-
-/// Client IP honouring `X-Forwarded-For` only from trusted proxies.
-pub fn client_ip(
-    state: &AppState,
-    headers: &HeaderMap,
-    peer: Option<std::net::SocketAddr>,
-) -> Option<String> {
-    let peer_ip = peer.map(|p| p.ip());
-    let trusted = peer_ip.is_some_and(|ip| {
-        state
-            .config
-            .trusted_proxies
-            .iter()
-            .any(|net| net.contains(&ip))
-    });
-    if trusted
-        && let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok())
-        && let Some(first) = xff.split(',').next().map(str::trim)
-        && let Ok(ip) = first.parse::<std::net::IpAddr>()
-    {
-        return Some(ip.to_string());
-    }
-    peer_ip.map(|ip| ip.to_string())
 }
 
 /// The public state as JSON, with `finish_url` once the flow is done.

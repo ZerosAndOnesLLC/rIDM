@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
 use crate::middleware::TenantCtx;
-use crate::routes::flows::client_ip;
+use crate::middleware::client_ip;
 use crate::services::broker::{self, BrokerError, CallbackParams, Mode, Outcome};
 use crate::services::{flows, identity_providers, sessions, trusted_devices};
 use crate::state::AppState;

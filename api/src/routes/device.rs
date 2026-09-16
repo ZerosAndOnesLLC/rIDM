@@ -14,8 +14,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
+use crate::middleware::client_ip;
 use crate::middleware::{Json, TenantCtx};
-use crate::routes::flows::client_ip;
 use crate::services::login_flows::{self, AuthRequest, FlowStage, LoginFlow, ResponseMode};
 use crate::services::{broker, clients, device_codes, flows, sessions};
 use crate::state::AppState;

@@ -10,7 +10,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::middleware::TenantCtx;
-use crate::routes::flows::client_ip;
+use crate::middleware::client_ip;
 use crate::services::flows::{self, AuthStep};
 use crate::services::registration::RegistrationInput;
 use crate::services::{invitations, sessions};
