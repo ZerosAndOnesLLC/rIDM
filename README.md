@@ -172,8 +172,11 @@ in [`.env.example`](.env.example). The essentials:
 | `RATE_LIMIT_IP_PER_MINUTE` | Requests per minute one client address may make to every limited endpoint of every tenant together (default 6000; 0 = off). Per-tenant ceilings are in tenant settings |
 | `HSTS_MAX_AGE` | `Strict-Transport-Security` max-age in seconds, sent when `PUBLIC_URL` is https (default two years; 0 = off) |
 | `RETENTION_DAYS` | Days the hourly cleanup keeps spent rows (expired tokens and sessions, login attempts, sent messages, finished deliveries; default 30) |
+| `METRICS_TOKEN` | Bearer token `GET /metrics` demands; open when unset |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME` | Export traces over OTLP/HTTP to this collector base URL under this service name (`ridm`) |
+| `AUDIT_SINK_URL`, `AUDIT_SINK_TOKEN` | Ship every audit row to an HTTP endpoint (JSON batches, optional bearer) or a syslog receiver (`syslog://`, `syslog+tcp://`) |
 
-Health probes: `GET /healthz` (liveness) and `GET /readyz` (database + cache).
+Health probes: `GET /healthz` (liveness) and `GET /readyz` (database + cache); `GET /metrics` for Prometheus (see [Observability](#observability)).
 `GET /.well-known/security.txt` serves the vulnerability disclosure policy.
 
 ### SCIM provisioning
@@ -241,6 +244,35 @@ plain bearer token, without a proof or with another key's proof is refused with 
 and the admin API. Clients registered with `dpop_bound_access_tokens` (console: client
 detail, or the DCR metadata field) must always present a proof. Server-provided nonces
 and `dpop_jkt` at `/authorize` are not implemented.
+
+### Observability
+
+`GET /metrics` exposes Prometheus metrics (`text/plain; version=0.0.4`), open by default
+and behind `Authorization: Bearer <METRICS_TOKEN>` when that variable is set:
+
+| Metric | Labels | Meaning |
+|--------|--------|---------|
+| `ridm_http_requests_total`, `ridm_http_request_duration_seconds` | `method`, `route` (the matched pattern), `status` | every request, by route |
+| `ridm_token_requests_total` | `grant`, `outcome` (`issued` or the OAuth error) | `/token` grants |
+| `ridm_logins_total` | `method` (`password`, `webauthn`, `mfa`, ...), `outcome` (`success`, `invalid_credentials`, `locked`, `disabled`) | first-factor sign-ins |
+| `ridm_sessions_created_total` | | browser sessions opened |
+| `ridm_rate_limit_rejections_total`, `ridm_ip_rule_rejections_total{scope}` | | requests refused by the guard |
+| `ridm_webhook_deliveries_total{outcome}`, `ridm_webhook_deliveries_pending`, `ridm_messages_queued` | | delivery outcomes and queue depths (gauges refreshed by the delivery jobs) |
+| `ridm_job_runs_total{job,outcome}`, `ridm_job_duration_seconds{job}`, `ridm_cleanup_rows_total{table}` | | background jobs |
+| `ridm_audit_events_total`, `ridm_audit_sink_rows_total`, `ridm_audit_sink_failures_total`, `ridm_audit_sink_dropped_total` | | the audit writer and its export sink |
+
+Traces: set `OTEL_EXPORTER_OTLP_ENDPOINT` (the collector's base URL, e.g.
+`http://otel-collector:4318`) and every request span, with the spans inside it, is
+exported over OTLP/HTTP (protobuf) under `OTEL_SERVICE_NAME` (default `ridm`); unset, no
+exporter runs. Logs are JSON (`LOG_FORMAT=json`) with the current span's fields.
+
+Audit export: set `AUDIT_SINK_URL` and every audit row (as stored, with its chain
+sequence and hash) is also shipped: to `https://…` as JSON arrays of up to 100 rows
+(within a second of the first), with `Authorization: Bearer <AUDIT_SINK_TOKEN>` when
+set, retried three times with backoff; or to `syslog://host:514` (UDP) /
+`syslog+tcp://host:514` as one RFC 5424 message per row (`<134>1 <time> <host> ridm -
+<event name> - <json>`). The sink never slows the writer: a bounded queue drops rows
+when the destination falls behind and counts them.
 
 ### Background jobs
 

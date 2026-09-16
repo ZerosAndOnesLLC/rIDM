@@ -124,15 +124,21 @@ pub fn spawn_writer(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         loop {
             match rx.recv().await {
-                Ok(envelope) => {
-                    if let Err(err) = record(&state, &envelope.event).await {
+                Ok(envelope) => match record(&state, &envelope.event).await {
+                    Ok(row) => {
+                        metrics::counter!("ridm_audit_events_total").increment(1);
+                        if let Some(sink) = &state.audit_sink {
+                            sink.offer(row);
+                        }
+                    }
+                    Err(err) => {
                         tracing::error!(
                             event = envelope.event.name(),
                             error = %err,
                             "audit: could not record event"
                         );
                     }
-                }
+                },
                 Err(RecvError::Lagged(n)) => {
                     tracing::warn!(skipped = n, "audit: event bus lagged, events not recorded");
                 }

@@ -89,7 +89,22 @@ async fn token(
         );
     }
     let params = RawParams::parse(&body);
-    match handle(&state, &tenant, &headers, &params, ip).await {
+    let outcome = handle(&state, &tenant, &headers, &params, ip).await;
+    // Counted whatever happened, refusals included (client auth, grant, DPoP).
+    let grant = params
+        .one("grant_type")
+        .ok()
+        .flatten()
+        .filter(|g| grants::ALL.contains(g))
+        .unwrap_or("unknown")
+        .to_string();
+    let label = match &outcome {
+        Ok(_) => "issued".to_string(),
+        Err(e) => e.error.as_str().to_string(),
+    };
+    metrics::counter!("ridm_token_requests_total", "grant" => grant, "outcome" => label)
+        .increment(1);
+    match outcome {
         Ok(res) => no_store(axum::Json(res).into_response()),
         Err(e) => no_store(e.into_response()),
     }

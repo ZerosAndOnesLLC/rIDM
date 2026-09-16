@@ -92,6 +92,15 @@ pub struct Config {
     /// Days the hourly cleanup keeps spent rows (expired tokens and sessions,
     /// login attempts, sent messages, finished webhook deliveries, ...).
     pub retention_days: u32,
+    /// OTLP/HTTP collector base URL for trace export (`OTEL_EXPORTER_OTLP_ENDPOINT`).
+    pub otlp_endpoint: Option<Url>,
+    /// `service.name` on exported traces (`OTEL_SERVICE_NAME`, default `ridm`).
+    pub otel_service_name: String,
+    /// Bearer token `/metrics` demands; open when unset.
+    pub metrics_token: Option<SecretString>,
+    /// Where audit rows are also shipped (`https://`, `syslog://`, `syslog+tcp://`).
+    pub audit_sink_url: Option<Url>,
+    pub audit_sink_token: Option<SecretString>,
     pub tls: Option<TlsConfig>,
     pub db_pool_min: u32,
     pub db_pool_max: u32,
@@ -258,6 +267,33 @@ impl Config {
         };
         let hsts_max_age = u64::from(parse_u32("HSTS_MAX_AGE", 63_072_000)?);
         let retention_days = parse_u32("RETENTION_DAYS", 30)?;
+        let otlp_endpoint = optional("OTEL_EXPORTER_OTLP_ENDPOINT")
+            .map(|v| {
+                parse("OTEL_EXPORTER_OTLP_ENDPOINT", v, |v| {
+                    Url::parse(&v).map_err(|e| e.to_string())
+                })
+            })
+            .transpose()?;
+        let otel_service_name = optional("OTEL_SERVICE_NAME").unwrap_or_else(|| "ridm".to_string());
+        let metrics_token = optional("METRICS_TOKEN").map(SecretString::new);
+        let audit_sink_url = optional("AUDIT_SINK_URL")
+            .map(|v| {
+                parse("AUDIT_SINK_URL", v, |v| {
+                    Url::parse(&v).map_err(|e| e.to_string()).and_then(|u| {
+                        if !matches!(
+                            u.scheme(),
+                            "http" | "https" | "syslog" | "syslog+udp" | "syslog+tcp"
+                        ) {
+                            return Err(
+                                "scheme must be http(s), syslog, syslog+udp or syslog+tcp".into()
+                            );
+                        }
+                        Ok(u)
+                    })
+                })
+            })
+            .transpose()?;
+        let audit_sink_token = optional("AUDIT_SINK_TOKEN").map(SecretString::new);
         if retention_days == 0 {
             return Err(ConfigError::Invalid {
                 name: "RETENTION_DAYS",
@@ -364,6 +400,11 @@ impl Config {
             rate_limits,
             hsts_max_age,
             retention_days,
+            otlp_endpoint,
+            otel_service_name,
+            metrics_token,
+            audit_sink_url,
+            audit_sink_token,
             tls,
             db_pool_min,
             db_pool_max,

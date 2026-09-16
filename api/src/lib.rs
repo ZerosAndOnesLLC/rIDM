@@ -35,6 +35,8 @@ pub fn build_router(state: AppState) -> Router {
 /// Build the application router plus `extra` routes (used by integration
 /// tests to exercise extractors and middleware in isolation).
 pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
+    // The metrics recorder must exist before the first counter is touched.
+    let _ = telemetry::prometheus();
     let routed = routed_router(state.clone(), extra);
     // Requests on a tenant's custom domain carry no `/t/{slug}` prefix: the
     // fallback maps the host to the tenant and re-dispatches (see `host`).
@@ -117,6 +119,9 @@ fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
             security_headers::security_headers,
         ))
         .layer(cors::layer(state.clone()))
+        .layer(axum::middleware::from_fn(
+            middleware::http_metrics::http_metrics,
+        ))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

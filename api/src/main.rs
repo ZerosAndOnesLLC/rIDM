@@ -46,9 +46,11 @@ async fn main() {
             std::process::exit(2);
         }
     };
-    telemetry::init(config.log_format);
+    telemetry::init_server(&config);
 
-    if let Err(err) = run(config).await {
+    let outcome = run(config).await;
+    telemetry::shutdown();
+    if let Err(err) = outcome {
         tracing::error!(error = %err, "fatal");
         std::process::exit(1);
     }

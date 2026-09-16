@@ -3,6 +3,7 @@ pub mod account_console;
 pub mod admin_access;
 pub mod admin_console;
 pub mod audit;
+pub mod audit_sink;
 pub mod auth_codes;
 pub mod bootstrap;
 pub mod breach;

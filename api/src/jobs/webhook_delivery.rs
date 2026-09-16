@@ -29,7 +29,9 @@ pub async fn run_once(state: &AppState) -> AppResult<Option<(usize, usize)>> {
     // Stale `sending` rows only become due once requeued, so they are found
     // by their old `next_attempt_at`, which `deliver_due` resets.
     let due = repos::webhooks::tenants_with_due(&mut *tx).await?;
+    let backlog = repos::webhooks::count_pending(&mut *tx).await?;
     tx.commit().await?;
+    metrics::gauge!("ridm_webhook_deliveries_pending").set(backlog as f64);
     for tenant_id in due {
         match webhooks::deliver_due(state, tenant_id, BATCH).await {
             Ok((d, f)) => {

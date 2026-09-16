@@ -187,6 +187,15 @@ pub async fn claim_due<'e>(
     qb.build_query_as::<WebhookDelivery>().fetch_all(exec).await
 }
 
+/// Deliveries still to be sent, across tenants (bypass transaction; a gauge).
+pub async fn count_pending<'e>(exec: impl PgExecutor<'e>) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM webhook_deliveries WHERE status IN ('pending', 'failed', 'sending')",
+    )
+    .fetch_one(exec)
+    .await
+}
+
 /// Tenants that have a delivery due right now (run in a bypass transaction:
 /// the job visits only these instead of every tenant).
 pub async fn tenants_with_due<'e>(exec: impl PgExecutor<'e>) -> Result<Vec<Uuid>, sqlx::Error> {

@@ -22,7 +22,9 @@ pub async fn run_once(state: &AppState) -> AppResult<Option<(usize, usize)>> {
     let mut totals = (0, 0);
     let mut tx = db::bypass_tx(&state.db).await?;
     let due = repos::messages::tenants_with_due(&mut *tx).await?;
+    let backlog = repos::messages::count_queued(&mut *tx).await?;
     tx.commit().await?;
+    metrics::gauge!("ridm_messages_queued").set(backlog as f64);
     for tenant_id in due {
         match messaging::deliver_due(state, tenant_id, BATCH).await {
             Ok((s, f)) => {

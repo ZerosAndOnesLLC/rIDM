@@ -157,6 +157,7 @@ pub async fn create(
             user_id: req.user_id,
         },
     ));
+    metrics::counter!("ridm_sessions_created_total").increment(1);
     Ok(session)
 }
 

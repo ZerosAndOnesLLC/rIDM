@@ -120,6 +120,15 @@ pub async fn enqueue<'e>(
     qb.build_query_as::<OutboundMessage>().fetch_one(exec).await
 }
 
+/// Messages still to be sent, across tenants (bypass transaction; a gauge).
+pub async fn count_queued<'e>(exec: impl PgExecutor<'e>) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM outbound_messages WHERE status IN ('queued', 'sending')",
+    )
+    .fetch_one(exec)
+    .await
+}
+
 /// Tenants with a message due right now (bypass transaction; the job visits only these).
 pub async fn tenants_with_due<'e>(exec: impl PgExecutor<'e>) -> Result<Vec<Uuid>, sqlx::Error> {
     sqlx::query_scalar(

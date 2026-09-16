@@ -4,6 +4,7 @@ mod client_ip;
 pub mod cors;
 pub mod guard;
 pub mod host;
+pub mod http_metrics;
 mod json;
 pub mod security_headers;
 mod tenant;

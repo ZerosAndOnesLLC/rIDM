@@ -515,6 +515,8 @@ pub async fn password_step(
             repos::login_attempts::record(&mut *tx, tid, &identifier, ip.as_deref(), true, None)
                 .await?;
             tx.commit().await?;
+            metrics::counter!("ridm_logins_total", "method" => "password", "outcome" => "success")
+                .increment(1);
 
             let session = open_session(
                 state,
@@ -561,6 +563,8 @@ pub async fn password_step(
                 Some(reason),
             )
             .await?;
+            metrics::counter!("ridm_logins_total", "method" => "password", "outcome" => reason.to_string())
+                .increment(1);
             if let Some(u) = &user
                 && reason == "invalid_credentials"
                 && lockout.max_failures > 0
@@ -1477,6 +1481,12 @@ pub async fn complete_authentication(
     repos::users::record_login_success(&mut *tx, tid, user.id).await?;
     repos::login_attempts::record(&mut *tx, tid, &user.username, ip.as_deref(), true, None).await?;
     tx.commit().await?;
+    metrics::counter!(
+        "ridm_logins_total",
+        "method" => amr.first().cloned().unwrap_or_else(|| "unknown".into()),
+        "outcome" => "success"
+    )
+    .increment(1);
     let session = open_session(state, &tenant.tenant, &mut flow, user, amr.clone(), ctx).await?;
     advance(state, &tenant.tenant, &mut flow, must_change_password).await?;
     login_flows::save(state, &flow).await?;
