@@ -213,6 +213,7 @@ that issued it, and its SSO session must still be alive. The routes:
 | `GET sessions`, `DELETE sessions[/{id}]` | live sessions (the current one first) and ending one or all of them, with their refresh tokens; `?keep_current=true` keeps this one |
 | `GET apps`, `DELETE apps/{client_id}` | applications the user consented to, and withdrawing that consent along with the application's refresh tokens |
 | `GET identities`, `POST identities/link`, `DELETE identities/{idp_id}` | the upstream accounts linked to this one and the providers still available; linking hands back a one-time URL the browser takes to the broker and returns from with `?linked=1` or `?link_error=<code>`; unlinking |
+| `GET tokens`, `POST tokens`, `DELETE tokens/{token_id}` | personal access tokens: the user's tokens (metadata), the scopes a new one may carry (`account`, plus the admin permissions the user holds), the tenant's maximum lifetime; minting answers with the token once; revoking |
 | `GET export` | everything held about the user as one JSON download: the record, credential metadata, devices, sessions, consents, roles, groups and the audit trail; never any secret material |
 | `DELETE me` | delete the account (the username typed again as confirmation): every session, token and device ends now and the row is soft-deleted, so the username and email free up at once; a daily job purges it after `settings.account.deletion_retention_days` (default 30, admin deletions too). `settings.account.self_deletion` switches it off per tenant, and administrators must be removed by another administrator |
 
@@ -224,6 +225,23 @@ the user back through sign-in (`max_age=0`, plus `acr_values` for the second ste
 returns. Contact-change codes follow the passwordless rules: hashed, single-use, ten
 minutes, five attempts, three sends per ten minutes, and a repeat inside twenty seconds
 reuses the pending code.
+
+### Personal access tokens
+
+Users mint long-lived bearer tokens (`rpat_…`, shown once, stored as a SHA-256) from the
+account console for scripts and integrations. A token carries scopes: `account` admits
+it to the self-service account API as the user (without a session, so nothing that
+needs a recent sign-in, and a token can never mint another), and admin permission names
+admit it to the admin API with exactly those permissions. Scopes must be held by the
+user when the token is made and are narrowed at every use to what the user still holds,
+so a removed role narrows every token at once; a disabled or locked user's tokens stop
+working. `settings.account.personal_tokens` switches minting off per tenant and
+`settings.account.personal_token_max_days` (default 365, `0` for no limit) caps and
+defaults the lifetime. `last_used_at` is recorded at most once a minute; introspection
+answers `token_type: personal_access_token` with the subject, username, scope and
+expiry; account deletion revokes what is left. Administrators list and revoke a user's
+tokens from the user detail; the tokens themselves are never readable again. Events:
+`personal_token.created`, `personal_token.revoked`.
 
 ### Device authorization grant
 
@@ -426,6 +444,7 @@ pagination with `?cursor=&limit=`):
 | `GET/POST /admin/tenants/{slug}/ip-rules`, `GET/PATCH/DELETE .../{id}` | `ridm:tenants:read` / `write` | `{cidr, action?: allow|deny, client_id?, description?}`; networks are normalized; `?client_id=` or `?tenant_wide=true`; enforced from Phase 9.2 |
 | `GET/POST /admin/tenants/{slug}/identity-providers`, `GET/PATCH/DELETE .../{idp}` (id or alias), `GET .../presets`, `POST .../discover` | `ridm:idps:read` / `write` | upstream OpenID Connect and OAuth 2.0 providers: a `preset` (`google`, `microsoft`, `github`, `apple`, `gitlab`) fills in protocol, endpoints, scopes and mappers; an OIDC provider's endpoints are discovered from its `issuer` when left out; the `client_secret` is stored encrypted and never returned (`client_secret_set`), `null` clears it; `link_policy` (`verified_email`, `explicit`, `always_new`), `trust_email`, `mappers` (`subject`, `username`, `email`, `email_verified` claim names and `attributes` → claim), `hidden`, `sort_order`; every answer carries the `callback_url` to register upstream |
 | `GET /admin/tenants/{slug}/users/{user}/identities`, `DELETE .../identities/{idp_id}` | `ridm:users:read` / `write` | the upstream identities linked to a user, and unlinking one |
+| `GET /admin/tenants/{slug}/users/{user}/pats`, `DELETE .../pats/{token_id}` | `ridm:users:read` / `write` | a user's personal access tokens (metadata) and revoking one |
 | `GET /admin/tenants/{slug}/export` | `ridm:tenants:export` | the tenant's configuration as one deterministic JSON document (`ridm.tenant/1`): settings, profile schema, resource servers and permissions, scopes, clients, roles (composites, permission grants), groups (by path, with roles), claim mappers, message templates, webhooks and IP rules, keyed by natural identifiers; no secrets, users or provider credentials |
 | `GET /openapi.json`, `GET /docs` | none | the admin API's OpenAPI 3 document, derived from the routers; Swagger UI at `/docs` when `DOCS_ENABLED=true` |
 | `POST /admin/tenants/{slug}/import?dry_run=&prune=` | `ridm:tenants:import` | `dry_run` returns the plan (creates, updates with field-level diffs, and with `prune` deletes of unmentioned configuration); otherwise applies it and reports what was applied, per-item errors, and the secrets of clients and webhooks it created (shown once); applying the same document twice is a no-op |
@@ -534,7 +553,8 @@ pending changes shown with a cancel, the number removable), **Security** (the pa
 with a change that asks for the current one and can sign out everywhere else; the second
 step and recovery codes; the upstream accounts linked to this one, with linking through
 the provider and unlinking; trusted devices; every live session with this browser marked,
-each one ending on its own or all but this one at once), **Applications** (the
+each one ending on its own or all but this one at once; personal access tokens, minted
+with a name, scopes and lifetime and shown once), **Applications** (the
 applications the user let in, with their scopes, privacy and terms links, and a "remove
 access" that also cancels their refresh tokens) and **Your data** (the export as a JSON
 download, and account deletion behind a dialog that asks for the username). A change the

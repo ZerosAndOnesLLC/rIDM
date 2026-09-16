@@ -237,3 +237,8 @@ pub fn device_user_code(tenant_id: Uuid, user_code: &str) -> String {
 pub fn device_guesses(tenant_id: Uuid, ip: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:device:guesses:{ip}")
 }
+
+/// Claimed while a personal access token's `last_used_at` is fresh enough.
+pub fn pat_touched(tenant_id: Uuid, token_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:pat:{token_id}:touched")
+}

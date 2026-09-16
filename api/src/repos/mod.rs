@@ -12,6 +12,7 @@ pub mod ip_rules;
 pub mod login_attempts;
 pub mod messages;
 pub mod password_history;
+pub mod personal_access_tokens;
 pub mod profile_schema;
 pub mod provider_settings;
 pub mod refresh_tokens;

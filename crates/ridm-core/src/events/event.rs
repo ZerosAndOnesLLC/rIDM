@@ -387,6 +387,17 @@ pub enum EventKind {
         provider: String,
     },
 
+    // Personal access tokens
+    PersonalTokenCreated {
+        user_id: Uuid,
+        token_id: Uuid,
+        scopes: Vec<String>,
+    },
+    PersonalTokenRevoked {
+        user_id: Uuid,
+        token_id: Uuid,
+    },
+
     // Generic cache invalidation hint (entity kind + id), used until every
     // entity has a dedicated event.
     CacheInvalidate {
@@ -478,6 +489,8 @@ impl EventKind {
             Self::IdentityLinked { .. } => "identity.linked",
             Self::IdentityUnlinked { .. } => "identity.unlinked",
             Self::BrokeredLogin { .. } => "login.brokered",
+            Self::PersonalTokenCreated { .. } => "personal_token.created",
+            Self::PersonalTokenRevoked { .. } => "personal_token.revoked",
             Self::CacheInvalidate { .. } => "cache.invalidate",
         }
     }

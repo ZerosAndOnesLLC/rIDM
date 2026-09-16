@@ -105,6 +105,10 @@ pub struct AccountExport {
     pub trusted_devices: Vec<TrustedDevice>,
     pub sessions: Vec<SsoSession>,
     pub consents: Vec<ConsentedApp>,
+    /// Personal access tokens (metadata only).
+    pub personal_access_tokens: Vec<crate::models::PersonalAccessToken>,
+    /// Upstream identities linked to the account.
+    pub identities: Vec<crate::models::LinkedIdentity>,
     /// Effective role names.
     pub roles: Vec<String>,
     /// Groups the user belongs to, ancestors included.
@@ -140,6 +144,11 @@ pub async fn export(state: &AppState, tenant: &Tenant, user: &User) -> AppResult
         trusted_devices: trusted_devices::list(state, tenant.id, user.id).await?,
         sessions: sessions::list_live_for_user(state, tenant.id, user.id).await?,
         consents: consented_apps(state, tenant.id, user.id).await?,
+        personal_access_tokens: crate::services::personal_access_tokens::list(
+            state, tenant.id, user.id,
+        )
+        .await?,
+        identities: crate::services::broker::identities_of(state, tenant.id, user.id).await?,
         roles: roles::effective_role_names(state, tenant.id, user.id).await?,
         groups: groups::groups_of_user(state, tenant.id, user.id, true).await?,
         audit_events,
@@ -170,6 +179,7 @@ pub async fn delete_own(state: &AppState, tenant: &Tenant, user: &User) -> AppRe
     sessions::revoke_all_for_user(state, tenant.id, user.id).await?;
     refresh_tokens::revoke_for_user(state, tenant.id, actor.clone(), user.id, None).await?;
     trusted_devices::revoke_all(state, tenant.id, user.id).await?;
+    crate::services::personal_access_tokens::revoke_all_for_user(state, tenant.id, user.id).await?;
     crate::services::users::delete(state, tenant.id, actor, user.id).await
 }
 

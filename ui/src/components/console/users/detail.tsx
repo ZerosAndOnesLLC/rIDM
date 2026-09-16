@@ -15,6 +15,7 @@ import { STATUS_LABELS, TABS, TAB_LABELS, describeAgent, roleName, statusTone, u
 import { RevealModal, type Revealed } from "../clients/reveal";
 import { AttributeField, JsonInput } from "./attributes";
 import { LinkedIdentities } from "./identities";
+import { PersonalTokens } from "./tokens";
 import { useRolesAndGroups } from "./invite";
 
 /** Display names of `credentials.type` values. */
@@ -432,7 +433,7 @@ function SecurityTab({ tenant, u, editable, onReveal, onChanged, onForce }: { te
           </p>
         )}
         <LinkedIdentities tenant={tenant} id={u.id} editable={editable} />
-        <p className="mt-4 border-t border-line pt-3 text-[0.8125rem] text-muted">Personal access tokens (Phase 8.5) will appear here.</p>
+        <PersonalTokens tenant={tenant} id={u.id} editable={editable} />
       </Card>
     </div>
   );

@@ -37,6 +37,7 @@ pub mod otp_factors;
 pub mod passkeys;
 pub mod password;
 pub mod passwordless;
+pub mod personal_access_tokens;
 pub mod profile_schema;
 pub mod provider_settings;
 pub mod recovery;

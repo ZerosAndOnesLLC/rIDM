@@ -76,6 +76,11 @@ pub struct AccountPolicy {
     /// Days a soft-deleted account stays recoverable before the purge job
     /// removes it and everything attached to it.
     pub deletion_retention_days: u32,
+    /// Users may mint personal access tokens.
+    pub personal_tokens: bool,
+    /// The longest a personal access token may live (and the default);
+    /// `0` allows tokens that never expire.
+    pub personal_token_max_days: u32,
 }
 
 impl Default for AccountPolicy {
@@ -83,6 +88,8 @@ impl Default for AccountPolicy {
         Self {
             self_deletion: true,
             deletion_retention_days: 30,
+            personal_tokens: true,
+            personal_token_max_days: 365,
         }
     }
 }

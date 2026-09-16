@@ -1484,6 +1484,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/tenants/{slug}/users/{user}/pats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["users_user_pats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/users/{user}/pats/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["users_revoke_pat"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/tenants/{slug}/users/{user}/roles": {
         parameters: {
             query?: never;
@@ -2165,6 +2197,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/t/{slug}/account/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["account_list_tokens"];
+        put?: never;
+        /** The token is in the answer once and never again. */
+        post: operations["account_create_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["account_revoke_token"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2186,6 +2251,10 @@ export interface components {
             exported_at: string;
             /** @description Groups the user belongs to, ancestors included. */
             groups: components["schemas"]["Group"][];
+            /** @description Upstream identities linked to the account. */
+            identities: components["schemas"]["LinkedIdentity"][];
+            /** @description Personal access tokens (metadata only). */
+            personal_access_tokens: components["schemas"]["PersonalAccessToken"][];
             /** @description Effective role names. */
             roles: string[];
             sessions: components["schemas"]["SsoSession"][];
@@ -2221,6 +2290,18 @@ export interface components {
              * @default 30
              */
             deletion_retention_days: number;
+            /**
+             * Format: int32
+             * @description The longest a personal access token may live (and the default);
+             *     `0` allows tokens that never expire.
+             * @default 365
+             */
+            personal_token_max_days: number;
+            /**
+             * @description Users may mint personal access tokens.
+             * @default true
+             */
+            personal_tokens: boolean;
             /**
              * @description Users may delete their own account (`DELETE /t/{slug}/account/me`).
              * @default true
@@ -2634,6 +2715,11 @@ export interface components {
              * @default null
              */
             rsa_bits: number | null;
+        };
+        /** @description A freshly minted token: the secret is only ever returned here. */
+        CreatedPersonalAccessToken: components["schemas"]["PersonalAccessToken"] & {
+            /** @description The bearer token, shown once. */
+            token: string;
         };
         /** @description Response to a create or password change that minted a temporary password. */
         CreatedUser: components["schemas"]["User"] & {
@@ -3542,6 +3628,22 @@ export interface components {
             /** @default  */
             name: string;
         };
+        NewPersonalAccessToken: {
+            /**
+             * Format: int32
+             * @description Days until it expires; none means the tenant's maximum (or never
+             *     when the tenant sets no maximum).
+             * @default null
+             */
+            expires_in_days: number | null;
+            /** @default  */
+            name: string;
+            /**
+             * @description `account` for the self-service API, and admin permission names.
+             * @default []
+             */
+            scopes: string[];
+        };
         NewPhone: {
             /** @description E.164. */
             phone: string;
@@ -3875,6 +3977,32 @@ export interface components {
             audience: string;
             permissions: components["schemas"]["PermissionDef"][];
             roles: components["schemas"]["BuiltInRoleDoc"][];
+        };
+        /**
+         * @description A long-lived bearer token a user minted for scripts and integrations.
+         *     The token itself is shown once; only its hash is kept.
+         */
+        PersonalAccessToken: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            last_used_at?: string | null;
+            name: string;
+            /** Format: date-time */
+            revoked_at?: string | null;
+            /**
+             * @description `account` and/or admin permission names, each held by the user when
+             *     the token was made; at use they are narrowed to what the user still holds.
+             */
+            scopes: string[];
+            /** Format: uuid */
+            tenant_id: string;
+            /** Format: uuid */
+            user_id: string;
         };
         PhoneBody: {
             /**
@@ -4475,6 +4603,8 @@ export interface components {
             /**
              * @default {
              *       "deletion_retention_days": 30,
+             *       "personal_token_max_days": 365,
+             *       "personal_tokens": true,
              *       "self_deletion": true
              *     }
              */
@@ -4658,6 +4788,19 @@ export interface components {
         };
         /** @enum {string} */
         TokenEndpointAuthMethod: "none" | "client_secret_basic" | "client_secret_post" | "private_key_jwt";
+        /** @description The user's tokens and the scopes a new one may carry. */
+        Tokens: {
+            /** @description `account` and the admin permissions the user holds. */
+            available_scopes: string[];
+            /** @description The tenant allows personal access tokens. */
+            enabled: boolean;
+            /**
+             * Format: int32
+             * @description The longest a token may live in days; `0` means it may never expire.
+             */
+            max_days: number;
+            tokens: components["schemas"]["PersonalAccessToken"][];
+        };
         TrustedDevice: {
             /** Format: date-time */
             created_at: string;
@@ -12936,6 +13079,124 @@ export interface operations {
             };
         };
     };
+    users_user_pats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                user: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalAccessToken"][];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    users_revoke_pat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                user: string;
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     users_user_roles: {
         parameters: {
             query?: never;
@@ -15586,6 +15847,139 @@ export interface operations {
                 };
             };
             /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_list_tokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tokens"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_create_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewPersonalAccessToken"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedPersonalAccessToken"];
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Recent authentication required, or tokens are not allowed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_revoke_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Recent authentication required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found or already revoked */
             404: {
                 headers: {
                     [name: string]: unknown;

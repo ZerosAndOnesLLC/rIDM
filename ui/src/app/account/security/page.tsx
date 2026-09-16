@@ -6,6 +6,7 @@ import { Identities } from "@/components/account/identities";
 import { Password } from "@/components/account/password";
 import { Security } from "@/components/account/security";
 import { Sessions } from "@/components/account/sessions";
+import { Tokens } from "@/components/account/tokens";
 
 /** Password, second step, trusted devices and where the user is signed in. */
 export default function Page() {
@@ -18,6 +19,7 @@ export default function Page() {
       <Identities />
       <Devices />
       <Sessions />
+      <Tokens />
     </div>
   );
 }

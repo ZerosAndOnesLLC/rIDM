@@ -23,8 +23,8 @@ use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
 use crate::models::{
-    Consent, Credential, Group, LinkedIdentity, NewUser, Principal, Role, TrustedDevice, User,
-    UserFilter, UserStatus, UserUpdate,
+    Consent, Credential, Group, LinkedIdentity, NewUser, PersonalAccessToken, Principal, Role,
+    TrustedDevice, User, UserFilter, UserStatus, UserUpdate,
 };
 use crate::repos;
 use crate::routes::admin::AuditFilterQuery;
@@ -61,6 +61,8 @@ pub fn users_router() -> OpenApiRouter<AppState> {
         .routes(routes!(revoke_consent))
         .routes(routes!(user_identities))
         .routes(routes!(unlink_identity))
+        .routes(routes!(user_pats))
+        .routes(routes!(revoke_pat))
 }
 
 const P_READ: &str = "ridm:users:read";
@@ -822,6 +824,51 @@ async fn unlink_identity(
     load(&state, tenant.id, user).await?;
     if !broker::unlink(&state, tenant.id, admin.actor(), user, idp_id).await? {
         return Err(AppError::NotFound("identity"));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// --- personal access tokens ---------------------------------------------------
+
+#[utoipa::path(get, path = "/admin/tenants/{slug}/users/{user}/pats", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), responses((status = 200, body = Vec<PersonalAccessToken>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+async fn user_pats(
+    State(state): State<AppState>,
+    admin: AdminCtx,
+    AdminTenantPath(tenant): AdminTenantPath,
+    Path(UserPath { user }): Path<UserPath>,
+) -> AppResult<Json<Vec<PersonalAccessToken>>> {
+    admin.require(tenant.id, P_READ)?;
+    load(&state, tenant.id, user).await?;
+    Ok(Json(
+        crate::services::personal_access_tokens::list(&state, tenant.id, user).await?,
+    ))
+}
+
+#[derive(Deserialize)]
+struct PatPath {
+    user: Uuid,
+    token_id: Uuid,
+}
+
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/users/{user}/pats/{token_id}", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path), ("token_id" = Uuid, Path)), responses((status = 204, description = "No content"), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+async fn revoke_pat(
+    State(state): State<AppState>,
+    admin: AdminCtx,
+    AdminTenantPath(tenant): AdminTenantPath,
+    Path(PatPath { user, token_id }): Path<PatPath>,
+) -> AppResult<StatusCode> {
+    admin.require(tenant.id, P_WRITE)?;
+    load(&state, tenant.id, user).await?;
+    if !crate::services::personal_access_tokens::revoke(
+        &state,
+        tenant.id,
+        admin.actor(),
+        user,
+        token_id,
+    )
+    .await?
+    {
+        return Err(AppError::NotFound("token"));
     }
     Ok(StatusCode::NO_CONTENT)
 }

@@ -97,6 +97,7 @@ pub fn admin_router() -> OpenApiRouter<AppState> {
         .merge(account::apps_router())
         .merge(account::data_router())
         .merge(account::identities_router())
+        .merge(account::tokens_router())
 }
 
 /// The admin API document as served and committed.

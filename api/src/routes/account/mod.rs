@@ -8,6 +8,7 @@ mod mfa;
 mod password;
 mod profile;
 mod sessions;
+mod tokens;
 
 pub use apps::apps_router;
 pub use contact::contact_router;
@@ -19,3 +20,4 @@ pub use mfa::mfa_router;
 pub use password::password_router;
 pub use profile::profile_router;
 pub use sessions::sessions_router;
+pub use tokens::tokens_router;
