@@ -829,6 +829,8 @@ async fn the_export_is_a_download_of_everything_held_and_needs_a_recent_sign_in(
         "trusted_devices",
         "sessions",
         "consents",
+        "personal_access_tokens",
+        "identities",
         "roles",
         "groups",
         "audit_events",
@@ -1012,4 +1014,121 @@ async fn a_tenant_can_keep_users_from_deleting_their_own_account() {
             .await
             .is_ok()
     );
+}
+
+#[tokio::test]
+async fn an_account_token_only_ever_reaches_its_own_user() {
+    let fx = fixture().await;
+    let bob = users::create(
+        &fx.app.state,
+        fx.tenant.id,
+        Actor::System,
+        NewUser {
+            username: "bob".into(),
+            email: Some("bob@example.com".into()),
+            email_verified: true,
+            attributes: Some(json!({"department": "sales"})),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let (ta, alice_session) = token(&fx, fx.user_id, 0).await;
+    let (tb, bob_session) = token(&fx, bob.id, 0).await;
+    let bob_client = clients::create(
+        &fx.app.state,
+        fx.tenant.id,
+        Actor::System,
+        NewClient {
+            client_id: Some("bobs-app".into()),
+            name: "Bob's app".into(),
+            redirect_uris: vec!["https://bob.example/cb".into()],
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .client;
+    consents::grant(
+        &fx.app.state,
+        fx.tenant.id,
+        bob.id,
+        bob_client.id,
+        &["openid".into()],
+    )
+    .await
+    .unwrap();
+
+    // Every read is the token holder's own.
+    let (_, body, _) = call(
+        &fx.app,
+        Method::GET,
+        &path(&fx, "/profile"),
+        Some(&ta),
+        None,
+    )
+    .await;
+    assert_eq!(body["username"], "alice");
+    let (_, body, _) = call(
+        &fx.app,
+        Method::GET,
+        &path(&fx, "/profile"),
+        Some(&tb),
+        None,
+    )
+    .await;
+    assert_eq!(body["username"], "bob");
+    assert_eq!(body["attributes"]["department"], "sales");
+    let (_, body, _) = call(
+        &fx.app,
+        Method::GET,
+        &path(&fx, "/sessions"),
+        Some(&ta),
+        None,
+    )
+    .await;
+    let ids: Vec<&str> = body
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, [alice_session.to_string().as_str()]);
+    let (_, body, _) = call(&fx.app, Method::GET, &path(&fx, "/apps"), Some(&ta), None).await;
+    assert_eq!(body, json!([]), "Bob's consents are not Alice's");
+    let (_, body, _) = call(&fx.app, Method::GET, &path(&fx, "/apps"), Some(&tb), None).await;
+    assert_eq!(body[0]["name"], "Bob's app");
+
+    // Nor can a write name someone else's record.
+    let (status, _, _) = call(
+        &fx.app,
+        Method::DELETE,
+        &path(&fx, &format!("/sessions/{bob_session}")),
+        Some(&ta),
+        None,
+    )
+    .await;
+    assert_eq!(status, 404, "Bob's session is not Alice's to end");
+    assert!(
+        sessions::get(
+            &fx.app.state,
+            fx.tenant.id,
+            bob_session,
+            &fx.tenant.settings.session
+        )
+        .await
+        .unwrap()
+        .is_some()
+    );
+    let (status, _, _) = call(
+        &fx.app,
+        Method::DELETE,
+        &path(&fx, &format!("/apps/{}", bob_client.id)),
+        Some(&ta),
+        None,
+    )
+    .await;
+    assert_eq!(status, 404, "Bob's consent is not Alice's to withdraw");
+    let (_, body, _) = call(&fx.app, Method::GET, &path(&fx, "/apps"), Some(&tb), None).await;
+    assert_eq!(body.as_array().unwrap().len(), 1);
 }
