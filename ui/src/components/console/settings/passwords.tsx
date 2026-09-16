@@ -23,7 +23,7 @@ export function PasswordsSection() {
         <Toggle label="Require a lowercase letter" checked={password.require_lowercase} disabled={!editable} onChange={(v) => update({ password: { require_lowercase: v } })} />
         <Toggle label="Require a digit" checked={password.require_digit} disabled={!editable} onChange={(v) => update({ password: { require_digit: v } })} />
         <Toggle label="Require a symbol" checked={password.require_symbol} disabled={!editable} onChange={(v) => update({ password: { require_symbol: v } })} />
-        <Toggle label="Reject breached passwords" hint="k-anonymity check against a breach corpus (Phase 7)." checked={password.check_breached} disabled={!editable} onChange={(v) => update({ password: { check_breached: v } })} />
+        <Toggle label="Reject breached passwords" hint="Refuses passwords found in breach corpora (Have I Been Pwned range API, k-anonymity: only five hex digits of the SHA-1 leave the server). Needs the deployment to allow the lookup; an outage lets passwords through." checked={password.check_breached} disabled={!editable} onChange={(v) => update({ password: { check_breached: v } })} />
       </div>
       <Field label="Password history" hint="A new password must differ from this many previous ones (0 = off).">
         {(id, by) => <NumberInput id={id} describedBy={by} value={password.history} min={0} max={100} onValue={(v) => v !== null && update({ password: { history: v } })} />}

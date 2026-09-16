@@ -4,12 +4,14 @@
 //! instead of sleeping or polling. None of them is secure; never use outside
 //! tests.
 
+mod breach;
 mod captcha;
 mod email;
 mod events;
 mod key_encryptor;
 mod sms;
 
+pub use breach::*;
 pub use captcha::*;
 pub use email::*;
 pub use events::*;

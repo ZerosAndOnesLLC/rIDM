@@ -90,6 +90,9 @@ pub struct Config {
     /// Apply pending migrations at startup.
     pub migrate_on_start: bool,
     pub argon2: Argon2Params,
+    /// Range endpoint of a Have I Been Pwned compatible breached-password
+    /// API; `None` disables the check deployment-wide (air-gapped installs).
+    pub breach_check_url: Option<Url>,
     /// Deployment-wide SMTP defaults used by tenants without their own settings.
     pub smtp: Option<SmtpDefaults>,
     /// First-run bootstrap from the environment (dev convenience). Runs after
@@ -254,6 +257,22 @@ impl Config {
             });
         }
 
+        let breach_check_url = match optional("BREACH_CHECK_URL").as_deref() {
+            None => Some(
+                Url::parse(crate::services::breach::HIBP_RANGE_URL).expect("valid default url"),
+            ),
+            Some("") | Some("off") | Some("none") | Some("false") => None,
+            Some(raw) => {
+                let mut url = Url::parse(raw).map_err(|e| ConfigError::Invalid {
+                    name: "BREACH_CHECK_URL",
+                    reason: e.to_string(),
+                })?;
+                if !url.path().ends_with('/') {
+                    url.set_path(&format!("{}/", url.path()));
+                }
+                Some(url)
+            }
+        };
         let smtp = match optional("SMTP_HOST") {
             Some(host) => Some(SmtpDefaults {
                 host,
@@ -305,6 +324,7 @@ impl Config {
             db_pool_max,
             migrate_on_start,
             argon2,
+            breach_check_url,
             smtp,
             bootstrap,
         })

@@ -354,6 +354,31 @@ async fn verify_blocking(
         })
 }
 
+/// Refuse a password known from breach corpora. The lookup failing (the
+/// deployment cannot reach the corpus) is logged and lets the password
+/// through: an outage must not block sign-ups and resets.
+async fn check_breached(state: &AppState, tenant_id: Uuid, password: &str) -> AppResult<()> {
+    let Some(checker) = &state.breach else {
+        tracing::debug!(%tenant_id, "breached-password check requested but disabled for this deployment");
+        return Ok(());
+    };
+    let sha1 = ridm_core::providers::password_sha1_hex(password);
+    match checker.count(&sha1).await {
+        Ok(0) => Ok(()),
+        Ok(n) => {
+            tracing::info!(%tenant_id, occurrences = n, "breached password refused");
+            Err(AppError::Validation(vec![crate::error::FieldError {
+                field: "password".into(),
+                message: "has appeared in a data breach; choose a different one".into(),
+            }]))
+        }
+        Err(e) => {
+            tracing::warn!(%tenant_id, error = %e, "breached-password check unavailable; password accepted unchecked");
+            Ok(())
+        }
+    }
+}
+
 /// Set a user's password, enforcing the tenant policy and reuse history.
 pub async fn set_password(
     state: &AppState,
@@ -382,6 +407,9 @@ pub async fn set_password(
                     })
                     .collect(),
             ));
+        }
+        if policy.check_breached {
+            check_breached(state, tenant_id, &password).await?;
         }
         // "history N" = the last N passwords including the current one.
         if policy.history > 0 {

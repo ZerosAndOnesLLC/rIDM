@@ -3,6 +3,7 @@ pub mod admin_console;
 pub mod audit;
 pub mod auth_codes;
 pub mod bootstrap;
+pub mod breach;
 pub mod bulk_users;
 pub mod captcha;
 pub mod claim_mappers;

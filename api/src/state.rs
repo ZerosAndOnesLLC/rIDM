@@ -22,6 +22,8 @@ pub struct AppState {
     pub key_encryptor: Arc<dyn KeyEncryptor>,
     /// Builds per-tenant email/SMS senders; tests swap in mocks.
     pub senders: Arc<dyn crate::messaging::SenderFactory>,
+    /// Breached-password lookups; `None` when the deployment switched them off.
+    pub breach: Option<Arc<dyn ridm_core::providers::BreachChecker>>,
 }
 
 impl AppState {
@@ -30,6 +32,10 @@ impl AppState {
         let hasher = Arc::new(crate::services::password::Argon2Hasher::new(config.argon2));
         let key_encryptor =
             Arc::new(crate::services::key_encryptor::MasterKeyEncryptor::from_config(&config));
+        let breach = config.breach_check_url.clone().map(|url| {
+            Arc::new(crate::services::breach::HibpChecker::new(url))
+                as Arc<dyn ridm_core::providers::BreachChecker>
+        });
         Self {
             config: Arc::new(config),
             db,
@@ -39,6 +45,7 @@ impl AppState {
             hasher,
             key_encryptor,
             senders: Arc::new(crate::messaging::DefaultSenderFactory),
+            breach,
         }
     }
 }

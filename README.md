@@ -167,6 +167,7 @@ in [`.env.example`](.env.example). The essentials:
 | `MIGRATE_ON_START` | Apply pending migrations at startup; otherwise run `ridm-api migrate` as the schema-owner role |
 | `LOG_FORMAT`, `RUST_LOG` | `json` or `pretty`; tracing filter |
 | `DOCS_ENABLED` | Serve Swagger UI at `/docs` (off in production) |
+| `BREACH_CHECK_URL` | Have I Been Pwned compatible range endpoint for the breached-password check (default `https://api.pwnedpasswords.com/range/`; `off` for air-gapped installs) |
 
 Health probes: `GET /healthz` (liveness) and `GET /readyz` (database + cache).
 `GET /.well-known/security.txt` serves the vulnerability disclosure policy.
@@ -192,6 +193,17 @@ service; on Kubernetes use a Job. `MIGRATE_ON_START=true` is a simpler single-ro
 for small installs.
 
 ### Master key rotation
+
+Breached-password check: with `password.check_breached` on, every password a user
+or administrator sets (registration, recovery, forced change, admin reset, imports
+with a plaintext `password`) is looked up in a Have I Been Pwned compatible range API
+by k-anonymity: only the first five hex digits of its SHA-1 leave the server, and the
+match happens locally on the padded answer. `BREACH_CHECK_URL` names the endpoint
+(default `https://api.pwnedpasswords.com/range/`; `off` disables it deployment-wide
+for air-gapped installs, and the tenant toggle is then inert). A refused password is
+a validation error on the `password` field; a lookup failure is logged and lets the
+password through, so an outage never blocks sign-ups or resets. The checker is a
+`BreachChecker` provider, so another corpus can be plugged in.
 
 Secrets at rest (signing keys, MFA credentials, IdP secrets) are encrypted with
 `MASTER_KEY`, and every ciphertext records the key generation that produced it. To
