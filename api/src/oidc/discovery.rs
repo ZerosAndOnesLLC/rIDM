@@ -62,7 +62,7 @@ pub const CAPABILITIES: Capabilities = Capabilities {
     jar: true,
     jarm: true,
     dcr: true,
-    device: false,
+    device: true,
     token_exchange: false,
     dpop: false,
 };

@@ -21,6 +21,14 @@ export const accountClient: AdminClient = createAdminClient({
   onUnauthorized: () => accountStore.unauthorized(),
 });
 
+/** Re-read `/account/me` after a change to the identity it shows (email, phone). */
+export async function refreshMe(): Promise<void> {
+  const s = accountStore.current();
+  if (!s) return;
+  const { data } = await accountClient.GET("/t/{slug}/account/me", { params: { path: { slug: s.tenant } } });
+  if (data) accountStore.identify(data);
+}
+
 export const REAUTH_TYPE = "urn:ridm:error:reauthentication-required";
 export const MFA_ACR = "urn:ridm:acr:mfa";
 

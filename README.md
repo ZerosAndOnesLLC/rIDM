@@ -192,25 +192,105 @@ role. The compose stack creates both and runs migrations in a one-shot `migrate`
 service; on Kubernetes use a Job. `MIGRATE_ON_START=true` is a simpler single-role mode
 for small installs.
 
-### Master key rotation
+### Self-service account API
 
-The account console at `/account/` lets users manage their own second step and
-trusted devices (the rest of the account console follows in Phase 8). It is an OIDC
-public client of the user's own tenant, `ridm-account-console` (PKCE, built in like
-the admin console's client, following `UI_URL`, undeletable and left out of exports),
-whose tokens carry the built-in `urn:ridm:account` audience and reach only the
-self-service API under `/t/{slug}/account/`: `GET me` (identity plus the session's
-`auth_time`, `acr` and `amr`), `GET mfa` (enrolled factors, recovery codes left, the
-methods the tenant offers), `POST mfa/totp/enroll|confirm`, `mfa/passkey/register[/finish]`,
-`mfa/{email|sms}/enroll|confirm` (the same services as the login-flow steps, scoped to
-the SSO session), `DELETE mfa/credentials/{id}` (the recovery codes go with the last
-factor), `POST mfa/recovery-codes` (a new set, shown once), `GET devices`,
-`DELETE devices[/{id}]`. Every change needs a sign-in from the last fifteen minutes,
-and one that passed the second step once the account has one; otherwise the API
-answers `403` with the problem type `urn:ridm:error:reauthentication-required` and the
-page sends the user back through sign-in (`max_age=0`, plus `acr_values` for the second
-step) and returns. A token may only act on its own subject and only in the tenant that
-issued it.
+The account console at `/account/` is an OIDC public client of the user's own tenant,
+`ridm-account-console` (PKCE, built in like the admin console's client, following
+`UI_URL`, undeletable and left out of exports), whose tokens carry the built-in
+`urn:ridm:account` audience and reach only the self-service API under
+`/t/{slug}/account/`. A token may only act on its own subject and only in the tenant
+that issued it, and its SSO session must still be alive. The routes:
+
+| Route | What it does |
+|-------|--------------|
+| `GET me` | identity plus the session's `auth_time`, `acr` and `amr` |
+| `GET/PATCH profile` | the profile by the tenant's schema: declared attributes with their values, which of them the user may edit (`editable_by: user`; the rest are kept as they are), the locale (one the tenant supports), pending contact changes |
+| `GET/PUT password` | the password's state and policy; a change needs the current password while one is set and can end every other session (`sign_out_others`) |
+| `POST email/change`, `POST email/confirm`, `DELETE email/change` | a six-digit code goes to the new address and the right code moves the account over, verified; the previous address is told; an address another account uses is a `409` |
+| `POST phone/change`, `POST phone/confirm`, `DELETE phone/change`, `DELETE phone` | the same by text message; the number cannot be removed while it backs an SMS second step |
+| `GET mfa`, `POST mfa/totp/enroll\|confirm`, `mfa/passkey/register[/finish]`, `mfa/{email\|sms}/enroll\|confirm`, `DELETE mfa/credentials/{id}`, `POST mfa/recovery-codes` | second factors and recovery codes (the same services as the login-flow steps, scoped to the SSO session; the recovery codes go with the last factor) |
+| `GET devices`, `DELETE devices[/{id}]` | trusted browsers |
+| `GET sessions`, `DELETE sessions[/{id}]` | live sessions (the current one first) and ending one or all of them, with their refresh tokens; `?keep_current=true` keeps this one |
+| `GET apps`, `DELETE apps/{client_id}` | applications the user consented to, and withdrawing that consent along with the application's refresh tokens |
+| `GET identities`, `POST identities/link`, `DELETE identities/{idp_id}` | the upstream accounts linked to this one and the providers still available; linking hands back a one-time URL the browser takes to the broker and returns from with `?linked=1` or `?link_error=<code>`; unlinking |
+| `GET tokens`, `POST tokens`, `DELETE tokens/{token_id}` | personal access tokens: the user's tokens (metadata), the scopes a new one may carry (`account`, plus the admin permissions the user holds), the tenant's maximum lifetime; minting answers with the token once; revoking |
+| `GET export` | everything held about the user as one JSON download: the record, credential metadata, devices, sessions, consents, roles, groups and the audit trail; never any secret material |
+| `DELETE me` | delete the account (the username typed again as confirmation): every session, token and device ends now and the row is soft-deleted, so the username and email free up at once; a daily job purges it after `settings.account.deletion_retention_days` (default 30, admin deletions too). `settings.account.self_deletion` switches it off per tenant, and administrators must be removed by another administrator |
+
+Every security change (a factor, a device, a session, the password, a contact
+detail, the export, deletion) needs a sign-in from the last fifteen minutes, and one
+that passed the second step once the account has one; otherwise the API answers `403`
+with the problem type `urn:ridm:error:reauthentication-required` and the page sends
+the user back through sign-in (`max_age=0`, plus `acr_values` for the second step) and
+returns. Contact-change codes follow the passwordless rules: hashed, single-use, ten
+minutes, five attempts, three sends per ten minutes, and a repeat inside twenty seconds
+reuses the pending code.
+
+### Personal access tokens
+
+Users mint long-lived bearer tokens (`rpat_…`, shown once, stored as a SHA-256) from the
+account console for scripts and integrations. A token carries scopes: `account` admits
+it to the self-service account API as the user (without a session, so nothing that
+needs a recent sign-in, and a token can never mint another), and admin permission names
+admit it to the admin API with exactly those permissions. Scopes must be held by the
+user when the token is made and are narrowed at every use to what the user still holds,
+so a removed role narrows every token at once; a disabled or locked user's tokens stop
+working. `settings.account.personal_tokens` switches minting off per tenant and
+`settings.account.personal_token_max_days` (default 365, `0` for no limit) caps and
+defaults the lifetime. `last_used_at` is recorded at most once a minute; introspection
+answers `token_type: personal_access_token` with the subject, username, scope and
+expiry; account deletion revokes what is left. Administrators list and revoke a user's
+tokens from the user detail; the tokens themselves are never readable again. Events:
+`personal_token.created`, `personal_token.revoked`.
+
+### Device authorization grant
+
+Input-constrained devices (TVs, CLIs, kiosks) sign users in with the device
+authorization grant (RFC 8628). A client of type `device` (or any client allowed the
+`urn:ietf:params:oauth:grant-type:device_code` grant) posts `client_id` and `scope`
+(plus `resource` indicators) to `/t/{slug}/device_authorization` and receives a
+`device_code`, a `user_code` (`XXXX-XXXX`, letters that are hard to confuse), the
+`verification_uri` (the `/device/` page), `verification_uri_complete`, `expires_in`
+(ten minutes) and `interval` (five seconds). The user enters the code on `/device/`;
+the API turns it into a login flow for the device's client, so sign-in, second step,
+profile completion, terms and consent apply as for any application, and the flow's
+finish approves the device code and returns the browser to the device page (`done=1`;
+a denial or cancellation returns with `error=access_denied`). The device polls `/token`
+with the grant and its `device_code`: `authorization_pending` until the user decides,
+`slow_down` when it polls faster than the interval (which then grows by five seconds),
+`access_denied`, `expired_token`, then the tokens (an ID token with the session's
+`amr`, `acr` and `auth_time`, a refresh token when the client may) exactly once. Wrong
+user codes are limited to ten per address per ten minutes. Pending codes live in Valkey;
+every code leaves a `device_codes` audit row (pending, approved, denied, consumed).
+
+### Identity brokering
+
+Users may sign in through an upstream OpenID Connect or OAuth 2.0 provider configured per
+tenant (`identity_providers`, above). The login page offers every enabled, non-hidden
+provider as a "Continue with ..." button that sends the browser to
+`GET /t/{slug}/broker/{alias}/start?flow={id}`; rIDM redirects to the provider's
+authorization endpoint with a fresh `state` (its record in Valkey remembers the flow),
+a `nonce` and a PKCE challenge, and receives the browser back on
+`/t/{slug}/broker/{alias}/callback` (GET, or POST for Apple's `form_post`). The code is
+redeemed at the token endpoint (`client_secret_basic`, `client_secret_post` or PKCE
+alone); an OIDC ID token is verified against the provider's JWK set (cached an hour,
+re-fetched once for an unknown `kid`), its issuer (Microsoft's `common` accepts any
+directory), audience, expiry and nonce; plain OAuth 2.0 providers are read through
+`userinfo` (GitHub's primary verified address through `/user/emails`). The identity is
+then resolved: the account linked to that provider and subject signs in (`amr: ["fed"]`);
+otherwise the `link_policy` decides — `verified_email` links an existing account whose
+address both sides verified, `explicit` never links by email (the user signs in the usual
+way and links from the account console), `always_new` always creates an account; an
+address another account holds is refused with `broker_error=email_in_use` on the login
+page. A new account takes its username from the mapped claim, else the email, else
+`{alias}-{subject}`; mapped attributes are written on every sign-in, and the login flow
+then continues like any other first factor (second step, profile completion for required
+attributes, terms, consent). Events: `identity_provider.*`, `identity.linked`,
+`identity.unlinked`, `login.brokered`. Upstream endpoints must use https (plain http is
+accepted for loopback hosts, for development and tests); providers export and import
+with the tenant configuration without their secrets.
+
+### Breached-password check
 
 Breached-password check: with `password.check_breached` on, every password a user
 or administrator sets (registration, recovery, forced change, admin reset, imports
@@ -222,6 +302,8 @@ for air-gapped installs, and the tenant toggle is then inert). A refused passwor
 a validation error on the `password` field; a lookup failure is logged and lets the
 password through, so an outage never blocks sign-ups or resets. The checker is a
 `BreachChecker` provider, so another corpus can be plugged in.
+
+### Master key rotation
 
 Secrets at rest (signing keys, MFA credentials, IdP secrets) are encrypted with
 `MASTER_KEY`, and every ciphertext records the key generation that produced it. To
@@ -360,6 +442,9 @@ pagination with `?cursor=&limit=`):
 | `POST .../webhooks/{id}/secret`, `POST .../webhooks/{id}/test` | `ridm:webhooks:write` | rotate the secret (shown once); deliver a `webhook.test` event now and report the attempt |
 | `GET .../webhooks/{id}/deliveries?status=&limit=`, `GET .../deliveries/{id}`, `POST .../deliveries/{id}/redeliver` | read / read / write | delivery log with status, attempts, last status code, error and a response snippet; redeliver requeues and attempts at once |
 | `GET/POST /admin/tenants/{slug}/ip-rules`, `GET/PATCH/DELETE .../{id}` | `ridm:tenants:read` / `write` | `{cidr, action?: allow|deny, client_id?, description?}`; networks are normalized; `?client_id=` or `?tenant_wide=true`; enforced from Phase 9.2 |
+| `GET/POST /admin/tenants/{slug}/identity-providers`, `GET/PATCH/DELETE .../{idp}` (id or alias), `GET .../presets`, `POST .../discover` | `ridm:idps:read` / `write` | upstream OpenID Connect and OAuth 2.0 providers: a `preset` (`google`, `microsoft`, `github`, `apple`, `gitlab`) fills in protocol, endpoints, scopes and mappers; an OIDC provider's endpoints are discovered from its `issuer` when left out; the `client_secret` is stored encrypted and never returned (`client_secret_set`), `null` clears it; `link_policy` (`verified_email`, `explicit`, `always_new`), `trust_email`, `mappers` (`subject`, `username`, `email`, `email_verified` claim names and `attributes` → claim), `hidden`, `sort_order`; every answer carries the `callback_url` to register upstream |
+| `GET /admin/tenants/{slug}/users/{user}/identities`, `DELETE .../identities/{idp_id}` | `ridm:users:read` / `write` | the upstream identities linked to a user, and unlinking one |
+| `GET /admin/tenants/{slug}/users/{user}/pats`, `DELETE .../pats/{token_id}` | `ridm:users:read` / `write` | a user's personal access tokens (metadata) and revoking one |
 | `GET /admin/tenants/{slug}/export` | `ridm:tenants:export` | the tenant's configuration as one deterministic JSON document (`ridm.tenant/1`): settings, profile schema, resource servers and permissions, scopes, clients, roles (composites, permission grants), groups (by path, with roles), claim mappers, message templates, webhooks and IP rules, keyed by natural identifiers; no secrets, users or provider credentials |
 | `GET /openapi.json`, `GET /docs` | none | the admin API's OpenAPI 3 document, derived from the routers; Swagger UI at `/docs` when `DOCS_ENABLED=true` |
 | `POST /admin/tenants/{slug}/import?dry_run=&prune=` | `ridm:tenants:import` | `dry_run` returns the plan (creates, updates with field-level diffs, and with `prune` deletes of unmentioned configuration); otherwise applies it and reports what was applied, per-item errors, and the secrets of clients and webhooks it created (shown once); applying the same document twice is a no-op |
@@ -412,8 +497,8 @@ job creates upcoming partitions and drops each tenant's expired chain prefix, so
 remains stays contiguous. The global chain follows the master tenant's policy.
 
 Tenant settings cover the password, session, MFA, registration, locale, branding,
-key, discovery, DCR, auth-method, lockout, CAPTCHA, notification and audit-retention policies plus a
-free-form `features` flag map. IP rules and webhooks get their own resources later in
+key, discovery, DCR, auth-method, lockout, CAPTCHA, notification, audit-retention and
+account (self-deletion, deletion retention) policies plus a free-form `features` flag map. IP rules and webhooks get their own resources later in
 Phase 5.
 
 ### UI
@@ -449,6 +534,31 @@ same-origin (session cookies work without CORS) and point the API back at it:
 UI_URL=http://localhost:3110 cargo run -p ridm-api             # API on :8090
 cd ui && API_PROXY=http://localhost:8090 npx next dev -p 3110   # UI on :3110
 ```
+
+**Identity providers** (`/console/identity-providers/`): the tenant's upstream providers
+with a create dialog (preset or OpenID Connect issuer, client credentials) and a detail
+editor (callback URL to register upstream, endpoints, client and secret, scopes, PKCE,
+link policy, trusted email, claim mappers); the user detail's credentials tab lists a
+user's linked identities with unlinking.
+
+### Account console
+
+The account console lives under `/account/` and is the self-service API's own client
+(see above). Signed out, every page shows a card asking which organisation to sign in
+through (`?tenant=` fills it in, the last one is remembered) and returns to the page
+afterwards. Four pages: **Profile** (the fields the tenant's profile schema declares,
+saved as they are edited, admin-only fields shown read-only; the language; the email
+address and phone number with a change proven by a code sent to the new destination,
+pending changes shown with a cancel, the number removable), **Security** (the password,
+with a change that asks for the current one and can sign out everywhere else; the second
+step and recovery codes; the upstream accounts linked to this one, with linking through
+the provider and unlinking; trusted devices; every live session with this browser marked,
+each one ending on its own or all but this one at once; personal access tokens, minted
+with a name, scopes and lifetime and shown once), **Applications** (the
+applications the user let in, with their scopes, privacy and terms links, and a "remove
+access" that also cancels their refresh tokens) and **Your data** (the export as a JSON
+download, and account deletion behind a dialog that asks for the username). A change the
+API refuses until the user signs in again sends them through sign-in and back.
 
 ### Admin console
 

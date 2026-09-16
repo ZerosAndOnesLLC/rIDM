@@ -63,6 +63,8 @@ pub struct PublicFlow {
     pub captcha: Option<CaptchaChallenge>,
     /// Mfa stage: what the user can verify with, or whether they must enrol first.
     pub mfa: Option<MfaInfo>,
+    /// Upstream providers offered on the login page ("Continue with ...").
+    pub identity_providers: Vec<crate::models::PublicIdentityProvider>,
 }
 
 /// Second-factor state of the signed-in user, shown at the `mfa` stage.
@@ -315,6 +317,7 @@ pub async fn public_state(
         attempts: flow.attempts,
         captcha: captcha_required(state, tenant, flow).await?,
         mfa,
+        identity_providers: crate::services::identity_providers::offered(state, tenant.id).await?,
     })
 }
 
@@ -739,6 +742,7 @@ pub async fn consent_step(
     }
     let user_id = flow.user_id.ok_or(AppError::Unauthorized)?;
     if !approve {
+        deny_device(state, &flow).await?;
         return Ok(ConsentOutcome::Denied {
             redirect_to: denial_redirect(&flow),
         });
@@ -786,8 +790,17 @@ pub fn denial_redirect(flow: &LoginFlow) -> String {
 
 /// `POST /flows/{id}/cancel`
 pub async fn cancel(state: &AppState, flow: &LoginFlow) -> AppResult<String> {
+    deny_device(state, flow).await?;
     login_flows::delete(state, flow.tenant_id, flow.id).await?;
     Ok(denial_redirect(flow))
+}
+
+/// A device authorization the flow was approving is denied with it.
+async fn deny_device(state: &AppState, flow: &LoginFlow) -> AppResult<()> {
+    if let Some(hash) = &flow.request.device_code {
+        crate::services::device_codes::deny(state, flow.tenant_id, hash).await?;
+    }
+    Ok(())
 }
 
 /// Request-derived facts an authentication step needs.

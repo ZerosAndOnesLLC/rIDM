@@ -184,3 +184,61 @@ pub fn totp_used_step(tenant_id: Uuid, credential_id: Uuid, step: u64) -> String
 pub fn passkey_ceremony(tenant_id: Uuid, scope: Uuid, kind: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:flow:{scope}:passkey:{kind}")
 }
+
+/// Pending email or phone change from the account console: the destination
+/// a code went to, awaiting its proof.
+pub fn contact_change(tenant_id: Uuid, user_id: Uuid, channel: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:user:{user_id}:contact:{channel}:pending")
+}
+
+/// The code proving a pending contact change.
+pub fn contact_change_code(tenant_id: Uuid, user_id: Uuid, channel: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:user:{user_id}:contact:{channel}:code")
+}
+
+/// Claimed while a contact-change code sent moments ago is still fresh.
+pub fn contact_change_cooldown(tenant_id: Uuid, user_id: Uuid, channel: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:user:{user_id}:contact:{channel}:cooldown")
+}
+
+/// A pending upstream sign-in or link: the state parameter (hashed) → what
+/// the callback continues.
+pub fn broker_state(tenant_id: Uuid, state_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:broker:state:{state_hash}")
+}
+
+/// A one-time ticket the account console hands the browser to start
+/// linking an identity to the signed-in user.
+pub fn broker_link_ticket(tenant_id: Uuid, ticket_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:broker:link:{ticket_hash}")
+}
+
+/// An upstream provider's JWK set.
+pub fn idp_jwks(tenant_id: Uuid, idp_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:idp:{idp_id}:jwks")
+}
+
+/// The enabled providers of a tenant, for the login page.
+pub fn identity_providers(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:idps")
+}
+
+/// A pending device authorization (RFC 8628), by the device code's hash.
+pub fn device_code(tenant_id: Uuid, device_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:device:{device_hash}")
+}
+
+/// The user code shown on the device → the device code's hash.
+pub fn device_user_code(tenant_id: Uuid, user_code: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:device:user:{user_code}")
+}
+
+/// Wrong user-code guesses per address.
+pub fn device_guesses(tenant_id: Uuid, ip: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:device:guesses:{ip}")
+}
+
+/// Claimed while a personal access token's `last_used_at` is fresh enough.
+pub fn pat_touched(tenant_id: Uuid, token_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:pat:{token_id}:touched")
+}

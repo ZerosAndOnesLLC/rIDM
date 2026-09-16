@@ -560,6 +560,7 @@ pub async fn validate(
             ui_locales,
             claims,
             skip_consent: !client.require_consent,
+            device_code: None,
         },
         client: std::sync::Arc::new(client.clone()),
     })

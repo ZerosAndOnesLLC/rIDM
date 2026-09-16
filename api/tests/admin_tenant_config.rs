@@ -271,6 +271,15 @@ async fn populate(app: &TestApp, slug: &str, t: &str) {
     )
     .await;
     ok(s, &b, "client ip rule");
+    let (s, b, _) = call(
+        app,
+        Method::POST,
+        &format!("{base}/identity-providers"),
+        Some(t),
+        Some(&json!({"alias": "github", "preset": "github", "client_id": "gh-app", "client_secret": "gh-secret", "link_policy": "explicit"})),
+    )
+    .await;
+    ok(s, &b, "identity provider");
 }
 
 #[tokio::test]
@@ -375,6 +384,15 @@ async fn export_is_deterministic_secret_free_and_imports_idempotently() {
     );
     assert_eq!(doc["message_templates"][0]["locale"], "de");
     assert_eq!(doc["webhooks"][0]["name"], "crm");
+    assert_eq!(doc["identity_providers"][0]["alias"], "github");
+    assert_eq!(doc["identity_providers"][0]["kind"], "oauth2");
+    assert_eq!(doc["identity_providers"][0]["client_id"], "gh-app");
+    assert_eq!(doc["identity_providers"][0]["link_policy"], "explicit");
+    assert!(
+        doc["identity_providers"][0]
+            .get("client_secret_set")
+            .is_none()
+    );
     assert!(
         doc["ip_rules"]
             .as_array()
@@ -433,6 +451,11 @@ async fn export_is_deterministic_secret_free_and_imports_idempotently() {
             .as_str()
             .unwrap()
             .starts_with("whsec_")
+    );
+    assert_eq!(
+        report["secrets"]["identity_providers"],
+        json!(["github"]),
+        "the provider's secret must be set by hand: {report}"
     );
 
     let (_, exported_b) = export(&app, &b.slug, &tb).await;

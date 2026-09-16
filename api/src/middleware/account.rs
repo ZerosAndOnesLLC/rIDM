@@ -19,9 +19,10 @@ use uuid::Uuid;
 use crate::error::{AppError, AppResult};
 use crate::middleware::admin::{AdminRejection, bearer, unverified_tenant_id};
 use crate::middleware::tenant::TenantCtx;
-use crate::models::{Tenant, User, UserStatus};
+use crate::models::{PAT_SCOPE_ACCOUNT, Tenant, User, UserStatus};
 use crate::services::account_console::ACCOUNT_AUDIENCE;
 use crate::services::flows::is_mfa_acr;
+use crate::services::personal_access_tokens as pats;
 use crate::services::tokens::{self, VerifyOptions};
 use crate::services::{tenants, users};
 use crate::state::AppState;
@@ -63,6 +64,14 @@ impl AccountCtx {
         }
     }
 
+    /// [`Self::require_recent_auth`] for a change to the account: the
+    /// second step is demanded once the account has one.
+    pub async fn require_recent(&self, state: &AppState) -> AppResult<()> {
+        let mfa =
+            crate::services::totp::has_second_factor(state, self.tenant.id, self.user.id).await?;
+        self.require_recent_auth(mfa)
+    }
+
     /// The scope enrolments started from the account console live under:
     /// the SSO session, so a reloaded page finds its pending enrolment.
     pub fn scope_id(&self) -> Uuid {
@@ -81,6 +90,30 @@ impl FromRequestParts<AppState> for AccountCtx {
             .await
             .map_err(AdminRejection::from)?;
         let token = bearer(&parts.headers).ok_or_else(AdminRejection::missing)?;
+        if pats::looks_like_pat(&token) {
+            // A personal access token with the `account` scope acts as the
+            // user, without a session: nothing that needs a recent sign-in.
+            let auth = pats::authenticate(state, &token)
+                .await?
+                .ok_or_else(AdminRejection::invalid)?;
+            if !auth.token.scopes.iter().any(|s| s == PAT_SCOPE_ACCOUNT) {
+                return Err(AppError::Forbidden("the token has no `account` scope".into()).into());
+            }
+            if auth.tenant.id != path_tenant.id() {
+                return Err(
+                    AppError::Forbidden("this token belongs to another tenant".into()).into(),
+                );
+            }
+            return Ok(Self {
+                user: auth.user,
+                tenant: auth.tenant,
+                session_id: None,
+                auth_time: None,
+                acr: None,
+                amr: vec!["pat".into()],
+                client_id: "pat".into(),
+            });
+        }
         let tenant_id = unverified_tenant_id(&token).ok_or_else(AdminRejection::invalid)?;
         let tenant = tenants::get_cached(state, tenant_id)
             .await?

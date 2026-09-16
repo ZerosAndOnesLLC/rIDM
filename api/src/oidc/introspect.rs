@@ -85,6 +85,31 @@ async fn handle(
         return Ok(out);
     }
 
+    if crate::services::personal_access_tokens::looks_like_pat(token) {
+        let rec = crate::services::personal_access_tokens::find(state, tenant.id(), token).await?;
+        let Some(rec) = rec else { return Ok(inactive) };
+        if !rec.is_usable(Utc::now()) {
+            return Ok(inactive);
+        }
+        let user = match crate::services::users::get(state, tenant.id(), rec.user_id).await {
+            Ok(u) if u.status == crate::models::UserStatus::Active && !u.is_locked_now() => u,
+            _ => return Ok(inactive),
+        };
+        let mut out = json!({
+            "active": true,
+            "token_type": "personal_access_token",
+            "sub": rec.user_id,
+            "username": user.username,
+            "scope": rec.scopes.join(" "),
+            "iat": rec.created_at.timestamp(),
+            "iss": tenant.issuer(state),
+        });
+        if let Some(e) = rec.expires_at {
+            out["exp"] = json!(e.timestamp());
+        }
+        return Ok(out);
+    }
+
     // JWT access token: signature must verify; expiry decides `active`.
     let claims = match tokens::verify(
         state,

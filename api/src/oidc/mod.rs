@@ -1,6 +1,7 @@
 pub mod authorize;
 pub mod bearer;
 pub mod client_auth;
+pub mod device;
 pub mod discovery;
 pub mod end_session;
 pub mod introspect;

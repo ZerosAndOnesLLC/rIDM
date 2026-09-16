@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::error::{AppError, AppResult};
 use crate::middleware::{AccountCtx, Json};
 use crate::models::TrustedDevice;
-use crate::services::{totp, trusted_devices};
+use crate::services::trusted_devices;
 use crate::state::AppState;
 
 pub fn devices_router() -> OpenApiRouter<AppState> {
@@ -30,12 +30,6 @@ async fn list(
     ))
 }
 
-/// Revoking needs a recent sign-in (with the second step when there is one).
-async fn recent(state: &AppState, ctx: &AccountCtx) -> AppResult<()> {
-    let mfa = totp::has_second_factor(state, ctx.tenant.id, ctx.user.id).await?;
-    ctx.require_recent_auth(mfa)
-}
-
 #[derive(Deserialize)]
 struct DevicePath {
     device_id: Uuid,
@@ -47,7 +41,7 @@ async fn revoke(
     ctx: AccountCtx,
     Path(DevicePath { device_id }): Path<DevicePath>,
 ) -> AppResult<StatusCode> {
-    recent(&state, &ctx).await?;
+    ctx.require_recent(&state).await?;
     let ok =
         trusted_devices::revoke(&state, ctx.tenant.id, ctx.actor(), ctx.user.id, device_id).await?;
     if !ok {
@@ -61,7 +55,7 @@ async fn revoke_all(
     axum::extract::State(state): axum::extract::State<AppState>,
     ctx: AccountCtx,
 ) -> AppResult<StatusCode> {
-    recent(&state, &ctx).await?;
+    ctx.require_recent(&state).await?;
     trusted_devices::revoke_all(&state, ctx.tenant.id, ctx.user.id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

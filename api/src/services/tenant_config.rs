@@ -21,11 +21,15 @@ use crate::models::{
     NewWebhook, Principal, ProfileSchema, ResourceServerUpdate, RoleUpdate, STANDARD_SCOPES,
     ScopeUpdate, Tenant, TenantSettings, WebhookUpdate,
 };
+use crate::models::{
+    IdentityProviderUpdate, IdpAuthMethod, IdpKind, IdpMappers, LinkPolicy, NewIdentityProvider,
+};
 use crate::services::messaging::TemplateBody;
 use crate::services::tenants::TenantUpdate;
 use crate::services::{
-    admin_console, claim_mappers, clients, groups, ip_rules, messaging as messaging_admin,
-    profile_schema, resource_servers, roles, scopes, tenants, webhooks,
+    admin_console, claim_mappers, clients, groups, identity_providers, ip_rules,
+    messaging as messaging_admin, profile_schema, resource_servers, roles, scopes, tenants,
+    webhooks,
 };
 use crate::state::AppState;
 
@@ -58,6 +62,9 @@ pub struct TenantConfig {
     pub webhooks: Vec<WebhookDoc>,
     #[serde(default)]
     pub ip_rules: Vec<IpRuleDoc>,
+    /// Upstream providers without their client secrets (set those after an import).
+    #[serde(default)]
+    pub identity_providers: Vec<IdentityProviderDoc>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
@@ -195,6 +202,57 @@ impl Default for WebhookDoc {
             enabled: true,
             headers: serde_json::json!({}),
             max_attempts: 8,
+        }
+    }
+}
+
+/// An upstream identity provider; the client secret is never part of it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(default, deny_unknown_fields)]
+pub struct IdentityProviderDoc {
+    pub alias: String,
+    pub kind: IdpKind,
+    pub display_name: String,
+    pub preset: Option<String>,
+    pub enabled: bool,
+    pub hidden: bool,
+    pub issuer: Option<String>,
+    pub authorization_endpoint: Option<String>,
+    pub token_endpoint: Option<String>,
+    pub userinfo_endpoint: Option<String>,
+    pub jwks_uri: Option<String>,
+    pub client_id: String,
+    pub token_endpoint_auth_method: IdpAuthMethod,
+    pub scopes: Vec<String>,
+    pub pkce: bool,
+    pub link_policy: LinkPolicy,
+    pub trust_email: bool,
+    pub mappers: IdpMappers,
+    pub sort_order: i32,
+}
+
+impl Default for IdentityProviderDoc {
+    fn default() -> Self {
+        Self {
+            alias: String::new(),
+            kind: IdpKind::Oidc,
+            display_name: String::new(),
+            preset: None,
+            enabled: true,
+            hidden: false,
+            issuer: None,
+            authorization_endpoint: None,
+            token_endpoint: None,
+            userinfo_endpoint: None,
+            jwks_uri: None,
+            client_id: String::new(),
+            token_endpoint_auth_method: IdpAuthMethod::ClientSecretBasic,
+            scopes: vec![],
+            pkce: true,
+            link_policy: LinkPolicy::VerifiedEmail,
+            trust_email: false,
+            mappers: IdpMappers::default(),
+            sort_order: 0,
         }
     }
 }
@@ -448,6 +506,33 @@ pub async fn export(state: &AppState, tenant: &Tenant) -> AppResult<TenantConfig
         .collect();
     ip_rules_out.sort_by(|a, b| (&a.client, &a.cidr).cmp(&(&b.client, &b.cidr)));
 
+    let mut idps_out: Vec<IdentityProviderDoc> = identity_providers::list(state, tid)
+        .await?
+        .into_iter()
+        .map(|p| IdentityProviderDoc {
+            alias: p.alias,
+            kind: p.kind,
+            display_name: p.display_name,
+            preset: p.preset,
+            enabled: p.enabled,
+            hidden: p.hidden,
+            issuer: p.issuer,
+            authorization_endpoint: p.authorization_endpoint,
+            token_endpoint: p.token_endpoint,
+            userinfo_endpoint: p.userinfo_endpoint,
+            jwks_uri: p.jwks_uri,
+            client_id: p.client_id,
+            token_endpoint_auth_method: p.token_endpoint_auth_method,
+            scopes: p.scopes,
+            pkce: p.pkce,
+            link_policy: p.link_policy,
+            trust_email: p.trust_email,
+            mappers: p.mappers.0,
+            sort_order: p.sort_order,
+        })
+        .collect();
+    idps_out.sort_by(|a, b| a.alias.cmp(&b.alias));
+
     Ok(TenantConfig {
         format: FORMAT.to_string(),
         tenant: TenantSection {
@@ -465,6 +550,7 @@ pub async fn export(state: &AppState, tenant: &Tenant) -> AppResult<TenantConfig
         message_templates: templates_out,
         webhooks: webhooks_out,
         ip_rules: ip_rules_out,
+        identity_providers: idps_out,
     })
 }
 
@@ -657,6 +743,9 @@ fn normalize(tenant_id: Uuid, mut doc: TenantConfig) -> AppResult<TenantConfig> 
             w.headers = serde_json::json!({});
         }
     }
+    for p in &mut doc.identity_providers {
+        p.alias = p.alias.trim().to_lowercase();
+    }
     Ok(doc)
 }
 
@@ -759,6 +848,14 @@ pub async fn plan(
         |r| role_ref(&r.cidr, r.client.as_deref()),
         |_| true,
     )?;
+    diff_collection(
+        &mut plan,
+        "identity_provider",
+        &current.identity_providers,
+        &desired.identity_providers,
+        |p| p.alias.clone(),
+        |_| true,
+    )?;
     for c in &plan.changes {
         match c.op {
             Op::Create => plan.summary.create += 1,
@@ -777,6 +874,10 @@ pub struct Secrets {
     pub clients: BTreeMap<String, String>,
     /// Signing secrets of webhooks this import created (name → secret).
     pub webhooks: BTreeMap<String, String>,
+    /// Identity providers this import created: their client secrets are
+    /// never exported and must be set by hand.
+    #[serde(default)]
+    pub identity_providers: Vec<String>,
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
@@ -798,7 +899,7 @@ pub struct ApplyReport {
 }
 
 fn secrets_empty(s: &Secrets) -> bool {
-    s.clients.is_empty() && s.webhooks.is_empty()
+    s.clients.is_empty() && s.webhooks.is_empty() && s.identity_providers.is_empty()
 }
 
 struct Ctx<'a> {
@@ -1498,8 +1599,92 @@ pub async fn apply(
         ctx.note("ip_rule", &key, r);
     }
 
+    // Identity providers (secrets are kept, or missing on a fresh row).
+    for p in &desired.identity_providers {
+        let key = p.alias.clone();
+        let create = ctx.wants("identity_provider", &key, Op::Create);
+        let update = ctx.wants("identity_provider", &key, Op::Update);
+        if !create && !update {
+            continue;
+        }
+        let r = async {
+            let existing = identity_providers::get(state, tid, &p.alias).await;
+            match existing {
+                Ok(_) => {
+                    identity_providers::update(
+                        state,
+                        tid,
+                        ctx.actor.clone(),
+                        &p.alias,
+                        IdentityProviderUpdate {
+                            alias: None,
+                            kind: Some(p.kind),
+                            display_name: Some(p.display_name.clone()),
+                            enabled: Some(p.enabled),
+                            hidden: Some(p.hidden),
+                            issuer: Some(p.issuer.clone()),
+                            authorization_endpoint: Some(p.authorization_endpoint.clone()),
+                            token_endpoint: Some(p.token_endpoint.clone()),
+                            userinfo_endpoint: Some(p.userinfo_endpoint.clone()),
+                            jwks_uri: Some(p.jwks_uri.clone()),
+                            client_id: Some(p.client_id.clone()),
+                            client_secret: None,
+                            token_endpoint_auth_method: Some(p.token_endpoint_auth_method),
+                            scopes: Some(p.scopes.clone()),
+                            pkce: Some(p.pkce),
+                            link_policy: Some(p.link_policy),
+                            trust_email: Some(p.trust_email),
+                            mappers: Some(p.mappers.clone()),
+                            sort_order: Some(p.sort_order),
+                        },
+                    )
+                    .await?;
+                }
+                Err(AppError::NotFound(_)) => {
+                    identity_providers::create(
+                        state,
+                        tid,
+                        ctx.actor.clone(),
+                        NewIdentityProvider {
+                            alias: p.alias.clone(),
+                            kind: Some(p.kind),
+                            display_name: Some(p.display_name.clone()),
+                            preset: p.preset.clone(),
+                            enabled: Some(p.enabled),
+                            hidden: Some(p.hidden),
+                            issuer: p.issuer.clone(),
+                            authorization_endpoint: p.authorization_endpoint.clone(),
+                            token_endpoint: p.token_endpoint.clone(),
+                            userinfo_endpoint: p.userinfo_endpoint.clone(),
+                            jwks_uri: p.jwks_uri.clone(),
+                            client_id: p.client_id.clone(),
+                            client_secret: None,
+                            token_endpoint_auth_method: Some(p.token_endpoint_auth_method),
+                            scopes: Some(p.scopes.clone()),
+                            pkce: Some(p.pkce),
+                            link_policy: Some(p.link_policy),
+                            trust_email: Some(p.trust_email),
+                            mappers: Some(p.mappers.clone()),
+                            sort_order: Some(p.sort_order),
+                        },
+                    )
+                    .await?;
+                    ctx.report.secrets.identity_providers.push(p.alias.clone());
+                }
+                Err(e) => return Err(e),
+            }
+            Ok(())
+        }
+        .await;
+        ctx.note("identity_provider", &key, r);
+    }
+
     // Deletions, in reverse dependency order.
     if prune {
+        for key in ctx.deletes("identity_provider") {
+            let r = identity_providers::delete(state, tid, ctx.actor.clone(), &key).await;
+            ctx.note("identity_provider", &key, r);
+        }
         for key in ctx.deletes("ip_rule") {
             let r = async {
                 let (client, cidr) = match key.split_once('/') {

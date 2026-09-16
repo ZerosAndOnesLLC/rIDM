@@ -3853,6 +3853,572 @@
         ]
       }
     },
+    "/admin/tenants/{slug}/identity-providers": {
+      "get": {
+        "tags": [
+          "identity_providers"
+        ],
+        "operationId": "identity_providers_list",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IdentityProviderView"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "identity_providers"
+        ],
+        "summary": "A `preset` fills in the protocol, endpoints, scopes and mappers; an OIDC\nprovider's endpoints are discovered from its `issuer` when left out.",
+        "operationId": "identity_providers_create",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewIdentityProvider"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityProviderView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Alias in use",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The issuer could not be reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/identity-providers/discover": {
+      "post": {
+        "tags": [
+          "identity_providers"
+        ],
+        "summary": "Fetch an issuer's OpenID discovery document (to preview the endpoints).",
+        "operationId": "identity_providers_discover",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscoverBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Discovery"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not an issuer, or its document is unusable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The issuer could not be reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/identity-providers/presets": {
+      "get": {
+        "tags": [
+          "identity_providers"
+        ],
+        "operationId": "identity_providers_presets",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Preset"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/identity-providers/{idp}": {
+      "get": {
+        "tags": [
+          "identity_providers"
+        ],
+        "operationId": "identity_providers_get_one",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "idp",
+            "in": "path",
+            "description": "Row id or alias",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityProviderView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "identity_providers"
+        ],
+        "summary": "Deleting a provider drops the identities linked through it; the users\nkeep their accounts.",
+        "operationId": "identity_providers_delete",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "idp",
+            "in": "path",
+            "description": "Row id or alias",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "identity_providers"
+        ],
+        "summary": "A merge patch; `client_secret: null` clears the secret. A new `issuer`\nre-discovers the endpoints unless the patch names them.",
+        "operationId": "identity_providers_update",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "idp",
+            "in": "path",
+            "description": "Row id or alias",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityProviderUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityProviderView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Alias in use",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/admin/tenants/{slug}/import": {
       "post": {
         "tags": [
@@ -10869,6 +11435,181 @@
         ]
       }
     },
+    "/admin/tenants/{slug}/users/{user}/identities": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "operationId": "users_user_identities",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LinkedIdentity"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/users/{user}/identities/{idp_id}": {
+      "delete": {
+        "tags": [
+          "users"
+        ],
+        "operationId": "users_unlink_identity",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idp_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/admin/tenants/{slug}/users/{user}/password": {
       "put": {
         "tags": [
@@ -10916,6 +11657,181 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/users/{user}/pats": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "operationId": "users_user_pats",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PersonalAccessToken"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/users/{user}/pats/{token_id}": {
+      "delete": {
+        "tags": [
+          "users"
+        ],
+        "operationId": "users_revoke_pat",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "token_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
           },
           "400": {
             "description": "Bad request",
@@ -12463,6 +13379,115 @@
         ]
       }
     },
+    "/t/{slug}/account/apps": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_list_apps",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConsentedApp"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/apps/{client_id}": {
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Withdraw the consent and the refresh tokens the application holds; its\nnext sign-in asks again.",
+        "operationId": "account_revoke_app",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "path",
+            "description": "The client's row id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/t/{slug}/account/devices": {
       "get": {
         "tags": [
@@ -12627,6 +13652,463 @@
         ]
       }
     },
+    "/t/{slug}/account/email/change": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_change_email",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewEmail"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid address or the current one (field errors)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Address in use",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many codes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_cancel_email_change",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/email/confirm": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_confirm_email_change",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Code"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Wrong code or nothing pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Address in use",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/export": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Everything held about the user as one JSON document, offered as a\ndownload. Secrets are never part of it.",
+        "operationId": "account_export",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountExport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/identities": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_list_identities",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Identities"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/identities/link": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Needs a recent sign-in (with the second step once there is one).",
+        "operationId": "account_start_link",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkStart"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such provider",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/identities/{idp_id}": {
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_unlink_identity",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "idp_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not linked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/t/{slug}/account/me": {
       "get": {
         "tags": [
@@ -12667,6 +14149,74 @@
           },
           "403": {
             "description": "Token of another tenant or inactive account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Delete the account: every session, token and trusted device ends now,\nthe username and email free up, and the record is purged after the\norganisation's retention period. Needs a recent sign-in (with the\nsecond step once there is one). Administrators cannot delete\nthemselves.",
+        "operationId": "account_delete_me",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteAccount"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "description": "Confirmation mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required, not allowed, or an administrator",
             "content": {
               "application/json": {
                 "schema": {
@@ -13460,6 +15010,870 @@
           }
         ]
       }
+    },
+    "/t/{slug}/account/password": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_get_password",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_change_password",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePassword"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Wrong current password or policy failure (field errors)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/phone": {
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_remove_phone",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The number backs an SMS second step",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No number on the account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/phone/change": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_change_phone",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewPhone"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid number or the current one (field errors)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many codes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_cancel_phone_change",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/phone/confirm": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_confirm_phone_change",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Code"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Wrong code or nothing pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/profile": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_get_profile",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_patch_profile",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfilePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/sessions": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_list_sessions",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AccountSession"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_revoke_all_sessions",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "keep_current",
+            "in": "query",
+            "description": "Keep the session this request was made from.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Revoked"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/sessions/{session_id}": {
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_revoke_session",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/tokens": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_list_tokens",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tokens"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "summary": "The token is in the answer once and never again.",
+        "operationId": "account_create_token",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewPersonalAccessToken"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedPersonalAccessToken"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required, or tokens are not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/tokens/{token_id}": {
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_revoke_token",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or already revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -13470,6 +15884,96 @@
           "jwt",
           "opaque"
         ]
+      },
+      "AccountExport": {
+        "type": "object",
+        "description": "Everything rIDM holds about one user, for a data-portability request.\nSecrets (password hashes, factor material, device keys) are never part\nof it.",
+        "required": [
+          "exported_at",
+          "tenant",
+          "user",
+          "credentials",
+          "trusted_devices",
+          "sessions",
+          "consents",
+          "personal_access_tokens",
+          "identities",
+          "roles",
+          "groups",
+          "audit_events"
+        ],
+        "properties": {
+          "audit_events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditEvent"
+            },
+            "description": "The user's audit trail (as actor or subject), newest first, capped."
+          },
+          "consents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConsentedApp"
+            }
+          },
+          "credentials": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Credential"
+            },
+            "description": "Second factors, passkeys and recovery-code sets (metadata only)."
+          },
+          "exported_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Group"
+            },
+            "description": "Groups the user belongs to, ancestors included."
+          },
+          "identities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinkedIdentity"
+            },
+            "description": "Upstream identities linked to the account."
+          },
+          "personal_access_tokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonalAccessToken"
+            },
+            "description": "Personal access tokens (metadata only)."
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Effective role names."
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SsoSession"
+            }
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/ExportedTenant"
+          },
+          "trusted_devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrustedDevice"
+            }
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        }
       },
       "AccountMe": {
         "type": "object",
@@ -13531,6 +16035,99 @@
           },
           "username": {
             "type": "string"
+          }
+        }
+      },
+      "AccountPolicy": {
+        "type": "object",
+        "description": "Self-service rights of the account console.",
+        "properties": {
+          "deletion_retention_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Days a soft-deleted account stays recoverable before the purge job\nremoves it and everything attached to it.",
+            "default": 30,
+            "minimum": 0
+          },
+          "personal_token_max_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The longest a personal access token may live (and the default);\n`0` allows tokens that never expire.",
+            "default": 365,
+            "minimum": 0
+          },
+          "personal_tokens": {
+            "type": "boolean",
+            "description": "Users may mint personal access tokens.",
+            "default": true
+          },
+          "self_deletion": {
+            "type": "boolean",
+            "description": "Users may delete their own account (`DELETE /t/{slug}/account/me`).",
+            "default": true
+          }
+        }
+      },
+      "AccountSession": {
+        "type": "object",
+        "description": "A live browser session of the user.",
+        "required": [
+          "id",
+          "current",
+          "auth_time",
+          "amr",
+          "created_at",
+          "last_seen_at",
+          "expires_at"
+        ],
+        "properties": {
+          "acr": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "amr": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "auth_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "current": {
+            "type": "boolean",
+            "description": "The session this request was made from."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user_agent": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -14075,6 +16672,29 @@
           }
         }
       },
+      "ChangePassword": {
+        "type": "object",
+        "properties": {
+          "current_password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required while the account has a password.",
+            "default": null
+          },
+          "new_password": {
+            "type": "string",
+            "default": ""
+          },
+          "sign_out_others": {
+            "type": "boolean",
+            "description": "End every other session and its refresh tokens.",
+            "default": false
+          }
+        },
+        "additionalProperties": false
+      },
       "ClaimMapperRow": {
         "type": "object",
         "description": "A stored claim mapper row; `config` is the [`crate::models::ClaimMapper`] document.",
@@ -14432,6 +17052,18 @@
         ],
         "description": "Client as returned to administrators: every metadata column, plus the\nsecrets' ids and validity windows (never the secrets or their hashes)."
       },
+      "Code": {
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "CodeBody": {
         "type": "object",
         "required": [
@@ -14491,6 +17123,59 @@
           }
         }
       },
+      "ConsentedApp": {
+        "type": "object",
+        "description": "An application the user granted scopes to.",
+        "required": [
+          "client_id",
+          "client",
+          "name",
+          "scopes",
+          "granted_at"
+        ],
+        "properties": {
+          "client": {
+            "type": "string",
+            "description": "The client's public `client_id`."
+          },
+          "client_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The client's row id (the key for revocation)."
+          },
+          "granted_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "logo_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "policy_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tos_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "CreateKey": {
         "type": "object",
         "properties": {
@@ -14532,6 +17217,26 @@
           }
         },
         "additionalProperties": false
+      },
+      "CreatedPersonalAccessToken": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PersonalAccessToken"
+          },
+          {
+            "type": "object",
+            "required": [
+              "token"
+            ],
+            "properties": {
+              "token": {
+                "type": "string",
+                "description": "The bearer token, shown once."
+              }
+            }
+          }
+        ],
+        "description": "A freshly minted token: the secret is only ever returned here."
       },
       "CreatedUser": {
         "allOf": [
@@ -14669,6 +17374,19 @@
           }
         }
       },
+      "DeleteAccount": {
+        "type": "object",
+        "required": [
+          "confirm"
+        ],
+        "properties": {
+          "confirm": {
+            "type": "string",
+            "description": "The username, typed again."
+          }
+        },
+        "additionalProperties": false
+      },
       "DeliveryStatus": {
         "type": "string",
         "enum": [
@@ -14678,6 +17396,54 @@
           "failed",
           "dead"
         ]
+      },
+      "DiscoverBody": {
+        "type": "object",
+        "required": [
+          "issuer"
+        ],
+        "properties": {
+          "issuer": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Discovery": {
+        "type": "object",
+        "description": "The parts of an OpenID discovery document rIDM uses.",
+        "required": [
+          "issuer",
+          "authorization_endpoint",
+          "token_endpoint",
+          "jwks_uri"
+        ],
+        "properties": {
+          "authorization_endpoint": {
+            "type": "string"
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "jwks_uri": {
+            "type": "string"
+          },
+          "scopes_supported": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "token_endpoint": {
+            "type": "string"
+          },
+          "userinfo_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "DiscoverySettings": {
         "type": "object",
@@ -14915,6 +17681,21 @@
           }
         }
       },
+      "ExportedTenant": {
+        "type": "object",
+        "required": [
+          "slug",
+          "display_name"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        }
+      },
       "Exposure": {
         "type": "string",
         "enum": [
@@ -15102,6 +17883,528 @@
             "description": "`A256GCM` or `A128GCM`."
           }
         }
+      },
+      "Identities": {
+        "type": "object",
+        "description": "The user's linked identities and the providers they could still link.",
+        "required": [
+          "linked",
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicIdentityProvider"
+            },
+            "description": "Enabled providers without a link yet."
+          },
+          "linked": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinkedIdentity"
+            }
+          }
+        }
+      },
+      "IdentityProvider": {
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "alias",
+          "kind",
+          "display_name",
+          "enabled",
+          "hidden",
+          "client_id",
+          "client_secret_set",
+          "token_endpoint_auth_method",
+          "scopes",
+          "pkce",
+          "link_policy",
+          "trust_email",
+          "mappers",
+          "sort_order",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "alias": {
+            "type": "string"
+          },
+          "authorization_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "client_secret_set": {
+            "type": "boolean",
+            "description": "A client secret is stored (it is never returned)."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "hidden": {
+            "type": "boolean",
+            "description": "Not offered on the login page; reachable through a direct link."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "issuer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "jwks_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IdpKind"
+          },
+          "link_policy": {
+            "$ref": "#/components/schemas/LinkPolicy"
+          },
+          "mappers": {
+            "$ref": "#/components/schemas/IdpMappers"
+          },
+          "pkce": {
+            "type": "boolean"
+          },
+          "preset": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`google`, `microsoft`, `github`, `apple`, `gitlab` or none."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sort_order": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "token_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token_endpoint_auth_method": {
+            "$ref": "#/components/schemas/IdpAuthMethod"
+          },
+          "trust_email": {
+            "type": "boolean"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "userinfo_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "IdentityProviderDoc": {
+        "type": "object",
+        "description": "An upstream identity provider; the client secret is never part of it.",
+        "properties": {
+          "alias": {
+            "type": "string",
+            "default": ""
+          },
+          "authorization_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "client_id": {
+            "type": "string",
+            "default": ""
+          },
+          "display_name": {
+            "type": "string",
+            "default": ""
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "hidden": {
+            "type": "boolean",
+            "default": false
+          },
+          "issuer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "jwks_uri": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/IdpKind"
+              }
+            ],
+            "default": "oidc"
+          },
+          "link_policy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LinkPolicy"
+              }
+            ],
+            "default": "verified_email"
+          },
+          "mappers": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/IdpMappers"
+              }
+            ],
+            "default": {
+              "attributes": {},
+              "email": null,
+              "email_verified": null,
+              "subject": null,
+              "username": null
+            }
+          },
+          "pkce": {
+            "type": "boolean",
+            "default": true
+          },
+          "preset": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "sort_order": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
+          },
+          "token_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "token_endpoint_auth_method": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/IdpAuthMethod"
+              }
+            ],
+            "default": "client_secret_basic"
+          },
+          "trust_email": {
+            "type": "boolean",
+            "default": false
+          },
+          "userinfo_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "additionalProperties": false
+      },
+      "IdentityProviderUpdate": {
+        "type": "object",
+        "properties": {
+          "alias": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "authorization_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "client_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "client_secret": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A new secret, or `null` to clear it.",
+            "default": null
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "hidden": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "issuer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "jwks_uri": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IdpKind"
+              }
+            ],
+            "default": null
+          },
+          "link_policy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LinkPolicy"
+              }
+            ],
+            "default": null
+          },
+          "mappers": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IdpMappers"
+              }
+            ],
+            "default": null
+          },
+          "pkce": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "scopes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "default": null
+          },
+          "sort_order": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "default": null
+          },
+          "token_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "token_endpoint_auth_method": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IdpAuthMethod"
+              }
+            ],
+            "default": null
+          },
+          "trust_email": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "userinfo_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "additionalProperties": false
+      },
+      "IdentityProviderView": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/IdentityProvider"
+          },
+          {
+            "type": "object",
+            "required": [
+              "callback_url"
+            ],
+            "properties": {
+              "callback_url": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "A provider with the callback URL the upstream must be told."
+      },
+      "IdpAuthMethod": {
+        "type": "string",
+        "description": "How the client authenticates at the token endpoint.",
+        "enum": [
+          "client_secret_basic",
+          "client_secret_post",
+          "none"
+        ]
+      },
+      "IdpKind": {
+        "type": "string",
+        "description": "The protocol an upstream provider speaks.",
+        "enum": [
+          "oidc",
+          "oauth2"
+        ]
+      },
+      "IdpMappers": {
+        "type": "object",
+        "description": "Where the identity's fields come from in the upstream claims (ID token,\nthen userinfo). Values are claim names; a dot descends into an object.",
+        "properties": {
+          "attributes": {
+            "type": "object",
+            "description": "Profile attribute name → claim name, written on every sign-in.",
+            "default": {},
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`email` when unset.",
+            "default": null
+          },
+          "email_verified": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`email_verified` when unset.",
+            "default": null
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The stable identifier; `sub` when unset (`id` for GitHub).",
+            "default": null
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`preferred_username` when unset.",
+            "default": null
+          }
+        },
+        "additionalProperties": false
       },
       "ImportError": {
         "type": "object",
@@ -15484,6 +18787,101 @@
           "retiring",
           "revoked"
         ]
+      },
+      "LinkPolicy": {
+        "type": "string",
+        "description": "What happens when an upstream identity signs in for the first time and\na local account with the same email address exists.",
+        "enum": [
+          "verified_email",
+          "explicit",
+          "always_new"
+        ]
+      },
+      "LinkRequest": {
+        "type": "object",
+        "required": [
+          "alias"
+        ],
+        "properties": {
+          "alias": {
+            "type": "string"
+          },
+          "return_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The console page to return to (a path on the UI), default the security page."
+          }
+        },
+        "additionalProperties": false
+      },
+      "LinkStart": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Send the browser here; the provider brings it back to `return_to`\nwith `?linked=1` or `?link_error=<code>`."
+          }
+        }
+      },
+      "LinkedIdentity": {
+        "type": "object",
+        "description": "A linked identity with its provider, for listings.",
+        "required": [
+          "idp_id",
+          "alias",
+          "display_name",
+          "external_subject",
+          "linked_at"
+        ],
+        "properties": {
+          "alias": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "external_email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "external_subject": {
+            "type": "string"
+          },
+          "external_username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "idp_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_login_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "linked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "preset": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "LocaleSettings": {
         "type": "object",
@@ -16151,6 +19549,18 @@
         },
         "additionalProperties": false
       },
+      "NewEmail": {
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "NewGroup": {
         "type": "object",
         "properties": {
@@ -16172,6 +19582,168 @@
               "null"
             ],
             "format": "uuid",
+            "default": null
+          }
+        },
+        "additionalProperties": false
+      },
+      "NewIdentityProvider": {
+        "type": "object",
+        "description": "Fields of a new provider. A `preset` fills in everything the preset\nknows (kind, endpoints, scopes, mappers); explicit values win.",
+        "properties": {
+          "alias": {
+            "type": "string",
+            "default": ""
+          },
+          "authorization_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "client_id": {
+            "type": "string",
+            "default": ""
+          },
+          "client_secret": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "hidden": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "issuer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "OIDC: the endpoints are discovered from it when left out.",
+            "default": null
+          },
+          "jwks_uri": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IdpKind"
+              }
+            ],
+            "default": null
+          },
+          "link_policy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LinkPolicy"
+              }
+            ],
+            "default": null
+          },
+          "mappers": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IdpMappers"
+              }
+            ],
+            "default": null
+          },
+          "pkce": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "preset": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "scopes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "default": null
+          },
+          "sort_order": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "default": null
+          },
+          "token_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "token_endpoint_auth_method": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IdpAuthMethod"
+              }
+            ],
+            "default": null
+          },
+          "trust_email": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "userinfo_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ],
             "default": null
           }
         },
@@ -16271,6 +19843,47 @@
           "name": {
             "type": "string",
             "default": ""
+          }
+        },
+        "additionalProperties": false
+      },
+      "NewPersonalAccessToken": {
+        "type": "object",
+        "properties": {
+          "expires_in_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Days until it expires; none means the tenant's maximum (or never\nwhen the tenant sets no maximum).",
+            "default": null,
+            "minimum": 0
+          },
+          "name": {
+            "type": "string",
+            "default": ""
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`account` for the self-service API, and admin permission names.",
+            "default": []
+          }
+        },
+        "additionalProperties": false
+      },
+      "NewPhone": {
+        "type": "object",
+        "required": [
+          "phone"
+        ],
+        "properties": {
+          "phone": {
+            "type": "string",
+            "description": "E.164."
           }
         },
         "additionalProperties": false
@@ -16945,6 +20558,24 @@
         },
         "additionalProperties": false
       },
+      "PasswordChanged": {
+        "type": "object",
+        "required": [
+          "signed_out",
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "$ref": "#/components/schemas/PasswordStatus"
+          },
+          "signed_out": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Other sessions ended.",
+            "minimum": 0
+          }
+        }
+      },
       "PasswordPolicy": {
         "type": "object",
         "properties": {
@@ -17000,6 +20631,45 @@
           }
         }
       },
+      "PasswordStatus": {
+        "type": "object",
+        "description": "The state of the user's password and the rules a new one must meet.",
+        "required": [
+          "enabled",
+          "set",
+          "must_change",
+          "policy"
+        ],
+        "properties": {
+          "changed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Passwords are a sign-in method of this tenant."
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "must_change": {
+            "type": "boolean"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/PasswordPolicy"
+          },
+          "set": {
+            "type": "boolean"
+          }
+        }
+      },
       "PasswordSummary": {
         "type": "object",
         "required": [
@@ -17032,6 +20702,24 @@
           },
           "set": {
             "type": "boolean"
+          }
+        }
+      },
+      "PendingChanges": {
+        "type": "object",
+        "description": "The changes awaiting their code, masked for display.",
+        "properties": {
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -17129,6 +20817,67 @@
           }
         }
       },
+      "PersonalAccessToken": {
+        "type": "object",
+        "description": "A long-lived bearer token a user minted for scripts and integrations.\nThe token itself is shown once; only its hash is kept.",
+        "required": [
+          "id",
+          "tenant_id",
+          "user_id",
+          "name",
+          "scopes",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "name": {
+            "type": "string"
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`account` and/or admin permission names, each held by the user when\nthe token was made; at use they are narrowed to what the user still holds."
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
       "PhoneBody": {
         "type": "object",
         "properties": {
@@ -17161,6 +20910,90 @@
           },
           "summary": {
             "$ref": "#/components/schemas/Summary"
+          }
+        }
+      },
+      "Preset": {
+        "type": "object",
+        "description": "A well-known provider: everything but the client credentials.",
+        "required": [
+          "name",
+          "display_name",
+          "kind",
+          "scopes",
+          "token_endpoint_auth_method",
+          "trust_email",
+          "hint"
+        ],
+        "properties": {
+          "authorization_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "hint": {
+            "type": "string",
+            "description": "Notes shown to the administrator setting it up."
+          },
+          "issuer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "jwks_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IdpKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "subject_claim": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the identity's fields come from when the provider is not\nplain OpenID Connect."
+          },
+          "token_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token_endpoint_auth_method": {
+            "$ref": "#/components/schemas/IdpAuthMethod"
+          },
+          "trust_email": {
+            "type": "boolean",
+            "description": "The provider vouches for the addresses it returns."
+          },
+          "userinfo_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username_claim": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -17272,6 +21105,84 @@
           }
         }
       },
+      "Profile": {
+        "type": "object",
+        "description": "The user's profile with the schema the console renders it by.",
+        "required": [
+          "username",
+          "email_verified",
+          "phone_verified",
+          "attributes",
+          "schema",
+          "pending",
+          "locales"
+        ],
+        "properties": {
+          "attributes": {
+            "description": "Values of the declared attributes (undeclared ones are internal)."
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email_verified": {
+            "type": "boolean"
+          },
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "locales": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Locales the tenant supports, for the locale picker."
+          },
+          "pending": {
+            "$ref": "#/components/schemas/PendingChanges",
+            "description": "Email or phone changes awaiting their code, masked."
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phone_verified": {
+            "type": "boolean"
+          },
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttributeDef"
+            },
+            "description": "The declared attributes in form order; `editable_by` says which\nthe user may change."
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "ProfilePatch": {
+        "type": "object",
+        "description": "A merge patch: only the fields present change. `attributes` replaces\nthe user-editable attributes (those left out are cleared; attributes\nthe user may not edit are kept whether sent unchanged or not).",
+        "properties": {
+          "attributes": {},
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "additionalProperties": false
+      },
       "ProfileSchema": {
         "type": "object",
         "properties": {
@@ -17286,6 +21197,28 @@
               "$ref": "#/components/schemas/AttributeDef"
             },
             "default": []
+          }
+        }
+      },
+      "PublicIdentityProvider": {
+        "type": "object",
+        "description": "A provider as the login page and the account console see it.",
+        "required": [
+          "alias",
+          "display_name"
+        ],
+        "properties": {
+          "alias": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "preset": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -17970,6 +21903,13 @@
               "type": "string"
             }
           },
+          "identity_providers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Identity providers this import created: their client secrets are\nnever exported and must be set by hand."
+          },
           "webhooks": {
             "type": "object",
             "description": "Signing secrets of webhooks this import created (name → secret).",
@@ -18596,6 +22536,13 @@
               "$ref": "#/components/schemas/GroupDoc"
             }
           },
+          "identity_providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IdentityProviderDoc"
+            },
+            "description": "Upstream providers without their client secrets (set those after an import)."
+          },
           "ip_rules": {
             "type": "array",
             "items": {
@@ -18692,6 +22639,20 @@
         "type": "object",
         "description": "Per-tenant configuration stored as JSONB. Every field has a default so that\nsettings written by older versions keep deserializing.",
         "properties": {
+          "account": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountPolicy",
+                "description": "What users may do to their own account from the account console."
+              }
+            ],
+            "default": {
+              "deletion_retention_days": 30,
+              "personal_token_max_days": 365,
+              "personal_tokens": true,
+              "self_deletion": true
+            }
+          },
           "audit": {
             "oneOf": [
               {
@@ -19010,6 +22971,41 @@
           "client_secret_post",
           "private_key_jwt"
         ]
+      },
+      "Tokens": {
+        "type": "object",
+        "description": "The user's tokens and the scopes a new one may carry.",
+        "required": [
+          "tokens",
+          "available_scopes",
+          "enabled",
+          "max_days"
+        ],
+        "properties": {
+          "available_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`account` and the admin permissions the user holds."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "The tenant allows personal access tokens."
+          },
+          "max_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The longest a token may live in days; `0` means it may never expire.",
+            "minimum": 0
+          },
+          "tokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonalAccessToken"
+            }
+          }
+        }
       },
       "TrustedDevice": {
         "type": "object",
@@ -19749,8 +23745,12 @@
       "description": "IP allow and deny rules"
     },
     {
+      "name": "identity_providers",
+      "description": "Upstream identity providers (OpenID Connect and OAuth 2.0 brokering)"
+    },
+    {
       "name": "account",
-      "description": "Self-service account API: the signed-in user's second factors and trusted devices"
+      "description": "Self-service account API: the signed-in user's profile, password, contact details, second factors, trusted devices, sessions, consented applications, data export and account deletion"
     }
   ]
 }

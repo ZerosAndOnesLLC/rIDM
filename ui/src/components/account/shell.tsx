@@ -1,6 +1,7 @@
 "use client";
 
 import { LogOut, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useI18n } from "@/i18n/provider";
@@ -28,6 +29,42 @@ export function AccountShell({ children }: { children: ReactNode }) {
   return <Frame>{children}</Frame>;
 }
 
+/** The console's pages, in tab order. */
+const PAGES = [
+  { href: "/account/", key: "account.nav_profile" },
+  { href: "/account/security/", key: "account.nav_security" },
+  { href: "/account/apps/", key: "account.nav_apps" },
+  { href: "/account/data/", key: "account.nav_data" },
+] as const;
+
+function Nav() {
+  const { t } = useI18n();
+  const pathname = usePathname();
+  const here = pathname.endsWith("/") ? pathname : `${pathname}/`;
+  return (
+    <nav aria-label={t("account.nav_label")} className="mx-auto w-full max-w-3xl px-4 sm:px-6">
+      <ul className="-mb-px flex gap-1 overflow-x-auto">
+        {PAGES.map((p) => {
+          const active = here === p.href;
+          return (
+            <li key={p.href}>
+              <Link
+                href={p.href}
+                aria-current={active ? "page" : undefined}
+                className={`inline-flex min-h-10 items-center border-b-2 px-3 text-[0.875rem] font-medium transition-colors ${
+                  active ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"
+                }`}
+              >
+                {t(p.key)}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+
 function Frame({ children }: { children: ReactNode }) {
   const { me, signOut } = useAccount();
   const { t } = useI18n();
@@ -53,6 +90,7 @@ function Frame({ children }: { children: ReactNode }) {
             </button>
           </div>
         </div>
+        <Nav />
       </header>
       <main className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">{children}</main>
       <p className="pb-6 text-center text-[0.8125rem] text-muted">{t("common.powered_by")}</p>
@@ -79,7 +117,7 @@ function SignIn() {
     setBusy(true);
     setProblem(null);
     try {
-      await signIn(slug, "/account/");
+      await signIn(slug);
     } catch (err) {
       setProblem(err instanceof AuthError ? err.message : t("account.sign_in_failed"));
       setBusy(false);

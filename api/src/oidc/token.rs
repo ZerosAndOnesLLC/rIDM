@@ -26,6 +26,7 @@ use crate::middleware::TenantCtx;
 use crate::models::{ClaimMapper, Client, Group, Role, Tenant, User, grants};
 use crate::oidc::authorize::RawParams;
 use crate::oidc::{client_auth, pkce};
+use crate::services::device_codes::Poll;
 use crate::services::refresh_tokens::{self, IssueRequest};
 use crate::services::tokens::{self, AccessTokenRequest, IdTokenRequest, TokenClient};
 use crate::services::{auth_codes, groups, roles, scopes, users};
@@ -105,6 +106,7 @@ async fn handle(
         grants::AUTHORIZATION_CODE => authorization_code(state, tenant_row, &client, params).await,
         grants::REFRESH_TOKEN => refresh_token(state, tenant_row, &client, params).await,
         grants::CLIENT_CREDENTIALS => client_credentials(state, tenant_row, &client, params).await,
+        grants::DEVICE_CODE => device_code(state, tenant_row, &client, params).await,
         _ => Err(OAuthError::code(OAuthErrorCode::UnsupportedGrantType)),
     }
 }
@@ -515,6 +517,62 @@ async fn authorization_code(
             with_refresh: None,
             issue_refresh: true,
             code_for_hash: Some(code_hash(code)),
+        },
+    )
+    .await
+}
+
+/// RFC 8628 §3.4: the device polls with its code until the user decides.
+async fn device_code(
+    state: &AppState,
+    tenant: &Tenant,
+    client: &Arc<Client>,
+    params: &RawParams,
+) -> Result<TokenResponse, OAuthError> {
+    let one = |n: &str| params.one(n).map_err(OAuthError::invalid_request);
+    let code = one("device_code")?
+        .ok_or_else(|| OAuthError::invalid_request("device_code is required"))?;
+    let (record, approval) =
+        match crate::services::device_codes::poll(state, tenant.id, client.id, code).await? {
+            None => {
+                return Err(OAuthError::new(
+                    OAuthErrorCode::InvalidGrant,
+                    "invalid device code",
+                ));
+            }
+            Some(Poll::Pending) => {
+                return Err(OAuthError::code(OAuthErrorCode::AuthorizationPending));
+            }
+            Some(Poll::SlowDown) => return Err(OAuthError::code(OAuthErrorCode::SlowDown)),
+            Some(Poll::Denied) => return Err(OAuthError::code(OAuthErrorCode::AccessDenied)),
+            Some(Poll::Expired) => return Err(OAuthError::code(OAuthErrorCode::ExpiredToken)),
+            Some(Poll::Approved(record, approval)) => (record, approval),
+        };
+    let subject = load_subject(state, tenant.id, approval.user_id).await?;
+    let role_ids: Vec<Uuid> = subject.roles.iter().map(|r| r.id).collect();
+    let extra = parse_resources(params)?;
+    let requested_aud: Vec<String> = if extra.is_empty() {
+        record.audiences.clone()
+    } else {
+        extra
+    };
+    let audience = resolve_audience(state, tenant.id, client, &requested_aud, &role_ids).await?;
+    issue_tokens(
+        state,
+        Issue {
+            tenant,
+            client,
+            subject: Some(&subject),
+            scopes: &approval.scopes,
+            audience,
+            session_id: Some(approval.session_id),
+            auth_time: Some(approval.auth_time),
+            amr: approval.amr.clone(),
+            acr: approval.acr.clone(),
+            nonce: None,
+            with_refresh: None,
+            issue_refresh: true,
+            code_for_hash: None,
         },
     )
     .await

@@ -37,6 +37,12 @@ const TABLES: &[EncryptedTable] = &[
         id_column: "kind",
     },
     EncryptedTable {
+        table: "identity_providers",
+        column: "client_secret_enc",
+        aad_prefix: "identity_providers",
+        id_column: "id",
+    },
+    EncryptedTable {
         table: "webhooks",
         column: "secret_enc",
         aad_prefix: "webhooks",

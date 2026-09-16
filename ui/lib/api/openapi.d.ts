@@ -490,6 +490,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/tenants/{slug}/identity-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["identity_providers_list"];
+        put?: never;
+        /**
+         * A `preset` fills in the protocol, endpoints, scopes and mappers; an OIDC
+         *     provider's endpoints are discovered from its `issuer` when left out.
+         */
+        post: operations["identity_providers_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/identity-providers/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fetch an issuer's OpenID discovery document (to preview the endpoints). */
+        post: operations["identity_providers_discover"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/identity-providers/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["identity_providers_presets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/identity-providers/{idp}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["identity_providers_get_one"];
+        put?: never;
+        post?: never;
+        /**
+         * Deleting a provider drops the identities linked through it; the users
+         *     keep their accounts.
+         */
+        delete: operations["identity_providers_delete"];
+        options?: never;
+        head?: never;
+        /**
+         * A merge patch; `client_secret: null` clears the secret. A new `issuer`
+         *     re-discovers the endpoints unless the patch names them.
+         */
+        patch: operations["identity_providers_update"];
+        trace?: never;
+    };
     "/admin/tenants/{slug}/import": {
         parameters: {
             query?: never;
@@ -1359,6 +1436,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/tenants/{slug}/users/{user}/identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["users_user_identities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/users/{user}/identities/{idp_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["users_unlink_identity"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/tenants/{slug}/users/{user}/password": {
         parameters: {
             query?: never;
@@ -1370,6 +1479,38 @@ export interface paths {
         put: operations["users_set_password"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/users/{user}/pats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["users_user_pats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/users/{user}/pats/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["users_revoke_pat"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1574,6 +1715,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/t/{slug}/account/apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["account_list_apps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/apps/{client_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Withdraw the consent and the refresh tokens the application holds; its
+         *     next sign-in asks again.
+         */
+        delete: operations["account_revoke_app"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/t/{slug}/account/devices": {
         parameters: {
             query?: never;
@@ -1606,6 +1783,107 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/t/{slug}/account/email/change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["account_change_email"];
+        delete: operations["account_cancel_email_change"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/email/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["account_confirm_email_change"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Everything held about the user as one JSON document, offered as a
+         *     download. Secrets are never part of it.
+         */
+        get: operations["account_export"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["account_list_identities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/identities/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Needs a recent sign-in (with the second step once there is one). */
+        post: operations["account_start_link"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/identities/{idp_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["account_unlink_identity"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/t/{slug}/account/me": {
         parameters: {
             query?: never;
@@ -1616,7 +1894,14 @@ export interface paths {
         get: operations["account_me"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete the account: every session, token and trusted device ends now,
+         *     the username and email free up, and the record is purged after the
+         *     organisation's retention period. Needs a recent sign-in (with the
+         *     second step once there is one). Administrators cannot delete
+         *     themselves.
+         */
+        delete: operations["account_delete_me"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1800,12 +2085,183 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/t/{slug}/account/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["account_get_password"];
+        put: operations["account_change_password"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/phone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["account_remove_phone"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/phone/change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["account_change_phone"];
+        delete: operations["account_cancel_phone_change"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/phone/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["account_confirm_phone_change"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["account_get_profile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["account_patch_profile"];
+        trace?: never;
+    };
+    "/t/{slug}/account/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["account_list_sessions"];
+        put?: never;
+        post?: never;
+        delete: operations["account_revoke_all_sessions"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["account_revoke_session"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["account_list_tokens"];
+        put?: never;
+        /** The token is in the answer once and never again. */
+        post: operations["account_create_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["account_revoke_token"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /** @enum {string} */
         AccessTokenFormat: "jwt" | "opaque";
+        /**
+         * @description Everything rIDM holds about one user, for a data-portability request.
+         *     Secrets (password hashes, factor material, device keys) are never part
+         *     of it.
+         */
+        AccountExport: {
+            /** @description The user's audit trail (as actor or subject), newest first, capped. */
+            audit_events: components["schemas"]["AuditEvent"][];
+            consents: components["schemas"]["ConsentedApp"][];
+            /** @description Second factors, passkeys and recovery-code sets (metadata only). */
+            credentials: components["schemas"]["Credential"][];
+            /** Format: date-time */
+            exported_at: string;
+            /** @description Groups the user belongs to, ancestors included. */
+            groups: components["schemas"]["Group"][];
+            /** @description Upstream identities linked to the account. */
+            identities: components["schemas"]["LinkedIdentity"][];
+            /** @description Personal access tokens (metadata only). */
+            personal_access_tokens: components["schemas"]["PersonalAccessToken"][];
+            /** @description Effective role names. */
+            roles: string[];
+            sessions: components["schemas"]["SsoSession"][];
+            tenant: components["schemas"]["ExportedTenant"];
+            trusted_devices: components["schemas"]["TrustedDevice"][];
+            user: components["schemas"]["User"];
+        };
         AccountMe: {
             /** @description Authentication context class of the session (`urn:ridm:acr:mfa` after a second step). */
             acr?: string | null;
@@ -1824,6 +2280,52 @@ export interface components {
             phone_verified: boolean;
             tenant: components["schemas"]["AccountTenant"];
             username: string;
+        };
+        /** @description Self-service rights of the account console. */
+        AccountPolicy: {
+            /**
+             * Format: int32
+             * @description Days a soft-deleted account stays recoverable before the purge job
+             *     removes it and everything attached to it.
+             * @default 30
+             */
+            deletion_retention_days: number;
+            /**
+             * Format: int32
+             * @description The longest a personal access token may live (and the default);
+             *     `0` allows tokens that never expire.
+             * @default 365
+             */
+            personal_token_max_days: number;
+            /**
+             * @description Users may mint personal access tokens.
+             * @default true
+             */
+            personal_tokens: boolean;
+            /**
+             * @description Users may delete their own account (`DELETE /t/{slug}/account/me`).
+             * @default true
+             */
+            self_deletion: boolean;
+        };
+        /** @description A live browser session of the user. */
+        AccountSession: {
+            acr?: string | null;
+            amr: string[];
+            /** Format: date-time */
+            auth_time: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @description The session this request was made from. */
+            current: boolean;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: uuid */
+            id: string;
+            ip?: string | null;
+            /** Format: date-time */
+            last_seen_at: string;
+            user_agent?: string | null;
         };
         AccountTenant: {
             display_name: string;
@@ -2041,6 +2543,20 @@ export interface components {
             op: components["schemas"]["Op"];
             resource: string;
         };
+        ChangePassword: {
+            /**
+             * @description Required while the account has a password.
+             * @default null
+             */
+            current_password: string | null;
+            /** @default  */
+            new_password: string;
+            /**
+             * @description End every other session and its refresh tokens.
+             * @default false
+             */
+            sign_out_others: boolean;
+        };
         /** @description A stored claim mapper row; `config` is the [`crate::models::ClaimMapper`] document. */
         ClaimMapperRow: {
             /** Format: uuid */
@@ -2140,6 +2656,9 @@ export interface components {
         ClientView: components["schemas"]["Client"] & {
             secrets: components["schemas"]["SecretView"][];
         };
+        Code: {
+            code: string;
+        };
         CodeBody: {
             code: string;
             /** @description A name for the factor (authenticator app only). */
@@ -2157,6 +2676,23 @@ export interface components {
             tenant_id: string;
             /** Format: uuid */
             user_id: string;
+        };
+        /** @description An application the user granted scopes to. */
+        ConsentedApp: {
+            /** @description The client's public `client_id`. */
+            client: string;
+            /**
+             * Format: uuid
+             * @description The client's row id (the key for revocation).
+             */
+            client_id: string;
+            /** Format: date-time */
+            granted_at: string;
+            logo_uri?: string | null;
+            name: string;
+            policy_uri?: string | null;
+            scopes: string[];
+            tos_uri?: string | null;
         };
         CreateKey: {
             /**
@@ -2179,6 +2715,11 @@ export interface components {
              * @default null
              */
             rsa_bits: number | null;
+        };
+        /** @description A freshly minted token: the secret is only ever returned here. */
+        CreatedPersonalAccessToken: components["schemas"]["PersonalAccessToken"] & {
+            /** @description The bearer token, shown once. */
+            token: string;
         };
         /** @description Response to a create or password change that minted a temporary password. */
         CreatedUser: components["schemas"]["User"] & {
@@ -2229,8 +2770,24 @@ export interface components {
             /** @default disabled */
             mode: components["schemas"]["DcrMode"];
         };
+        DeleteAccount: {
+            /** @description The username, typed again. */
+            confirm: string;
+        };
         /** @enum {string} */
         DeliveryStatus: "pending" | "sending" | "delivered" | "failed" | "dead";
+        DiscoverBody: {
+            issuer: string;
+        };
+        /** @description The parts of an OpenID discovery document rIDM uses. */
+        Discovery: {
+            authorization_endpoint: string;
+            issuer: string;
+            jwks_uri: string;
+            scopes_supported?: string[];
+            token_endpoint: string;
+            userinfo_endpoint?: string | null;
+        };
         /** @description WebFinger issuer discovery (OIDC Discovery §2). */
         DiscoverySettings: {
             /**
@@ -2302,6 +2859,10 @@ export interface components {
             /** @description Base32 secret for manual entry. */
             secret: string;
         };
+        ExportedTenant: {
+            display_name: string;
+            slug: string;
+        };
         /** @enum {string} */
         Exposure: "id_token" | "userinfo" | "access_token";
         FieldChange: {
@@ -2366,6 +2927,191 @@ export interface components {
             alg: string;
             /** @description `A256GCM` or `A128GCM`. */
             enc: string;
+        };
+        /** @description The user's linked identities and the providers they could still link. */
+        Identities: {
+            /** @description Enabled providers without a link yet. */
+            available: components["schemas"]["PublicIdentityProvider"][];
+            linked: components["schemas"]["LinkedIdentity"][];
+        };
+        IdentityProvider: {
+            alias: string;
+            authorization_endpoint?: string | null;
+            client_id: string;
+            /** @description A client secret is stored (it is never returned). */
+            client_secret_set: boolean;
+            /** Format: date-time */
+            created_at: string;
+            display_name: string;
+            enabled: boolean;
+            /** @description Not offered on the login page; reachable through a direct link. */
+            hidden: boolean;
+            /** Format: uuid */
+            id: string;
+            issuer?: string | null;
+            jwks_uri?: string | null;
+            kind: components["schemas"]["IdpKind"];
+            link_policy: components["schemas"]["LinkPolicy"];
+            mappers: components["schemas"]["IdpMappers"];
+            pkce: boolean;
+            /** @description `google`, `microsoft`, `github`, `apple`, `gitlab` or none. */
+            preset?: string | null;
+            scopes: string[];
+            /** Format: int32 */
+            sort_order: number;
+            /** Format: uuid */
+            tenant_id: string;
+            token_endpoint?: string | null;
+            token_endpoint_auth_method: components["schemas"]["IdpAuthMethod"];
+            trust_email: boolean;
+            /** Format: date-time */
+            updated_at: string;
+            userinfo_endpoint?: string | null;
+        };
+        /** @description An upstream identity provider; the client secret is never part of it. */
+        IdentityProviderDoc: {
+            /** @default  */
+            alias: string;
+            /** @default null */
+            authorization_endpoint: string | null;
+            /** @default  */
+            client_id: string;
+            /** @default  */
+            display_name: string;
+            /** @default true */
+            enabled: boolean;
+            /** @default false */
+            hidden: boolean;
+            /** @default null */
+            issuer: string | null;
+            /** @default null */
+            jwks_uri: string | null;
+            /** @default oidc */
+            kind: components["schemas"]["IdpKind"];
+            /** @default verified_email */
+            link_policy: components["schemas"]["LinkPolicy"];
+            /**
+             * @default {
+             *       "attributes": {},
+             *       "email": null,
+             *       "email_verified": null,
+             *       "subject": null,
+             *       "username": null
+             *     }
+             */
+            mappers: components["schemas"]["IdpMappers"];
+            /** @default true */
+            pkce: boolean;
+            /** @default null */
+            preset: string | null;
+            /** @default [] */
+            scopes: string[];
+            /**
+             * Format: int32
+             * @default 0
+             */
+            sort_order: number;
+            /** @default null */
+            token_endpoint: string | null;
+            /** @default client_secret_basic */
+            token_endpoint_auth_method: components["schemas"]["IdpAuthMethod"];
+            /** @default false */
+            trust_email: boolean;
+            /** @default null */
+            userinfo_endpoint: string | null;
+        };
+        IdentityProviderUpdate: {
+            /** @default null */
+            alias: string | null;
+            /** @default null */
+            authorization_endpoint: string | null;
+            /** @default null */
+            client_id: string | null;
+            /**
+             * @description A new secret, or `null` to clear it.
+             * @default null
+             */
+            client_secret: string | null;
+            /** @default null */
+            display_name: string | null;
+            /** @default null */
+            enabled: boolean | null;
+            /** @default null */
+            hidden: boolean | null;
+            /** @default null */
+            issuer: string | null;
+            /** @default null */
+            jwks_uri: string | null;
+            /** @default null */
+            kind: null | components["schemas"]["IdpKind"];
+            /** @default null */
+            link_policy: null | components["schemas"]["LinkPolicy"];
+            /** @default null */
+            mappers: null | components["schemas"]["IdpMappers"];
+            /** @default null */
+            pkce: boolean | null;
+            /** @default null */
+            scopes: string[] | null;
+            /**
+             * Format: int32
+             * @default null
+             */
+            sort_order: number | null;
+            /** @default null */
+            token_endpoint: string | null;
+            /** @default null */
+            token_endpoint_auth_method: null | components["schemas"]["IdpAuthMethod"];
+            /** @default null */
+            trust_email: boolean | null;
+            /** @default null */
+            userinfo_endpoint: string | null;
+        };
+        /** @description A provider with the callback URL the upstream must be told. */
+        IdentityProviderView: components["schemas"]["IdentityProvider"] & {
+            callback_url: string;
+        };
+        /**
+         * @description How the client authenticates at the token endpoint.
+         * @enum {string}
+         */
+        IdpAuthMethod: "client_secret_basic" | "client_secret_post" | "none";
+        /**
+         * @description The protocol an upstream provider speaks.
+         * @enum {string}
+         */
+        IdpKind: "oidc" | "oauth2";
+        /**
+         * @description Where the identity's fields come from in the upstream claims (ID token,
+         *     then userinfo). Values are claim names; a dot descends into an object.
+         */
+        IdpMappers: {
+            /**
+             * @description Profile attribute name → claim name, written on every sign-in.
+             * @default {}
+             */
+            attributes: {
+                [key: string]: string;
+            };
+            /**
+             * @description `email` when unset.
+             * @default null
+             */
+            email: string | null;
+            /**
+             * @description `email_verified` when unset.
+             * @default null
+             */
+            email_verified: string | null;
+            /**
+             * @description The stable identifier; `sub` when unset (`id` for GitHub).
+             * @default null
+             */
+            subject: string | null;
+            /**
+             * @description `preferred_username` when unset.
+             * @default null
+             */
+            username: string | null;
         };
         ImportError: {
             error: string;
@@ -2499,6 +3245,39 @@ export interface components {
          * @enum {string}
          */
         KeyStatus: "pending" | "active" | "retiring" | "revoked";
+        /**
+         * @description What happens when an upstream identity signs in for the first time and
+         *     a local account with the same email address exists.
+         * @enum {string}
+         */
+        LinkPolicy: "verified_email" | "explicit" | "always_new";
+        LinkRequest: {
+            alias: string;
+            /** @description The console page to return to (a path on the UI), default the security page. */
+            return_to?: string | null;
+        };
+        LinkStart: {
+            /**
+             * @description Send the browser here; the provider brings it back to `return_to`
+             *     with `?linked=1` or `?link_error=<code>`.
+             */
+            url: string;
+        };
+        /** @description A linked identity with its provider, for listings. */
+        LinkedIdentity: {
+            alias: string;
+            display_name: string;
+            external_email?: string | null;
+            external_subject: string;
+            external_username?: string | null;
+            /** Format: uuid */
+            idp_id: string;
+            /** Format: date-time */
+            last_login_at?: string | null;
+            /** Format: date-time */
+            linked_at: string;
+            preset?: string | null;
+        };
         LocaleSettings: {
             /** @default en */
             default: string;
@@ -2741,6 +3520,9 @@ export interface components {
             /** @default null */
             tos_uri: string | null;
         };
+        NewEmail: {
+            email: string;
+        };
         NewGroup: {
             attributes?: unknown;
             /** @default null */
@@ -2752,6 +3534,58 @@ export interface components {
              * @default null
              */
             parent_id: string | null;
+        };
+        /**
+         * @description Fields of a new provider. A `preset` fills in everything the preset
+         *     knows (kind, endpoints, scopes, mappers); explicit values win.
+         */
+        NewIdentityProvider: {
+            /** @default  */
+            alias: string;
+            /** @default null */
+            authorization_endpoint: string | null;
+            /** @default  */
+            client_id: string;
+            /** @default null */
+            client_secret: string | null;
+            /** @default null */
+            display_name: string | null;
+            /** @default null */
+            enabled: boolean | null;
+            /** @default null */
+            hidden: boolean | null;
+            /**
+             * @description OIDC: the endpoints are discovered from it when left out.
+             * @default null
+             */
+            issuer: string | null;
+            /** @default null */
+            jwks_uri: string | null;
+            /** @default null */
+            kind: null | components["schemas"]["IdpKind"];
+            /** @default null */
+            link_policy: null | components["schemas"]["LinkPolicy"];
+            /** @default null */
+            mappers: null | components["schemas"]["IdpMappers"];
+            /** @default null */
+            pkce: boolean | null;
+            /** @default null */
+            preset: string | null;
+            /** @default null */
+            scopes: string[] | null;
+            /**
+             * Format: int32
+             * @default null
+             */
+            sort_order: number | null;
+            /** @default null */
+            token_endpoint: string | null;
+            /** @default null */
+            token_endpoint_auth_method: null | components["schemas"]["IdpAuthMethod"];
+            /** @default null */
+            trust_email: boolean | null;
+            /** @default null */
+            userinfo_endpoint: string | null;
         };
         NewInvitation: {
             /** @default  */
@@ -2793,6 +3627,26 @@ export interface components {
             description: string | null;
             /** @default  */
             name: string;
+        };
+        NewPersonalAccessToken: {
+            /**
+             * Format: int32
+             * @description Days until it expires; none means the tenant's maximum (or never
+             *     when the tenant sets no maximum).
+             * @default null
+             */
+            expires_in_days: number | null;
+            /** @default  */
+            name: string;
+            /**
+             * @description `account` for the self-service API, and admin permission names.
+             * @default []
+             */
+            scopes: string[];
+        };
+        NewPhone: {
+            /** @description E.164. */
+            phone: string;
         };
         NewResourceServer: {
             /** @default null */
@@ -3025,6 +3879,14 @@ export interface components {
              */
             skip_policy: boolean;
         };
+        PasswordChanged: {
+            password: components["schemas"]["PasswordStatus"];
+            /**
+             * Format: int64
+             * @description Other sessions ended.
+             */
+            signed_out: number;
+        };
         PasswordPolicy: {
             /**
              * @description Reject passwords found in breach corpora (Phase 7.5).
@@ -3063,6 +3925,18 @@ export interface components {
             /** @default false */
             require_uppercase: boolean;
         };
+        /** @description The state of the user's password and the rules a new one must meet. */
+        PasswordStatus: {
+            /** Format: date-time */
+            changed_at?: string | null;
+            /** @description Passwords are a sign-in method of this tenant. */
+            enabled: boolean;
+            /** Format: date-time */
+            expires_at?: string | null;
+            must_change: boolean;
+            policy: components["schemas"]["PasswordPolicy"];
+            set: boolean;
+        };
         PasswordSummary: {
             algorithm?: string | null;
             /** Format: date-time */
@@ -3071,6 +3945,11 @@ export interface components {
             expires_at?: string | null;
             must_change: boolean;
             set: boolean;
+        };
+        /** @description The changes awaiting their code, masked for display. */
+        PendingChanges: {
+            email?: string | null;
+            phone?: string | null;
         };
         Permission: {
             /** Format: date-time */
@@ -3099,6 +3978,32 @@ export interface components {
             permissions: components["schemas"]["PermissionDef"][];
             roles: components["schemas"]["BuiltInRoleDoc"][];
         };
+        /**
+         * @description A long-lived bearer token a user minted for scripts and integrations.
+         *     The token itself is shown once; only its hash is kept.
+         */
+        PersonalAccessToken: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            last_used_at?: string | null;
+            name: string;
+            /** Format: date-time */
+            revoked_at?: string | null;
+            /**
+             * @description `account` and/or admin permission names, each held by the user when
+             *     the token was made; at use they are narrowed to what the user still holds.
+             */
+            scopes: string[];
+            /** Format: uuid */
+            tenant_id: string;
+            /** Format: uuid */
+            user_id: string;
+        };
         PhoneBody: {
             /**
              * @description E.164 number to prove; the account's own when omitted.
@@ -3110,6 +4015,29 @@ export interface components {
             changes: components["schemas"]["Change"][];
             prune: boolean;
             summary: components["schemas"]["Summary"];
+        };
+        /** @description A well-known provider: everything but the client credentials. */
+        Preset: {
+            authorization_endpoint?: string | null;
+            display_name: string;
+            /** @description Notes shown to the administrator setting it up. */
+            hint: string;
+            issuer?: string | null;
+            jwks_uri?: string | null;
+            kind: components["schemas"]["IdpKind"];
+            name: string;
+            scopes: string[];
+            /**
+             * @description Where the identity's fields come from when the provider is not
+             *     plain OpenID Connect.
+             */
+            subject_claim?: string | null;
+            token_endpoint?: string | null;
+            token_endpoint_auth_method: components["schemas"]["IdpAuthMethod"];
+            /** @description The provider vouches for the addresses it returns. */
+            trust_email: boolean;
+            userinfo_endpoint?: string | null;
+            username_claim?: string | null;
         };
         Preview: {
             body_html?: string | null;
@@ -3142,6 +4070,36 @@ export interface components {
             title: string;
             type: string;
         };
+        /** @description The user's profile with the schema the console renders it by. */
+        Profile: {
+            /** @description Values of the declared attributes (undeclared ones are internal). */
+            attributes: unknown;
+            email?: string | null;
+            email_verified: boolean;
+            locale?: string | null;
+            /** @description Locales the tenant supports, for the locale picker. */
+            locales: string[];
+            /** @description Email or phone changes awaiting their code, masked. */
+            pending: components["schemas"]["PendingChanges"];
+            phone?: string | null;
+            phone_verified: boolean;
+            /**
+             * @description The declared attributes in form order; `editable_by` says which
+             *     the user may change.
+             */
+            schema: components["schemas"]["AttributeDef"][];
+            username: string;
+        };
+        /**
+         * @description A merge patch: only the fields present change. `attributes` replaces
+         *     the user-editable attributes (those left out are cleared; attributes
+         *     the user may not edit are kept whether sent unchanged or not).
+         */
+        ProfilePatch: {
+            attributes?: unknown;
+            /** @default null */
+            locale: string | null;
+        };
         ProfileSchema: {
             /**
              * @description Accept attributes not declared in the schema (stored verbatim, admin-editable only).
@@ -3150,6 +4108,12 @@ export interface components {
             allow_undeclared: boolean;
             /** @default [] */
             attributes: components["schemas"]["AttributeDef"][];
+        };
+        /** @description A provider as the login page and the account console see it. */
+        PublicIdentityProvider: {
+            alias: string;
+            display_name: string;
+            preset?: string | null;
         };
         RecoveryCodes: {
             recovery_codes: string[];
@@ -3391,6 +4355,11 @@ export interface components {
             clients: {
                 [key: string]: string;
             };
+            /**
+             * @description Identity providers this import created: their client secrets are
+             *     never exported and must be set by hand.
+             */
+            identity_providers?: string[];
             /** @description Signing secrets of webhooks this import created (name → secret). */
             webhooks: {
                 [key: string]: string;
@@ -3601,6 +4570,8 @@ export interface components {
             clients?: components["schemas"]["ClientDoc"][];
             format: string;
             groups?: components["schemas"]["GroupDoc"][];
+            /** @description Upstream providers without their client secrets (set those after an import). */
+            identity_providers?: components["schemas"]["IdentityProviderDoc"][];
             ip_rules?: components["schemas"]["IpRuleDoc"][];
             message_templates?: components["schemas"]["TemplateDoc"][];
             profile_schema?: components["schemas"]["ProfileSchema"];
@@ -3629,6 +4600,15 @@ export interface components {
          *     settings written by older versions keep deserializing.
          */
         TenantSettings: {
+            /**
+             * @default {
+             *       "deletion_retention_days": 30,
+             *       "personal_token_max_days": 365,
+             *       "personal_tokens": true,
+             *       "self_deletion": true
+             *     }
+             */
+            account: components["schemas"]["AccountPolicy"];
             /**
              * @default {
              *       "retention_days": 365
@@ -3808,6 +4788,19 @@ export interface components {
         };
         /** @enum {string} */
         TokenEndpointAuthMethod: "none" | "client_secret_basic" | "client_secret_post" | "private_key_jwt";
+        /** @description The user's tokens and the scopes a new one may carry. */
+        Tokens: {
+            /** @description `account` and the admin permissions the user holds. */
+            available_scopes: string[];
+            /** @description The tenant allows personal access tokens. */
+            enabled: boolean;
+            /**
+             * Format: int32
+             * @description The longest a token may live in days; `0` means it may never expire.
+             */
+            max_days: number;
+            tokens: components["schemas"]["PersonalAccessToken"][];
+        };
         TrustedDevice: {
             /** Format: date-time */
             created_at: string;
@@ -6673,6 +7666,411 @@ export interface operations {
             };
             /** @description Not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityProviderView"][];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewIdentityProvider"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityProviderView"];
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Alias in use */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The issuer could not be reached */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_discover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscoverBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Discovery"];
+                };
+            };
+            /** @description Not an issuer, or its document is unusable */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The issuer could not be reached */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_presets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Preset"][];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_get_one: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                /** @description Row id or alias */
+                idp: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityProviderView"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                /** @description Row id or alias */
+                idp: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                /** @description Row id or alias */
+                idp: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentityProviderUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityProviderView"];
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Alias in use */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11499,6 +12897,124 @@ export interface operations {
             };
         };
     };
+    users_user_identities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                user: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkedIdentity"][];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    users_unlink_identity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                user: string;
+                idp_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     users_set_password: {
         parameters: {
             query?: never;
@@ -11524,6 +13040,124 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TemporaryPassword"];
                 };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    users_user_pats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                user: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalAccessToken"][];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    users_revoke_pat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                user: string;
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Bad request */
             400: {
@@ -12577,6 +14211,78 @@ export interface operations {
             };
         };
     };
+    account_list_apps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsentedApp"][];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_revoke_app: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                /** @description The client's row id */
+                client_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     account_list: {
         parameters: {
             query?: never;
@@ -12696,6 +14402,333 @@ export interface operations {
             };
         };
     };
+    account_change_email: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewEmail"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sent"];
+                };
+            };
+            /** @description Invalid address or the current one (field errors) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Recent authentication required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Address in use */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many codes */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_cancel_email_change: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_confirm_email_change: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Code"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profile"];
+                };
+            };
+            /** @description Wrong code or nothing pending */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Address in use */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_export: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountExport"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Recent authentication required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_list_identities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Identities"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_start_link: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkStart"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Recent authentication required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such provider */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_unlink_identity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                idp_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Recent authentication required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not linked */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     account_me: {
         parameters: {
             query?: never;
@@ -12726,6 +14759,58 @@ export interface operations {
                 };
             };
             /** @description Token of another tenant or inactive account */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_delete_me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteAccount"];
+            };
+        };
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Confirmation mismatch */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Recent authentication required, not allowed, or an administrator */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13287,6 +15372,615 @@ export interface operations {
             };
             /** @description Recent authentication required */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_get_password: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordStatus"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_change_password: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePassword"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordChanged"];
+                };
+            };
+            /** @description Wrong current password or policy failure (field errors) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Recent authentication required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_remove_phone: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profile"];
+                };
+            };
+            /** @description The number backs an SMS second step */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Recent authentication required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No number on the account */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_change_phone: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewPhone"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sent"];
+                };
+            };
+            /** @description Invalid number or the current one (field errors) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Recent authentication required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many codes */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_cancel_phone_change: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_confirm_phone_change: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Code"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profile"];
+                };
+            };
+            /** @description Wrong code or nothing pending */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_get_profile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profile"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_patch_profile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfilePatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profile"];
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_list_sessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountSession"][];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_revoke_all_sessions: {
+        parameters: {
+            query?: {
+                /** @description Keep the session this request was made from. */
+                keep_current?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Revoked"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Recent authentication required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_revoke_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Recent authentication required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_list_tokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tokens"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_create_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewPersonalAccessToken"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedPersonalAccessToken"];
+                };
+            };
+            /** @description Validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Recent authentication required, or tokens are not allowed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_revoke_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Recent authentication required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found or already revoked */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

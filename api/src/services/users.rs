@@ -65,8 +65,12 @@ pub async fn create(
         .attributes
         .take()
         .unwrap_or_else(|| serde_json::Value::Object(Default::default()));
-    input.attributes = Some(profile_schema::validate_attributes(
-        &schema, &incoming, editor, None,
+    input.attributes = Some(profile_schema::validate_attributes_with(
+        &schema,
+        &incoming,
+        editor,
+        None,
+        !input.defer_required,
     )?);
 
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;

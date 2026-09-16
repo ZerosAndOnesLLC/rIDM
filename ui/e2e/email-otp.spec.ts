@@ -20,11 +20,11 @@ test("email code: a wrong code is refused, the emailed one signs in", async ({ p
   expect(code, mail.text).toBeTruthy();
 
   await page.getByLabel("Code").fill(code === "000000" ? "111111" : "000000");
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(alertOf(page)).toContainText("invalid");
   await expectAccessible(page);
 
   await page.getByLabel("Code").fill(code!);
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await finishAuthorization(page);
 });

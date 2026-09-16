@@ -27,6 +27,7 @@ use uuid::Uuid;
 use crate::error::{AppError, AppResult};
 use crate::models::{MASTER_TENANT_ID, Tenant, UserStatus};
 use crate::services::admin_access::{self, ADMIN_AUDIENCE, PermissionSet};
+use crate::services::personal_access_tokens as pats;
 use crate::services::tokens::{self, VerifyOptions};
 use crate::services::{roles, tenants, users};
 use crate::state::AppState;
@@ -214,6 +215,9 @@ impl FromRequestParts<AppState> for AdminCtx {
         state: &AppState,
     ) -> Result<Self, AdminRejection> {
         let token = bearer(&parts.headers).ok_or_else(AdminRejection::missing)?;
+        if pats::looks_like_pat(&token) {
+            return Self::from_personal_token(state, &token).await;
+        }
         let tenant_id = unverified_tenant_id(&token).ok_or_else(AdminRejection::invalid)?;
         let tenant = tenants::get_cached(state, tenant_id)
             .await?
@@ -294,6 +298,38 @@ impl FromRequestParts<AppState> for AdminCtx {
                 .get("jti")
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_string),
+        })
+    }
+}
+
+impl AdminCtx {
+    /// A personal access token: the user's admin permissions narrowed to the
+    /// token's scopes (and to what the user still holds).
+    async fn from_personal_token(state: &AppState, token: &str) -> Result<Self, AdminRejection> {
+        let auth = pats::authenticate(state, token)
+            .await?
+            .ok_or_else(AdminRejection::invalid)?;
+        if auth.permissions.is_empty() {
+            return Err(
+                AppError::Forbidden("the token carries no admin permissions".into()).into(),
+            );
+        }
+        let roles = roles::effective_role_names(state, auth.tenant.id, auth.user.id).await?;
+        let scope = if auth.tenant.id == MASTER_TENANT_ID {
+            AdminScope::Global
+        } else {
+            AdminScope::Tenant
+        };
+        Ok(Self {
+            user_id: auth.user.id,
+            username: auth.user.username,
+            tenant: auth.tenant,
+            scope,
+            roles,
+            permissions: Arc::new(auth.permissions),
+            client_id: "pat".into(),
+            session_id: None,
+            jti: Some(format!("pat:{}", auth.token.id)),
         })
     }
 }

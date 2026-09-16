@@ -13,14 +13,14 @@ test("repeated wrong passwords lock the account, and the right password is then 
 
   for (let i = 0; i <= MAX_FAILURES; i++) {
     await page.getByLabel("Password", { exact: true }).fill(`wrong-${i}`);
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(alertOf(page)).toBeVisible();
   }
   await expect(alertOf(page)).toContainText("Too many failed attempts");
   await expectAccessible(page);
 
   await page.getByLabel("Password", { exact: true }).fill(u.password);
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(alertOf(page)).toContainText("Too many failed attempts");
   await expect(page).toHaveURL(/\/login\//);
 });

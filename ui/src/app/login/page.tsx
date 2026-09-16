@@ -8,9 +8,9 @@ import { CodeInput } from "@/components/code-input";
 import { useErrorText } from "@/components/errors";
 import { TermsLabel } from "@/components/terms-label";
 import { Alert, Button, Checkbox, Divider, PasswordField, Spinner, TextField, Title } from "@/components/ui";
-import { ApiError } from "@/lib/api";
+import { ApiError, tenantBase } from "@/lib/api";
 import { pageUrl, useFlow, type Post } from "@/lib/flow";
-import { usePageParams, WithParams } from "@/lib/params";
+import { navigate, usePageParams, WithParams } from "@/lib/params";
 import { assertPasskey, passkeysSupported } from "@/lib/passkeys";
 import { useTenant } from "@/lib/tenant";
 import type { AttributeDef, Method, PasskeyRequestOptions, PublicFlow } from "@/lib/types";
@@ -68,6 +68,7 @@ function PreviewForm({ tenant }: { tenant: string | null }) {
     attempts: 0,
     captcha: null,
     mfa: null,
+    identity_providers: [],
   };
   const post: Post = <T,>() => new Promise<T>(() => {});
   return <Authenticate flow={flow} post={post} reload={() => Promise.resolve()} magic={null} tenant={tenant} preview />;
@@ -84,7 +85,7 @@ function LivePage({ p }: { p: ReturnType<typeof usePageParams> }) {
       ) : f.error || !f.flow ? (
         <Alert tone="error">{errorText(f.error) ?? t("common.expired")}</Alert>
       ) : f.flow.stage === "authenticate" ? (
-        <Authenticate flow={f.flow} post={f.post} reload={f.reload} magic={p.get("magic")} tenant={p.tenant} />
+        <Authenticate flow={f.flow} post={f.post} reload={f.reload} magic={p.get("magic")} tenant={p.tenant} brokerError={p.get("broker_error")} />
       ) : f.flow.stage === "password_change" ? (
         <PasswordChange flow={f.flow} post={f.post} />
       ) : f.flow.stage === "profile" ? (
@@ -112,6 +113,8 @@ function usePasskeySupport(): boolean {
   return useSyncExternalStore(noop, passkeysSupported, () => false);
 }
 
+const BROKER_ERRORS = ["denied", "upstream", "invalid_state", "email_in_use", "already_linked", "account_disabled"] as const;
+
 function Authenticate({
   flow,
   post,
@@ -119,6 +122,7 @@ function Authenticate({
   magic,
   tenant,
   preview = false,
+  brokerError = null,
 }: {
   flow: PublicFlow;
   post: Post;
@@ -127,6 +131,8 @@ function Authenticate({
   tenant: string | null;
   /** Framed in the console: never grab focus (it would scroll the editor). */
   preview?: boolean;
+  /** `?broker_error=` after an upstream sign-in stopped. */
+  brokerError?: string | null;
 }) {
   const { t } = useI18n();
   const errorText = useErrorText();
@@ -140,7 +146,15 @@ function Authenticate({
   const [remember, setRemember] = useState(false);
   const [captcha, setCaptcha] = useState<string | null>(null);
   const [busy, setBusy] = useState(Boolean(magic));
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() =>
+    brokerError ? t(BROKER_ERRORS.includes(brokerError as (typeof BROKER_ERRORS)[number]) ? `login.broker.${brokerError}` : "login.broker.upstream") : null,
+  );
+  const providers = flow.identity_providers ?? [];
+  const providerButtons = providers.map((idp) => (
+    <Button key={idp.alias} type="button" variant={methods.length === 0 && !passkey ? "primary" : "secondary"} disabled={busy} onClick={() => tenant && navigate(`${tenantBase(tenant)}/broker/${encodeURIComponent(idp.alias)}/start?flow=${encodeURIComponent(flow.id)}`)}>
+      {t("login.with_provider", { name: idp.display_name })}
+    </Button>
+  ));
   const [sent, setSent] = useState<Passwordless | null>(null);
   const [code, setCode] = useState("");
   const onToken = useCallback((tok: string | null) => setCaptcha(tok), []);
@@ -209,10 +223,11 @@ function Authenticate({
       <div className="flex flex-col gap-5">
         <Title sub={subtitle}>{t("login.title")}</Title>
         {error && <Alert tone="error">{error}</Alert>}
-        {passkey ? (
+        {passkey || providers.length > 0 ? (
           <>
-            <Checkbox label={t("login.remember_device")} checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+            {passkey && <Checkbox label={t("login.remember_device")} checked={remember} onChange={(e) => setRemember(e.target.checked)} />}
             {passkeyButton}
+            {providerButtons}
             {cancelLink}
           </>
         ) : (
@@ -321,11 +336,12 @@ function Authenticate({
         </form>
       )}
 
-      {(others.length > 0 || passkey) && (
+      {(others.length > 0 || passkey || providers.length > 0) && (
         <>
           <Divider label={t("login.or")} />
           <div className="flex flex-col gap-2">
             {passkeyButton}
+            {providerButtons}
             {others.map((m) => (
               <Button
                 key={m}

@@ -1,0 +1,126 @@
+//! Device authorization endpoint (RFC 8628 §3.1): `POST /t/{slug}/device_authorization`.
+//! The device polls `/token` with `grant_type=urn:ietf:params:oauth:grant-type:device_code`
+//! (see `token.rs`) while the user approves on the `/device/` page.
+
+use axum::extract::State;
+use axum::http::{HeaderMap, HeaderValue, header};
+use axum::response::{IntoResponse, Response};
+
+use crate::error::{OAuthError, OAuthErrorCode};
+use crate::middleware::TenantCtx;
+use crate::models::grants;
+use crate::oidc::authorize::RawParams;
+use crate::oidc::client_auth;
+use crate::services::device_codes::{self, DeviceAuthorization};
+use crate::services::scopes;
+use crate::state::AppState;
+
+pub fn router() -> axum::Router<AppState> {
+    axum::Router::new().route(
+        "/t/{slug}/device_authorization",
+        axum::routing::post(device_authorization),
+    )
+}
+
+pub async fn device_authorization(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    headers: HeaderMap,
+    body: String,
+) -> Response {
+    let mut res = match handle(&state, &tenant, &headers, &body).await {
+        Ok(v) => axum::Json(v).into_response(),
+        Err(e) => e.into_response(),
+    };
+    res.headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    res
+}
+
+async fn handle(
+    state: &AppState,
+    tenant: &TenantCtx,
+    headers: &HeaderMap,
+    body: &str,
+) -> Result<DeviceAuthorization, OAuthError> {
+    let params = RawParams::parse(body);
+    let one = |n: &str| params.one(n).map_err(OAuthError::invalid_request);
+    let endpoint = format!("{}/device_authorization", tenant.issuer(state));
+    let (client, _) = client_auth::authenticate(state, tenant, headers, &params, &endpoint).await?;
+    if !client.allows_grant(grants::DEVICE_CODE) {
+        return Err(OAuthError::new(
+            OAuthErrorCode::UnauthorizedClient,
+            "client may not use the device authorization grant",
+        ));
+    }
+    let requested: Vec<String> = one("scope")?
+        .map(|v| {
+            v.split(' ')
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    if requested.is_empty() {
+        return Err(OAuthError::new(
+            OAuthErrorCode::InvalidScope,
+            "scope is required",
+        ));
+    }
+    let (known, unknown) = scopes::resolve(state, tenant.id(), &requested).await?;
+    if !unknown.is_empty() {
+        return Err(OAuthError::new(
+            OAuthErrorCode::InvalidScope,
+            format!("unknown scope(s): {}", unknown.join(" ")),
+        ));
+    }
+    let disallowed: Vec<&str> = known
+        .iter()
+        .map(|s| s.name.as_str())
+        .filter(|n| !client.allowed_scopes.iter().any(|a| a == n))
+        .collect();
+    if !disallowed.is_empty() {
+        return Err(OAuthError::new(
+            OAuthErrorCode::InvalidScope,
+            format!(
+                "scope(s) not allowed for this client: {}",
+                disallowed.join(" ")
+            ),
+        ));
+    }
+    let mut audiences: Vec<String> = vec![];
+    for r in params.many("resource") {
+        let r = r.trim();
+        if r.is_empty()
+            || url::Url::parse(r)
+                .map(|u| u.fragment().is_some())
+                .unwrap_or(true)
+        {
+            return Err(OAuthError::new(
+                OAuthErrorCode::InvalidTarget,
+                format!("invalid resource `{r}`"),
+            ));
+        }
+        let mut tx = crate::db::tenant_tx(&state.db, tenant.id()).await?;
+        let known =
+            crate::repos::resource_servers::find_by_identifier(&mut *tx, tenant.id(), r).await?;
+        tx.commit().await?;
+        if known.is_none() {
+            return Err(OAuthError::new(
+                OAuthErrorCode::InvalidTarget,
+                format!("unknown resource `{r}`"),
+            ));
+        }
+        if !client.allowed_audiences.is_empty() && !client.allowed_audiences.iter().any(|a| a == r)
+        {
+            return Err(OAuthError::new(
+                OAuthErrorCode::InvalidTarget,
+                format!("resource `{r}` is not allowed for this client"),
+            ));
+        }
+        if !audiences.iter().any(|a| a == r) {
+            audiences.push(r.to_string());
+        }
+    }
+    Ok(device_codes::issue(state, tenant, &client, requested, audiences).await?)
+}

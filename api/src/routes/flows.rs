@@ -9,6 +9,7 @@ use axum::extract::{ConnectInfo, Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
+use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
@@ -887,6 +888,48 @@ async fn finish(
         Err(e) => return e.into_response(),
     };
     let _ = crate::services::login_flows::delete(&state, tenant.id(), id).await;
+    if let Some(device_hash) = &flow.request.device_code {
+        // A device authorization: approve the device's code and send the
+        // browser back to the device page; the device collects the tokens.
+        return match crate::services::device_codes::approve(
+            &state,
+            tenant.id(),
+            device_hash,
+            &session,
+            &flow.request.scopes,
+        )
+        .await
+        {
+            Ok(_) => {
+                let _ = sessions::add_client(&state, &session, &client.client_id).await;
+                state.events.publish(Event::new(
+                    Some(tenant.id()),
+                    Actor::User {
+                        id: session.user_id,
+                    },
+                    EventKind::AuthorizationGranted {
+                        user_id: session.user_id,
+                        client_id: client.id,
+                        scopes: flow.request.scopes.clone(),
+                    },
+                ));
+                let mut u = url::Url::parse(&flow.request.redirect_uri)
+                    .expect("the device page is a valid url");
+                u.query_pairs_mut().append_pair("done", "1");
+                let mut res = axum::response::Redirect::to(u.as_str()).into_response();
+                res.headers_mut()
+                    .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+                if let Some(v) = device_cookie
+                    .as_deref()
+                    .and_then(|c| HeaderValue::from_str(c).ok())
+                {
+                    res.headers_mut().append(header::SET_COOKIE, v);
+                }
+                res
+            }
+            Err(e) => e.into_response(),
+        };
+    }
     match crate::oidc::authorize::issue_code(&state, &tenant, &client, &flow.request, &session)
         .await
     {

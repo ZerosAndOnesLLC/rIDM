@@ -1,6 +1,8 @@
 pub mod account;
 pub mod admin;
 pub mod branding;
+pub mod broker;
+pub mod device;
 pub mod flows;
 pub mod health;
 pub mod invitations;

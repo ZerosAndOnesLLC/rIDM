@@ -12,7 +12,7 @@ test.describe("admin console shell", () => {
     await expect(page.getByRole("heading", { name: "Sign in to the console" })).toBeVisible();
     await expectAccessible(page);
     await page.getByLabel("Tenant").fill("Not A Slug!");
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(alertOf(page)).toContainText("tenant slug");
     expect(page.url()).toContain("/console/");
   });
@@ -21,11 +21,11 @@ test.describe("admin console shell", () => {
     const state = loadState();
     await page.goto(`/console/?tenant=${TENANT}&from=deep`);
     await page.getByLabel("Tenant").fill(TENANT);
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await page.waitForURL(/\/login\//);
     await page.getByLabel("Email or username").fill(state.email);
     await page.getByLabel("Password", { exact: true }).fill(state.password);
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     // No consent step for the built-in client; back where we started.
     await page.waitForURL(/\/console\/\?tenant=master&from=deep$/, { timeout: 20_000 });
 
@@ -122,7 +122,7 @@ test.describe("admin console shell", () => {
     await expect(page.getByRole("heading", { name: "Sign in to the console" })).toBeVisible();
     // The tenant's SSO session is gone too: signing in again asks for credentials.
     await page.getByLabel("Tenant").fill(TENANT);
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await page.waitForURL(/\/login\//);
     await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
   });

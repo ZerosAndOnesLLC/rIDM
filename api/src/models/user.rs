@@ -69,6 +69,12 @@ pub struct NewUser {
     pub attributes: Option<serde_json::Value>,
     pub locale: Option<String>,
     pub org_id: Option<Uuid>,
+    /// Required profile attributes may be missing for now (an account made
+    /// from an upstream identity fills them in at the profile step). Never
+    /// set from a request body.
+    #[serde(skip)]
+    #[schema(ignore)]
+    pub defer_required: bool,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]

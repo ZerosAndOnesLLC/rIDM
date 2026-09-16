@@ -23,11 +23,11 @@ test("a forced password change is required at login, then only the new password 
   await page.getByLabel("New password", { exact: true }).fill(fresh);
   await page.getByLabel("Confirm new password").fill("something-else-entirely");
   await expect(page.getByText("The passwords do not match.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
   await expectAccessible(page);
 
   await page.getByLabel("Confirm new password").fill(fresh);
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await finishAuthorization(page);
 
   // The user is notified about the change.
@@ -38,6 +38,6 @@ test("a forced password change is required at login, then only the new password 
   await loginWithPassword(page, { ...s, ...u });
   await expect(alertOf(page)).toContainText("Incorrect");
   await page.getByLabel("Password", { exact: true }).fill(fresh);
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await finishAuthorization(page);
 });

@@ -70,7 +70,7 @@ export function tenantId(): string {
 /** Drop cached tenant documents and profile schemas so rows written by SQL take effect. */
 export function clearTenantCache() {
   try {
-    const keys = ["ridm:*tenant*", "ridm:t:*:profile_schema"].flatMap((pattern) =>
+    const keys = ["ridm:*tenant*", "ridm:t:*:profile_schema", "ridm:t:*:idps"].flatMap((pattern) =>
       execFileSync("redis-cli", ["-u", REDIS_URL, "--scan", "--pattern", pattern], { encoding: "utf8" })
         .split("\n")
         .filter(Boolean),
@@ -202,7 +202,7 @@ export async function loginWithPassword(page: Page, state: State, extra: Record<
   await page.waitForURL(/\/login\//);
   await page.getByLabel("Email or username").fill(state.email);
   await page.getByLabel("Password", { exact: true }).fill(state.password);
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
 }
 
 /**
@@ -229,11 +229,11 @@ export async function consoleLogin(page: Page, state: State) {
   await page.goto("/console/");
   await expect(page.getByRole("heading", { name: "Sign in to the console" })).toBeVisible();
   await page.getByLabel("Tenant").fill(TENANT);
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.waitForURL(/\/login\//);
   await page.getByLabel("Email or username").fill(state.email);
   await page.getByLabel("Password", { exact: true }).fill(state.password);
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.waitForURL(/\/console\/(\?.*)?$/, { timeout: 20_000 });
   await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible({ timeout: 15_000 });
 }

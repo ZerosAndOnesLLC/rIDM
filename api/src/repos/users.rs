@@ -179,6 +179,22 @@ pub async fn soft_delete<'e>(
     Ok(res.rows_affected() > 0)
 }
 
+/// Remove soft-deleted rows older than `before`; attached rows cascade.
+pub async fn purge_deleted<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    before: DateTime<Utc>,
+) -> Result<u64, sqlx::Error> {
+    let res = sqlx::query(
+        "DELETE FROM users WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND deleted_at < $2",
+    )
+    .bind(tenant_id)
+    .bind(before)
+    .execute(exec)
+    .await?;
+    Ok(res.rows_affected())
+}
+
 pub async fn hard_delete<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
