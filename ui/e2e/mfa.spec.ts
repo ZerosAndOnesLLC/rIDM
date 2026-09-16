@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { expect, test } from "@playwright/test";
-import { alertOf, expectAccessible, finishAuthorization, loadState, loginWithPassword, tenantId, tenantSql } from "./helpers";
+import { alertOf, authorizeUrl, expectAccessible, finishAuthorization, loadState, loginWithPassword, tenantId, tenantSql } from "./helpers";
 
 /**
  * TOTP second factor: a client step-up (`acr_values` ending in `:mfa`) makes
@@ -93,9 +93,13 @@ test.describe("two-step verification", () => {
     await finishAuthorization(page);
   });
 
-  test("the next step-up verifies with the app", async ({ page }) => {
+  test("a step-up on a live session goes straight to the app code", async ({ page }) => {
     const s = loadState();
-    await loginWithPassword(page, s, STEP_UP);
+    // A plain sign-in first: the session holds one factor.
+    await loginWithPassword(page, s);
+    await finishAuthorization(page);
+    // The client now asks for an MFA class: no password again.
+    await page.goto(authorizeUrl(s, STEP_UP));
     await page.waitForURL(/\/mfa\//, { timeout: 30_000 });
     await expect(page.getByRole("heading", { name: "Two-step verification" })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("Enter the code from your authenticator app.")).toBeVisible();
@@ -103,6 +107,9 @@ test.describe("two-step verification", () => {
     used = freshCode(secret);
     await page.getByLabel("Code").fill(used);
     await page.getByRole("button", { name: "Continue" }).click();
+    await finishAuthorization(page);
+    // The session now satisfies the class: the same request needs nothing.
+    await page.goto(authorizeUrl(s, STEP_UP));
     await finishAuthorization(page);
   });
 

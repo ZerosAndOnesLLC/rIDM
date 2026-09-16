@@ -23,8 +23,8 @@ use crate::services::login_flows::{self, FlowStage, LoginFlow};
 use crate::services::password::{self, SetPasswordOptions, VerifyOutcome};
 use crate::services::sessions::{self, NewSession, SsoSession};
 use crate::services::{
-    clients, consents, locale, notifications, otp_factors, passkeys, profile_schema, totp,
-    trusted_devices, users,
+    admin_access, clients, consents, locale, notifications, otp_factors, passkeys, profile_schema,
+    roles, totp, trusted_devices, users,
 };
 use crate::state::AppState;
 use webauthn_rs::prelude::{
@@ -803,13 +803,31 @@ pub struct RequestContext {
     pub remember_device: bool,
 }
 
+/// Is `acr` an authentication context class that means "a second factor
+/// passed"? rIDM's own is [`ACR_MFA`]; any class ending in `:mfa` counts, so
+/// a client may name its own.
+pub fn is_mfa_acr(acr: &str) -> bool {
+    acr.ends_with(":mfa")
+}
+
+/// The MFA class a request asks for, if any. Other requested classes are
+/// voluntary (OIDC Core §5.5.1.1): the session's actual class is returned.
+pub fn requested_mfa_class(acr_values: &[String]) -> Option<&str> {
+    acr_values
+        .iter()
+        .map(String::as_str)
+        .find(|a| is_mfa_acr(a))
+}
+
 /// Whether the flow must pass a second factor before continuing.
 ///
-/// A step-up the client asked for (`acr_values` ending in `:mfa`) is always
-/// honoured, even on a trusted device. Policy-driven MFA is skipped on a
-/// trusted device: `required` asks everyone (enrolling first when needed),
-/// `optional` asks users who enrolled a factor. The role-based modes are
-/// evaluated in 7.4 and behave like `optional` until then.
+/// A step-up the client asked for (an `acr_values` class ending in `:mfa`)
+/// is always honoured, even on a trusted device. Policy-driven MFA is
+/// skipped on a trusted device: `required` asks everyone (enrolling first
+/// when needed); `required_for_roles` asks holders of any listed role
+/// (direct, through groups or composites) and `required_for_admins` asks
+/// anyone holding an admin-console permission, both treating everyone else
+/// as `optional`, which asks users who enrolled a factor.
 pub async fn mfa_required(
     state: &AppState,
     tenant: &Tenant,
@@ -819,19 +837,27 @@ pub async fn mfa_required(
     if flow.amr.iter().any(|m| m == "mfa") {
         return Ok(false);
     }
-    if flow.request.acr_values.iter().any(|a| a.ends_with(":mfa")) {
+    if requested_mfa_class(&flow.request.acr_values).is_some() {
         return Ok(true);
     }
     if flow.trusted_device {
         return Ok(false);
     }
-    Ok(match &tenant.settings.mfa {
-        MfaPolicy::Off => false,
+    let required = match &tenant.settings.mfa {
+        MfaPolicy::Off => return Ok(false),
         MfaPolicy::Required => true,
-        MfaPolicy::Optional | MfaPolicy::RequiredForAdmins | MfaPolicy::RequiredForRoles { .. } => {
-            totp::has_second_factor(state, tenant.id, user.id).await?
+        MfaPolicy::Optional => false,
+        MfaPolicy::RequiredForRoles { roles } => {
+            let held = roles::effective_role_names(state, tenant.id, user.id).await?;
+            roles.iter().any(|r| held.iter().any(|h| h == r))
         }
-    })
+        MfaPolicy::RequiredForAdmins => {
+            !admin_access::permissions_of_user(state, tenant.id, user.id)
+                .await?
+                .is_empty()
+        }
+    };
+    Ok(required || totp::has_second_factor(state, tenant.id, user.id).await?)
 }
 
 /// Outcome of a second-factor step.
@@ -1078,12 +1104,9 @@ async fn pass_second_factor(
 /// The MFA class the session asserts: the `*:mfa` class the client asked
 /// for, else the default.
 fn requested_mfa_acr(flow: &LoginFlow) -> String {
-    flow.request
-        .acr_values
-        .iter()
-        .find(|a| a.ends_with(":mfa"))
-        .cloned()
-        .unwrap_or_else(|| ACR_MFA.to_string())
+    requested_mfa_class(&flow.request.acr_values)
+        .unwrap_or(ACR_MFA)
+        .to_string()
 }
 
 /// `POST /flows/{id}/mfa/passkey/register`: creation options for a new

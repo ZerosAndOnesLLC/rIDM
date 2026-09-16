@@ -31,7 +31,7 @@ export function SignInSection() {
         <Toggle label="SMS code" hint="A one-time code to a verified phone number; needs an SMS provider under Messaging." checked={mfa_methods.sms_otp} disabled={!editable} onChange={(v) => update({ mfa_methods: { sms_otp: v } })} />
       </div>
 
-      <Field label="Two-step verification" hint="Required asks everyone (enrolling a second step on first sign-in); optional asks users who enrolled one. Role-based modes arrive with 7.4.">
+      <Field label="Two-step verification" hint="Required asks everyone (enrolling a second step on first sign-in); optional asks users who enrolled one. Required for roles asks holders of the listed roles, and required for administrators asks anyone with a console permission; everyone else is treated as optional. A client asking for an MFA class in acr_values is always asked.">
         {(id, by) => (
           <SelectInput id={id} aria-describedby={by} value={mfa.mode} disabled={!editable} onChange={(e) => setMfa(e.target.value as MfaMode)}>
             <option value="off">Off</option>

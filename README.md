@@ -59,9 +59,18 @@ everywhere and audit. `/authorize` honours `prompt` (`none`, `login`, `consent`,
 Two-step verification (`/flows/{id}/mfa/...`) uses an authenticator app (TOTP, RFC
 6238: SHA-1, six digits, 30-second steps, one step of drift either side, every code
 accepted once). The tenant `mfa` policy decides who is asked: `required` asks
-everyone and enrols an authenticator on the first sign-in, `optional` asks users who
-enrolled one, `off` never asks; a client step-up (`acr_values` ending in `:mfa`) is
-always honoured, and a trusted device skips the policy-driven check. Enrolment
+everyone and enrols a second step on the first sign-in, `optional` asks users who
+enrolled one, `required_for_roles` asks holders of any listed role (directly, through
+a group or a composite) and `required_for_admins` asks anyone holding an admin-console
+permission, both treating everyone else as `optional`; `off` never asks. A trusted
+device skips the policy-driven check. A client step-up is a requested `acr_values`
+class ending in `:mfa` (rIDM's own is `urn:ridm:acr:mfa`): it is always honoured, even
+on a trusted device, and a live session that only lacks that class is sent straight to
+the second factor (no password again; `prompt=none` answers `login_required`). Other
+requested classes are voluntary, so the token carries the class the session actually
+holds. Sessions and tokens say how the user signed in: `amr` lists the methods (`pwd`,
+`otp`, `sms`, `hwk`, `user`, plus `mfa` once a second factor passed) and `acr` is set
+only after a second factor, to the class the client asked for or the default. Enrolment
 returns a set of ten single-use recovery codes, shown once; any of them replaces the
 app for one sign-in and the user is told how many remain. Secrets are encrypted per
 row under the master key, recovery codes are hashed then encrypted, and the session

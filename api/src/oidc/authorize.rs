@@ -27,7 +27,7 @@ use crate::oidc::{pkce, redirect_uri};
 use crate::services::auth_codes::{self, AuthCode};
 use crate::services::login_flows::{self, AuthRequest, FlowStage, LoginFlow, ResponseMode};
 use crate::services::sessions::{self, SsoSession};
-use crate::services::{clients, consents, scopes};
+use crate::services::{clients, consents, flows, scopes};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -590,18 +590,48 @@ async fn decide(
         Some(max) => (now - s.auth_time).num_seconds().max(0) as u64 <= max,
         None => true,
     };
+    // Only an MFA class can be demanded; other requested classes are
+    // voluntary and the session's actual class is what the token says.
     let acr_ok = |s: &SsoSession| {
-        req.acr_values.is_empty()
+        flows::requested_mfa_class(&req.acr_values).is_none()
             || s.acr
                 .as_deref()
                 .is_some_and(|acr| req.acr_values.iter().any(|v| v == acr))
     };
 
-    let needs_auth = create
-        || force_login
-        || session
-            .as_ref()
-            .is_none_or(|s| !fresh_enough(s) || !acr_ok(s));
+    let needs_auth = create || force_login || session.as_ref().is_none_or(|s| !fresh_enough(s));
+
+    // Step-up: a fresh session that only lacks the requested MFA class goes
+    // straight to the second factor, no password again.
+    if !needs_auth && let Some(s) = session.as_ref().filter(|s| !acr_ok(s)) {
+        if prompt_none {
+            return Err(Failure::Redirect(OAuthError::code(
+                OAuthErrorCode::LoginRequired,
+            )));
+        }
+        let flow = login_flows::create(
+            state,
+            LoginFlow {
+                id: Uuid::now_v7(),
+                tenant_id: tenant.id(),
+                request: req.clone(),
+                stage: FlowStage::Mfa,
+                session_id: Some(s.id),
+                user_id: Some(s.user_id),
+                pending_scopes: vec![],
+                require_auth_after: None,
+                csrf: String::new(),
+                attempts: 0,
+                amr: s.amr.clone(),
+                trusted_device: false,
+                remember_device: false,
+                created_at: now,
+                expires_at: now,
+            },
+        )
+        .await?;
+        return Ok(redirect_to_ui(state, tenant, "mfa", flow.id));
+    }
 
     if needs_auth {
         if prompt_none {

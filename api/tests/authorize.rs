@@ -212,14 +212,22 @@ async fn with_a_session_a_code_is_issued_or_consent_is_requested() {
     assert!(location(&res).path().ends_with("/login/"));
     let res = authorize(&fx, &params(&fx, &[("max_age", "3600")]), Some(&cookie)).await;
     assert!(query(&location(&res), "code").is_some());
-    // acr_values the session does not satisfy → step-up via login.
+    // An MFA class the session does not satisfy → step-up straight to the
+    // second factor; a class that is not an MFA one is voluntary.
     let res = authorize(
         &fx,
         &params(&fx, &[("acr_values", "urn:ridm:acr:mfa")]),
         Some(&cookie),
     )
     .await;
-    assert!(location(&res).path().ends_with("/login/"));
+    assert!(location(&res).path().ends_with("/mfa/"));
+    let res = authorize(
+        &fx,
+        &params(&fx, &[("acr_values", "urn:example:acr:gold")]),
+        Some(&cookie),
+    )
+    .await;
+    assert!(query(&location(&res), "code").is_some());
 
     // Fragment and form_post response modes.
     let res = authorize(
