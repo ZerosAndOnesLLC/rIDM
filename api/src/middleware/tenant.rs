@@ -64,6 +64,25 @@ pub async fn resolve_tenant(state: &AppState, slug: &str) -> Result<Option<Arc<T
         .await
 }
 
+/// Resolve a tenant by its custom domain (a request host, lower-case) through
+/// the cache. `Ok(None)` when no tenant claims it.
+pub async fn resolve_tenant_by_host(
+    state: &AppState,
+    host: &str,
+) -> Result<Option<Arc<Tenant>>, AppError> {
+    let host = host.to_ascii_lowercase();
+    let db = state.db.clone();
+    let lookup = host.clone();
+    state
+        .cache
+        .get_or_load(
+            &keys::tenant_by_host(&host),
+            TENANT_CACHE_TTL,
+            || async move { Ok(repos::tenants::find_by_custom_domain(&db, &lookup).await?) },
+        )
+        .await
+}
+
 /// Cache keys that must be evicted whenever a tenant row changes.
 pub fn tenant_cache_keys(tenant: &Tenant) -> Vec<String> {
     let mut v = vec![
@@ -72,6 +91,9 @@ pub fn tenant_cache_keys(tenant: &Tenant) -> Vec<String> {
         keys::jwks(tenant.id),
         keys::discovery(tenant.id),
     ];
+    if let Some(host) = &tenant.settings.custom_domain {
+        v.push(keys::tenant_by_host(&host.to_ascii_lowercase()));
+    }
     for d in &tenant.settings.discovery.email_domains {
         v.push(keys::tenant_by_email_domain(&d.to_lowercase()));
     }

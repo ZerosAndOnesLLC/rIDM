@@ -3,6 +3,7 @@ mod admin;
 mod client_ip;
 pub mod cors;
 pub mod guard;
+pub mod host;
 mod json;
 pub mod security_headers;
 mod tenant;

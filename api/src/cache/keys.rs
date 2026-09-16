@@ -258,3 +258,8 @@ pub fn client_origins(tenant_id: Uuid) -> String {
 pub fn ip_rules(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:ip_rules")
 }
+
+/// Tenant document keyed by its custom domain (the request host).
+pub fn tenant_by_host(host: &str) -> String {
+    format!("{PREFIX}:tenant:host:{host}")
+}

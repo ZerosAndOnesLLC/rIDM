@@ -175,6 +175,19 @@ in [`.env.example`](.env.example). The essentials:
 Health probes: `GET /healthz` (liveness) and `GET /readyz` (database + cache).
 `GET /.well-known/security.txt` serves the vulnerability disclosure policy.
 
+### Custom domains
+
+A tenant can be served on its own host: set `settings.custom_domain` (console: Settings →
+General → Custom domain) to a hostname such as `login.example.com` (a port is allowed for
+development), point the name at rIDM and terminate TLS for it. The tenant's issuer
+becomes `https://<host>`, and discovery, JWKS, `/authorize`, `/token`, the flow API and
+every other tenant endpoint answer on that host without the `/t/<slug>` prefix (the
+prefixed paths keep working and report the same issuer). Requests are matched by the
+`Host` header, or `X-Forwarded-Host` from a `TRUSTED_PROXIES` peer; the host is looked up
+through the tenant cache and takes effect the moment the setting changes. Domains are
+validated, lower-cased, unique across tenants and may not be the deployment's own hosts.
+The UI stays where `UI_URL` says until the embedded UI mode serves it on every host.
+
 ### Rate limits, browser hardening and cross-origin policy
 
 Every OAuth and sign-in endpoint sits behind a request ceiling counted in fixed
@@ -219,8 +232,9 @@ UI's static export carries its own hash-based policy (see [UI](#ui)).
 
 Cross-origin requests are admitted by one rule set: the UI's and the API's own origins
 may call everything (the consoles and the sign-in pages run there, with cookies);
-discovery, JWKS, WebFinger and branding answer any origin; under `/t/{slug}/` an origin
-registered in `cors_origins` on one of the tenant's active clients is admitted (the
+discovery, JWKS, WebFinger and branding answer any origin; under `/t/{slug}/` the
+tenant's custom domain and any origin registered in `cors_origins` on one of the
+tenant's active clients are admitted (the
 union is cached per tenant and evicted on every client change); everything else gets no
 CORS headers. Because a preflight cannot say which client a `/token` call is for, the
 client-authenticated endpoints check again once the client is known: a browser `Origin`

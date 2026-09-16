@@ -390,6 +390,23 @@ impl Config {
         v
     }
 
+    /// Hosts (`host[:port]`, lower-case) the API and the UI are reached on;
+    /// a tenant's custom domain may not be one of them.
+    pub fn primary_hosts(&self) -> Vec<String> {
+        let mut v: Vec<String> = [&self.public_url, &self.ui_url]
+            .iter()
+            .filter_map(|u| {
+                let host = u.host_str()?.to_ascii_lowercase();
+                Some(match u.port() {
+                    Some(p) => format!("{host}:{p}"),
+                    None => host,
+                })
+            })
+            .collect();
+        v.dedup();
+        v
+    }
+
     /// Issuer URL for a tenant: `{PUBLIC_URL}/t/{slug}` (no trailing slash).
     pub fn issuer_for(&self, tenant_slug: &str) -> String {
         format!(

@@ -35,6 +35,19 @@ pub fn build_router(state: AppState) -> Router {
 /// Build the application router plus `extra` routes (used by integration
 /// tests to exercise extractors and middleware in isolation).
 pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
+    let routed = routed_router(state.clone(), extra);
+    // Requests on a tenant's custom domain carry no `/t/{slug}` prefix: the
+    // fallback maps the host to the tenant and re-dispatches (see `host`).
+    let for_hosts = routed.clone();
+    routed.fallback(move |req: axum::extract::Request| {
+        let state = state.clone();
+        let routed = for_hosts.clone();
+        async move { middleware::host::dispatch(state, routed, req).await }
+    })
+}
+
+/// Every route with its layers, under the primary host's paths.
+fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
     let (admin, mut api) = openapi::admin_router().split_for_parts();
     openapi::finalize(&mut api);
     let docs = if state.config.docs_enabled {

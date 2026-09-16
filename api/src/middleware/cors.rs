@@ -27,7 +27,7 @@ use url::Url;
 use crate::cache::keys;
 use crate::error::AppResult;
 use crate::middleware::tenant::resolve_tenant;
-use crate::models::Client;
+use crate::models::{Client, Tenant};
 use crate::repos;
 use crate::state::AppState;
 
@@ -125,6 +125,9 @@ async fn origin_allowed(state: &AppState, origin: &HeaderValue, path: &str) -> b
             return false;
         }
     };
+    if custom_origin(&tenant).is_some_and(|o| o == origin) {
+        return true;
+    }
     match client_origins(state, tenant.id).await {
         Ok(set) => set.contains(&origin),
         Err(err) => {
@@ -158,13 +161,29 @@ pub async fn client_origins(
     Ok(loaded.map(|s| (*s).clone()).unwrap_or_default())
 }
 
+/// The origin a tenant's custom domain is served on (its issuer's origin).
+fn custom_origin(tenant: &Tenant) -> Option<String> {
+    tenant
+        .settings
+        .custom_domain
+        .as_deref()
+        .and_then(|h| normalize_origin(&format!("https://{h}")))
+}
+
 /// Second, per-client check for endpoints that authenticate the client:
-/// a browser origin must be the UI's, the API's or registered on this client.
-pub fn origin_allowed_for_client(state: &AppState, client: &Client, origin: &HeaderValue) -> bool {
+/// a browser origin must be the UI's, the API's, the tenant's custom domain
+/// or registered on this client.
+pub fn origin_allowed_for_client(
+    state: &AppState,
+    tenant: &Tenant,
+    client: &Client,
+    origin: &HeaderValue,
+) -> bool {
     let Some(origin) = origin.to_str().ok().and_then(normalize_origin) else {
         return false;
     };
     state.config.own_origins().contains(&origin)
+        || custom_origin(tenant).is_some_and(|o| o == origin)
         || client
             .cors_origins
             .iter()

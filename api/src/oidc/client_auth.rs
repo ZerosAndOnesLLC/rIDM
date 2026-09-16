@@ -193,7 +193,7 @@ pub async fn authenticate(
     // A browser call (it carries `Origin`) must come from an origin registered
     // on this client; the tenant-wide CORS layer only knew the union.
     if let Some(origin) = headers.get(header::ORIGIN)
-        && !cors::origin_allowed_for_client(state, &client, origin)
+        && !cors::origin_allowed_for_client(state, tenant.tenant.as_ref(), &client, origin)
     {
         return Err(OAuthError::invalid_request(
             "origin is not registered for this client",
