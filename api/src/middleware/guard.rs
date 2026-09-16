@@ -1,20 +1,25 @@
-//! Per-route rate limiting (`services::rate_limit`) as an axum layer.
+//! The request guard on the authorization, token and flow endpoint families:
+//! tenant-wide IP rules (`services::ip_rules`), then rate limits
+//! (`services::rate_limit`), as one axum layer per family.
 //!
 //! Applied to a router with `Router::layer` so the path parameters are known:
-//! the tenant is resolved (cached) and its policy consulted. Every response
-//! passing through carries `RateLimit-Limit`, `RateLimit-Remaining` and
-//! `RateLimit-Reset` for the tightest bucket; a refused request gets `429`
-//! with `Retry-After` in the endpoint family's own error format.
+//! the tenant is resolved (cached) and its rules and policy consulted. A
+//! refused address gets `403`, an exhausted bucket `429` with `Retry-After`,
+//! both in the family's own error format; every other response carries
+//! `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` for the
+//! tightest bucket. Client-scoped IP rules are checked by the handlers once
+//! the client is known.
 
 use axum::body::Body;
 use axum::extract::{ConnectInfo, Request, State};
-use axum::http::{HeaderValue, StatusCode, header};
+use axum::http::{HeaderValue, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
 use crate::error::{AppError, OAuthError};
-use crate::middleware::client_ip;
+use crate::middleware::client_ip_addr;
 use crate::middleware::tenant::resolve_tenant;
+use crate::services::ip_rules;
 use crate::services::rate_limit::{self, Category, Decision};
 use crate::state::AppState;
 
@@ -30,15 +35,15 @@ pub enum Style {
 }
 
 #[derive(Clone)]
-pub struct Limiter {
+pub struct Guard {
     state: AppState,
     category: Category,
     style: Style,
 }
 
 /// Build the middleware for one endpoint family:
-/// `router.layer(axum::middleware::from_fn_with_state(Limiter::new(..), limit))`.
-impl Limiter {
+/// `router.layer(axum::middleware::from_fn_with_state(Guard::new(..), guard))`.
+impl Guard {
     pub fn new(state: AppState, category: Category, style: Style) -> Self {
         Self {
             state,
@@ -48,10 +53,7 @@ impl Limiter {
     }
 }
 
-pub async fn limit(State(l): State<Limiter>, req: Request, next: Next) -> Response {
-    if !l.state.config.rate_limits.enabled {
-        return next.run(req).await;
-    }
+pub async fn guard(State(l): State<Guard>, req: Request, next: Next) -> Response {
     let slug = tenant_slug(req.uri().path());
     let tenant = match slug {
         Some(slug) => match resolve_tenant(&l.state, slug).await {
@@ -67,7 +69,33 @@ pub async fn limit(State(l): State<Limiter>, req: Request, next: Next) -> Respon
         .extensions()
         .get::<ConnectInfo<std::net::SocketAddr>>()
         .map(|c| c.0);
-    let ip = client_ip(&l.state, req.headers(), peer);
+    let ip = client_ip_addr(&l.state, req.headers(), peer);
+    if let Some(t) = &tenant {
+        match ip_rules::tenant_allows(&l.state, t.id, ip).await {
+            Ok(true) => {}
+            Ok(false) => {
+                tracing::info!(tenant = %t.slug, ip = ?ip, "tenant ip rule refused request");
+                metrics::counter!("ridm_ip_rule_rejections_total", "scope" => "tenant")
+                    .increment(1);
+                return refusal(
+                    l.style,
+                    AppError::Forbidden("this address may not sign in here".into()),
+                );
+            }
+            // Unreadable rules must not open the door.
+            Err(err) => {
+                tracing::warn!(error = %err, "ip rules unavailable; refusing");
+                return refusal(
+                    l.style,
+                    AppError::Unavailable("ip rules unavailable".into()),
+                );
+            }
+        }
+    }
+    if !l.state.config.rate_limits.enabled {
+        return next.run(req).await;
+    }
+    let ip = ip.map(|ip| ip.to_string());
     let decision = rate_limit::hit(&l.state, tenant.as_deref(), l.category, ip.as_deref()).await;
     if let Some(retry_after) = decision.retry_after_secs {
         tracing::info!(
@@ -77,7 +105,15 @@ pub async fn limit(State(l): State<Limiter>, req: Request, next: Next) -> Respon
             retry_after,
             "rate limit exceeded"
         );
-        return with_headers(refusal(l.style, retry_after), &decision);
+        return with_headers(
+            refusal(
+                l.style,
+                AppError::RateLimited {
+                    retry_after_secs: retry_after,
+                },
+            ),
+            &decision,
+        );
     }
     with_headers(next.run(req).await, &decision)
 }
@@ -89,18 +125,26 @@ fn tenant_slug(path: &str) -> Option<&str> {
     (!slug.is_empty()).then_some(slug)
 }
 
-fn refusal(style: Style, retry_after_secs: u64) -> Response {
-    let err = AppError::RateLimited { retry_after_secs };
+/// Render a refusal in the family's format (the HTML page keeps the problem
+/// status and, for a rate limit, `Retry-After`).
+fn refusal(style: Style, err: AppError) -> Response {
     match style {
         Style::Problem => err.into_response(),
         Style::OAuth => OAuthError::from(err).into_response(),
         Style::Html => {
-            let mut res = crate::oidc::authorize::error_page(
-                StatusCode::TOO_MANY_REQUESTS,
-                "slow_down",
-                &format!("Too many requests; try again in {retry_after_secs} seconds."),
-            );
-            if let Ok(v) = HeaderValue::from_str(&retry_after_secs.to_string()) {
+            let status = err.status();
+            let (code, text) = match &err {
+                AppError::RateLimited { retry_after_secs } => (
+                    "slow_down",
+                    format!("Too many requests; try again in {retry_after_secs} seconds."),
+                ),
+                AppError::Forbidden(m) => ("access_denied", m.clone()),
+                other => ("temporarily_unavailable", other.to_string()),
+            };
+            let mut res = crate::oidc::authorize::error_page(status, code, &text);
+            if let AppError::RateLimited { retry_after_secs } = err
+                && let Ok(v) = HeaderValue::from_str(&retry_after_secs.to_string())
+            {
                 res.headers_mut().insert(header::RETRY_AFTER, v);
             }
             res

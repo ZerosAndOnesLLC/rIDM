@@ -2,12 +2,14 @@
 //! The device polls `/token` with `grant_type=urn:ietf:params:oauth:grant-type:device_code`
 //! (see `token.rs`) while the user approves on the `/device/` page.
 
-use axum::extract::State;
+use std::net::{IpAddr, SocketAddr};
+
+use axum::extract::{ConnectInfo, State};
 use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::{IntoResponse, Response};
 
 use crate::error::{OAuthError, OAuthErrorCode};
-use crate::middleware::TenantCtx;
+use crate::middleware::{TenantCtx, client_ip_addr};
 use crate::models::grants;
 use crate::oidc::authorize::RawParams;
 use crate::oidc::client_auth;
@@ -25,10 +27,12 @@ pub fn router() -> axum::Router<AppState> {
 pub async fn device_authorization(
     State(state): State<AppState>,
     tenant: TenantCtx,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     body: String,
 ) -> Response {
-    let mut res = match handle(&state, &tenant, &headers, &body).await {
+    let ip = client_ip_addr(&state, &headers, Some(peer));
+    let mut res = match handle(&state, &tenant, &headers, &body, ip).await {
         Ok(v) => axum::Json(v).into_response(),
         Err(e) => e.into_response(),
     };
@@ -42,11 +46,13 @@ async fn handle(
     tenant: &TenantCtx,
     headers: &HeaderMap,
     body: &str,
+    ip: Option<IpAddr>,
 ) -> Result<DeviceAuthorization, OAuthError> {
     let params = RawParams::parse(body);
     let one = |n: &str| params.one(n).map_err(OAuthError::invalid_request);
     let endpoint = format!("{}/device_authorization", tenant.issuer(state));
-    let (client, _) = client_auth::authenticate(state, tenant, headers, &params, &endpoint).await?;
+    let (client, _) =
+        client_auth::authenticate(state, tenant, headers, &params, &endpoint, ip).await?;
     if !client.allows_grant(grants::DEVICE_CODE) {
         return Err(OAuthError::new(
             OAuthErrorCode::UnauthorizedClient,

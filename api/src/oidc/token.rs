@@ -7,8 +7,10 @@
 
 use std::sync::Arc;
 
+use std::net::{IpAddr, SocketAddr};
+
 use axum::Router;
-use axum::extract::State;
+use axum::extract::{ConnectInfo, State};
 use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
@@ -22,7 +24,7 @@ use uuid::Uuid;
 
 use crate::cache::keys as cache_keys;
 use crate::error::{AppError, OAuthError, OAuthErrorCode};
-use crate::middleware::TenantCtx;
+use crate::middleware::{TenantCtx, client_ip_addr};
 use crate::models::{ClaimMapper, Client, Group, Role, Tenant, User, grants};
 use crate::oidc::authorize::RawParams;
 use crate::oidc::{client_auth, pkce};
@@ -59,9 +61,11 @@ fn no_store(mut res: Response) -> Response {
 async fn token(
     State(state): State<AppState>,
     tenant: TenantCtx,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     body: String,
 ) -> Response {
+    let ip = client_ip_addr(&state, &headers, Some(peer));
     let is_form = headers
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
@@ -73,7 +77,7 @@ async fn token(
         );
     }
     let params = RawParams::parse(&body);
-    match handle(&state, &tenant, &headers, &params).await {
+    match handle(&state, &tenant, &headers, &params, ip).await {
         Ok(res) => no_store(axum::Json(res).into_response()),
         Err(e) => no_store(e.into_response()),
     }
@@ -84,11 +88,12 @@ async fn handle(
     tenant: &TenantCtx,
     headers: &HeaderMap,
     params: &RawParams,
+    ip: Option<IpAddr>,
 ) -> Result<TokenResponse, OAuthError> {
     let one = |n: &str| params.one(n).map_err(OAuthError::invalid_request);
     let token_endpoint = format!("{}/token", tenant.issuer(state));
     let (client, _method) =
-        client_auth::authenticate(state, tenant, headers, params, &token_endpoint).await?;
+        client_auth::authenticate(state, tenant, headers, params, &token_endpoint, ip).await?;
     let grant =
         one("grant_type")?.ok_or_else(|| OAuthError::invalid_request("grant_type is required"))?;
     if !client.allows_grant(grant) {

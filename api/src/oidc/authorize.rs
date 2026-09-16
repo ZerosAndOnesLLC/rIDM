@@ -10,8 +10,10 @@
 //! a redirect into the UI with a login flow (authentication or consent
 //! needed), or an error.
 
+use std::net::{IpAddr, SocketAddr};
+
 use axum::Router;
-use axum::extract::{RawQuery, State};
+use axum::extract::{ConnectInfo, RawQuery, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::get;
@@ -21,13 +23,13 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::error::{AppError, OAuthError, OAuthErrorCode};
-use crate::middleware::TenantCtx;
+use crate::middleware::{TenantCtx, client_ip_addr};
 use crate::models::{Client, ClientStatus, grants};
 use crate::oidc::{pkce, redirect_uri};
 use crate::services::auth_codes::{self, AuthCode};
 use crate::services::login_flows::{self, AuthRequest, FlowStage, LoginFlow, ResponseMode};
 use crate::services::sessions::{self, SsoSession};
-use crate::services::{clients, consents, flows, scopes};
+use crate::services::{clients, consents, flows, ip_rules, scopes};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -74,16 +76,19 @@ impl RawParams {
 async fn authorize_get(
     State(state): State<AppState>,
     tenant: TenantCtx,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     RawQuery(raw): RawQuery,
 ) -> Response {
     let params = RawParams::parse(raw.as_deref().unwrap_or_default());
-    handle(&state, &tenant, &headers, params).await
+    let ip = client_ip_addr(&state, &headers, Some(peer));
+    handle(&state, &tenant, &headers, params, ip).await
 }
 
 async fn authorize_post(
     State(state): State<AppState>,
     tenant: TenantCtx,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     body: String,
 ) -> Response {
@@ -99,7 +104,8 @@ async fn authorize_post(
         );
     }
     let params = RawParams::parse(&body);
-    handle(&state, &tenant, &headers, params).await
+    let ip = client_ip_addr(&state, &headers, Some(peer));
+    handle(&state, &tenant, &headers, params, ip).await
 }
 
 /// How an error must be delivered.
@@ -135,6 +141,7 @@ async fn handle(
     tenant: &TenantCtx,
     headers: &HeaderMap,
     params: RawParams,
+    ip: Option<IpAddr>,
 ) -> Response {
     // Pushed request: `client_id` + `request_uri` only (RFC 9126 §4).
     if let Ok(Some(uri)) = params.one("request_uri")
@@ -142,7 +149,7 @@ async fn handle(
     {
         return match crate::oidc::par::take(state, tenant, &params, uri).await {
             Ok((client, request)) => {
-                finish_decision(state, tenant, headers, Validated { client, request }).await
+                finish_decision(state, tenant, headers, Validated { client, request }, ip).await
             }
             Err(Failure::Page(code, desc)) => error_page(StatusCode::BAD_REQUEST, code, &desc),
             Err(Failure::Internal(e)) => e.into_response(),
@@ -186,7 +193,7 @@ async fn handle(
     )
     .await
     {
-        Ok(v) => finish_decision(state, tenant, headers, v).await,
+        Ok(v) => finish_decision(state, tenant, headers, v, ip).await,
         Err(Failure::Redirect(e)) => {
             error_redirect(
                 state,
@@ -219,7 +226,13 @@ async fn finish_decision(
     tenant: &TenantCtx,
     headers: &HeaderMap,
     v: Validated,
+    ip: Option<IpAddr>,
 ) -> Response {
+    // The client's own IP rules (the tenant's were checked by the guard). A
+    // refused address sees a page rather than a redirect to the client.
+    if let Err(e) = ip_rules::require_client(state, tenant.id(), v.client.id, ip).await {
+        return error_page(e.status(), "access_denied", &e.to_string());
+    }
     let client = v.client.clone();
     let redirect = v.request.redirect_uri.clone();
     let mode = v.request.response_mode;

@@ -196,6 +196,21 @@ fails open with a warning. The admin console edits the policy under Settings →
 limits; the defaults (per minute: 600 token, 1200 per client, 300 authorize, 600 flow,
 no tenant total) are meant for a busy office behind one NAT address.
 
+#### IP rules
+
+IP rules (`/admin/tenants/{slug}/ip-rules`, console `/console/ip-rules/`) form two scopes:
+tenant-wide and per client. Within a scope the most specific matching network decides;
+an address matching no rule passes unless the scope holds any `allow` rule, in which
+case the scope is an allow list and everything else is refused. Both scopes must pass.
+The tenant scope is checked by the request guard on the same endpoint families the
+rate limits cover, before anything else runs; the client scope once the client is known,
+at `/authorize` (a page, never a redirect to the client) and at every
+client-authenticated endpoint (`access_denied`, before the secret is examined). The flow
+API answers `403` as `application/problem+json`. Rules are cached per tenant and take
+effect the moment they change; if the rules cannot be read the request is refused, not
+waved through. The address is resolved like the rate limiter's, so behind a proxy set
+`TRUSTED_PROXIES` or every client appears as the proxy.
+
 Every response carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
 `Referrer-Policy: no-referrer` and a `Content-Security-Policy` that lets nothing load
 from or frame an API response (`frame-ancestors 'none'` alone under `/docs`, which
@@ -482,7 +497,7 @@ pagination with `?cursor=&limit=`):
 | `GET/POST /admin/tenants/{slug}/webhooks`, `GET/PATCH/DELETE .../{id}` | `ridm:webhooks:read` / `write` | `{name, url, events, enabled?, headers?, max_attempts?}`; `events` are exact names, prefixes (`user.*`) or `*`; the signing `secret` is returned once on create |
 | `POST .../webhooks/{id}/secret`, `POST .../webhooks/{id}/test` | `ridm:webhooks:write` | rotate the secret (shown once); deliver a `webhook.test` event now and report the attempt |
 | `GET .../webhooks/{id}/deliveries?status=&limit=`, `GET .../deliveries/{id}`, `POST .../deliveries/{id}/redeliver` | read / read / write | delivery log with status, attempts, last status code, error and a response snippet; redeliver requeues and attempts at once |
-| `GET/POST /admin/tenants/{slug}/ip-rules`, `GET/PATCH/DELETE .../{id}` | `ridm:tenants:read` / `write` | `{cidr, action?: allow|deny, client_id?, description?}`; networks are normalized; `?client_id=` or `?tenant_wide=true`; enforced from Phase 9.2 |
+| `GET/POST /admin/tenants/{slug}/ip-rules`, `GET/PATCH/DELETE .../{id}` | `ridm:tenants:read` / `write` | `{cidr, action?: allow|deny, client_id?, description?}`; networks are normalized; `?client_id=` or `?tenant_wide=true`; in force at once (see [IP rules](#ip-rules)) |
 | `GET/POST /admin/tenants/{slug}/identity-providers`, `GET/PATCH/DELETE .../{idp}` (id or alias), `GET .../presets`, `POST .../discover` | `ridm:idps:read` / `write` | upstream OpenID Connect and OAuth 2.0 providers: a `preset` (`google`, `microsoft`, `github`, `apple`, `gitlab`) fills in protocol, endpoints, scopes and mappers; an OIDC provider's endpoints are discovered from its `issuer` when left out; the `client_secret` is stored encrypted and never returned (`client_secret_set`), `null` clears it; `link_policy` (`verified_email`, `explicit`, `always_new`), `trust_email`, `mappers` (`subject`, `username`, `email`, `email_verified` claim names and `attributes` → claim), `hidden`, `sort_order`; every answer carries the `callback_url` to register upstream |
 | `GET /admin/tenants/{slug}/users/{user}/identities`, `DELETE .../identities/{idp_id}` | `ridm:users:read` / `write` | the upstream identities linked to a user, and unlinking one |
 | `GET /admin/tenants/{slug}/users/{user}/pats`, `DELETE .../pats/{token_id}` | `ridm:users:read` / `write` | a user's personal access tokens (metadata) and revoking one |
@@ -716,8 +731,7 @@ older ones) and can re-encrypt pending rows. **Audit log** (`/console/audit/`): 
 tenant's chain or, for global administrators, the global one; filters by event, time
 window, actor, subject and user; newer/older paging; expandable rows with the payload
 and hashes; JSON and CSV export; chain verification. **IP rules** (`/console/ip-rules/`):
-allow and deny networks per tenant or client, edited in place (stored now, enforced from
-Phase 9.2). **Webhooks** (`/console/webhooks/`): create (signing secret shown once),
+allow and deny networks per tenant or client, edited in place and in force at once. **Webhooks** (`/console/webhooks/`): create (signing secret shown once),
 events as exact names, prefixes or `*`, static headers, attempt limit, enable/disable,
 rotate the secret, send a test ping, and the delivery log with status filter, details
 and redelivery. **Messaging** (`/console/messaging/`): email provider (SMTP or HTTP

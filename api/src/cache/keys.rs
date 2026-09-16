@@ -253,3 +253,8 @@ pub fn rate_limit(bucket: &str) -> String {
 pub fn client_origins(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:client_origins")
 }
+
+/// Every IP rule of a tenant (tenant-wide and per client), evicted on any rule change.
+pub fn ip_rules(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:ip_rules")
+}

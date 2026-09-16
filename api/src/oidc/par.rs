@@ -4,8 +4,10 @@
 
 use std::sync::Arc;
 
+use std::net::{IpAddr, SocketAddr};
+
 use axum::Router;
-use axum::extract::State;
+use axum::extract::{ConnectInfo, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
@@ -15,7 +17,7 @@ use uuid::Uuid;
 
 use crate::cache::keys;
 use crate::error::{AppError, OAuthError, OAuthErrorCode};
-use crate::middleware::TenantCtx;
+use crate::middleware::{TenantCtx, client_ip_addr};
 use crate::models::Client;
 use crate::oidc::authorize::{self, Failure, RawParams};
 use crate::oidc::{client_auth, jar};
@@ -38,11 +40,13 @@ struct Stored {
 async fn par(
     State(state): State<AppState>,
     tenant: TenantCtx,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     body: String,
 ) -> Response {
+    let ip = client_ip_addr(&state, &headers, Some(peer));
     let params = RawParams::parse(&body);
-    let mut res = match handle(&state, &tenant, &headers, &params).await {
+    let mut res = match handle(&state, &tenant, &headers, &params, ip).await {
         Ok((request_uri, expires_in)) => (
             StatusCode::CREATED,
             axum::Json(serde_json::json!({"request_uri": request_uri, "expires_in": expires_in})),
@@ -60,10 +64,11 @@ async fn handle(
     tenant: &TenantCtx,
     headers: &HeaderMap,
     params: &RawParams,
+    ip: Option<IpAddr>,
 ) -> Result<(String, u64), OAuthError> {
     let token_endpoint = format!("{}/token", tenant.issuer(state));
     let (client, _) =
-        client_auth::authenticate(state, tenant, headers, params, &token_endpoint).await?;
+        client_auth::authenticate(state, tenant, headers, params, &token_endpoint, ip).await?;
     if params.one("request_uri").ok().flatten().is_some() {
         return Err(OAuthError::invalid_request(
             "request_uri is not allowed in a pushed request",

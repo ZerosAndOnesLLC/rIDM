@@ -3,6 +3,7 @@
 //! The method used must be the one registered for the client; anything else
 //! is `invalid_client`.
 
+use std::net::IpAddr;
 use std::sync::Arc;
 
 use axum::http::{HeaderMap, header};
@@ -16,7 +17,7 @@ use crate::error::{OAuthError, OAuthErrorCode};
 use crate::middleware::{TenantCtx, cors};
 use crate::models::{Client, ClientStatus, TokenEndpointAuthMethod};
 use crate::oidc::authorize::RawParams;
-use crate::services::{client_keys, clients, rate_limit};
+use crate::services::{client_keys, clients, ip_rules, rate_limit};
 use crate::state::AppState;
 
 pub const JWT_BEARER_ASSERTION: &str = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
@@ -63,13 +64,15 @@ fn parse_basic(headers: &HeaderMap) -> Result<Option<(String, String)>, OAuthErr
 }
 
 /// Authenticate the client for this request. Returns the client and the
-/// method that was used.
+/// method that was used. `ip` is the client address (`client_ip_addr`) for
+/// the client-scoped IP rules and the per-client ceiling.
 pub async fn authenticate(
     state: &AppState,
     tenant: &TenantCtx,
     headers: &HeaderMap,
     params: &RawParams,
     token_endpoint: &str,
+    ip: Option<IpAddr>,
 ) -> Result<(Arc<Client>, TokenEndpointAuthMethod), OAuthError> {
     let one = |n: &str| params.one(n).map_err(OAuthError::invalid_request);
     let basic = parse_basic(headers)?;
@@ -155,6 +158,9 @@ pub async fn authenticate(
     if client.status != ClientStatus::Active {
         return Err(invalid_client("client is disabled"));
     }
+    ip_rules::require_client(state, tenant.id(), client.id, ip)
+        .await
+        .map_err(OAuthError::from)?;
     // Per-client ceiling, counted before the credentials are checked so that
     // guessing a secret is bounded as well.
     let decision = rate_limit::hit_client(state, tenant.tenant.as_ref(), client.id).await;

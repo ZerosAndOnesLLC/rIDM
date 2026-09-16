@@ -2,8 +2,8 @@ mod account;
 mod admin;
 mod client_ip;
 pub mod cors;
+pub mod guard;
 mod json;
-pub mod rate_limit;
 pub mod security_headers;
 mod tenant;
 

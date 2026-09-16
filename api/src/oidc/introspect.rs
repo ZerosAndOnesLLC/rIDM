@@ -2,8 +2,10 @@
 //! Requires an authenticated (confidential) client. Inactive, unknown, or
 //! foreign tokens all yield `{"active": false}`.
 
+use std::net::{IpAddr, SocketAddr};
+
 use axum::Router;
-use axum::extract::State;
+use axum::extract::{ConnectInfo, State};
 use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
@@ -12,7 +14,7 @@ use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 
 use crate::error::{OAuthError, OAuthErrorCode};
-use crate::middleware::TenantCtx;
+use crate::middleware::{TenantCtx, client_ip_addr};
 use crate::oidc::authorize::RawParams;
 use crate::oidc::client_auth;
 use crate::services::tokens::{self, VerifyOptions};
@@ -25,11 +27,13 @@ pub fn router() -> Router<AppState> {
 async fn introspect(
     State(state): State<AppState>,
     tenant: TenantCtx,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     body: String,
 ) -> Response {
+    let ip = client_ip_addr(&state, &headers, Some(peer));
     let params = RawParams::parse(&body);
-    let mut res = match handle(&state, &tenant, &headers, &params).await {
+    let mut res = match handle(&state, &tenant, &headers, &params, ip).await {
         Ok(v) => axum::Json(v).into_response(),
         Err(e) => e.into_response(),
     };
@@ -43,10 +47,11 @@ async fn handle(
     tenant: &TenantCtx,
     headers: &HeaderMap,
     params: &RawParams,
+    ip: Option<IpAddr>,
 ) -> Result<Value, OAuthError> {
     let token_endpoint = format!("{}/token", tenant.issuer(state));
     let (client, method) =
-        client_auth::authenticate(state, tenant, headers, params, &token_endpoint).await?;
+        client_auth::authenticate(state, tenant, headers, params, &token_endpoint, ip).await?;
     if method == crate::models::TokenEndpointAuthMethod::None {
         return Err(OAuthError::new(
             OAuthErrorCode::InvalidClient,

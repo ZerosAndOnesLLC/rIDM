@@ -335,7 +335,7 @@ Operations
 
 ### Phase 9 — Scale, security, operability
 - [x] 9.1 Rate limiting (per IP / client / tenant) on `/token`, `/authorize`, flow endpoints; security headers + CSP for UI; strict CORS from client config. (Fixed windows in Valkey via one Lua round trip, `settings.rate_limits` per tenant plus `RATE_LIMIT_IP_PER_MINUTE`; `RateLimit-*` and `Retry-After` headers; per-family refusal formats; per-client bucket in client auth; hardening headers + HSTS layer; hash-based CSP meta from `ui/scripts/csp.mjs`; one CORS layer with UI/own origins, public documents, cached client-origin union, and the per-client `Origin` check at client-authenticated endpoints. 9.3 must add custom-domain origins to `own_origins`/the UI policy.)
-- [ ] 9.2 IP allow/deny rules enforcement per tenant/client.
+- [x] 9.2 IP allow/deny rules enforcement per tenant/client. (`services/ip_rules::{cached, scope_allows, tenant_allows, require_client}`: longest prefix wins, allow rules make a scope an allow list, both scopes must pass; the tenant scope in `middleware/guard.rs` ahead of the rate limit on the token/authorize/flow families, the client scope in `client_auth::authenticate` and `authorize::finish_decision`; cache `ridm:t:{id}:ip_rules` evicted on every rule write; unreadable rules refuse.)
 - [ ] 9.3 Custom domains per tenant (host → tenant map, issuer override).
 - [ ] 9.4 Token exchange (RFC 8693), DPoP (RFC 9449).
 - [ ] 9.5 Webhooks delivery engine (signed payloads, retry with backoff, dead-letter) driven by the event bus.

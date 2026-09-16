@@ -66,7 +66,7 @@ export function IpRulesPage({ tenant }: { tenant: string }) {
   const names = clients.data ?? {};
   return (
     <>
-      <PageHeader title="IP rules" sub="Allow and deny networks for the whole tenant or one client. Enforcement arrives with Phase 9.2; the rules are stored now." />
+      <PageHeader title="IP rules" sub="Allow and deny networks for the whole tenant or one client, enforced on sign-in, authorization and token requests. The most specific matching network decides; once a scope has an allow rule, every other address is refused." />
       <ErrorLine error={add.error ?? patch.error ?? remove.error} />
       {rules.isPending ? (
         <Spinner label="Loading…" />

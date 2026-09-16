@@ -22,7 +22,7 @@ use axum::Router;
 use axum::middleware::from_fn_with_state;
 use tower_http::trace::TraceLayer;
 
-use crate::middleware::rate_limit::{Limiter, Style, limit};
+use crate::middleware::guard::{Guard, Style, guard};
 use crate::middleware::{cors, security_headers};
 use crate::services::rate_limit::Category;
 use crate::state::AppState;
@@ -50,12 +50,13 @@ pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
             }),
         )
     };
-    // Each endpoint family gets its own ceiling and refusal format; the layer
-    // sits on the family's router so its path parameters are already known.
+    // Each endpoint family gets its own guard (tenant IP rules, then its rate
+    // ceiling) and refusal format; the layer sits on the family's router so
+    // its path parameters are already known.
     let limited = |router: Router<AppState>, category: Category, style: Style| {
         router.layer(from_fn_with_state(
-            Limiter::new(state.clone(), category, style),
-            limit,
+            Guard::new(state.clone(), category, style),
+            guard,
         ))
     };
     let flows = Router::new()
