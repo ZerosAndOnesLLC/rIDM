@@ -137,7 +137,7 @@
   "device.description": "Enter the code shown on your device.",
   "device.approve": "Approve",
   "device.approved": "Device connected. You can return to your device.",
-  "device.denied": "The request was denied.",
+  "device.denied": "The request was denied. The device will not be connected.",
   "error.title": "Something went wrong",
   "error.description": "The request could not be completed.",
   "error.try_again": "Try again",
@@ -154,7 +154,6 @@
   "passkey.unsupported": "This browser does not support passkeys.",
   "passkey.already_registered": "This passkey is already registered.",
   "passkey.failed": "The passkey could not be used. Try again.",
-  "device.unavailable": "Device sign-in isn't available for this service yet.",
   "error.no_tenant": "This link is missing the service it belongs to.",
   "error.unknown_tenant": "This service does not exist.",
   "register.disabled": "This service doesn't allow creating accounts here.",
@@ -300,5 +299,6 @@
   "account.identity_unlink": "Unlink",
   "account.identity_unlink_title": "Unlink {name}?",
   "account.identity_unlink_hint": "You will no longer be able to sign in with it. Make sure you have another way to sign in.",
-  "account.identity_link": "Link {name}"
+  "account.identity_link": "Link {name}",
+  "device.invalid_code": "That code was not recognised. Check the code on your device and try again."
 }

@@ -222,3 +222,18 @@ pub fn idp_jwks(tenant_id: Uuid, idp_id: Uuid) -> String {
 pub fn identity_providers(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:idps")
 }
+
+/// A pending device authorization (RFC 8628), by the device code's hash.
+pub fn device_code(tenant_id: Uuid, device_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:device:{device_hash}")
+}
+
+/// The user code shown on the device → the device code's hash.
+pub fn device_user_code(tenant_id: Uuid, user_code: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:device:user:{user_code}")
+}
+
+/// Wrong user-code guesses per address.
+pub fn device_guesses(tenant_id: Uuid, ip: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:device:guesses:{ip}")
+}

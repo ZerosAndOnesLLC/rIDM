@@ -225,6 +225,26 @@ returns. Contact-change codes follow the passwordless rules: hashed, single-use,
 minutes, five attempts, three sends per ten minutes, and a repeat inside twenty seconds
 reuses the pending code.
 
+### Device authorization grant
+
+Input-constrained devices (TVs, CLIs, kiosks) sign users in with the device
+authorization grant (RFC 8628). A client of type `device` (or any client allowed the
+`urn:ietf:params:oauth:grant-type:device_code` grant) posts `client_id` and `scope`
+(plus `resource` indicators) to `/t/{slug}/device_authorization` and receives a
+`device_code`, a `user_code` (`XXXX-XXXX`, letters that are hard to confuse), the
+`verification_uri` (the `/device/` page), `verification_uri_complete`, `expires_in`
+(ten minutes) and `interval` (five seconds). The user enters the code on `/device/`;
+the API turns it into a login flow for the device's client, so sign-in, second step,
+profile completion, terms and consent apply as for any application, and the flow's
+finish approves the device code and returns the browser to the device page (`done=1`;
+a denial or cancellation returns with `error=access_denied`). The device polls `/token`
+with the grant and its `device_code`: `authorization_pending` until the user decides,
+`slow_down` when it polls faster than the interval (which then grows by five seconds),
+`access_denied`, `expired_token`, then the tokens (an ID token with the session's
+`amr`, `acr` and `auth_time`, a refresh token when the client may) exactly once. Wrong
+user codes are limited to ten per address per ten minutes. Pending codes live in Valkey;
+every code leaves a `device_codes` audit row (pending, approved, denied, consumed).
+
 ### Identity brokering
 
 Users may sign in through an upstream OpenID Connect or OAuth 2.0 provider configured per

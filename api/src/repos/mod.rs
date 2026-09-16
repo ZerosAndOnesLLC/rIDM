@@ -3,6 +3,7 @@ pub mod claim_mappers;
 pub mod clients;
 pub mod consents;
 pub mod credentials;
+pub mod device_codes;
 pub mod federated_identities;
 pub mod groups;
 pub mod identity_providers;

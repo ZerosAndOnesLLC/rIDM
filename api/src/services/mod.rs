@@ -18,6 +18,7 @@ pub mod contact_changes;
 pub mod credential_secrets;
 pub mod dcr;
 pub mod denylist;
+pub mod device_codes;
 pub mod flows;
 pub mod groups;
 pub mod identity_providers;

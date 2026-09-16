@@ -35,6 +35,10 @@ pub struct AuthRequest {
     pub claims: Option<serde_json::Value>,
     /// Whether the client is exempt from the consent screen.
     pub skip_consent: bool,
+    /// A device authorization (RFC 8628) being approved: the hash of the
+    /// device code the flow's finish approves instead of issuing a code.
+    #[serde(default)]
+    pub device_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
