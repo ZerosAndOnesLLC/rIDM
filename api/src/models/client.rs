@@ -156,6 +156,9 @@ pub struct Client {
     pub initiate_login_uri: Option<String>,
     pub backchannel_logout_uri: Option<String>,
     pub frontchannel_logout_uri: Option<String>,
+    /// Every access token must be sender-constrained with a DPoP proof
+    /// (RFC 9449 §5.2 `dpop_bound_access_tokens`).
+    pub dpop_bound_access_tokens: bool,
     pub service_account_user_id: Option<Uuid>,
     #[serde(skip)]
     pub registration_access_token_hash: Option<Vec<u8>>,
@@ -221,4 +224,5 @@ pub struct NewClient {
     pub initiate_login_uri: Option<String>,
     pub backchannel_logout_uri: Option<String>,
     pub frontchannel_logout_uri: Option<String>,
+    pub dpop_bound_access_tokens: Option<bool>,
 }

@@ -107,6 +107,7 @@ pub async fn ensure_builtin(
         refresh_token_ttl_secs: current.refresh_token_ttl_secs,
         id_token_ttl_secs: current.id_token_ttl_secs,
         cors_origins: current.cors_origins.clone(),
+        dpop_bound_access_tokens: Some(current.dpop_bound_access_tokens),
         ..want
     };
     let (client, _) =

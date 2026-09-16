@@ -17,6 +17,8 @@ pub struct RefreshToken {
     pub scopes: Vec<String>,
     pub audiences: Vec<String>,
     pub expires_at: DateTime<Utc>,
+    /// DPoP key thumbprint the token is bound to (public clients, RFC 9449 §5).
+    pub dpop_jkt: Option<String>,
     pub consumed_at: Option<DateTime<Utc>>,
     pub revoked_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,

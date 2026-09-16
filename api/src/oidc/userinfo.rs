@@ -2,7 +2,7 @@
 
 use axum::Router;
 use axum::extract::State;
-use axum::http::{HeaderMap, HeaderValue, header};
+use axum::http::{HeaderMap, HeaderValue, Method, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use serde_json::{Map, Value, json};
@@ -10,7 +10,7 @@ use serde_json::{Map, Value, json};
 use crate::middleware::TenantCtx;
 use crate::models::TokenKind;
 use crate::oidc::authorize::RawParams;
-use crate::oidc::bearer;
+use crate::oidc::{bearer, dpop};
 use crate::services::claims::{ClaimContext, apply_mappers, standard_claims};
 use crate::services::tokens::{self, TokenClient, VerifyOptions};
 use crate::services::{clients, groups, roles, users};
@@ -25,7 +25,7 @@ async fn userinfo_get(
     tenant: TenantCtx,
     headers: HeaderMap,
 ) -> Response {
-    handle(&state, &tenant, &headers, None).await
+    handle(&state, &tenant, &headers, Method::GET, None).await
 }
 
 async fn userinfo_post(
@@ -40,33 +40,53 @@ async fn userinfo_post(
         .ok()
         .flatten()
         .map(str::to_string);
-    handle(&state, &tenant, &headers, body_token.as_deref()).await
+    handle(
+        &state,
+        &tenant,
+        &headers,
+        Method::POST,
+        body_token.as_deref(),
+    )
+    .await
 }
 
 async fn handle(
     state: &AppState,
     tenant: &TenantCtx,
     headers: &HeaderMap,
+    method: Method,
     body_token: Option<&str>,
 ) -> Response {
-    let Some(token) = bearer::extract(headers, body_token) else {
+    let Some((scheme, token)) = bearer::extract_with_scheme(headers, body_token) else {
         return bearer::error(
             axum::http::StatusCode::UNAUTHORIZED,
             "invalid_request",
             "bearer token required",
         );
     };
-    match build(state, tenant, &token).await {
-        Ok(claims) => {
-            let mut res = axum::Json(Value::Object(claims)).into_response();
-            res.headers_mut()
-                .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-            res
-        }
-        Err(Reject::Token(d)) => bearer::invalid_token(d),
-        Err(Reject::Scope(d)) => bearer::insufficient_scope(d),
-        Err(Reject::Internal(e)) => e.into_response(),
+    let built = match build(state, tenant, &token).await {
+        Ok(b) => b,
+        Err(Reject::Token(d)) => return bearer::invalid_token(d),
+        Err(Reject::Scope(d)) => return bearer::insufficient_scope(d),
+        Err(Reject::Internal(e)) => return e.into_response(),
+    };
+    // A DPoP-bound token must arrive under the DPoP scheme with a proof
+    // from its key that names this very token.
+    let htu = dpop::htu_candidates(state, &tenant.tenant, "/userinfo");
+    let presented = dpop::Presented {
+        scheme,
+        token: &token,
+        claims: &built.token_claims,
+    };
+    if let Err(d) =
+        dpop::enforce_binding(state, &tenant.tenant, presented, headers, &method, &htu).await
+    {
+        return bearer::dpop_invalid_token(&d);
     }
+    let mut res = axum::Json(Value::Object(built.userinfo)).into_response();
+    res.headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    res
 }
 
 enum Reject {
@@ -81,11 +101,13 @@ impl From<crate::error::AppError> for Reject {
     }
 }
 
-async fn build(
-    state: &AppState,
-    tenant: &TenantCtx,
-    token: &str,
-) -> Result<Map<String, Value>, Reject> {
+/// The userinfo document plus the verified token claims it was built from.
+struct Built {
+    token_claims: Map<String, Value>,
+    userinfo: Map<String, Value>,
+}
+
+async fn build(state: &AppState, tenant: &TenantCtx, token: &str) -> Result<Built, Reject> {
     let claims = tokens::verify(
         state,
         &tenant.tenant,
@@ -136,5 +158,8 @@ async fn build(
         "sub".into(),
         json!(tokens::subject_for(&tenant.tenant, &tc, &user)),
     );
-    Ok(out)
+    Ok(Built {
+        token_claims: claims,
+        userinfo: out,
+    })
 }

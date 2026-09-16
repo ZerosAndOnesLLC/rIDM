@@ -55,6 +55,7 @@ pub struct Metadata {
     pub frontchannel_logout_uri: Option<String>,
     pub initiate_login_uri: Option<String>,
     pub require_pushed_authorization_requests: Option<bool>,
+    pub dpop_bound_access_tokens: Option<bool>,
     pub software_id: Option<String>,
     pub software_version: Option<String>,
 }
@@ -204,6 +205,7 @@ pub fn to_new_client(m: &Metadata, policy_grants: &[String]) -> Result<NewClient
         initiate_login_uri: m.initiate_login_uri.clone(),
         backchannel_logout_uri: m.backchannel_logout_uri.clone(),
         frontchannel_logout_uri: m.frontchannel_logout_uri.clone(),
+        dpop_bound_access_tokens: m.dpop_bound_access_tokens,
     })
 }
 
@@ -222,6 +224,7 @@ pub fn to_metadata(state: &AppState, tenant: &TenantCtx, client: &Client) -> Val
         "scope": client.allowed_scopes.join(" "),
         "registration_client_uri": format!("{}/register/{}", tenant.issuer(state), client.client_id),
         "client_id_issued_at": client.created_at.timestamp(),
+        "dpop_bound_access_tokens": client.dpop_bound_access_tokens,
     });
     for (k, val) in [
         ("client_uri", &client.client_uri),

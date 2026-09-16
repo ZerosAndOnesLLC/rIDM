@@ -2593,6 +2593,11 @@ export interface components {
             /** Format: date-time */
             created_at: string;
             description?: string | null;
+            /**
+             * @description Every access token must be sender-constrained with a DPoP proof
+             *     (RFC 9449 §5.2 `dpop_bound_access_tokens`).
+             */
+            dpop_bound_access_tokens: boolean;
             frontchannel_logout_uri?: string | null;
             /** Format: uuid */
             id: string;
@@ -3478,6 +3483,8 @@ export interface components {
             cors_origins: string[];
             /** @default null */
             description: string | null;
+            /** @default null */
+            dpop_bound_access_tokens: boolean | null;
             /** @default null */
             frontchannel_logout_uri: string | null;
             /** @default null */

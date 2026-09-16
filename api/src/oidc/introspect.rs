@@ -151,7 +151,7 @@ async fn handle(
     }
     let mut out = json!({
         "active": true,
-        "token_type": "Bearer",
+        "token_type": if claims.get("cnf").is_some() { "DPoP" } else { "Bearer" },
         "typ": "at+jwt",
     });
     for k in [
@@ -168,6 +168,8 @@ async fn handle(
         "tid",
         "roles",
         "permissions",
+        "cnf",
+        "act",
     ] {
         if let Some(v) = claims.get(k) {
             out[k] = v.clone();

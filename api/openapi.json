@@ -16770,6 +16770,7 @@
           "require_pkce",
           "require_consent",
           "cors_origins",
+          "dpop_bound_access_tokens",
           "status",
           "created_at",
           "updated_at"
@@ -16836,6 +16837,10 @@
               "string",
               "null"
             ]
+          },
+          "dpop_bound_access_tokens": {
+            "type": "boolean",
+            "description": "Every access token must be sender-constrained with a DPoP proof\n(RFC 9449 §5.2 `dpop_bound_access_tokens`)."
           },
           "frontchannel_logout_uri": {
             "type": [
@@ -19411,6 +19416,13 @@
           "description": {
             "type": [
               "string",
+              "null"
+            ],
+            "default": null
+          },
+          "dpop_bound_access_tokens": {
+            "type": [
+              "boolean",
               "null"
             ],
             "default": null

@@ -175,6 +175,35 @@ in [`.env.example`](.env.example). The essentials:
 Health probes: `GET /healthz` (liveness) and `GET /readyz` (database + cache).
 `GET /.well-known/security.txt` serves the vulnerability disclosure policy.
 
+### Token exchange and DPoP
+
+**Token exchange (RFC 8693)**, `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`
+at `/token`, lets a client allowed that grant trade an access token of the tenant
+(`subject_token`, type `access_token` or `jwt`) for one aimed at other audiences
+(`audience` and `resource`, resolved like every other audience request) and optionally
+narrowed in `scope` (never widened, never beyond the client's own scopes). The new token
+keeps the subject, session, `amr` and `acr`, never outlives the subject token, comes
+without a refresh token and reports `issued_token_type`. With an `actor_token` the
+result is a delegation: `act` names the acting party (`sub`, `client_id`) and nests
+the previous `act` on re-exchange. Revoked, expired or foreign subject tokens are
+`invalid_grant`; unsupported token types `invalid_request`.
+
+**DPoP (RFC 9449)** sender-constrains tokens to a client-held key. A `DPoP` header on a
+token request — a `dpop+jwt` signed with the embedded public key, naming the method,
+the URL, a fresh `jti` and `iat` — binds every token of the response to the key's
+thumbprint: the access token carries `cnf.jkt`, `token_type` is `DPoP`, introspection
+reports both, and a public client's refresh token is bound too (a later refresh needs
+a proof from the same key, and a wrong key leaves the token unspent). Proofs are
+one-time within a five-minute window (replays are refused), may be no more than five
+minutes old or thirty seconds in the future, must match the request method and URL
+(query ignored; the custom domain and the `/t/{slug}` form both count), and at
+resources must carry `ath`, the hash of the very token. A bound token presented as a
+plain bearer token, without a proof or with another key's proof is refused with a
+`DPoP` challenge (`WWW-Authenticate: DPoP algs=...`) by `/userinfo`, the account API
+and the admin API. Clients registered with `dpop_bound_access_tokens` (console: client
+detail, or the DCR metadata field) must always present a proof. Server-provided nonces
+and `dpop_jkt` at `/authorize` are not implemented.
+
 ### Custom domains
 
 A tenant can be served on its own host: set `settings.custom_domain` (console: Settings →

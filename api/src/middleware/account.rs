@@ -17,7 +17,9 @@ use ridm_core::events::Actor;
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
-use crate::middleware::admin::{AdminRejection, bearer, unverified_tenant_id};
+use crate::middleware::admin::{
+    AdminRejection, bearer_with_scheme, require_binding, unverified_tenant_id,
+};
 use crate::middleware::tenant::TenantCtx;
 use crate::models::{PAT_SCOPE_ACCOUNT, Tenant, User, UserStatus};
 use crate::services::account_console::ACCOUNT_AUDIENCE;
@@ -89,7 +91,8 @@ impl FromRequestParts<AppState> for AccountCtx {
         let path_tenant = TenantCtx::from_request_parts(parts, state)
             .await
             .map_err(AdminRejection::from)?;
-        let token = bearer(&parts.headers).ok_or_else(AdminRejection::missing)?;
+        let (scheme, token) =
+            bearer_with_scheme(&parts.headers).ok_or_else(AdminRejection::missing)?;
         if pats::looks_like_pat(&token) {
             // A personal access token with the `account` scope acts as the
             // user, without a session: nothing that needs a recent sign-in.
@@ -139,6 +142,7 @@ impl FromRequestParts<AppState> for AccountCtx {
         if tenant.id != path_tenant.id() {
             return Err(AppError::Forbidden("this token belongs to another tenant".into()).into());
         }
+        require_binding(state, &tenant, scheme, &token, &claims, parts).await?;
         let session_id = claims
             .get("sid")
             .and_then(serde_json::Value::as_str)

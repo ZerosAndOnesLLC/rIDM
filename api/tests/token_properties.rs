@@ -68,6 +68,8 @@ async fn jwt_verifier_rejects_malformed_forged_and_confused_tokens() {
             auth_time: None,
             amr: &[],
             acr: None,
+            cnf_jkt: None,
+            act: None,
         },
     )
     .await
@@ -158,6 +160,8 @@ async fn jwt_verifier_rejects_malformed_forged_and_confused_tokens() {
             auth_time: None,
             amr: &[],
             acr: None,
+            cnf_jkt: None,
+            act: None,
         },
     )
     .await

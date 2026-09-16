@@ -63,8 +63,8 @@ pub const CAPABILITIES: Capabilities = Capabilities {
     jarm: true,
     dcr: true,
     device: true,
-    token_exchange: false,
-    dpop: false,
+    token_exchange: true,
+    dpop: true,
 };
 
 pub const STANDARD_CLAIMS: [&str; 24] = [

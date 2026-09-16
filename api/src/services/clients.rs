@@ -267,6 +267,7 @@ pub fn resolve(
         initiate_login_uri: input.initiate_login_uri,
         backchannel_logout_uri: input.backchannel_logout_uri,
         frontchannel_logout_uri: input.frontchannel_logout_uri,
+        dpop_bound_access_tokens: input.dpop_bound_access_tokens.unwrap_or(false),
         service_account_user_id: None,
         registration_access_token_hash: None,
         status: ClientStatus::Active,

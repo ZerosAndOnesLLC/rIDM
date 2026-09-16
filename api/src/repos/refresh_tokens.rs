@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::models::RefreshToken;
 
 const COLUMNS: &str = "id, tenant_id, family_id, client_id, user_id, session_id, token_hash, scopes, \
-    audiences, expires_at, consumed_at, revoked_at, created_at";
+    audiences, expires_at, dpop_jkt, consumed_at, revoked_at, created_at";
 
 #[allow(clippy::too_many_arguments)]
 pub async fn insert<'e>(
@@ -22,12 +22,13 @@ pub async fn insert<'e>(
     scopes: &[String],
     audiences: &[String],
     expires_at: DateTime<Utc>,
+    dpop_jkt: Option<&str>,
 ) -> Result<RefreshToken, sqlx::Error> {
     sqlx::query_as::<_, RefreshToken>(
         "INSERT INTO refresh_tokens (id, tenant_id, family_id, client_id, user_id, session_id, \
-         token_hash, scopes, audiences, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) \
+         token_hash, scopes, audiences, expires_at, dpop_jkt) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) \
          RETURNING id, tenant_id, family_id, client_id, user_id, session_id, token_hash, scopes, \
-         audiences, expires_at, consumed_at, revoked_at, created_at",
+         audiences, expires_at, dpop_jkt, consumed_at, revoked_at, created_at",
     )
     .bind(id)
     .bind(tenant_id)
@@ -39,6 +40,7 @@ pub async fn insert<'e>(
     .bind(scopes)
     .bind(audiences)
     .bind(expires_at)
+    .bind(dpop_jkt)
     .fetch_one(exec)
     .await
 }

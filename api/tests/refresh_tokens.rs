@@ -56,6 +56,7 @@ fn req<'a>(
         scopes,
         audiences: &[],
         ttl,
+        dpop_jkt: None,
     }
 }
 
@@ -79,14 +80,14 @@ async fn rotation_chain_and_reuse_detection() {
     let family = first.record.family_id;
 
     // Rotate: new secret, same family, same absolute expiry, old one consumed.
-    let second = refresh_tokens::rotate(&app.state, tid, "app", &first.token)
+    let second = refresh_tokens::rotate(&app.state, tid, "app", &first.token, None)
         .await
         .unwrap();
     assert_ne!(*second.token, *first.token);
     assert_eq!(second.record.family_id, family);
     assert_eq!(second.record.expires_at, first.record.expires_at);
     assert_eq!(second.record.user_id, Some(uid));
-    let third = refresh_tokens::rotate(&app.state, tid, "app", &second.token)
+    let third = refresh_tokens::rotate(&app.state, tid, "app", &second.token, None)
         .await
         .unwrap();
     assert_eq!(
@@ -98,12 +99,12 @@ async fn rotation_chain_and_reuse_detection() {
     );
 
     // Replaying an already-consumed token: whole family revoked, including the live one.
-    let replay = refresh_tokens::rotate(&app.state, tid, "app", &first.token)
+    let replay = refresh_tokens::rotate(&app.state, tid, "app", &first.token, None)
         .await
         .unwrap_err();
     assert_eq!(replay.error, OAuthErrorCode::InvalidGrant);
     assert!(replay.error_description.unwrap().contains("reuse"));
-    let after = refresh_tokens::rotate(&app.state, tid, "app", &third.token)
+    let after = refresh_tokens::rotate(&app.state, tid, "app", &third.token, None)
         .await
         .unwrap_err();
     assert_eq!(after.error, OAuthErrorCode::InvalidGrant);
@@ -128,13 +129,13 @@ async fn client_binding_expiry_and_garbage() {
     )
     .await
     .unwrap();
-    let wrong = refresh_tokens::rotate(&app.state, tid, "app-b", &t.token)
+    let wrong = refresh_tokens::rotate(&app.state, tid, "app-b", &t.token, None)
         .await
         .unwrap_err();
     assert_eq!(wrong.error, OAuthErrorCode::InvalidGrant);
     // Not consumed by the failed attempt: the right client can still use it.
     assert!(
-        refresh_tokens::rotate(&app.state, tid, "app-a", &t.token)
+        refresh_tokens::rotate(&app.state, tid, "app-a", &t.token, None)
             .await
             .is_ok()
     );
@@ -147,7 +148,7 @@ async fn client_binding_expiry_and_garbage() {
     .await
     .unwrap();
     assert_eq!(
-        refresh_tokens::rotate(&app.state, tid, "app-a", &expired.token)
+        refresh_tokens::rotate(&app.state, tid, "app-a", &expired.token, None)
             .await
             .unwrap_err()
             .error,
@@ -156,7 +157,7 @@ async fn client_binding_expiry_and_garbage() {
 
     for garbage in ["", "rt_", "nope", &"rt_x".repeat(100)] {
         assert_eq!(
-            refresh_tokens::rotate(&app.state, tid, "app-a", garbage)
+            refresh_tokens::rotate(&app.state, tid, "app-a", garbage, None)
                 .await
                 .unwrap_err()
                 .error,
@@ -177,14 +178,14 @@ async fn client_binding_expiry_and_garbage() {
     .await
     .unwrap();
     assert_eq!(
-        refresh_tokens::rotate(&app.state, other.id, "app-a", &t2.token)
+        refresh_tokens::rotate(&app.state, other.id, "app-a", &t2.token, None)
             .await
             .unwrap_err()
             .error,
         OAuthErrorCode::InvalidGrant
     );
     assert!(
-        refresh_tokens::rotate(&app.state, tid, "app-a", &t2.token)
+        refresh_tokens::rotate(&app.state, tid, "app-a", &t2.token, None)
             .await
             .is_ok()
     );
@@ -236,7 +237,7 @@ async fn revocation_by_token_user_session_and_purge() {
         .await
         .unwrap();
     assert!(
-        refresh_tokens::rotate(&app.state, tid, "app", &a.token)
+        refresh_tokens::rotate(&app.state, tid, "app", &a.token, None)
             .await
             .is_ok()
     );
@@ -255,12 +256,12 @@ async fn revocation_by_token_user_session_and_purge() {
         1
     );
     assert!(
-        refresh_tokens::rotate(&app.state, tid, "app", &b.token)
+        refresh_tokens::rotate(&app.state, tid, "app", &b.token, None)
             .await
             .is_err()
     );
     assert!(
-        refresh_tokens::rotate(&app.state, tid, "other", &c.token)
+        refresh_tokens::rotate(&app.state, tid, "other", &c.token, None)
             .await
             .is_ok(),
         "other client untouched"
@@ -311,6 +312,8 @@ async fn jti_denylist_revokes_access_tokens_before_expiry() {
             auth_time: None,
             amr: &[],
             acr: None,
+            cnf_jkt: None,
+            act: None,
         },
     )
     .await

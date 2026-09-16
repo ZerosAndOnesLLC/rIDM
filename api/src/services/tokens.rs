@@ -145,6 +145,10 @@ pub struct AccessTokenRequest<'a> {
     pub auth_time: Option<DateTime<Utc>>,
     pub amr: &'a [String],
     pub acr: Option<&'a str>,
+    /// DPoP key thumbprint the token is bound to (`cnf.jkt`, RFC 9449 §6.1).
+    pub cnf_jkt: Option<&'a str>,
+    /// Acting party of a delegated token (`act`, RFC 8693 §4.1).
+    pub act: Option<Value>,
 }
 
 pub struct IdTokenRequest<'a> {
@@ -334,6 +338,12 @@ pub async fn issue_access_token(
     }
     if let Some(acr) = req.acr {
         claims.insert("acr".into(), json!(acr));
+    }
+    if let Some(jkt) = req.cnf_jkt {
+        claims.insert("cnf".into(), json!({ "jkt": jkt }));
+    }
+    if let Some(act) = req.act {
+        claims.insert("act".into(), act);
     }
 
     let token = sign(state, &key, "at+jwt", &claims).await?;

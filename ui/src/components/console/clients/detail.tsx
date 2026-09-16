@@ -162,6 +162,7 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
               )}
             </Field>
             <Toggle label="Require PKCE" checked={c.require_pkce} disabled={!editable} onChange={(v) => update({ require_pkce: v })} />
+            <Toggle label="DPoP-bound access tokens" hint="Every token request must carry a DPoP proof; the tokens only work with that key (RFC 9449)." checked={c.dpop_bound_access_tokens} disabled={!editable} onChange={(v) => update({ dpop_bound_access_tokens: v })} />
             <Toggle label="Ask users for consent" hint="Off for first-party applications." checked={c.require_consent} disabled={!editable} onChange={(v) => update({ require_consent: v })} />
             <Field label="Subject identifier" hint="Pairwise subjects differ per sector so clients cannot correlate users.">
               {(fid, by) => (
