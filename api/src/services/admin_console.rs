@@ -22,9 +22,15 @@ use crate::state::AppState;
 /// Public `client_id` of the console client in every tenant.
 pub const CONSOLE_CLIENT_ID: &str = "ridm-admin-console";
 
-/// Is this the built-in console client?
+/// Is this the built-in admin console client?
 pub fn is_console_client(client_id: &str) -> bool {
     client_id == CONSOLE_CLIENT_ID
+}
+
+/// Is this one of the built-in console clients (admin or account)? Those
+/// follow `UI_URL`, cannot be deleted and stay out of tenant exports.
+pub fn is_builtin_client(client_id: &str) -> bool {
+    is_console_client(client_id) || super::account_console::is_account_client(client_id)
 }
 
 /// UI page the authorization code is sent back to.
@@ -63,11 +69,21 @@ pub fn desired(config: &Config) -> NewClient {
 /// configured UI. Everything else an administrator may have tuned (token
 /// lifetimes, status, CORS origins) is left alone.
 pub async fn ensure(state: &AppState, tenant_id: Uuid) -> AppResult<Client> {
-    let want = desired(&state.config);
-    let existing = clients::find_by_client_id(state, tenant_id, CONSOLE_CLIENT_ID).await?;
+    ensure_builtin(state, tenant_id, CONSOLE_CLIENT_ID, desired(&state.config)).await
+}
+
+/// Create a built-in client, or bring its URIs, audiences and auth method
+/// back in line with `want`; the rest is left as an administrator set it.
+pub async fn ensure_builtin(
+    state: &AppState,
+    tenant_id: Uuid,
+    client_id: &str,
+    want: NewClient,
+) -> AppResult<Client> {
+    let existing = clients::find_by_client_id(state, tenant_id, client_id).await?;
     let Some(current) = existing else {
         let created = clients::create(state, tenant_id, Actor::System, want).await?;
-        tracing::info!(%tenant_id, "admin console client created");
+        tracing::info!(%tenant_id, client_id, "built-in client created");
         return Ok(created.client);
     };
     let in_line = current.redirect_uris == want.redirect_uris
@@ -95,18 +111,27 @@ pub async fn ensure(state: &AppState, tenant_id: Uuid) -> AppResult<Client> {
     };
     let (client, _) =
         clients::update_metadata(state, tenant_id, Actor::System, current.id, input).await?;
-    tracing::info!(%tenant_id, "admin console client updated for the configured UI_URL");
+    tracing::info!(%tenant_id, client_id, "built-in client updated for the configured UI_URL");
     Ok(client)
 }
 
 /// Bring every tenant's console client in line (startup).
 pub async fn ensure_all(state: &AppState) -> AppResult<()> {
+    for_every_tenant(state, |tid| ensure(state, tid)).await
+}
+
+/// Run `f` for every tenant, a page at a time.
+pub async fn for_every_tenant<F, Fut>(state: &AppState, f: F) -> AppResult<()>
+where
+    F: Fn(Uuid) -> Fut,
+    Fut: Future<Output = AppResult<Client>>,
+{
     let mut after = None;
     loop {
         let rows = repos::tenants::list(&state.db, after.take(), 200).await?;
         let more = rows.len() > 200;
         for t in rows.iter().take(200) {
-            ensure(state, t.id).await?;
+            f(t.id).await?;
         }
         if !more {
             return Ok(());

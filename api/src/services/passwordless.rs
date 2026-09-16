@@ -196,20 +196,12 @@ pub async fn send(
             .await?;
         }
         Method::EmailOtp | Method::SmsOtp => {
-            let code = six_digits();
-            let rec = OtpRecord {
-                user_id: user.id,
-                code_hash: hash(&code),
-                attempts: 0,
-                expires_at: Utc::now().timestamp() + OTP_TTL_SECS as i64,
-            };
-            let _: () = conn
-                .set_ex(
-                    keys::flow_otp(tenant.id, flow.id, method.channel()),
-                    serde_json::to_string(&rec)?,
-                    OTP_TTL_SECS,
-                )
-                .await?;
+            let code = store_code(
+                state,
+                &keys::flow_otp(tenant.id, flow.id, method.channel()),
+                user.id,
+            )
+            .await?;
             let (channel, recipient) = match method {
                 Method::EmailOtp => (
                     MessageChannel::Email,
@@ -244,6 +236,50 @@ pub struct Verified {
     pub method: Method,
 }
 
+/// Store a fresh six-digit code for `user_id` under `key` (replacing any
+/// pending one); returns the code to send.
+pub async fn store_code(state: &AppState, key: &str, user_id: Uuid) -> AppResult<String> {
+    let code = six_digits();
+    let rec = OtpRecord {
+        user_id,
+        code_hash: hash(&code),
+        attempts: 0,
+        expires_at: Utc::now().timestamp() + OTP_TTL_SECS as i64,
+    };
+    let mut conn = state.redis.get().await?;
+    let _: () = conn
+        .set_ex(key, serde_json::to_string(&rec)?, OTP_TTL_SECS)
+        .await?;
+    Ok(code)
+}
+
+/// Check a code stored under `key`; consumed on success and after the
+/// attempt limit. Returns the user it was issued to.
+pub async fn check_code(state: &AppState, key: &str, code: &str) -> AppResult<Option<Uuid>> {
+    let mut conn = state.redis.get().await?;
+    let raw: Option<String> = conn.get(key).await?;
+    let Some(raw) = raw else { return Ok(None) };
+    let mut rec: OtpRecord = serde_json::from_str(&raw)?;
+    if rec.expires_at <= Utc::now().timestamp() {
+        let _: () = conn.del(key).await?;
+        return Ok(None);
+    }
+    let code = code.trim();
+    let ok = code.len() == 6 && bool::from(hash(code).as_bytes().ct_eq(rec.code_hash.as_bytes()));
+    if ok {
+        let _: () = conn.del(key).await?;
+        return Ok(Some(rec.user_id));
+    }
+    rec.attempts += 1;
+    if rec.attempts >= OTP_MAX_ATTEMPTS {
+        let _: () = conn.del(key).await?;
+    } else {
+        let ttl = (rec.expires_at - Utc::now().timestamp()).max(1) as u64;
+        let _: () = conn.set_ex(key, serde_json::to_string(&rec)?, ttl).await?;
+    }
+    Ok(None)
+}
+
 /// Check an OTP for the flow; consumes it on success and after the attempt limit.
 pub async fn verify_otp(
     state: &AppState,
@@ -256,31 +292,9 @@ pub async fn verify_otp(
         return Err(AppError::BadRequest("not an otp method".into()));
     }
     let key = keys::flow_otp(tenant.id, flow.id, method.channel());
-    let mut conn = state.redis.get().await?;
-    let raw: Option<String> = conn.get(&key).await?;
-    let Some(raw) = raw else { return Ok(None) };
-    let mut rec: OtpRecord = serde_json::from_str(&raw)?;
-    if rec.expires_at <= Utc::now().timestamp() {
-        let _: () = conn.del(&key).await?;
-        return Ok(None);
-    }
-    let code = code.trim();
-    let ok = code.len() == 6 && bool::from(hash(code).as_bytes().ct_eq(rec.code_hash.as_bytes()));
-    if ok {
-        let _: () = conn.del(&key).await?;
-        return Ok(Some(Verified {
-            user_id: rec.user_id,
-            method,
-        }));
-    }
-    rec.attempts += 1;
-    if rec.attempts >= OTP_MAX_ATTEMPTS {
-        let _: () = conn.del(&key).await?;
-    } else {
-        let ttl = (rec.expires_at - Utc::now().timestamp()).max(1) as u64;
-        let _: () = conn.set_ex(&key, serde_json::to_string(&rec)?, ttl).await?;
-    }
-    Ok(None)
+    Ok(check_code(state, &key, code)
+        .await?
+        .map(|user_id| Verified { user_id, method }))
 }
 
 /// Redeem a magic-link token for the flow it was issued for (single use).

@@ -351,6 +351,8 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
             t_cost: 1,
             p_cost: 1,
         },
+        // Tests that need the check install a mock through `spawn_configured`.
+        breach_check_url: None,
         smtp: None,
         bootstrap: None,
     }

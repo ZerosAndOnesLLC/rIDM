@@ -20,6 +20,7 @@ use crate::services::flows::{self, AuthStep, ConsentOutcome};
 use crate::services::login_flows::FlowStage;
 use crate::services::{sessions, trusted_devices};
 use crate::state::AppState;
+use webauthn_rs::prelude::{PublicKeyCredential, RegisterPublicKeyCredential};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -42,6 +43,53 @@ pub fn router() -> Router<AppState> {
         )
         .route("/t/{slug}/flows/{id}/sms-otp", post(send_sms_otp))
         .route("/t/{slug}/flows/{id}/sms-otp/verify", post(verify_sms_otp))
+        .route(
+            "/t/{slug}/flows/{id}/mfa/totp/enroll",
+            post(mfa_totp_enroll),
+        )
+        .route(
+            "/t/{slug}/flows/{id}/mfa/totp/confirm",
+            post(mfa_totp_confirm),
+        )
+        .route("/t/{slug}/flows/{id}/mfa/verify", post(mfa_verify))
+        .route(
+            "/t/{slug}/flows/{id}/mfa/passkey/register",
+            post(mfa_passkey_register),
+        )
+        .route(
+            "/t/{slug}/flows/{id}/mfa/passkey/register/finish",
+            post(mfa_passkey_register_finish),
+        )
+        .route(
+            "/t/{slug}/flows/{id}/mfa/passkey/start",
+            post(mfa_passkey_start),
+        )
+        .route(
+            "/t/{slug}/flows/{id}/mfa/passkey/finish",
+            post(mfa_passkey_finish),
+        )
+        .route(
+            "/t/{slug}/flows/{id}/mfa/email/enroll",
+            post(mfa_email_enroll),
+        )
+        .route(
+            "/t/{slug}/flows/{id}/mfa/email/confirm",
+            post(mfa_email_confirm),
+        )
+        .route("/t/{slug}/flows/{id}/mfa/email/send", post(mfa_email_send))
+        .route(
+            "/t/{slug}/flows/{id}/mfa/email/verify",
+            post(mfa_email_verify),
+        )
+        .route("/t/{slug}/flows/{id}/mfa/sms/enroll", post(mfa_sms_enroll))
+        .route(
+            "/t/{slug}/flows/{id}/mfa/sms/confirm",
+            post(mfa_sms_confirm),
+        )
+        .route("/t/{slug}/flows/{id}/mfa/sms/send", post(mfa_sms_send))
+        .route("/t/{slug}/flows/{id}/mfa/sms/verify", post(mfa_sms_verify))
+        .route("/t/{slug}/flows/{id}/passkey/start", post(passkey_start))
+        .route("/t/{slug}/flows/{id}/passkey/finish", post(passkey_finish))
         .route("/t/{slug}/flows/{id}/profile", post(profile))
         .route("/t/{slug}/flows/{id}/terms", post(terms))
         .route("/t/{slug}/flows/{id}/consent", post(consent))
@@ -79,22 +127,29 @@ pub fn client_ip(
     peer_ip.map(|ip| ip.to_string())
 }
 
+/// The public state as JSON, with `finish_url` once the flow is done.
+async fn public_body(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &crate::services::login_flows::LoginFlow,
+) -> Result<serde_json::Value, AppError> {
+    let mut public = flows::public_state(state, &tenant.tenant, flow).await?;
+    let mut body = serde_json::to_value(&public).unwrap_or_default();
+    if public.stage == FlowStage::Done {
+        body["finish_url"] = json!(format!("{}/flows/{}/finish", tenant.issuer(state), flow.id));
+    }
+    // The csrf token is only needed by the UI; keep it in the body.
+    public.csrf.clear();
+    Ok(body)
+}
+
 async fn respond_state(
     state: &AppState,
     tenant: &TenantCtx,
     flow: &crate::services::login_flows::LoginFlow,
 ) -> Response {
-    match flows::public_state(state, &tenant.tenant, flow).await {
-        Ok(mut public) => {
-            let mut body = serde_json::to_value(&public).unwrap_or_default();
-            if public.stage == FlowStage::Done {
-                body["finish_url"] =
-                    json!(format!("{}/flows/{}/finish", tenant.issuer(state), flow.id));
-            }
-            // The csrf token is only needed by the UI; keep it in the body.
-            public.csrf.clear();
-            no_store(axum::Json(body).into_response())
-        }
+    match public_body(state, tenant, flow).await {
+        Ok(body) => no_store(axum::Json(body).into_response()),
         Err(e) => e.into_response(),
     }
 }
@@ -299,6 +354,444 @@ async fn consent(
                 axum::Json(json!({"stage": "denied", "redirect_to": redirect_to})).into_response(),
             )
         }
+        Err(e) => e.into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct MfaBody {
+    csrf: String,
+    /// Authenticator code (six digits) or a recovery code.
+    code: String,
+    /// Enrolment only: a name for the authenticator.
+    label: Option<String>,
+    #[serde(default)]
+    remember_device: bool,
+}
+
+async fn mfa_totp_enroll(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    axum::Json(body): axum::Json<CancelBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    match flows::mfa_enrol_begin(&state, &tenant, &flow).await {
+        Ok(enrolment) => no_store(axum::Json(enrolment).into_response()),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn mfa_totp_confirm(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<MfaBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    let ip = client_ip(&state, &headers, Some(peer));
+    let outcome = flows::mfa_enrol_confirm(
+        &state,
+        &tenant,
+        flow,
+        &body.code,
+        body.label.as_deref(),
+        body.remember_device,
+        ip,
+    )
+    .await;
+    respond_mfa(&state, &tenant, outcome, INVALID_CODE).await
+}
+
+/// The browser's answer to a passkey assertion challenge.
+#[derive(Deserialize)]
+struct PasskeyAssertionBody {
+    csrf: String,
+    credential: PublicKeyCredential,
+    #[serde(default)]
+    remember_device: bool,
+}
+
+/// The browser's answer to a passkey creation challenge.
+#[derive(Deserialize)]
+struct PasskeyRegistrationBody {
+    csrf: String,
+    credential: RegisterPublicKeyCredential,
+    /// A name for the passkey.
+    label: Option<String>,
+    #[serde(default)]
+    remember_device: bool,
+}
+
+async fn mfa_passkey_register(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    axum::Json(body): axum::Json<CancelBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    match flows::mfa_passkey_register_begin(&state, &tenant, &flow).await {
+        Ok(options) => no_store(axum::Json(options).into_response()),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn mfa_passkey_register_finish(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<PasskeyRegistrationBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    let ip = client_ip(&state, &headers, Some(peer));
+    let outcome = flows::mfa_passkey_register_finish(
+        &state,
+        &tenant,
+        flow,
+        &body.credential,
+        body.label.as_deref(),
+        body.remember_device,
+        ip,
+    )
+    .await;
+    respond_mfa(&state, &tenant, outcome, INVALID_PASSKEY).await
+}
+
+async fn mfa_passkey_start(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    axum::Json(body): axum::Json<CancelBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    match flows::mfa_passkey_begin(&state, &tenant, &flow).await {
+        Ok(options) => no_store(axum::Json(options).into_response()),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn mfa_passkey_finish(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<PasskeyAssertionBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    let ip = client_ip(&state, &headers, Some(peer));
+    let outcome = flows::mfa_passkey_finish(
+        &state,
+        &tenant,
+        flow,
+        &body.credential,
+        body.remember_device,
+        ip,
+    )
+    .await;
+    respond_mfa(&state, &tenant, outcome, INVALID_PASSKEY).await
+}
+
+async fn passkey_start(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    axum::Json(body): axum::Json<CancelBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    match flows::passkey_begin(&state, &tenant, &flow).await {
+        Ok(options) => no_store(axum::Json(options).into_response()),
+        Err(e) => e.into_response(),
+    }
+}
+
+/// Passwordless sign-in with a discoverable passkey.
+async fn passkey_finish(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<PasskeyAssertionBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    let ctx = flows::RequestContext {
+        ip: client_ip(&state, &headers, Some(peer)),
+        user_agent: headers
+            .get(header::USER_AGENT)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.chars().take(512).collect()),
+        existing_session: sessions::from_request(&state, &tenant.tenant, &headers)
+            .await
+            .ok()
+            .flatten(),
+        device_secret: trusted_devices::secret_from_headers(&state, &headers),
+        remember_device: body.remember_device,
+    };
+    match flows::passkey_finish(&state, &tenant, flow, &body.credential, ctx).await {
+        Ok(AuthStep::Authenticated { session, flow }) => {
+            let mut res = respond_state(&state, &tenant, &flow).await;
+            if let Ok(v) = HeaderValue::from_str(&sessions::set_cookie_header(
+                &state,
+                &tenant.tenant,
+                &session,
+            )) {
+                res.headers_mut().append(header::SET_COOKIE, v);
+            }
+            res
+        }
+        Ok(AuthStep::Rejected { flow, .. }) => no_store(
+            (
+                StatusCode::UNAUTHORIZED,
+                axum::Json(json!({"error": INVALID_PASSKEY.0, "error_description": INVALID_PASSKEY.1, "attempts": flow.attempts})),
+            )
+                .into_response(),
+        ),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn mfa_verify(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<MfaBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    let ip = client_ip(&state, &headers, Some(peer));
+    let outcome =
+        flows::mfa_verify_step(&state, &tenant, flow, &body.code, body.remember_device, ip).await;
+    respond_mfa(&state, &tenant, outcome, INVALID_CODE).await
+}
+
+#[derive(Deserialize)]
+struct OtpEnrolBody {
+    csrf: String,
+    /// SMS enrolment: the number to prove (E.164) when the account has none.
+    #[serde(default)]
+    phone: Option<String>,
+}
+
+/// Email and SMS codes as second factors: enrol (code to the destination),
+/// confirm, and for later sign-ins send then verify.
+macro_rules! otp_factor_routes {
+    ($enroll:ident, $confirm:ident, $send:ident, $verify:ident, $channel:expr) => {
+        async fn $enroll(
+            State(state): State<AppState>,
+            tenant: TenantCtx,
+            Path((_, id)): Path<(String, Uuid)>,
+            axum::Json(body): axum::Json<OtpEnrolBody>,
+        ) -> Response {
+            let flow = match flows::load(&state, tenant.id(), id).await {
+                Ok(f) => f,
+                Err(e) => return e.into_response(),
+            };
+            if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+                return e.into_response();
+            }
+            match flows::mfa_otp_enrol_begin(
+                &state,
+                &tenant,
+                &flow,
+                $channel,
+                body.phone.as_deref(),
+            )
+            .await
+            {
+                Ok(sent) => no_store((StatusCode::ACCEPTED, axum::Json(sent)).into_response()),
+                Err(e) => e.into_response(),
+            }
+        }
+
+        async fn $confirm(
+            State(state): State<AppState>,
+            tenant: TenantCtx,
+            Path((_, id)): Path<(String, Uuid)>,
+            ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+            headers: HeaderMap,
+            axum::Json(body): axum::Json<MfaBody>,
+        ) -> Response {
+            let flow = match flows::load(&state, tenant.id(), id).await {
+                Ok(f) => f,
+                Err(e) => return e.into_response(),
+            };
+            if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+                return e.into_response();
+            }
+            let ip = client_ip(&state, &headers, Some(peer));
+            let outcome = flows::mfa_otp_enrol_confirm(
+                &state,
+                &tenant,
+                flow,
+                $channel,
+                &body.code,
+                body.remember_device,
+                ip,
+            )
+            .await;
+            respond_mfa(&state, &tenant, outcome, INVALID_CODE).await
+        }
+
+        async fn $send(
+            State(state): State<AppState>,
+            tenant: TenantCtx,
+            Path((_, id)): Path<(String, Uuid)>,
+            axum::Json(body): axum::Json<CancelBody>,
+        ) -> Response {
+            let flow = match flows::load(&state, tenant.id(), id).await {
+                Ok(f) => f,
+                Err(e) => return e.into_response(),
+            };
+            if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+                return e.into_response();
+            }
+            match flows::mfa_otp_send(&state, &tenant, &flow, $channel).await {
+                Ok(sent) => no_store((StatusCode::ACCEPTED, axum::Json(sent)).into_response()),
+                Err(e) => e.into_response(),
+            }
+        }
+
+        async fn $verify(
+            State(state): State<AppState>,
+            tenant: TenantCtx,
+            Path((_, id)): Path<(String, Uuid)>,
+            ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+            headers: HeaderMap,
+            axum::Json(body): axum::Json<MfaBody>,
+        ) -> Response {
+            let flow = match flows::load(&state, tenant.id(), id).await {
+                Ok(f) => f,
+                Err(e) => return e.into_response(),
+            };
+            if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+                return e.into_response();
+            }
+            let ip = client_ip(&state, &headers, Some(peer));
+            let outcome = flows::mfa_otp_verify(
+                &state,
+                &tenant,
+                flow,
+                $channel,
+                &body.code,
+                body.remember_device,
+                ip,
+            )
+            .await;
+            respond_mfa(&state, &tenant, outcome, INVALID_CODE).await
+        }
+    };
+}
+
+otp_factor_routes!(
+    mfa_email_enroll,
+    mfa_email_confirm,
+    mfa_email_send,
+    mfa_email_verify,
+    crate::services::otp_factors::Channel::Email
+);
+otp_factor_routes!(
+    mfa_sms_enroll,
+    mfa_sms_confirm,
+    mfa_sms_send,
+    mfa_sms_verify,
+    crate::services::otp_factors::Channel::Sms
+);
+
+/// Error code and description of a refused second factor.
+const INVALID_CODE: (&str, &str) = ("invalid_code", "the code is invalid or was already used");
+const INVALID_PASSKEY: (&str, &str) = ("invalid_passkey", "the passkey could not be verified");
+
+/// A passed factor answers with the flow state; right after an enrolment the
+/// state is wrapped as `{recovery_codes, flow}` so the UI shows the codes
+/// before moving on. A refused factor is `401` with `rejected` as the error
+/// and the attempt count.
+async fn respond_mfa(
+    state: &AppState,
+    tenant: &TenantCtx,
+    outcome: Result<flows::MfaStep, AppError>,
+    rejected: (&str, &str),
+) -> Response {
+    match outcome {
+        Ok(flows::MfaStep::Passed {
+            flow,
+            recovery_codes: None,
+        }) => respond_state(state, tenant, &flow).await,
+        Ok(flows::MfaStep::Passed {
+            flow,
+            recovery_codes: Some(codes),
+        }) => match public_body(state, tenant, &flow).await {
+            Ok(body) => no_store(
+                axum::Json(json!({"recovery_codes": codes, "flow": body})).into_response(),
+            ),
+            Err(e) => e.into_response(),
+        },
+        Ok(flows::MfaStep::Rejected { flow }) => no_store(
+            (
+                StatusCode::UNAUTHORIZED,
+                axum::Json(json!({"error": rejected.0, "error_description": rejected.1, "attempts": flow.attempts})),
+            )
+                .into_response(),
+        ),
         Err(e) => e.into_response(),
     }
 }

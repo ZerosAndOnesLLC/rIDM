@@ -16,6 +16,16 @@ import { RevealModal, type Revealed } from "../clients/reveal";
 import { AttributeField, JsonInput } from "./attributes";
 import { useRolesAndGroups } from "./invite";
 
+/** Display names of `credentials.type` values. */
+const CREDENTIAL_KINDS: Record<string, string> = {
+  totp: "Authenticator app",
+  webauthn: "Passkey",
+  recovery_code: "Recovery codes",
+  password: "Password",
+  email_otp: "Email code",
+  sms_otp: "SMS code",
+};
+
 export function UserDetail({ tenant, id, tab }: { tenant: string; id: string; tab: Tab }) {
   const { client: api, can } = useConsole();
   const qc = useQueryClient();
@@ -393,13 +403,13 @@ function SecurityTab({ tenant, u, editable, onReveal, onChanged, onForce }: { te
             {creds.error.message}
           </p>
         ) : creds.data.credentials.length === 0 ? (
-          <p className="text-[0.875rem] text-muted">None enrolled. Second factors arrive with Phase 7.</p>
+          <p className="text-[0.875rem] text-muted">None enrolled. Users add an authenticator app or a passkey when the sign-in policy asks for one.</p>
         ) : (
           <ul className="divide-y divide-line">
             {creds.data.credentials.map((c) => (
               <li key={c.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
                 <span>
-                  <span className="font-medium text-ink">{c.kind}</span>
+                  <span className="font-medium text-ink">{CREDENTIAL_KINDS[c.kind] ?? c.kind}</span>
                   {c.label && <span className="ms-2 text-muted">{c.label}</span>}
                   <span className="block text-[0.8125rem] text-muted">
                     Added {formatDate("en", c.created_at)}

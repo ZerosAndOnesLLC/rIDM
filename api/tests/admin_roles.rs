@@ -249,7 +249,7 @@ async fn admin_runs_the_role_lifecycle_with_composites_and_grants() {
         .await
         .unwrap()
         .into_iter()
-        .find(|r| r.built_in)
+        .find(|r| r.identifier == "urn:ridm:admin")
         .unwrap();
     let catalogue = resource_servers::list_permissions(&app.state, tid, admin_rs.id)
         .await

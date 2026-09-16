@@ -509,7 +509,7 @@ pub async fn set_status(
 
 pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -> AppResult<()> {
     let client = get(state, tenant_id, id).await?;
-    if super::admin_console::is_console_client(&client.client_id) {
+    if super::admin_console::is_builtin_client(&client.client_id) {
         return Err(AppError::Forbidden(
             "the admin console client is built in and cannot be deleted".into(),
         ));

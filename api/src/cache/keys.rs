@@ -138,6 +138,17 @@ pub fn magic_link(tenant_id: Uuid, token_hash: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:magic:{token_hash}")
 }
 
+/// Pending email/SMS second-factor enrolment (the destination being proven).
+pub fn otp_factor_enrolment(tenant_id: Uuid, flow_id: Uuid, channel: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:flow:{flow_id}:mfa:{channel}:enrol")
+}
+
+/// Claimed while a second-factor code sent moments ago is still fresh, so a
+/// repeated request reuses it instead of sending again.
+pub fn otp_factor_cooldown(tenant_id: Uuid, flow_id: Uuid, channel: &str, purpose: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:flow:{flow_id}:mfa:{channel}:{purpose}:cooldown")
+}
+
 /// Send rate limit per identifier.
 pub fn passwordless_sends(tenant_id: Uuid, identifier: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:pwless:sends:{identifier}")
@@ -156,4 +167,20 @@ pub fn password_reset(tenant_id: Uuid, token_hash: &str) -> String {
 /// Set of live session ids per user (for concurrency limits and sign-out-everywhere).
 pub fn user_sessions(tenant_id: Uuid, user_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:user:{user_id}:sessions")
+}
+
+/// Pending TOTP enrolment (secret awaiting its first code), bound to a login flow.
+pub fn totp_enrolment(tenant_id: Uuid, flow_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:flow:{flow_id}:totp:enrol")
+}
+
+/// A TOTP time step already accepted for a credential (replay guard).
+pub fn totp_used_step(tenant_id: Uuid, credential_id: Uuid, step: u64) -> String {
+    format!("{PREFIX}:t:{tenant_id}:totp:{credential_id}:used:{step}")
+}
+
+/// Pending passkey ceremony state (registration or assertion challenge),
+/// bound to a login flow (or another scope) and the ceremony kind.
+pub fn passkey_ceremony(tenant_id: Uuid, scope: Uuid, kind: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:flow:{scope}:passkey:{kind}")
 }

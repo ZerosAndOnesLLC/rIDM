@@ -105,7 +105,7 @@ pub async fn tenant_stats(state: &AppState, tenant_id: Uuid, days: u32) -> AppRe
                 count(*) FILTER (WHERE deleted_at IS NULL AND status = 'active') AS active, \
                 (SELECT count(DISTINCT c.user_id) FROM credentials c \
                    JOIN users u ON u.tenant_id = c.tenant_id AND u.id = c.user_id \
-                   WHERE c.tenant_id = $1 AND u.deleted_at IS NULL AND c.type IN ('totp', 'webauthn')) AS mfa_enrolled \
+                   WHERE c.tenant_id = $1 AND u.deleted_at IS NULL AND c.type IN ('totp', 'webauthn', 'email_otp', 'sms_otp')) AS mfa_enrolled \
          FROM users WHERE tenant_id = $1",
     )
     .bind(tenant_id)

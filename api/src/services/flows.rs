@@ -17,15 +17,20 @@ use zeroize::Zeroizing;
 use crate::db;
 use crate::error::{AppError, AppResult, FieldError};
 use crate::middleware::TenantCtx;
-use crate::models::{AttributeDef, Client, Tenant, User, UserStatus};
+use crate::models::{AttributeDef, Client, MfaPolicy, Tenant, User, UserStatus};
 use crate::repos;
 use crate::services::login_flows::{self, FlowStage, LoginFlow};
 use crate::services::password::{self, SetPasswordOptions, VerifyOutcome};
 use crate::services::sessions::{self, NewSession, SsoSession};
 use crate::services::{
-    clients, consents, locale, notifications, profile_schema, trusted_devices, users,
+    admin_access, clients, consents, locale, notifications, otp_factors, passkeys, profile_schema,
+    roles, totp, trusted_devices, users,
 };
 use crate::state::AppState;
+use webauthn_rs::prelude::{
+    CreationChallengeResponse, PublicKeyCredential, RegisterPublicKeyCredential,
+    RequestChallengeResponse,
+};
 
 /// What the UI needs to render the current step.
 #[derive(Debug, Clone, Serialize)]
@@ -56,7 +61,49 @@ pub struct PublicFlow {
     pub attempts: u32,
     /// Present when the next authentication attempt must include a CAPTCHA token.
     pub captcha: Option<CaptchaChallenge>,
+    /// Mfa stage: what the user can verify with, or whether they must enrol first.
+    pub mfa: Option<MfaInfo>,
 }
+
+/// Second-factor state of the signed-in user, shown at the `mfa` stage.
+#[derive(Debug, Clone, Serialize)]
+pub struct MfaInfo {
+    /// Enrolled factor kinds (`totp`, `webauthn`, `email_otp`, `sms_otp`).
+    pub factors: Vec<&'static str>,
+    /// Factor kinds the tenant offers this user for enrolment.
+    pub methods: Vec<&'static str>,
+    /// No factor yet: the user must enrol one now.
+    pub enroll: bool,
+    /// Unused recovery codes remain, so the recovery-code option is worth showing.
+    pub recovery_codes: bool,
+    /// The phone an SMS enrolment would use, masked; `None` asks for one.
+    pub phone: Option<String>,
+}
+
+/// Second factors the tenant offers `user` for enrolment.
+fn offered_factors(tenant: &Tenant, user: &User) -> Vec<&'static str> {
+    let m = &tenant.settings.mfa_methods;
+    let mut out = vec![];
+    if m.totp {
+        out.push(totp::KIND_TOTP);
+    }
+    if tenant.settings.auth.passkey {
+        out.push(passkeys::KIND);
+    }
+    if m.email_otp && user.email.is_some() {
+        out.push(otp_factors::KIND_EMAIL);
+    }
+    if m.sms_otp {
+        out.push(otp_factors::KIND_SMS);
+    }
+    out
+}
+
+/// `acr` recorded on a session once a second factor passed, unless the client
+/// asked for another `*:mfa` class.
+pub const ACR_MFA: &str = "urn:ridm:acr:mfa";
+/// Wrong second-factor codes tolerated per flow before it is discarded.
+pub const MFA_MAX_ATTEMPTS: u32 = 5;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CaptchaChallenge {
@@ -191,13 +238,38 @@ pub async fn public_state(
                 .and_then(|s| s.description.clone()),
         })
         .collect();
-    let (missing_attributes, user, user_locale) = match flow.user_id {
+    let (missing_attributes, user, user_locale, mfa) = match flow.user_id {
         Some(uid) => {
             let u = users::get(state, tenant.id, uid).await?;
             let missing = if flow.stage == FlowStage::Profile {
                 missing_required(state, tenant.id, &u).await?
             } else {
                 vec![]
+            };
+            let mfa = if flow.stage == FlowStage::Mfa {
+                let f = totp::factors_of(state, tenant.id, uid).await?;
+                let mut factors = vec![];
+                if f.totp {
+                    factors.push(totp::KIND_TOTP);
+                }
+                if f.webauthn {
+                    factors.push(passkeys::KIND);
+                }
+                if f.email_otp {
+                    factors.push(otp_factors::KIND_EMAIL);
+                }
+                if f.sms_otp {
+                    factors.push(otp_factors::KIND_SMS);
+                }
+                Some(MfaInfo {
+                    factors,
+                    methods: offered_factors(tenant, &u),
+                    enroll: !f.any(),
+                    recovery_codes: f.any() && f.recovery_codes > 0,
+                    phone: u.phone.as_deref().map(otp_factors::mask_phone),
+                })
+            } else {
+                None
             };
             (
                 missing,
@@ -206,9 +278,10 @@ pub async fn public_state(
                     email: u.email,
                 }),
                 u.locale,
+                mfa,
             )
         }
-        None => (vec![], None, None),
+        None => (vec![], None, None, None),
     };
     let locale = locale::negotiate(
         &flow.request.ui_locales,
@@ -241,6 +314,7 @@ pub async fn public_state(
         user,
         attempts: flow.attempts,
         captcha: captcha_required(state, tenant, flow).await?,
+        mfa,
     })
 }
 
@@ -281,7 +355,7 @@ pub async fn advance(
         flow.stage = FlowStage::PasswordChange;
         return Ok(());
     }
-    if mfa_required(flow) {
+    if mfa_required(state, tenant, flow, &user).await? {
         flow.stage = FlowStage::Mfa;
         return Ok(());
     }
@@ -729,15 +803,537 @@ pub struct RequestContext {
     pub remember_device: bool,
 }
 
+/// Is `acr` an authentication context class that means "a second factor
+/// passed"? rIDM's own is [`ACR_MFA`]; any class ending in `:mfa` counts, so
+/// a client may name its own.
+pub fn is_mfa_acr(acr: &str) -> bool {
+    acr.ends_with(":mfa")
+}
+
+/// The MFA class a request asks for, if any. Other requested classes are
+/// voluntary (OIDC Core §5.5.1.1): the session's actual class is returned.
+pub fn requested_mfa_class(acr_values: &[String]) -> Option<&str> {
+    acr_values
+        .iter()
+        .map(String::as_str)
+        .find(|a| is_mfa_acr(a))
+}
+
 /// Whether the flow must pass a second factor before continuing.
 ///
-/// A step-up the client asked for (`acr_values` ending in `:mfa`) is always
-/// honoured, even on a trusted device. Policy-driven MFA (tenant `mfa`
-/// setting, Phase 7.4) is skipped when `flow.trusted_device` is set.
-pub fn mfa_required(flow: &LoginFlow) -> bool {
-    let has_mfa = flow.amr.iter().any(|m| m == "mfa");
-    let step_up = flow.request.acr_values.iter().any(|a| a.ends_with(":mfa"));
-    step_up && !has_mfa
+/// A step-up the client asked for (an `acr_values` class ending in `:mfa`)
+/// is always honoured, even on a trusted device. Policy-driven MFA is
+/// skipped on a trusted device: `required` asks everyone (enrolling first
+/// when needed); `required_for_roles` asks holders of any listed role
+/// (direct, through groups or composites) and `required_for_admins` asks
+/// anyone holding an admin-console permission, both treating everyone else
+/// as `optional`, which asks users who enrolled a factor.
+pub async fn mfa_required(
+    state: &AppState,
+    tenant: &Tenant,
+    flow: &LoginFlow,
+    user: &User,
+) -> AppResult<bool> {
+    if flow.amr.iter().any(|m| m == "mfa") {
+        return Ok(false);
+    }
+    if requested_mfa_class(&flow.request.acr_values).is_some() {
+        return Ok(true);
+    }
+    if flow.trusted_device {
+        return Ok(false);
+    }
+    let required = match &tenant.settings.mfa {
+        MfaPolicy::Off => return Ok(false),
+        MfaPolicy::Required => true,
+        MfaPolicy::Optional => false,
+        MfaPolicy::RequiredForRoles { roles } => {
+            let held = roles::effective_role_names(state, tenant.id, user.id).await?;
+            roles.iter().any(|r| held.iter().any(|h| h == r))
+        }
+        MfaPolicy::RequiredForAdmins => {
+            !admin_access::permissions_of_user(state, tenant.id, user.id)
+                .await?
+                .is_empty()
+        }
+    };
+    Ok(required || totp::has_second_factor(state, tenant.id, user.id).await?)
+}
+
+/// Outcome of a second-factor step.
+pub enum MfaStep {
+    /// The factor passed; `recovery_codes` is set once, right after enrolment.
+    Passed {
+        flow: Box<LoginFlow>,
+        recovery_codes: Option<Vec<String>>,
+    },
+    /// Wrong code; the flow (with its attempt counter) was saved, or discarded
+    /// once [`MFA_MAX_ATTEMPTS`] is reached.
+    Rejected { flow: Box<LoginFlow> },
+}
+
+/// The signed-in user of a flow waiting at the `mfa` stage.
+async fn mfa_user(state: &AppState, tenant: &TenantCtx, flow: &LoginFlow) -> AppResult<User> {
+    if flow.stage != FlowStage::Mfa {
+        return Err(AppError::BadRequest(
+            "flow is not at the second-factor step".into(),
+        ));
+    }
+    let user_id = flow.user_id.ok_or(AppError::Unauthorized)?;
+    let user = users::get(state, tenant.id(), user_id).await?;
+    if user.status != UserStatus::Active && user.status != UserStatus::Pending {
+        return Err(AppError::Forbidden("account is not active".into()));
+    }
+    Ok(user)
+}
+
+/// `POST /flows/{id}/mfa/totp/enroll`: a fresh authenticator secret for a
+/// user who has none yet.
+pub async fn mfa_enrol_begin(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &LoginFlow,
+) -> AppResult<totp::Enrolment> {
+    let user = mfa_user(state, tenant, flow).await?;
+    if !tenant.tenant.settings.mfa_methods.totp {
+        return Err(AppError::BadRequest(
+            "authenticator apps are disabled for this tenant".into(),
+        ));
+    }
+    if totp::factors_of(state, tenant.id(), user.id).await?.totp {
+        return Err(AppError::BadRequest(
+            "an authenticator app is already enrolled".into(),
+        ));
+    }
+    totp::begin_enrolment(state, &tenant.tenant, flow.id, &user).await
+}
+
+/// `POST /flows/{id}/mfa/{email|sms}/enroll`: a code to the address or
+/// number that is about to become the user's second factor.
+pub async fn mfa_otp_enrol_begin(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &LoginFlow,
+    channel: otp_factors::Channel,
+    phone: Option<&str>,
+) -> AppResult<otp_factors::Sent> {
+    let user = mfa_user(state, tenant, flow).await?;
+    otp_factors::begin_enrolment(
+        state,
+        &tenant.tenant,
+        otp_scope(flow),
+        &user,
+        channel,
+        phone,
+    )
+    .await
+}
+
+/// `POST /flows/{id}/mfa/{email|sms}/confirm`: prove the pending enrolment;
+/// the factor then counts as passed for this sign-in.
+pub async fn mfa_otp_enrol_confirm(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    channel: otp_factors::Channel,
+    code: &str,
+    remember_device: bool,
+    ip: Option<String>,
+) -> AppResult<MfaStep> {
+    let user = mfa_user(state, tenant, &flow).await?;
+    if otp_factors::confirm_enrolment(
+        state,
+        &tenant.tenant,
+        otp_scope(&flow),
+        &user,
+        channel,
+        code,
+    )
+    .await?
+    {
+        let recovery_codes = first_recovery_codes(state, tenant, &user).await?;
+        pass_second_factor(
+            state,
+            tenant,
+            &mut flow,
+            &user,
+            channel.amr(),
+            remember_device,
+        )
+        .await?;
+        Ok(MfaStep::Passed {
+            flow: Box::new(flow),
+            recovery_codes,
+        })
+    } else {
+        mfa_reject(state, tenant, flow, &user, ip).await
+    }
+}
+
+/// `POST /flows/{id}/mfa/{email|sms}/send`: a sign-in code to the enrolled channel.
+pub async fn mfa_otp_send(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &LoginFlow,
+    channel: otp_factors::Channel,
+) -> AppResult<otp_factors::Sent> {
+    let user = mfa_user(state, tenant, flow).await?;
+    otp_factors::send_code(state, &tenant.tenant, otp_scope(flow), &user, channel).await
+}
+
+/// `POST /flows/{id}/mfa/{email|sms}/verify`
+pub async fn mfa_otp_verify(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    channel: otp_factors::Channel,
+    code: &str,
+    remember_device: bool,
+    ip: Option<String>,
+) -> AppResult<MfaStep> {
+    let user = mfa_user(state, tenant, &flow).await?;
+    if otp_factors::verify(
+        state,
+        &tenant.tenant,
+        otp_scope(&flow),
+        &user,
+        channel,
+        code,
+    )
+    .await?
+    {
+        pass_second_factor(
+            state,
+            tenant,
+            &mut flow,
+            &user,
+            channel.amr(),
+            remember_device,
+        )
+        .await?;
+        Ok(MfaStep::Passed {
+            flow: Box::new(flow),
+            recovery_codes: None,
+        })
+    } else {
+        mfa_reject(state, tenant, flow, &user, ip).await
+    }
+}
+
+/// Codes of a flow live under its id, in the locales it asked for.
+fn otp_scope(flow: &LoginFlow) -> otp_factors::Scope<'_> {
+    otp_factors::Scope {
+        id: flow.id,
+        ui_locales: &flow.request.ui_locales,
+    }
+}
+
+/// A user's first second factor comes with recovery codes, shown once.
+async fn first_recovery_codes(
+    state: &AppState,
+    tenant: &TenantCtx,
+    user: &User,
+) -> AppResult<Option<Vec<String>>> {
+    if totp::factors_of(state, tenant.id(), user.id)
+        .await?
+        .recovery_codes
+        == 0
+    {
+        Ok(Some(
+            totp::regenerate_recovery_codes(state, tenant.id(), user.id).await?,
+        ))
+    } else {
+        Ok(None)
+    }
+}
+
+/// `POST /flows/{id}/mfa/totp/confirm`: prove the pending enrolment; the
+/// factor then counts as passed for this sign-in.
+pub async fn mfa_enrol_confirm(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    code: &str,
+    label: Option<&str>,
+    remember_device: bool,
+    ip: Option<String>,
+) -> AppResult<MfaStep> {
+    let user = mfa_user(state, tenant, &flow).await?;
+    match totp::confirm_enrolment(state, &tenant.tenant, flow.id, &user, code, label).await? {
+        Some(codes) => {
+            pass_second_factor(state, tenant, &mut flow, &user, &["otp"], remember_device).await?;
+            Ok(MfaStep::Passed {
+                flow: Box::new(flow),
+                recovery_codes: Some(codes),
+            })
+        }
+        None => mfa_reject(state, tenant, flow, &user, ip).await,
+    }
+}
+
+/// `POST /flows/{id}/mfa/verify`: an authenticator code or a recovery code.
+pub async fn mfa_verify_step(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    code: &str,
+    remember_device: bool,
+    ip: Option<String>,
+) -> AppResult<MfaStep> {
+    let user = mfa_user(state, tenant, &flow).await?;
+    match totp::verify(state, &tenant.tenant, &user, code).await? {
+        Some(totp::Verified::Totp { .. }) => {
+            pass_second_factor(state, tenant, &mut flow, &user, &["otp"], remember_device).await?;
+            Ok(MfaStep::Passed {
+                flow: Box::new(flow),
+                recovery_codes: None,
+            })
+        }
+        Some(totp::Verified::RecoveryCode { .. }) => {
+            pass_second_factor(state, tenant, &mut flow, &user, &[], remember_device).await?;
+            Ok(MfaStep::Passed {
+                flow: Box::new(flow),
+                recovery_codes: None,
+            })
+        }
+        None => mfa_reject(state, tenant, flow, &user, ip).await,
+    }
+}
+
+/// Record the second factor on the session (`amr` gains `mfa` plus the
+/// method, `acr` the requested or default MFA class) and move the flow on.
+async fn pass_second_factor(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &mut LoginFlow,
+    user: &User,
+    methods: &[&str],
+    remember_device: bool,
+) -> AppResult<()> {
+    let session_id = flow.session_id.ok_or(AppError::Unauthorized)?;
+    let mut session = sessions::get(
+        state,
+        tenant.id(),
+        session_id,
+        &tenant.tenant.settings.session,
+    )
+    .await?
+    .filter(|s| s.user_id == user.id)
+    .ok_or(AppError::Unauthorized)?;
+    let mut amr = flow.amr.clone();
+    for m in methods.iter().copied().chain(std::iter::once("mfa")) {
+        if !amr.iter().any(|a| a == m) {
+            amr.push(m.to_string());
+        }
+    }
+    let acr = requested_mfa_acr(flow);
+    sessions::refresh_auth(state, &mut session, amr.clone(), Some(acr)).await?;
+    flow.amr = amr;
+    flow.remember_device = (flow.remember_device || remember_device) && !flow.trusted_device;
+    flow.attempts = 0;
+    advance(state, &tenant.tenant, flow, false).await?;
+    login_flows::save(state, flow).await
+}
+
+/// The MFA class the session asserts: the `*:mfa` class the client asked
+/// for, else the default.
+fn requested_mfa_acr(flow: &LoginFlow) -> String {
+    requested_mfa_class(&flow.request.acr_values)
+        .unwrap_or(ACR_MFA)
+        .to_string()
+}
+
+/// `POST /flows/{id}/mfa/passkey/register`: creation options for a new
+/// passkey as the user's second factor.
+pub async fn mfa_passkey_register_begin(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &LoginFlow,
+) -> AppResult<CreationChallengeResponse> {
+    let user = mfa_user(state, tenant, flow).await?;
+    require_passkeys_enabled(tenant)?;
+    passkeys::begin_registration(state, &tenant.tenant, flow.id, &user).await
+}
+
+/// `POST /flows/{id}/mfa/passkey/register/finish`: store the passkey; it
+/// counts as passed for this sign-in. A user without recovery codes gets a
+/// set now, shown once.
+pub async fn mfa_passkey_register_finish(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    credential: &RegisterPublicKeyCredential,
+    label: Option<&str>,
+    remember_device: bool,
+    ip: Option<String>,
+) -> AppResult<MfaStep> {
+    let user = mfa_user(state, tenant, &flow).await?;
+    require_passkeys_enabled(tenant)?;
+    match passkeys::finish_registration(state, &tenant.tenant, flow.id, &user, credential, label)
+        .await?
+    {
+        Some(_) => {
+            let recovery_codes = first_recovery_codes(state, tenant, &user).await?;
+            pass_second_factor(
+                state,
+                tenant,
+                &mut flow,
+                &user,
+                &["hwk", "user"],
+                remember_device,
+            )
+            .await?;
+            Ok(MfaStep::Passed {
+                flow: Box::new(flow),
+                recovery_codes,
+            })
+        }
+        None => mfa_reject(state, tenant, flow, &user, ip).await,
+    }
+}
+
+/// `POST /flows/{id}/mfa/passkey/start`: an assertion challenge against the
+/// user's passkeys.
+pub async fn mfa_passkey_begin(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &LoginFlow,
+) -> AppResult<RequestChallengeResponse> {
+    let user = mfa_user(state, tenant, flow).await?;
+    passkeys::begin_authentication(state, &tenant.tenant, flow.id, &user).await
+}
+
+/// `POST /flows/{id}/mfa/passkey/finish`
+pub async fn mfa_passkey_finish(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    credential: &PublicKeyCredential,
+    remember_device: bool,
+    ip: Option<String>,
+) -> AppResult<MfaStep> {
+    let user = mfa_user(state, tenant, &flow).await?;
+    match passkeys::finish_authentication(state, &tenant.tenant, flow.id, &user, credential).await?
+    {
+        Some(v) => {
+            let methods: &[&str] = if v.user_verified {
+                &["hwk", "user"]
+            } else {
+                &["hwk"]
+            };
+            pass_second_factor(state, tenant, &mut flow, &user, methods, remember_device).await?;
+            Ok(MfaStep::Passed {
+                flow: Box::new(flow),
+                recovery_codes: None,
+            })
+        }
+        None => mfa_reject(state, tenant, flow, &user, ip).await,
+    }
+}
+
+fn require_passkeys_enabled(tenant: &TenantCtx) -> AppResult<()> {
+    if tenant.tenant.settings.auth.passkey {
+        Ok(())
+    } else {
+        Err(AppError::BadRequest(
+            "passkeys are disabled for this tenant".into(),
+        ))
+    }
+}
+
+/// `POST /flows/{id}/passkey/start`: a challenge any discoverable passkey of
+/// the tenant may answer (passwordless sign-in).
+pub async fn passkey_begin(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &LoginFlow,
+) -> AppResult<RequestChallengeResponse> {
+    if flow.stage != FlowStage::Authenticate {
+        return Err(AppError::BadRequest(
+            "flow is not at the authenticate step".into(),
+        ));
+    }
+    require_passkeys_enabled(tenant)?;
+    passkeys::begin_discoverable(state, &tenant.tenant, flow.id).await
+}
+
+/// `POST /flows/{id}/passkey/finish`: sign the passkey's owner in. With user
+/// verification the assertion is two factors (`hwk`, `user`, `mfa`), so no
+/// second step follows.
+pub async fn passkey_finish(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    credential: &PublicKeyCredential,
+    ctx: RequestContext,
+) -> AppResult<AuthStep> {
+    if flow.stage != FlowStage::Authenticate {
+        return Err(AppError::BadRequest(
+            "flow is not at the authenticate step".into(),
+        ));
+    }
+    require_passkeys_enabled(tenant)?;
+    let Some((user_id, verified)) =
+        passkeys::finish_discoverable(state, &tenant.tenant, flow.id, credential).await?
+    else {
+        flow.attempts += 1;
+        login_flows::save(state, &flow).await?;
+        state.events.publish(
+            Event::new(
+                Some(tenant.id()),
+                Actor::System,
+                EventKind::LoginFailed {
+                    identifier: String::new(),
+                    reason: "passkey_invalid".into(),
+                },
+            )
+            .with_request(ctx.ip.clone(), None),
+        );
+        return Ok(AuthStep::Rejected {
+            flow: Box::new(flow),
+            locked: false,
+        });
+    };
+    let user = users::get(state, tenant.id(), user_id).await?;
+    if user.status != UserStatus::Active && user.status != UserStatus::Pending {
+        return Err(AppError::Forbidden("account is not active".into()));
+    }
+    let mut amr = vec!["hwk".to_string()];
+    if verified.user_verified {
+        amr.push("user".into());
+        amr.push("mfa".into());
+    }
+    let must_change = user.must_change_password && tenant.tenant.settings.auth.password;
+    complete_authentication(state, tenant, flow, &user, amr, ctx, must_change).await
+}
+
+async fn mfa_reject(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    user: &User,
+    ip: Option<String>,
+) -> AppResult<MfaStep> {
+    flow.attempts += 1;
+    if flow.attempts >= MFA_MAX_ATTEMPTS {
+        login_flows::delete(state, tenant.id(), flow.id).await?;
+    } else {
+        login_flows::save(state, &flow).await?;
+    }
+    state.events.publish(
+        Event::new(
+            Some(tenant.id()),
+            Actor::User { id: user.id },
+            EventKind::LoginFailed {
+                identifier: user.username.clone(),
+                reason: "mfa_invalid".into(),
+            },
+        )
+        .with_request(ip, None),
+    );
+    Ok(MfaStep::Rejected {
+        flow: Box::new(flow),
+    })
 }
 
 /// Open (or re-authenticate) the browser's session for `user_id`, recognise
@@ -764,9 +1360,15 @@ async fn open_session(
         }
         None => None,
     };
+    // A first factor that is itself multi-factor (a passkey with user
+    // verification) asserts the MFA class straight away.
+    let acr = amr
+        .iter()
+        .any(|m| m == "mfa")
+        .then(|| requested_mfa_acr(flow));
     let mut session = match existing_session {
         Some(mut s) if s.user_id == user_id => {
-            sessions::refresh_auth(state, &mut s, amr.clone(), None).await?;
+            sessions::refresh_auth(state, &mut s, amr.clone(), acr).await?;
             s
         }
         _ => {
@@ -776,7 +1378,7 @@ async fn open_session(
                 NewSession {
                     user_id,
                     amr: amr.clone(),
-                    acr: None,
+                    acr,
                     ip: ip.clone(),
                     user_agent: user_agent.clone(),
                     policy: &tenant.settings.session,

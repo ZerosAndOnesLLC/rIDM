@@ -7,7 +7,8 @@ const UI = process.env.E2E_UI_URL ?? `http://localhost:${UI_PORT}`;
 export default async function globalSetup() {
   const settings = {
     dcr: { mode: "open" },
-    auth: { password: true, magic_link: true, email_otp: true, sms_otp: false, passkey: false },
+    auth: { password: true, magic_link: true, email_otp: true, sms_otp: false, passkey: true },
+    mfa_methods: { totp: true, email_otp: true, sms_otp: false },
     registration: {
       enabled: true,
       require_email_verification: true,

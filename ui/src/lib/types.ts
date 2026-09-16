@@ -1,5 +1,7 @@
 // Shapes returned by the rIDM API that the end-user pages consume.
 
+import type { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/browser";
+
 export type FlowStage =
   | "authenticate"
   | "register"
@@ -80,8 +82,61 @@ export interface PublicFlow {
   user: { username: string; email: string | null } | null;
   attempts: number;
   captcha: CaptchaChallenge | null;
+  /** Present at the `mfa` stage. */
+  mfa: MfaInfo | null;
   /** Present once the stage is `done`. */
   finish_url?: string;
+}
+
+export type Factor = "totp" | "webauthn" | "email_otp" | "sms_otp";
+
+export interface MfaInfo {
+  /** Enrolled factor kinds. */
+  factors: Factor[];
+  /** Factor kinds the tenant offers for enrolment. */
+  methods: Factor[];
+  /** No factor yet: the user must enrol one now. */
+  enroll: boolean;
+  /** Unused recovery codes remain. */
+  recovery_codes: boolean;
+  /** The phone an SMS enrolment would use (masked); null asks for one. */
+  phone: string | null;
+}
+
+/** Answer of `mfa/{email|sms}/enroll` and `/send`: where the code went (masked). */
+export interface OtpSent {
+  sent: boolean;
+  destination: string;
+}
+
+/** Answer of `mfa/totp/enroll`. */
+export interface TotpEnrolment {
+  secret: string;
+  otpauth_uri: string;
+  issuer: string;
+  account: string;
+  digits: number;
+  period: number;
+}
+
+/**
+ * Answer of `mfa/totp/confirm` and of `mfa/passkey/register/finish` when the
+ * factor is the user's first: the codes are shown once, then the flow goes on.
+ */
+export interface MfaEnrolled {
+  recovery_codes: string[];
+  flow: PublicFlow;
+}
+
+/** Answer of `mfa/passkey/register`: what `navigator.credentials.create` needs. */
+export interface PasskeyCreationOptions {
+  publicKey: PublicKeyCredentialCreationOptionsJSON;
+}
+
+/** Answer of `passkey/start` and `mfa/passkey/start`: what `navigator.credentials.get` needs. */
+export interface PasskeyRequestOptions {
+  publicKey: PublicKeyCredentialRequestOptionsJSON;
+  mediation?: "conditional" | "optional" | "required" | "silent";
 }
 
 export interface BrandingLink {

@@ -44,8 +44,8 @@ dynamic client registration and management. Globally: WebFinger issuer discovery
 Browser login is a flow API (`/flows/{id}/...`) that the UI drives step by step:
 password, magic link, email and SMS one-time codes, self-registration with
 schema-driven profiles and email verification, invitations, password reset and
-forced password change, profile completion, terms acceptance, consent. Flows are
-CSRF-bound, rate-limited per user and per IP, and demand a CAPTCHA (Turnstile or
+forced password change, a second factor, profile completion, terms acceptance,
+consent. Flows are CSRF-bound, rate-limited per user and per IP, and demand a CAPTCHA (Turnstile or
 hCaptcha) after repeated failures. Email and SMS go through per-tenant SMTP or webhook
 settings with localized templates and a retrying outbound queue.
 
@@ -54,8 +54,59 @@ on concurrent sessions per user (oldest revoked first), and "remember this devic
 which registers a trusted device only once the whole flow (including any second
 factor) has completed. Sessions are mirrored to Postgres for listing, sign-out
 everywhere and audit. `/authorize` honours `prompt` (`none`, `login`, `consent`,
-`create`, `select_account`), `max_age` and `acr_values`. The end-user pages themselves
-land later in Phase 4; MFA in Phase 7.
+`create`, `select_account`), `max_age` and `acr_values`.
+
+Two-step verification (`/flows/{id}/mfa/...`) uses an authenticator app (TOTP, RFC
+6238: SHA-1, six digits, 30-second steps, one step of drift either side, every code
+accepted once). The tenant `mfa` policy decides who is asked: `required` asks
+everyone and enrols a second step on the first sign-in, `optional` asks users who
+enrolled one, `required_for_roles` asks holders of any listed role (directly, through
+a group or a composite) and `required_for_admins` asks anyone holding an admin-console
+permission, both treating everyone else as `optional`; `off` never asks. A trusted
+device skips the policy-driven check. A client step-up is a requested `acr_values`
+class ending in `:mfa` (rIDM's own is `urn:ridm:acr:mfa`): it is always honoured, even
+on a trusted device, and a live session that only lacks that class is sent straight to
+the second factor (no password again; `prompt=none` answers `login_required`). Other
+requested classes are voluntary, so the token carries the class the session actually
+holds. Sessions and tokens say how the user signed in: `amr` lists the methods (`pwd`,
+`otp`, `sms`, `hwk`, `user`, plus `mfa` once a second factor passed) and `acr` is set
+only after a second factor, to the class the client asked for or the default. Enrolment
+returns a set of ten single-use recovery codes, shown once; any of them replaces the
+app for one sign-in and the user is told how many remain. Secrets are encrypted per
+row under the master key, recovery codes are hashed then encrypted, and the session
+records `amr` (`otp`, `mfa`) and `acr` (`urn:ridm:acr:mfa`, or the class the client
+asked for) so tokens say how the user signed in.
+
+Passkeys (WebAuthn) serve both as a passwordless sign-in and as a second step. With
+the tenant's `auth.passkey` option on, the login page offers "Sign in with a passkey":
+`POST /flows/{id}/passkey/start` issues a discoverable-credential challenge and
+`/passkey/finish` verifies the assertion, finds the credential by the id the
+authenticator presented, checks that the user handle names its owner, and opens the
+session. User verification is required, so a passkey sign-in is two factors already
+(`amr` `hwk`, `user`, `mfa`) and no second step follows. At the `mfa` stage a user
+enrols a passkey (`/mfa/passkey/register` then `/register/finish`, with a label,
+existing keys excluded; the first second factor also issues the recovery codes) or
+verifies with one (`/mfa/passkey/start` then `/finish`). The relying party id is the
+UI's host (or the tenant's custom domain); the API's own origin is accepted when it
+shares that host. Each passkey is one encrypted `webauthn` credential row (public key,
+sign counter and backup flags, the counter checked on every assertion), and
+challenges live in Redis for five minutes, bound to the flow and spent by the first
+answer.
+
+Codes by email and by text message are second factors too. The tenant's
+`settings.mfa_methods` (`totp`, `email_otp`, `sms_otp`; passkeys follow `auth.passkey`)
+decides which methods the `mfa` stage offers, and the flow state lists them under
+`mfa.methods`. Enrolment proves the channel: `POST /flows/{id}/mfa/email/enroll` sends a
+code to the account's address and `/mfa/email/confirm` checks it (the address is then
+verified); `/mfa/sms/enroll` takes a `phone` in E.164 when the account has none (or to
+change it) and `/mfa/sms/confirm` saves the number verified. Each enrolled channel is one
+`email_otp` or `sms_otp` credential row, and the first second factor issues the recovery
+codes. Later sign-ins call `/mfa/{email|sms}/send` (a code to the account's current,
+verified address or number; a repeat within twenty seconds reuses the pending code
+instead of sending twice, and sends are limited to three per ten minutes per user) and
+`/mfa/{email|sms}/verify`. Codes are six digits, hashed in Redis, bound to the flow,
+single-use, good for ten minutes and five attempts; a passed code records `amr` `otp`
+(plus `sms` for a text message). The role-based policy modes follow in 7.4.
 
 Locale is negotiated per request: the OIDC `ui_locales` parameter, then the user's
 stored locale, then the tenant default, constrained to the tenant's supported list
@@ -69,7 +120,7 @@ Users get security notices, in their locale, through the tenant's messaging
 settings: a sign-in from a browser they have not used before (email, or SMS when
 the account has only a verified phone), a password change (recovery or forced
 change, never the initial password), an email address change (sent to the previous
-address), and MFA changes once Phase 7 lands. Each notice can be switched off per
+address), and MFA changes (an authenticator added, a recovery code used). Each notice can be switched off per
 tenant under `settings.notifications`.
 
 The admin API (`/admin/...`) is guarded by `ridm:<resource>:<action>` permissions that
@@ -116,6 +167,7 @@ in [`.env.example`](.env.example). The essentials:
 | `MIGRATE_ON_START` | Apply pending migrations at startup; otherwise run `ridm-api migrate` as the schema-owner role |
 | `LOG_FORMAT`, `RUST_LOG` | `json` or `pretty`; tracing filter |
 | `DOCS_ENABLED` | Serve Swagger UI at `/docs` (off in production) |
+| `BREACH_CHECK_URL` | Have I Been Pwned compatible range endpoint for the breached-password check (default `https://api.pwnedpasswords.com/range/`; `off` for air-gapped installs) |
 
 Health probes: `GET /healthz` (liveness) and `GET /readyz` (database + cache).
 `GET /.well-known/security.txt` serves the vulnerability disclosure policy.
@@ -141,6 +193,35 @@ service; on Kubernetes use a Job. `MIGRATE_ON_START=true` is a simpler single-ro
 for small installs.
 
 ### Master key rotation
+
+The account console at `/account/` lets users manage their own second step and
+trusted devices (the rest of the account console follows in Phase 8). It is an OIDC
+public client of the user's own tenant, `ridm-account-console` (PKCE, built in like
+the admin console's client, following `UI_URL`, undeletable and left out of exports),
+whose tokens carry the built-in `urn:ridm:account` audience and reach only the
+self-service API under `/t/{slug}/account/`: `GET me` (identity plus the session's
+`auth_time`, `acr` and `amr`), `GET mfa` (enrolled factors, recovery codes left, the
+methods the tenant offers), `POST mfa/totp/enroll|confirm`, `mfa/passkey/register[/finish]`,
+`mfa/{email|sms}/enroll|confirm` (the same services as the login-flow steps, scoped to
+the SSO session), `DELETE mfa/credentials/{id}` (the recovery codes go with the last
+factor), `POST mfa/recovery-codes` (a new set, shown once), `GET devices`,
+`DELETE devices[/{id}]`. Every change needs a sign-in from the last fifteen minutes,
+and one that passed the second step once the account has one; otherwise the API
+answers `403` with the problem type `urn:ridm:error:reauthentication-required` and the
+page sends the user back through sign-in (`max_age=0`, plus `acr_values` for the second
+step) and returns. A token may only act on its own subject and only in the tenant that
+issued it.
+
+Breached-password check: with `password.check_breached` on, every password a user
+or administrator sets (registration, recovery, forced change, admin reset, imports
+with a plaintext `password`) is looked up in a Have I Been Pwned compatible range API
+by k-anonymity: only the first five hex digits of its SHA-1 leave the server, and the
+match happens locally on the padded answer. `BREACH_CHECK_URL` names the endpoint
+(default `https://api.pwnedpasswords.com/range/`; `off` disables it deployment-wide
+for air-gapped installs, and the tenant toggle is then inert). A refused password is
+a validation error on the `password` field; a lookup failure is logged and lets the
+password through, so an outage never blocks sign-ups or resets. The checker is a
+`BreachChecker` provider, so another corpus can be plugged in.
 
 Secrets at rest (signing keys, MFA credentials, IdP secrets) are encrypted with
 `MASTER_KEY`, and every ciphertext records the key generation that produced it. To
@@ -348,7 +429,8 @@ npm run build          # static export to ui/out
 mode). Set it at build time when hosting `ui/out` on a separate static host or CDN.
 
 `npm run e2e` runs the Playwright suite (the end-user journeys — password, magic link,
-registration, recovery, consent, logout — and the admin console journeys for every
+registration, recovery, two-step verification, passkeys through a virtual
+authenticator, consent, logout — and the admin console journeys for every
 page, with axe-core accessibility checks on every page in light, dark and phone width)
 against a running API and Mailpit; see [`ui/e2e/README.md`](ui/e2e/README.md).
 

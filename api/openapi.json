@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "rIDM Admin API",
-    "description": "Administration API of rIDM. Every operation needs a bearer access token carrying the `urn:ridm:admin` audience; permissions are `ridm:<resource>:<action>`. Errors are RFC 9457 problem documents.",
+    "description": "Administration API of rIDM, plus the self-service account API. Admin operations need a bearer access token carrying the `urn:ridm:admin` audience; permissions are `ridm:<resource>:<action>`. Account operations (`/t/{slug}/account/...`) need a token of that tenant carrying the `urn:ridm:account` audience and act on its subject only. Errors are RFC 9457 problem documents.",
     "license": {
       "name": "MIT"
     },
@@ -12462,6 +12462,1004 @@
           }
         ]
       }
+    },
+    "/t/{slug}/account/devices": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_list",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TrustedDevice"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_revoke_all",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/devices/{device_id}": {
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_revoke",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/me": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_me",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountMe"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token of another tenant or inactive account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/mfa": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_status",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MfaStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/mfa/credentials/{credential_id}": {
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Remove a factor. The recovery codes go with the last one.",
+        "operationId": "account_delete_credential",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/mfa/email/confirm": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_email_confirm",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Enrolled"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Wrong code or nothing pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/mfa/email/enroll": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_email_enroll",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Already enrolled, disabled or no address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many codes sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/mfa/passkey/register": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_passkey_register",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "WebAuthn creation options",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Passkeys disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/mfa/passkey/register/finish": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_passkey_register_finish",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasskeyFinishBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Enrolled"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The passkey could not be verified",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/mfa/recovery-codes": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Replace the recovery codes; the new set is shown once.",
+        "operationId": "account_recovery_codes",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCodes"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No second factor enrolled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/mfa/sms/confirm": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_sms_confirm",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Enrolled"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Wrong code or nothing pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/mfa/sms/enroll": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_sms_enroll",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhoneBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Already enrolled, disabled or no number",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many codes sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/mfa/totp/confirm": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_totp_confirm",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Enrolled"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Wrong code or nothing pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/mfa/totp/enroll": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_totp_enroll",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Enrolment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Already enrolled or disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -12472,6 +13470,84 @@
           "jwt",
           "opaque"
         ]
+      },
+      "AccountMe": {
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "email_verified",
+          "phone_verified",
+          "tenant",
+          "amr"
+        ],
+        "properties": {
+          "acr": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Authentication context class of the session (`urn:ridm:acr:mfa` after a second step)."
+          },
+          "amr": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Methods the session was authenticated with."
+          },
+          "auth_time": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the sign-in behind this token happened."
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email_verified": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phone_verified": {
+            "type": "boolean"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/AccountTenant"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "AccountTenant": {
+        "type": "object",
+        "required": [
+          "slug",
+          "display_name"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        }
       },
       "AdminScope": {
         "type": "string",
@@ -13356,6 +14432,24 @@
         ],
         "description": "Client as returned to administrators: every metadata column, plus the\nsecrets' ids and validity windows (never the secrets or their hashes)."
       },
+      "CodeBody": {
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A name for the factor (authenticator app only)."
+          }
+        }
+      },
       "Consent": {
         "type": "object",
         "required": [
@@ -13768,6 +14862,58 @@
           "server_default",
           "none"
         ]
+      },
+      "Enrolled": {
+        "type": "object",
+        "description": "Answer of a completed enrolment: recovery codes when a fresh set was\nissued (the first factor, or an authenticator app, which always renews\nthem), shown once.",
+        "properties": {
+          "recovery_codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Enrolment": {
+        "type": "object",
+        "description": "What the UI needs to add the account to an authenticator app.",
+        "required": [
+          "secret",
+          "otpauth_uri",
+          "issuer",
+          "account",
+          "digits",
+          "period"
+        ],
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "digits": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "otpauth_uri": {
+            "type": "string"
+          },
+          "period": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "secret": {
+            "type": "string",
+            "description": "Base32 secret for manual entry."
+          }
+        }
       },
       "Exposure": {
         "type": "string",
@@ -14609,6 +15755,27 @@
           }
         }
       },
+      "MfaMethods": {
+        "type": "object",
+        "description": "Which second-step methods users may enrol. Passkeys are offered as a\nsecond step whenever `AuthMethods::passkey` is on.",
+        "properties": {
+          "email_otp": {
+            "type": "boolean",
+            "description": "One-time code to the account's email address.",
+            "default": false
+          },
+          "sms_otp": {
+            "type": "boolean",
+            "description": "One-time code to a verified phone number.",
+            "default": false
+          },
+          "totp": {
+            "type": "boolean",
+            "description": "Authenticator app (TOTP).",
+            "default": true
+          }
+        }
+      },
       "MfaPolicy": {
         "oneOf": [
           {
@@ -14689,6 +15856,48 @@
             }
           }
         ]
+      },
+      "MfaStatus": {
+        "type": "object",
+        "description": "The user's second-factor state.",
+        "required": [
+          "factors",
+          "recovery_codes",
+          "methods",
+          "policy"
+        ],
+        "properties": {
+          "factors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Credential"
+            },
+            "description": "Enrolled factors (`totp`, `webauthn`, `email_otp`, `sms_otp` rows)."
+          },
+          "methods": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Factor kinds the tenant offers for enrolment."
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The phone an SMS enrolment would use, masked."
+          },
+          "policy": {
+            "type": "string",
+            "description": "The tenant's policy mode (`off`, `optional`, `required`, ...)."
+          },
+          "recovery_codes": {
+            "type": "integer",
+            "description": "Unused recovery codes.",
+            "minimum": 0
+          }
+        }
       },
       "NewClaimMapper": {
         "type": "object",
@@ -15685,6 +16894,23 @@
           }
         }
       },
+      "PasskeyFinishBody": {
+        "type": "object",
+        "required": [
+          "credential"
+        ],
+        "properties": {
+          "credential": {
+            "description": "The browser's `navigator.credentials.create` answer."
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "PasswordBody": {
         "type": "object",
         "properties": {
@@ -15903,6 +17129,19 @@
           }
         }
       },
+      "PhoneBody": {
+        "type": "object",
+        "properties": {
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "E.164 number to prove; the account's own when omitted.",
+            "default": null
+          }
+        }
+      },
       "Plan": {
         "type": "object",
         "required": [
@@ -16047,6 +17286,20 @@
               "$ref": "#/components/schemas/AttributeDef"
             },
             "default": []
+          }
+        }
+      },
+      "RecoveryCodes": {
+        "type": "object",
+        "required": [
+          "recovery_codes"
+        ],
+        "properties": {
+          "recovery_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -16726,6 +17979,22 @@
             "propertyNames": {
               "type": "string"
             }
+          }
+        }
+      },
+      "Sent": {
+        "type": "object",
+        "description": "Where a code went, as told to the user (masked).",
+        "required": [
+          "sent",
+          "destination"
+        ],
+        "properties": {
+          "destination": {
+            "type": "string"
+          },
+          "sent": {
+            "type": "boolean"
           }
         }
       },
@@ -17561,6 +18830,19 @@
             ],
             "default": {
               "mode": "off"
+            }
+          },
+          "mfa_methods": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MfaMethods",
+                "description": "Second factors the tenant offers (passkeys follow `auth.passkey`)."
+              }
+            ],
+            "default": {
+              "email_otp": false,
+              "sms_otp": false,
+              "totp": true
             }
           },
           "notifications": {
@@ -18465,6 +19747,10 @@
     {
       "name": "ip_rules",
       "description": "IP allow and deny rules"
+    },
+    {
+      "name": "account",
+      "description": "Self-service account API: the signed-in user's second factors and trusted devices"
     }
   ]
 }

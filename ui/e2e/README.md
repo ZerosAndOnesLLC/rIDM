@@ -14,7 +14,8 @@ cd ui && npm run e2e            # starts `next dev -p 3110` itself
 ```
 
 Global setup prepares the `master` tenant directly in the database (password,
-magic-link and registration enabled, dynamic client registration open), registers a
+magic-link, email-code and passkey sign-in and registration enabled, dynamic client
+registration open), registers a
 client, creates one user through the registration flow and makes them a global
 owner (`ridm:owner` in `master`) so the console specs can sign in as them. Settings:
 
@@ -42,6 +43,10 @@ owner (`ridm:owner` in `master`) so the console specs can sign in as them. Setti
 | `lockout` | account lock after repeated failures; right password refused while locked |
 | `consent` | consent denied returns `access_denied` (approval runs inside every sign-in) |
 | `logout` | RP-initiated logout with confirmation |
+| `mfa` | client step-up (`acr_values`) enrols an authenticator app (choice screen, QR and manual key, wrong proof refused, recovery codes shown once), a step-up on a live session goes straight to the app code and the session then satisfies the class, a spent code is refused, a recovery code works once |
+| `account` | the account console: sign-in through the tenant, adding an authenticator app (recovery codes shown once), the factor listed, a step-up with "don't ask again" makes the browser trusted, the console forgets it, renews the codes and removes the app |
+| `mfa-otp` | the chooser enrols codes by email (a wrong code refused, recovery codes shown once), the next step-up emails a code and verifies it |
+| `passkey` | CDP virtual authenticator: a step-up enrols a passkey as the second step (recovery codes), the passkey signs in without a password (no second step), a later step-up verifies with it |
 | `console-a11y` | axe pass over every console page in its landing state (all pages light, the first eight dark, four at phone width with no horizontal overflow) |
 | `console-config` | tenant document downloaded and loaded into the editor, an unchanged document plans nothing, a renamed tenant plans one field-level update and applies, then reverts |
 | `console-ops` | keys timeline with a new pending key activated, retired and revoked, rotation, JWK shown; audit filtered by event, row expanded, chain verified, CSV exported, global chain; webhook created with a reveal-once secret, edited, test ping queued and listed, secret rotated, deleted; IP rule added, action changed in place, deleted; template override with live preview saved and reset, test email sent and shown in the log |
@@ -53,7 +58,7 @@ owner (`ridm:owner` in `master`) so the console specs can sign in as them. Setti
 | `a11y` | error, device, invite, verify and logout pages, and login without a tenant |
 | `openapi-contract` | the live `/openapi.json` equals the committed `api/openapi.json` the typed admin client is generated from; the `openapi-fetch` client reaches the live API and types its 401 problem body |
 
-MFA, passkeys and the device page get their journeys with Phases 7 and 8.
+OTP second factors and the device page get their journeys with the rest of Phases 7 and 8.
 
 Every page under test is also checked with axe-core; serious and critical
 accessibility violations fail the run. Specs that need rows in row-level-secured
