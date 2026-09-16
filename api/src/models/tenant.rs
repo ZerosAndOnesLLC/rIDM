@@ -46,6 +46,8 @@ pub struct TenantSettings {
     pub password: PasswordPolicy,
     pub session: SessionPolicy,
     pub mfa: MfaPolicy,
+    /// Second factors the tenant offers (passkeys follow `auth.passkey`).
+    pub mfa_methods: MfaMethods,
     pub registration: RegistrationPolicy,
     pub locale: LocaleSettings,
     pub branding: Branding,
@@ -103,6 +105,29 @@ impl Default for AuthMethods {
             email_otp: false,
             sms_otp: false,
             passkey: false,
+        }
+    }
+}
+
+/// Which second-step methods users may enrol. Passkeys are offered as a
+/// second step whenever `AuthMethods::passkey` is on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(default)]
+pub struct MfaMethods {
+    /// Authenticator app (TOTP).
+    pub totp: bool,
+    /// One-time code to the account's email address.
+    pub email_otp: bool,
+    /// One-time code to a verified phone number.
+    pub sms_otp: bool,
+}
+
+impl Default for MfaMethods {
+    fn default() -> Self {
+        Self {
+            totp: true,
+            email_otp: false,
+            sms_otp: false,
         }
     }
 }
@@ -347,6 +372,8 @@ mod tests {
         assert_eq!(s, TenantSettings::default());
         assert_eq!(s.password.min_length, 12);
         assert_eq!(s.mfa, MfaPolicy::Off);
+        assert_eq!(s.mfa_methods, MfaMethods::default());
+        assert!(s.mfa_methods.totp && !s.mfa_methods.email_otp && !s.mfa_methods.sms_otp);
     }
 
     #[test]

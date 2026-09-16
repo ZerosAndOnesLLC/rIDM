@@ -10,7 +10,7 @@ import { Alert, Button, Checkbox, Spinner, TextField, Title } from "@/components
 import { useFlow } from "@/lib/flow";
 import { usePageParams, WithParams } from "@/lib/params";
 import { assertPasskey, createPasskey, passkeysSupported } from "@/lib/passkeys";
-import type { MfaEnrolled, PasskeyCreationOptions, PasskeyRequestOptions, PublicFlow, TotpEnrolment } from "@/lib/types";
+import type { Factor, MfaEnrolled, OtpSent, PasskeyCreationOptions, PasskeyRequestOptions, PublicFlow, TotpEnrolment } from "@/lib/types";
 
 const ACCEPTS = ["mfa", "done"] as const;
 
@@ -29,13 +29,25 @@ function usePasskeySupport(): boolean {
   return useSyncExternalStore(noop, passkeysSupported, () => false);
 }
 
-type Choice = "app" | "passkey";
+type Choice = "app" | "passkey" | "email" | "sms";
+type OtpChannel = "email" | "sms";
+
+/** The enrolment choices the tenant offers this user, in display order. */
+function choicesOf(methods: Factor[], passkeys: boolean): Choice[] {
+  const out: Choice[] = [];
+  if (methods.includes("webauthn") && passkeys) out.push("passkey");
+  if (methods.includes("totp")) out.push("app");
+  if (methods.includes("email_otp")) out.push("email");
+  if (methods.includes("sms_otp")) out.push("sms");
+  return out;
+}
 
 /**
  * Second factor. A user with a factor verifies with it (an authenticator
- * code, a passkey, or a recovery code); one without enrols first, choosing
- * between an authenticator app and a passkey when the tenant offers both,
- * then sees the recovery codes once before the flow moves on.
+ * code, a passkey, a code by email or text message, or a recovery code);
+ * one without enrols first, choosing between the methods the tenant offers
+ * when there is more than one, then sees the recovery codes once before the
+ * flow moves on.
  */
 function MfaPage() {
   const p = usePageParams();
@@ -52,14 +64,25 @@ function MfaPage() {
   } else if (codes) {
     body = <RecoveryCodes codes={codes} onDone={() => void f.reload()} />;
   } else if (f.flow.mfa?.enroll) {
-    const passkeyOffered = f.flow.methods.includes("passkey") && supported;
-    const chosen = passkeyOffered ? choice : "app";
+    const choices = choicesOf(f.flow.mfa.methods, supported);
+    const chosen = choices.length === 1 ? choices[0] : choice;
+    const back = choices.length > 1 ? () => setChoice(null) : null;
     if (chosen === "passkey") {
-      body = <EnrolPasskey flow={f.flow} post={f.post} onEnrolled={setCodes} onBack={() => setChoice(null)} />;
+      body = <EnrolPasskey flow={f.flow} post={f.post} onEnrolled={setCodes} onBack={back} />;
     } else if (chosen === "app") {
-      body = <Enrol flow={f.flow} post={f.post} onEnrolled={setCodes} onBack={passkeyOffered ? () => setChoice(null) : null} />;
+      body = <Enrol flow={f.flow} post={f.post} onEnrolled={setCodes} onBack={back} />;
+    } else if (chosen === "email" || chosen === "sms") {
+      body = <EnrolOtp key={chosen} channel={chosen} flow={f.flow} post={f.post} onEnrolled={setCodes} onBack={back} />;
+    } else if (choices.length === 0) {
+      body = (
+        <div className="flex flex-col gap-5">
+          <Title>{t("mfa.enroll_title")}</Title>
+          <Alert tone="error">{t("mfa.no_methods")}</Alert>
+          <CancelLink post={f.post} />
+        </div>
+      );
     } else {
-      body = <Choose flow={f.flow} post={f.post} onChoose={setChoice} />;
+      body = <Choose flow={f.flow} post={f.post} choices={choices} onChoose={setChoice} />;
     }
   } else {
     body = <Verify flow={f.flow} post={f.post} passkeys={supported} />;
@@ -106,7 +129,35 @@ function SignedInAs({ flow }: { flow: PublicFlow }) {
   return <p className="-mt-3 text-[0.875rem] text-muted">{t("common.signed_in_as", { username: flow.user.username })}</p>;
 }
 
-type VerifyMode = "app" | "recovery" | "passkey";
+type VerifyMode = "app" | "recovery" | "passkey" | OtpChannel;
+
+/**
+ * Asks the API for a code over `channel` whenever the mode is one; the API
+ * reuses a code it sent moments ago, so a re-run sends nothing twice.
+ */
+function useSendCode(post: Post, channel: OtpChannel | null, resend: number) {
+  const errorText = useErrorText();
+  const [sent, setSent] = useState<{ channel: OtpChannel; destination: string } | null>(null);
+  const [error, setError] = useState<{ channel: OtpChannel; text: string | null } | null>(null);
+  useEffect(() => {
+    if (!channel) return;
+    let live = true;
+    post<OtpSent>(`mfa/${channel}/send`, {})
+      .then((s) => {
+        if (!live) return;
+        setSent({ channel, destination: s.destination });
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        if (live) setError({ channel, text: errorText(err) });
+      });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one send per channel choice or explicit resend
+  }, [channel, resend]);
+  return { sent: sent?.channel === channel ? sent : null, error: error?.channel === channel ? error.text : null };
+}
 
 function Verify({ flow, post, passkeys }: { flow: PublicFlow; post: Post; passkeys: boolean }) {
   const { t } = useI18n();
@@ -114,12 +165,17 @@ function Verify({ flow, post, passkeys }: { flow: PublicFlow; post: Post; passke
   const factors = flow.mfa?.factors ?? [];
   const hasApp = factors.includes("totp");
   const hasPasskey = factors.includes("webauthn") && passkeys;
+  const hasEmail = factors.includes("email_otp");
+  const hasSms = factors.includes("sms_otp");
   const hasRecovery = Boolean(flow.mfa?.recovery_codes);
-  const [mode, setMode] = useState<VerifyMode>(hasApp ? "app" : hasPasskey ? "passkey" : "recovery");
+  const [mode, setMode] = useState<VerifyMode>(hasApp ? "app" : hasPasskey ? "passkey" : hasEmail ? "email" : hasSms ? "sms" : "recovery");
   const [code, setCode] = useState("");
   const [trust, setTrust] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resend, setResend] = useState(0);
+  const otp = mode === "email" || mode === "sms" ? mode : null;
+  const delivery = useSendCode(post, otp, resend);
   const ready = mode === "recovery" ? code.trim().length >= 10 : code.length >= 6;
 
   const switchTo = (m: VerifyMode) => {
@@ -142,7 +198,7 @@ function Verify({ flow, post, passkeys }: { flow: PublicFlow; post: Post; passke
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    void run(() => post("mfa/verify", { code, remember_device: trust }));
+    void run(() => post(otp ? `mfa/${otp}/verify` : "mfa/verify", { code, remember_device: trust }));
   };
   const withPasskey = () =>
     run(async () => {
@@ -151,11 +207,17 @@ function Verify({ flow, post, passkeys }: { flow: PublicFlow; post: Post; passke
       await post("mfa/passkey/finish", { credential, remember_device: trust });
     });
 
-  const subtitle = mode === "recovery" ? t("mfa.recovery_description") : mode === "passkey" ? t("mfa.passkey_description") : t("mfa.description");
+  let subtitle: string;
+  if (mode === "recovery") subtitle = t("mfa.recovery_description");
+  else if (mode === "passkey") subtitle = t("mfa.passkey_description");
+  else if (otp) subtitle = delivery.sent ? t("login.code_sent", { destination: delivery.sent.destination, minutes: 10 }) : t("mfa.sending");
+  else subtitle = t("mfa.description");
   const switches = (
     <>
       {mode !== "app" && hasApp && <SwitchLink onClick={() => switchTo("app")}>{t("mfa.use_app_code")}</SwitchLink>}
       {mode !== "passkey" && hasPasskey && <SwitchLink onClick={() => switchTo("passkey")}>{t("mfa.use_passkey")}</SwitchLink>}
+      {mode !== "email" && hasEmail && <SwitchLink onClick={() => switchTo("email")}>{t("mfa.use_email")}</SwitchLink>}
+      {mode !== "sms" && hasSms && <SwitchLink onClick={() => switchTo("sms")}>{t("mfa.use_sms")}</SwitchLink>}
       {mode !== "recovery" && hasRecovery && <SwitchLink onClick={() => switchTo("recovery")}>{t("mfa.use_recovery_code")}</SwitchLink>}
     </>
   );
@@ -180,7 +242,7 @@ function Verify({ flow, post, passkeys }: { flow: PublicFlow; post: Post; passke
     <form onSubmit={submit} className="flex flex-col gap-5">
       <Title sub={subtitle}>{t("mfa.title")}</Title>
       <SignedInAs flow={flow} />
-      {error && <Alert tone="error">{error}</Alert>}
+      {(error ?? delivery.error) && <Alert tone="error">{error ?? delivery.error}</Alert>}
       {mode === "recovery" ? (
         <TextField
           label={t("mfa.recovery_code")}
@@ -196,43 +258,161 @@ function Verify({ flow, post, passkeys }: { flow: PublicFlow; post: Post; passke
         <CodeInput label={t("common.code")} value={code} onChange={setCode} autoFocus />
       )}
       <Checkbox label={t("mfa.trust_device")} checked={trust} onChange={(e) => setTrust(e.target.checked)} />
-      <Button type="submit" busy={busy} disabled={!ready}>
+      <Button type="submit" busy={busy} disabled={!ready || (otp !== null && !delivery.sent)}>
         {t("common.continue")}
       </Button>
+      {otp && <SwitchLink onClick={() => setResend((n) => n + 1)}>{t("login.resend")}</SwitchLink>}
       {switches}
       <CancelLink post={post} />
     </form>
   );
 }
 
-/** First enrolment when both an authenticator app and a passkey are on offer. */
-function Choose({ flow, post, onChoose }: { flow: PublicFlow; post: Post; onChoose: (c: Choice) => void }) {
+const CHOICE_TEXT: Record<Choice, { label: string; hint: string }> = {
+  passkey: { label: "mfa.choose_passkey", hint: "mfa.choose_passkey_hint" },
+  app: { label: "mfa.choose_app", hint: "mfa.choose_app_hint" },
+  email: { label: "mfa.choose_email", hint: "mfa.choose_email_hint" },
+  sms: { label: "mfa.choose_sms", hint: "mfa.choose_sms_hint" },
+};
+
+/** First enrolment when the tenant offers more than one method. */
+function Choose({ flow, post, choices, onChoose }: { flow: PublicFlow; post: Post; choices: Choice[]; onChoose: (c: Choice) => void }) {
   const { t } = useI18n();
   const issuer = flow.client.name;
-  const option = (choice: Choice, label: string, hint: string) => (
-    <button
-      type="button"
-      onClick={() => onChoose(choice)}
-      className="flex flex-col items-start gap-1 rounded-[var(--radius)] border border-line bg-paper px-4 py-3 text-start hover:bg-ground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-    >
-      <span className="text-[0.9375rem] font-medium text-ink">{label}</span>
-      <span className="text-[0.8125rem] text-muted">{hint}</span>
-    </button>
-  );
   return (
     <div className="flex flex-col gap-5">
       <Title sub={t("mfa.choose_description", { issuer })}>{t("mfa.enroll_title")}</Title>
       <SignedInAs flow={flow} />
       <div className="flex flex-col gap-3">
-        {option("passkey", t("mfa.choose_passkey"), t("mfa.choose_passkey_hint"))}
-        {option("app", t("mfa.choose_app"), t("mfa.choose_app_hint"))}
+        {choices.map((choice) => (
+          <button
+            key={choice}
+            type="button"
+            onClick={() => onChoose(choice)}
+            className="flex flex-col items-start gap-1 rounded-[var(--radius)] border border-line bg-paper px-4 py-3 text-start hover:bg-ground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            <span className="text-[0.9375rem] font-medium text-ink">{t(CHOICE_TEXT[choice].label)}</span>
+            <span className="text-[0.8125rem] text-muted">{t(CHOICE_TEXT[choice].hint)}</span>
+          </button>
+        ))}
       </div>
       <CancelLink post={post} />
     </div>
   );
 }
 
-function EnrolPasskey({ flow, post, onEnrolled, onBack }: { flow: PublicFlow; post: Post; onEnrolled: (codes: string[]) => void; onBack: () => void }) {
+/**
+ * Enrol a code by email or text message: the code goes out at once (an SMS
+ * enrolment first asks for a number when the account has none), and the
+ * right code makes the channel the user's second factor.
+ */
+function EnrolOtp({ channel, flow, post, onEnrolled, onBack }: { channel: OtpChannel; flow: PublicFlow; post: Post; onEnrolled: (codes: string[]) => void; onBack: (() => void) | null }) {
+  const { t } = useI18n();
+  const errorText = useErrorText();
+  const needsPhone = channel === "sms" && !flow.mfa?.phone;
+  const [phone, setPhone] = useState("");
+  const [sent, setSent] = useState<OtpSent | null>(null);
+  const [code, setCode] = useState("");
+  const [trust, setTrust] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run(fn: () => Promise<unknown>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const send = (number?: string) => run(async () => setSent(await post<OtpSent>(`mfa/${channel}/enroll`, number ? { phone: number } : {})));
+
+  useEffect(() => {
+    if (needsPhone) return;
+    let live = true;
+    post<OtpSent>(`mfa/${channel}/enroll`, {})
+      .then((s) => {
+        if (live) setSent(s);
+      })
+      .catch((err: unknown) => {
+        if (live) setError(errorText(err));
+      });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one code per enrolment screen
+  }, []);
+
+  const confirm = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await post<MfaEnrolled | PublicFlow>(`mfa/${channel}/confirm`, { code, remember_device: trust });
+      if ("recovery_codes" in res) onEnrolled(res.recovery_codes);
+    } catch (err) {
+      setError(errorText(err));
+      setCode("");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const title = channel === "email" ? t("mfa.email_enroll_title") : t("mfa.sms_enroll_title");
+  if (!sent) {
+    if (needsPhone) {
+      return (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void send(phone);
+          }}
+          className="flex flex-col gap-5"
+        >
+          <Title sub={t("mfa.sms_enroll_description")}>{title}</Title>
+          <SignedInAs flow={flow} />
+          {error && <Alert tone="error">{error}</Alert>}
+          <TextField label={t("common.phone")} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" inputMode="tel" placeholder="+15551234567" autoFocus />
+          <Button type="submit" busy={busy} disabled={phone.trim().length < 7}>
+            {t("mfa.send_code")}
+          </Button>
+          {onBack && <SwitchLink onClick={onBack}>{t("mfa.choose_other")}</SwitchLink>}
+          <CancelLink post={post} />
+        </form>
+      );
+    }
+    return (
+      <div className="flex flex-col gap-5">
+        <Title sub={t("mfa.sending")}>{title}</Title>
+        <SignedInAs flow={flow} />
+        {error ? <Alert tone="error">{error}</Alert> : <Spinner label={t("common.loading")} />}
+        {onBack && <SwitchLink onClick={onBack}>{t("mfa.choose_other")}</SwitchLink>}
+        <CancelLink post={post} />
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={confirm} className="flex flex-col gap-5">
+      <Title sub={t("login.code_sent", { destination: sent.destination, minutes: 10 })}>{title}</Title>
+      <SignedInAs flow={flow} />
+      {error && <Alert tone="error">{error}</Alert>}
+      <CodeInput label={t("common.code")} value={code} onChange={setCode} autoFocus />
+      <Checkbox label={t("mfa.trust_device")} checked={trust} onChange={(e) => setTrust(e.target.checked)} />
+      <Button type="submit" busy={busy} disabled={code.length < 6}>
+        {t("mfa.verify_setup")}
+      </Button>
+      <SwitchLink onClick={() => void send(needsPhone ? phone : undefined)}>{t("login.resend")}</SwitchLink>
+      {onBack && <SwitchLink onClick={onBack}>{t("mfa.choose_other")}</SwitchLink>}
+      <CancelLink post={post} />
+    </form>
+  );
+}
+
+function EnrolPasskey({ flow, post, onEnrolled, onBack }: { flow: PublicFlow; post: Post; onEnrolled: (codes: string[]) => void; onBack: (() => void) | null }) {
   const { t } = useI18n();
   const errorText = useErrorText();
   const [label, setLabel] = useState("");
@@ -269,7 +449,7 @@ function EnrolPasskey({ flow, post, onEnrolled, onBack }: { flow: PublicFlow; po
       <Button type="button" busy={busy} onClick={() => void create()}>
         {t("mfa.passkey_create")}
       </Button>
-      <SwitchLink onClick={onBack}>{t("mfa.choose_other")}</SwitchLink>
+      {onBack && <SwitchLink onClick={onBack}>{t("mfa.choose_other")}</SwitchLink>}
       <CancelLink post={post} />
     </div>
   );

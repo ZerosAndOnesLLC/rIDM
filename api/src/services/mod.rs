@@ -26,6 +26,7 @@ pub mod logout;
 pub mod master_key;
 pub mod messaging;
 pub mod notifications;
+pub mod otp_factors;
 pub mod passkeys;
 pub mod password;
 pub mod passwordless;

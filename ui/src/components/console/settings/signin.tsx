@@ -8,7 +8,7 @@ type MfaMode = "off" | "optional" | "required" | "required_for_admins" | "requir
 
 export function SignInSection() {
   const { draft, editable, update } = useSettingsEditor();
-  const { auth, mfa, registration } = draft.settings;
+  const { auth, mfa, mfa_methods, registration } = draft.settings;
   const mfaRoles = mfa.mode === "required_for_roles" ? mfa.roles : [];
   const setMfa = (mode: MfaMode, roles = mfaRoles) => update({ mfa: mode === "required_for_roles" ? { mode, roles } : { mode } });
   const urlError = (v: string | null | undefined) => (v && !isHttpUrl(v) ? "Enter an http(s) URL." : null);
@@ -24,7 +24,14 @@ export function SignInSection() {
         <Toggle label="Passkeys" hint="Passwordless sign-in with a device passkey or security key; also offered as a second step." checked={auth.passkey} disabled={!editable} onChange={(v) => update({ auth: { passkey: v } })} />
       </div>
 
-      <Field label="Two-step verification" hint="Required asks everyone (enrolling an authenticator app on first sign-in); optional asks users who enrolled one. Role-based modes arrive with 7.4.">
+      <div className="flex flex-col gap-1 sm:col-span-2">
+        <h3 className="text-[0.8125rem] font-medium text-ink">Second-step methods</h3>
+        <Toggle label="Authenticator app" hint="Time-based codes from an app (TOTP)." checked={mfa_methods.totp} disabled={!editable} onChange={(v) => update({ mfa_methods: { totp: v } })} />
+        <Toggle label="Email code" hint="A one-time code to the account's email address." checked={mfa_methods.email_otp} disabled={!editable} onChange={(v) => update({ mfa_methods: { email_otp: v } })} />
+        <Toggle label="SMS code" hint="A one-time code to a verified phone number; needs an SMS provider under Messaging." checked={mfa_methods.sms_otp} disabled={!editable} onChange={(v) => update({ mfa_methods: { sms_otp: v } })} />
+      </div>
+
+      <Field label="Two-step verification" hint="Required asks everyone (enrolling a second step on first sign-in); optional asks users who enrolled one. Role-based modes arrive with 7.4.">
         {(id, by) => (
           <SelectInput id={id} aria-describedby={by} value={mfa.mode} disabled={!editable} onChange={(e) => setMfa(e.target.value as MfaMode)}>
             <option value="off">Off</option>

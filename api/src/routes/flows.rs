@@ -68,6 +68,26 @@ pub fn router() -> Router<AppState> {
             "/t/{slug}/flows/{id}/mfa/passkey/finish",
             post(mfa_passkey_finish),
         )
+        .route(
+            "/t/{slug}/flows/{id}/mfa/email/enroll",
+            post(mfa_email_enroll),
+        )
+        .route(
+            "/t/{slug}/flows/{id}/mfa/email/confirm",
+            post(mfa_email_confirm),
+        )
+        .route("/t/{slug}/flows/{id}/mfa/email/send", post(mfa_email_send))
+        .route(
+            "/t/{slug}/flows/{id}/mfa/email/verify",
+            post(mfa_email_verify),
+        )
+        .route("/t/{slug}/flows/{id}/mfa/sms/enroll", post(mfa_sms_enroll))
+        .route(
+            "/t/{slug}/flows/{id}/mfa/sms/confirm",
+            post(mfa_sms_confirm),
+        )
+        .route("/t/{slug}/flows/{id}/mfa/sms/send", post(mfa_sms_send))
+        .route("/t/{slug}/flows/{id}/mfa/sms/verify", post(mfa_sms_verify))
         .route("/t/{slug}/flows/{id}/passkey/start", post(passkey_start))
         .route("/t/{slug}/flows/{id}/passkey/finish", post(passkey_finish))
         .route("/t/{slug}/flows/{id}/profile", post(profile))
@@ -603,6 +623,139 @@ async fn mfa_verify(
         flows::mfa_verify_step(&state, &tenant, flow, &body.code, body.remember_device, ip).await;
     respond_mfa(&state, &tenant, outcome, INVALID_CODE).await
 }
+
+#[derive(Deserialize)]
+struct OtpEnrolBody {
+    csrf: String,
+    /// SMS enrolment: the number to prove (E.164) when the account has none.
+    #[serde(default)]
+    phone: Option<String>,
+}
+
+/// Email and SMS codes as second factors: enrol (code to the destination),
+/// confirm, and for later sign-ins send then verify.
+macro_rules! otp_factor_routes {
+    ($enroll:ident, $confirm:ident, $send:ident, $verify:ident, $channel:expr) => {
+        async fn $enroll(
+            State(state): State<AppState>,
+            tenant: TenantCtx,
+            Path((_, id)): Path<(String, Uuid)>,
+            axum::Json(body): axum::Json<OtpEnrolBody>,
+        ) -> Response {
+            let flow = match flows::load(&state, tenant.id(), id).await {
+                Ok(f) => f,
+                Err(e) => return e.into_response(),
+            };
+            if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+                return e.into_response();
+            }
+            match flows::mfa_otp_enrol_begin(
+                &state,
+                &tenant,
+                &flow,
+                $channel,
+                body.phone.as_deref(),
+            )
+            .await
+            {
+                Ok(sent) => no_store((StatusCode::ACCEPTED, axum::Json(sent)).into_response()),
+                Err(e) => e.into_response(),
+            }
+        }
+
+        async fn $confirm(
+            State(state): State<AppState>,
+            tenant: TenantCtx,
+            Path((_, id)): Path<(String, Uuid)>,
+            ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+            headers: HeaderMap,
+            axum::Json(body): axum::Json<MfaBody>,
+        ) -> Response {
+            let flow = match flows::load(&state, tenant.id(), id).await {
+                Ok(f) => f,
+                Err(e) => return e.into_response(),
+            };
+            if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+                return e.into_response();
+            }
+            let ip = client_ip(&state, &headers, Some(peer));
+            let outcome = flows::mfa_otp_enrol_confirm(
+                &state,
+                &tenant,
+                flow,
+                $channel,
+                &body.code,
+                body.remember_device,
+                ip,
+            )
+            .await;
+            respond_mfa(&state, &tenant, outcome, INVALID_CODE).await
+        }
+
+        async fn $send(
+            State(state): State<AppState>,
+            tenant: TenantCtx,
+            Path((_, id)): Path<(String, Uuid)>,
+            axum::Json(body): axum::Json<CancelBody>,
+        ) -> Response {
+            let flow = match flows::load(&state, tenant.id(), id).await {
+                Ok(f) => f,
+                Err(e) => return e.into_response(),
+            };
+            if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+                return e.into_response();
+            }
+            match flows::mfa_otp_send(&state, &tenant, &flow, $channel).await {
+                Ok(sent) => no_store((StatusCode::ACCEPTED, axum::Json(sent)).into_response()),
+                Err(e) => e.into_response(),
+            }
+        }
+
+        async fn $verify(
+            State(state): State<AppState>,
+            tenant: TenantCtx,
+            Path((_, id)): Path<(String, Uuid)>,
+            ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+            headers: HeaderMap,
+            axum::Json(body): axum::Json<MfaBody>,
+        ) -> Response {
+            let flow = match flows::load(&state, tenant.id(), id).await {
+                Ok(f) => f,
+                Err(e) => return e.into_response(),
+            };
+            if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+                return e.into_response();
+            }
+            let ip = client_ip(&state, &headers, Some(peer));
+            let outcome = flows::mfa_otp_verify(
+                &state,
+                &tenant,
+                flow,
+                $channel,
+                &body.code,
+                body.remember_device,
+                ip,
+            )
+            .await;
+            respond_mfa(&state, &tenant, outcome, INVALID_CODE).await
+        }
+    };
+}
+
+otp_factor_routes!(
+    mfa_email_enroll,
+    mfa_email_confirm,
+    mfa_email_send,
+    mfa_email_verify,
+    crate::services::otp_factors::Channel::Email
+);
+otp_factor_routes!(
+    mfa_sms_enroll,
+    mfa_sms_confirm,
+    mfa_sms_send,
+    mfa_sms_verify,
+    crate::services::otp_factors::Channel::Sms
+);
 
 /// Error code and description of a refused second factor.
 const INVALID_CODE: (&str, &str) = ("invalid_code", "the code is invalid or was already used");

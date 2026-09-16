@@ -44,6 +44,7 @@ owner (`ridm:owner` in `master`) so the console specs can sign in as them. Setti
 | `consent` | consent denied returns `access_denied` (approval runs inside every sign-in) |
 | `logout` | RP-initiated logout with confirmation |
 | `mfa` | client step-up (`acr_values`) enrols an authenticator app (choice screen, QR and manual key, wrong proof refused, recovery codes shown once), the next step-up verifies with the app, a spent code is refused, a recovery code works once |
+| `mfa-otp` | the chooser enrols codes by email (a wrong code refused, recovery codes shown once), the next step-up emails a code and verifies it |
 | `passkey` | CDP virtual authenticator: a step-up enrols a passkey as the second step (recovery codes), the passkey signs in without a password (no second step), a later step-up verifies with it |
 | `console-a11y` | axe pass over every console page in its landing state (all pages light, the first eight dark, four at phone width with no horizontal overflow) |
 | `console-config` | tenant document downloaded and loaded into the editor, an unchanged document plans nothing, a renamed tenant plans one field-level update and applies, then reverts |

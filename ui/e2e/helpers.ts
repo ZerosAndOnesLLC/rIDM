@@ -137,11 +137,16 @@ export const mailpit = {
   async clear() {
     await fetch(`${MAILPIT}/api/v1/messages`, { method: "DELETE" });
   },
-  /** Newest message to `to`, waiting up to `timeoutMs`. Returns its text body. */
-  async waitFor(to: string, timeoutMs = 15_000): Promise<{ subject: string; text: string; links: string[] }> {
+  /**
+   * Newest message to `to` (with `subject` in its subject line when given, so
+   * a security notice another spec triggers is never mistaken for it),
+   * waiting up to `timeoutMs`. Returns its text body.
+   */
+  async waitFor(to: string, timeoutMs = 15_000, subject?: string): Promise<{ subject: string; text: string; links: string[] }> {
     const deadline = Date.now() + timeoutMs;
+    const query = subject ? `to:${to} subject:"${subject}"` : `to:${to}`;
     while (Date.now() < deadline) {
-      const res = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:${to}`)}&limit=1`);
+      const res = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(query)}&limit=1`);
       const body = (await res.json()) as { messages: MailpitMessage[] };
       const m = body.messages?.[0];
       if (m) {

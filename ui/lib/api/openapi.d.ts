@@ -2329,6 +2329,27 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        /**
+         * @description Which second-step methods users may enrol. Passkeys are offered as a
+         *     second step whenever `AuthMethods::passkey` is on.
+         */
+        MfaMethods: {
+            /**
+             * @description One-time code to the account's email address.
+             * @default false
+             */
+            email_otp: boolean;
+            /**
+             * @description One-time code to a verified phone number.
+             * @default false
+             */
+            sms_otp: boolean;
+            /**
+             * @description Authenticator app (TOTP).
+             * @default true
+             */
+            totp: boolean;
+        };
         MfaPolicy: {
             /** @enum {string} */
             mode: "off";
@@ -3394,6 +3415,14 @@ export interface components {
              *     }
              */
             mfa: components["schemas"]["MfaPolicy"];
+            /**
+             * @default {
+             *       "email_otp": false,
+             *       "sms_otp": false,
+             *       "totp": true
+             *     }
+             */
+            mfa_methods: components["schemas"]["MfaMethods"];
             /**
              * @default {
              *       "email_changed": true,

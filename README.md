@@ -82,7 +82,22 @@ UI's host (or the tenant's custom domain); the API's own origin is accepted when
 shares that host. Each passkey is one encrypted `webauthn` credential row (public key,
 sign counter and backup flags, the counter checked on every assertion), and
 challenges live in Redis for five minutes, bound to the flow and spent by the first
-answer. OTP factors and the role-based policy modes follow later in Phase 7.
+answer.
+
+Codes by email and by text message are second factors too. The tenant's
+`settings.mfa_methods` (`totp`, `email_otp`, `sms_otp`; passkeys follow `auth.passkey`)
+decides which methods the `mfa` stage offers, and the flow state lists them under
+`mfa.methods`. Enrolment proves the channel: `POST /flows/{id}/mfa/email/enroll` sends a
+code to the account's address and `/mfa/email/confirm` checks it (the address is then
+verified); `/mfa/sms/enroll` takes a `phone` in E.164 when the account has none (or to
+change it) and `/mfa/sms/confirm` saves the number verified. Each enrolled channel is one
+`email_otp` or `sms_otp` credential row, and the first second factor issues the recovery
+codes. Later sign-ins call `/mfa/{email|sms}/send` (a code to the account's current,
+verified address or number; a repeat within twenty seconds reuses the pending code
+instead of sending twice, and sends are limited to three per ten minutes per user) and
+`/mfa/{email|sms}/verify`. Codes are six digits, hashed in Redis, bound to the flow,
+single-use, good for ten minutes and five attempts; a passed code records `amr` `otp`
+(plus `sms` for a text message). The role-based policy modes follow in 7.4.
 
 Locale is negotiated per request: the OIDC `ui_locales` parameter, then the user's
 stored locale, then the tenant default, constrained to the tenant's supported list

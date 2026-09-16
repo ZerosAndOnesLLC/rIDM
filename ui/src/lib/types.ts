@@ -88,15 +88,25 @@ export interface PublicFlow {
   finish_url?: string;
 }
 
-export type Factor = "totp" | "webauthn";
+export type Factor = "totp" | "webauthn" | "email_otp" | "sms_otp";
 
 export interface MfaInfo {
   /** Enrolled factor kinds. */
   factors: Factor[];
+  /** Factor kinds the tenant offers for enrolment. */
+  methods: Factor[];
   /** No factor yet: the user must enrol one now. */
   enroll: boolean;
   /** Unused recovery codes remain. */
   recovery_codes: boolean;
+  /** The phone an SMS enrolment would use (masked); null asks for one. */
+  phone: string | null;
+}
+
+/** Answer of `mfa/{email|sms}/enroll` and `/send`: where the code went (masked). */
+export interface OtpSent {
+  sent: boolean;
+  destination: string;
 }
 
 /** Answer of `mfa/totp/enroll`. */

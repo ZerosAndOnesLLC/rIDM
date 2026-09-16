@@ -23,13 +23,18 @@ use crate::error::{AppError, AppResult};
 use crate::models::{Tenant, User};
 use crate::repos;
 use crate::services::credential_secrets::{decrypt, encrypt};
-use crate::services::{notifications, passkeys};
+use crate::services::{notifications, otp_factors, passkeys};
 use crate::state::AppState;
 
 pub const KIND_TOTP: &str = "totp";
 pub const KIND_RECOVERY: &str = "recovery_code";
 /// Credential types that count as a second factor.
-pub const SECOND_FACTOR_KINDS: &[&str] = &[KIND_TOTP, passkeys::KIND];
+pub const SECOND_FACTOR_KINDS: &[&str] = &[
+    KIND_TOTP,
+    passkeys::KIND,
+    otp_factors::KIND_EMAIL,
+    otp_factors::KIND_SMS,
+];
 
 pub const DIGITS: u8 = 6;
 pub const PERIOD_SECS: u64 = 30;
@@ -83,13 +88,17 @@ pub struct Factors {
     pub totp: bool,
     /// At least one passkey.
     pub webauthn: bool,
+    /// Codes by email.
+    pub email_otp: bool,
+    /// Codes by text message.
+    pub sms_otp: bool,
     /// Unused recovery codes left.
     pub recovery_codes: usize,
 }
 
 impl Factors {
     pub fn any(&self) -> bool {
-        self.totp || self.webauthn
+        self.totp || self.webauthn || self.email_otp || self.sms_otp
     }
 }
 
@@ -332,23 +341,22 @@ pub async fn has_second_factor(
 /// The user's second factors, for the UI.
 pub async fn factors_of(state: &AppState, tenant_id: Uuid, user_id: Uuid) -> AppResult<Factors> {
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    let totp =
-        repos::credentials::count_of_types(&mut *tx, tenant_id, user_id, &[KIND_TOTP]).await? > 0;
-    let webauthn =
-        repos::credentials::count_of_types(&mut *tx, tenant_id, user_id, &[passkeys::KIND]).await?
-            > 0;
+    let rows = repos::credentials::list_for_user(&mut *tx, tenant_id, user_id).await?;
     let recovery =
         repos::credentials::list_secrets_of_type(&mut *tx, tenant_id, user_id, KIND_RECOVERY)
             .await?;
     tx.commit().await?;
+    let has = |kind: &str| rows.iter().any(|c| c.kind == kind);
     let mut recovery_codes = 0;
     for row in recovery {
         let data: RecoveryData = decrypt(state, tenant_id, row.id, &row.data_enc).await?;
         recovery_codes += data.codes.iter().filter(|c| c.used_at.is_none()).count();
     }
     Ok(Factors {
-        totp,
-        webauthn,
+        totp: has(KIND_TOTP),
+        webauthn: has(passkeys::KIND),
+        email_otp: has(otp_factors::KIND_EMAIL),
+        sms_otp: has(otp_factors::KIND_SMS),
         recovery_codes,
     })
 }

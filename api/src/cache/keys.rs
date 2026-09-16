@@ -138,6 +138,17 @@ pub fn magic_link(tenant_id: Uuid, token_hash: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:magic:{token_hash}")
 }
 
+/// Pending email/SMS second-factor enrolment (the destination being proven).
+pub fn otp_factor_enrolment(tenant_id: Uuid, flow_id: Uuid, channel: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:flow:{flow_id}:mfa:{channel}:enrol")
+}
+
+/// Claimed while a second-factor code sent moments ago is still fresh, so a
+/// repeated request reuses it instead of sending again.
+pub fn otp_factor_cooldown(tenant_id: Uuid, flow_id: Uuid, channel: &str, purpose: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:flow:{flow_id}:mfa:{channel}:{purpose}:cooldown")
+}
+
 /// Send rate limit per identifier.
 pub fn passwordless_sends(tenant_id: Uuid, identifier: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:pwless:sends:{identifier}")

@@ -23,8 +23,8 @@ use crate::services::login_flows::{self, FlowStage, LoginFlow};
 use crate::services::password::{self, SetPasswordOptions, VerifyOutcome};
 use crate::services::sessions::{self, NewSession, SsoSession};
 use crate::services::{
-    clients, consents, locale, notifications, passkeys, profile_schema, totp, trusted_devices,
-    users,
+    clients, consents, locale, notifications, otp_factors, passkeys, profile_schema, totp,
+    trusted_devices, users,
 };
 use crate::state::AppState;
 use webauthn_rs::prelude::{
@@ -68,12 +68,35 @@ pub struct PublicFlow {
 /// Second-factor state of the signed-in user, shown at the `mfa` stage.
 #[derive(Debug, Clone, Serialize)]
 pub struct MfaInfo {
-    /// Enrolled factor kinds (`totp`, `webauthn`).
+    /// Enrolled factor kinds (`totp`, `webauthn`, `email_otp`, `sms_otp`).
     pub factors: Vec<&'static str>,
+    /// Factor kinds the tenant offers this user for enrolment.
+    pub methods: Vec<&'static str>,
     /// No factor yet: the user must enrol one now.
     pub enroll: bool,
     /// Unused recovery codes remain, so the recovery-code option is worth showing.
     pub recovery_codes: bool,
+    /// The phone an SMS enrolment would use, masked; `None` asks for one.
+    pub phone: Option<String>,
+}
+
+/// Second factors the tenant offers `user` for enrolment.
+fn offered_factors(tenant: &Tenant, user: &User) -> Vec<&'static str> {
+    let m = &tenant.settings.mfa_methods;
+    let mut out = vec![];
+    if m.totp {
+        out.push(totp::KIND_TOTP);
+    }
+    if tenant.settings.auth.passkey {
+        out.push(passkeys::KIND);
+    }
+    if m.email_otp && user.email.is_some() {
+        out.push(otp_factors::KIND_EMAIL);
+    }
+    if m.sms_otp {
+        out.push(otp_factors::KIND_SMS);
+    }
+    out
 }
 
 /// `acr` recorded on a session once a second factor passed, unless the client
@@ -232,10 +255,18 @@ pub async fn public_state(
                 if f.webauthn {
                     factors.push(passkeys::KIND);
                 }
+                if f.email_otp {
+                    factors.push(otp_factors::KIND_EMAIL);
+                }
+                if f.sms_otp {
+                    factors.push(otp_factors::KIND_SMS);
+                }
                 Some(MfaInfo {
                     factors,
+                    methods: offered_factors(tenant, &u),
                     enroll: !f.any(),
                     recovery_codes: f.any() && f.recovery_codes > 0,
+                    phone: u.phone.as_deref().map(otp_factors::mask_phone),
                 })
             } else {
                 None
@@ -838,12 +869,122 @@ pub async fn mfa_enrol_begin(
     flow: &LoginFlow,
 ) -> AppResult<totp::Enrolment> {
     let user = mfa_user(state, tenant, flow).await?;
+    if !tenant.tenant.settings.mfa_methods.totp {
+        return Err(AppError::BadRequest(
+            "authenticator apps are disabled for this tenant".into(),
+        ));
+    }
     if totp::factors_of(state, tenant.id(), user.id).await?.totp {
         return Err(AppError::BadRequest(
             "an authenticator app is already enrolled".into(),
         ));
     }
     totp::begin_enrolment(state, &tenant.tenant, flow.id, &user).await
+}
+
+/// `POST /flows/{id}/mfa/{email|sms}/enroll`: a code to the address or
+/// number that is about to become the user's second factor.
+pub async fn mfa_otp_enrol_begin(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &LoginFlow,
+    channel: otp_factors::Channel,
+    phone: Option<&str>,
+) -> AppResult<otp_factors::Sent> {
+    let user = mfa_user(state, tenant, flow).await?;
+    otp_factors::begin_enrolment(state, &tenant.tenant, flow, &user, channel, phone).await
+}
+
+/// `POST /flows/{id}/mfa/{email|sms}/confirm`: prove the pending enrolment;
+/// the factor then counts as passed for this sign-in.
+pub async fn mfa_otp_enrol_confirm(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    channel: otp_factors::Channel,
+    code: &str,
+    remember_device: bool,
+    ip: Option<String>,
+) -> AppResult<MfaStep> {
+    let user = mfa_user(state, tenant, &flow).await?;
+    if otp_factors::confirm_enrolment(state, &tenant.tenant, &flow, &user, channel, code).await? {
+        let recovery_codes = first_recovery_codes(state, tenant, &user).await?;
+        pass_second_factor(
+            state,
+            tenant,
+            &mut flow,
+            &user,
+            channel.amr(),
+            remember_device,
+        )
+        .await?;
+        Ok(MfaStep::Passed {
+            flow: Box::new(flow),
+            recovery_codes,
+        })
+    } else {
+        mfa_reject(state, tenant, flow, &user, ip).await
+    }
+}
+
+/// `POST /flows/{id}/mfa/{email|sms}/send`: a sign-in code to the enrolled channel.
+pub async fn mfa_otp_send(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &LoginFlow,
+    channel: otp_factors::Channel,
+) -> AppResult<otp_factors::Sent> {
+    let user = mfa_user(state, tenant, flow).await?;
+    otp_factors::send_code(state, &tenant.tenant, flow, &user, channel).await
+}
+
+/// `POST /flows/{id}/mfa/{email|sms}/verify`
+pub async fn mfa_otp_verify(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    channel: otp_factors::Channel,
+    code: &str,
+    remember_device: bool,
+    ip: Option<String>,
+) -> AppResult<MfaStep> {
+    let user = mfa_user(state, tenant, &flow).await?;
+    if otp_factors::verify(state, &tenant.tenant, &flow, &user, channel, code).await? {
+        pass_second_factor(
+            state,
+            tenant,
+            &mut flow,
+            &user,
+            channel.amr(),
+            remember_device,
+        )
+        .await?;
+        Ok(MfaStep::Passed {
+            flow: Box::new(flow),
+            recovery_codes: None,
+        })
+    } else {
+        mfa_reject(state, tenant, flow, &user, ip).await
+    }
+}
+
+/// A user's first second factor comes with recovery codes, shown once.
+async fn first_recovery_codes(
+    state: &AppState,
+    tenant: &TenantCtx,
+    user: &User,
+) -> AppResult<Option<Vec<String>>> {
+    if totp::factors_of(state, tenant.id(), user.id)
+        .await?
+        .recovery_codes
+        == 0
+    {
+        Ok(Some(
+            totp::regenerate_recovery_codes(state, tenant.id(), user.id).await?,
+        ))
+    } else {
+        Ok(None)
+    }
 }
 
 /// `POST /flows/{id}/mfa/totp/confirm`: prove the pending enrolment; the
@@ -975,15 +1116,7 @@ pub async fn mfa_passkey_register_finish(
         .await?
     {
         Some(_) => {
-            let recovery_codes = if totp::factors_of(state, tenant.id(), user.id)
-                .await?
-                .recovery_codes
-                == 0
-            {
-                Some(totp::regenerate_recovery_codes(state, tenant.id(), user.id).await?)
-            } else {
-                None
-            };
+            let recovery_codes = first_recovery_codes(state, tenant, &user).await?;
             pass_second_factor(
                 state,
                 tenant,
