@@ -442,3 +442,104 @@ async fn a_trusted_device_skips_the_policy_but_never_a_requested_step_up() {
     assert_eq!(after["stage"], "mfa");
     assert_eq!(after["mfa"]["enroll"], false);
 }
+
+/// Enrol an authenticator app for `user_id` outside any flow (the account
+/// API's path), so the next sign-in has a factor to verify.
+async fn enrol_out_of_band(fx: &Fx, user_id: Uuid) {
+    let tenant = tenants::get(&fx.app.state, fx.app.tenant.id).await.unwrap();
+    let user = users::get(&fx.app.state, fx.app.tenant.id, user_id)
+        .await
+        .unwrap();
+    let scope = Uuid::now_v7();
+    let e = totp::begin_enrolment(&fx.app.state, &tenant, scope, &user)
+        .await
+        .unwrap();
+    totp::confirm_enrolment(
+        &fx.app.state,
+        &tenant,
+        scope,
+        &user,
+        &code_for(&e.secret),
+        None,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+}
+
+/// What the `mfa` stage looks like after the password step.
+#[derive(Debug, PartialEq)]
+enum Ask {
+    Nothing,
+    Enrol,
+    Verify,
+}
+
+async fn asked(fx: &Fx, username: &str) -> Ask {
+    let (_, after) = password_login(&client(), fx, username, &[]).await;
+    match (after["stage"].as_str(), after["mfa"]["enroll"].as_bool()) {
+        (Some("mfa"), Some(true)) => Ask::Enrol,
+        (Some("mfa"), Some(false)) => Ask::Verify,
+        _ => Ask::Nothing,
+    }
+}
+
+/// Every policy mode against the same four users: nobody special, someone
+/// who enrolled a factor, a role holder, an administrator.
+#[tokio::test]
+async fn the_policy_matrix() {
+    use Ask::{Enrol, Nothing, Verify};
+    let modes: Vec<(MfaPolicy, [Ask; 4])> = vec![
+        (MfaPolicy::Off, [Nothing, Nothing, Nothing, Nothing]),
+        (MfaPolicy::Optional, [Nothing, Verify, Nothing, Nothing]),
+        (MfaPolicy::Required, [Enrol, Verify, Enrol, Enrol]),
+        (
+            MfaPolicy::RequiredForRoles {
+                roles: vec!["finance".into()],
+            },
+            [Nothing, Verify, Enrol, Nothing],
+        ),
+        (
+            MfaPolicy::RequiredForAdmins,
+            [Nothing, Verify, Nothing, Enrol],
+        ),
+    ];
+    for (mode, expected) in modes {
+        let fx = fixture(mode.clone()).await;
+        let tid = fx.app.tenant.id;
+        let plain = user(&fx, "plain").await;
+        let enrolled = user(&fx, "enrolled").await;
+        let holder = user(&fx, "holder").await;
+        let admin_user = user(&fx, "boss").await;
+        let _ = plain;
+        enrol_out_of_band(&fx, enrolled).await;
+        let finance = roles::create(
+            &fx.app.state,
+            tid,
+            Actor::System,
+            NewRole {
+                name: "finance".into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        roles::assign(
+            &fx.app.state,
+            tid,
+            Actor::System,
+            finance.id,
+            Principal::User { id: holder },
+        )
+        .await
+        .unwrap();
+        admin::assign(&fx.app, tid, admin_user, ADMIN_ROLE).await;
+        let got = [
+            asked(&fx, "plain").await,
+            asked(&fx, "enrolled").await,
+            asked(&fx, "holder").await,
+            asked(&fx, "boss").await,
+        ];
+        assert_eq!(got, expected, "mode {mode:?}");
+    }
+}
