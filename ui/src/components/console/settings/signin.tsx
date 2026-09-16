@@ -21,7 +21,7 @@ export function SignInSection() {
         <Toggle label="Magic link" hint="A sign-in link by email." checked={auth.magic_link} disabled={!editable} onChange={(v) => update({ auth: { magic_link: v } })} />
         <Toggle label="Email code" checked={auth.email_otp} disabled={!editable} onChange={(v) => update({ auth: { email_otp: v } })} />
         <Toggle label="SMS code" hint="Needs an SMS provider under Messaging." checked={auth.sms_otp} disabled={!editable} onChange={(v) => update({ auth: { sms_otp: v } })} />
-        <Toggle label="Passkeys" hint="Available once Phase 7 lands." checked={auth.passkey} disabled={!editable} onChange={(v) => update({ auth: { passkey: v } })} />
+        <Toggle label="Passkeys" hint="Passwordless sign-in with a device passkey or security key; also offered as a second step." checked={auth.passkey} disabled={!editable} onChange={(v) => update({ auth: { passkey: v } })} />
       </div>
 
       <Field label="Two-step verification" hint="Required asks everyone (enrolling an authenticator app on first sign-in); optional asks users who enrolled one. Role-based modes arrive with 7.4.">

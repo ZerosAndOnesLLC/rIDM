@@ -41,6 +41,7 @@ pbkdf2 = { workspace = true }
 md-5 = { workspace = true }
 totp-rs = { workspace = true }
 webauthn-rs = { workspace = true }
+webauthn-rs-proto = { workspace = true }
 openssl-sys = { workspace = true }
 chacha20poly1305 = { workspace = true }
 sha2 = { workspace = true }
@@ -90,3 +91,4 @@ reqwest = { workspace = true, features = ["cookies", "query"] }
 testcontainers-modules = { workspace = true }
 testcontainers = { workspace = true }
 proptest = { workspace = true }
+webauthn-authenticator-rs = { version = "0.5.5", default-features = false, features = ["softpasskey"] }

@@ -43,7 +43,8 @@ bcrypt = "=0.19.3"
 pbkdf2 = "=0.13.0"
 md-5 = "=0.11.0"
 totp-rs = { version = "=6.0.0", features = ["qr", "gen_secret"] }
-webauthn-rs = { version = "=0.5.5", features = ["danger-allow-state-serialisation"] }
+webauthn-rs = { version = "=0.5.5", features = ["danger-allow-state-serialisation", "conditional-ui"] }
+webauthn-rs-proto = "=0.5.5"
 # webauthn-rs 0.5 needs OpenSSL for attestation; vendored so the distroless image
 # has no dynamic libssl dependency.
 openssl-sys = { version = "=0.9.117", features = ["vendored"] }

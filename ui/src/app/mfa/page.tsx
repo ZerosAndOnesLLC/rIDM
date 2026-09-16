@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
 import QRCode from "qrcode";
 import { useI18n } from "@/i18n/provider";
 import { AuthShell } from "@/components/shell";
@@ -9,7 +9,8 @@ import { useErrorText } from "@/components/errors";
 import { Alert, Button, Checkbox, Spinner, TextField, Title } from "@/components/ui";
 import { useFlow } from "@/lib/flow";
 import { usePageParams, WithParams } from "@/lib/params";
-import type { PublicFlow, TotpConfirmed, TotpEnrolment } from "@/lib/types";
+import { assertPasskey, createPasskey, passkeysSupported } from "@/lib/passkeys";
+import type { MfaEnrolled, PasskeyCreationOptions, PasskeyRequestOptions, PublicFlow, TotpEnrolment } from "@/lib/types";
 
 const ACCEPTS = ["mfa", "done"] as const;
 
@@ -21,29 +22,52 @@ export default function Page() {
   );
 }
 
+const noop = () => () => {};
+
+/** Whether this browser can run a passkey ceremony (false during server rendering). */
+function usePasskeySupport(): boolean {
+  return useSyncExternalStore(noop, passkeysSupported, () => false);
+}
+
+type Choice = "app" | "passkey";
+
 /**
- * Second factor. A user with an authenticator verifies a code (or spends a
- * recovery code); one without enrols first: QR, proof code, then the
- * recovery codes shown once before the flow moves on.
+ * Second factor. A user with a factor verifies with it (an authenticator
+ * code, a passkey, or a recovery code); one without enrols first, choosing
+ * between an authenticator app and a passkey when the tenant offers both,
+ * then sees the recovery codes once before the flow moves on.
  */
 function MfaPage() {
   const p = usePageParams();
   const f = useFlow(p.tenant, p.flow, ACCEPTS);
   const { t } = useI18n();
   const errorText = useErrorText();
+  const supported = usePasskeySupport();
   const [codes, setCodes] = useState<string[] | null>(null);
+  const [choice, setChoice] = useState<Choice | null>(null);
+
+  let body;
+  if (f.loading || f.redirected || !f.flow) {
+    body = f.error ? <Alert tone="error">{errorText(f.error)}</Alert> : <Spinner label={t("common.loading")} />;
+  } else if (codes) {
+    body = <RecoveryCodes codes={codes} onDone={() => void f.reload()} />;
+  } else if (f.flow.mfa?.enroll) {
+    const passkeyOffered = f.flow.methods.includes("passkey") && supported;
+    const chosen = passkeyOffered ? choice : "app";
+    if (chosen === "passkey") {
+      body = <EnrolPasskey flow={f.flow} post={f.post} onEnrolled={setCodes} onBack={() => setChoice(null)} />;
+    } else if (chosen === "app") {
+      body = <Enrol flow={f.flow} post={f.post} onEnrolled={setCodes} onBack={passkeyOffered ? () => setChoice(null) : null} />;
+    } else {
+      body = <Choose flow={f.flow} post={f.post} onChoose={setChoice} />;
+    }
+  } else {
+    body = <Verify flow={f.flow} post={f.post} passkeys={supported} />;
+  }
 
   return (
     <AuthShell slug={p.tenant} locale={f.flow?.locale} locales={f.flow?.locales}>
-      {f.loading || f.redirected || !f.flow ? (
-        f.error ? <Alert tone="error">{errorText(f.error)}</Alert> : <Spinner label={t("common.loading")} />
-      ) : codes ? (
-        <RecoveryCodes codes={codes} onDone={() => void f.reload()} />
-      ) : f.flow.mfa?.enroll ? (
-        <Enrol flow={f.flow} post={f.post} onEnrolled={setCodes} />
-      ) : (
-        <Verify flow={f.flow} post={f.post} />
-      )}
+      {body}
     </AuthShell>
   );
 }
@@ -68,35 +92,96 @@ function CancelLink({ post }: { post: Post }) {
   );
 }
 
-function Verify({ flow, post }: { flow: PublicFlow; post: Post }) {
+function SwitchLink({ onClick, children }: { onClick: () => void; children: string }) {
+  return (
+    <button type="button" onClick={onClick} className="self-center text-[0.8125rem] text-link hover:underline underline-offset-4">
+      {children}
+    </button>
+  );
+}
+
+function SignedInAs({ flow }: { flow: PublicFlow }) {
+  const { t } = useI18n();
+  if (!flow.user) return null;
+  return <p className="-mt-3 text-[0.875rem] text-muted">{t("common.signed_in_as", { username: flow.user.username })}</p>;
+}
+
+type VerifyMode = "app" | "recovery" | "passkey";
+
+function Verify({ flow, post, passkeys }: { flow: PublicFlow; post: Post; passkeys: boolean }) {
   const { t } = useI18n();
   const errorText = useErrorText();
-  const [recovery, setRecovery] = useState(false);
+  const factors = flow.mfa?.factors ?? [];
+  const hasApp = factors.includes("totp");
+  const hasPasskey = factors.includes("webauthn") && passkeys;
+  const hasRecovery = Boolean(flow.mfa?.recovery_codes);
+  const [mode, setMode] = useState<VerifyMode>(hasApp ? "app" : hasPasskey ? "passkey" : "recovery");
   const [code, setCode] = useState("");
   const [trust, setTrust] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ready = recovery ? code.trim().length >= 10 : code.length >= 6;
+  const ready = mode === "recovery" ? code.trim().length >= 10 : code.length >= 6;
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  const switchTo = (m: VerifyMode) => {
+    setMode(m);
+    setCode("");
+    setError(null);
+  };
+
+  async function run(fn: () => Promise<unknown>) {
     setBusy(true);
     setError(null);
     try {
-      await post("mfa/verify", { code, remember_device: trust });
+      await fn();
     } catch (err) {
       setError(errorText(err));
     } finally {
       setBusy(false);
     }
+  }
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    void run(() => post("mfa/verify", { code, remember_device: trust }));
   };
+  const withPasskey = () =>
+    run(async () => {
+      const options = await post<PasskeyRequestOptions>("mfa/passkey/start", {});
+      const credential = await assertPasskey(options);
+      await post("mfa/passkey/finish", { credential, remember_device: trust });
+    });
+
+  const subtitle = mode === "recovery" ? t("mfa.recovery_description") : mode === "passkey" ? t("mfa.passkey_description") : t("mfa.description");
+  const switches = (
+    <>
+      {mode !== "app" && hasApp && <SwitchLink onClick={() => switchTo("app")}>{t("mfa.use_app_code")}</SwitchLink>}
+      {mode !== "passkey" && hasPasskey && <SwitchLink onClick={() => switchTo("passkey")}>{t("mfa.use_passkey")}</SwitchLink>}
+      {mode !== "recovery" && hasRecovery && <SwitchLink onClick={() => switchTo("recovery")}>{t("mfa.use_recovery_code")}</SwitchLink>}
+    </>
+  );
+
+  if (mode === "passkey") {
+    return (
+      <div className="flex flex-col gap-5">
+        <Title sub={subtitle}>{t("mfa.title")}</Title>
+        <SignedInAs flow={flow} />
+        {error && <Alert tone="error">{error}</Alert>}
+        <Checkbox label={t("mfa.trust_device")} checked={trust} onChange={(e) => setTrust(e.target.checked)} />
+        <Button type="button" busy={busy} onClick={() => void withPasskey()}>
+          {t("mfa.passkey_continue")}
+        </Button>
+        {switches}
+        <CancelLink post={post} />
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-5">
-      <Title sub={recovery ? t("mfa.recovery_description") : t("mfa.description")}>{t("mfa.title")}</Title>
-      {flow.user && <p className="-mt-3 text-[0.875rem] text-muted">{t("common.signed_in_as", { username: flow.user.username })}</p>}
+      <Title sub={subtitle}>{t("mfa.title")}</Title>
+      <SignedInAs flow={flow} />
       {error && <Alert tone="error">{error}</Alert>}
-      {recovery ? (
+      {mode === "recovery" ? (
         <TextField
           label={t("mfa.recovery_code")}
           value={code}
@@ -114,25 +199,83 @@ function Verify({ flow, post }: { flow: PublicFlow; post: Post }) {
       <Button type="submit" busy={busy} disabled={!ready}>
         {t("common.continue")}
       </Button>
-      {flow.mfa?.recovery_codes && (
-        <button
-          type="button"
-          onClick={() => {
-            setRecovery((r) => !r);
-            setCode("");
-            setError(null);
-          }}
-          className="self-center text-[0.8125rem] text-link hover:underline underline-offset-4"
-        >
-          {recovery ? t("mfa.use_app_code") : t("mfa.use_recovery_code")}
-        </button>
-      )}
+      {switches}
       <CancelLink post={post} />
     </form>
   );
 }
 
-function Enrol({ flow, post, onEnrolled }: { flow: PublicFlow; post: Post; onEnrolled: (codes: string[]) => void }) {
+/** First enrolment when both an authenticator app and a passkey are on offer. */
+function Choose({ flow, post, onChoose }: { flow: PublicFlow; post: Post; onChoose: (c: Choice) => void }) {
+  const { t } = useI18n();
+  const issuer = flow.client.name;
+  const option = (choice: Choice, label: string, hint: string) => (
+    <button
+      type="button"
+      onClick={() => onChoose(choice)}
+      className="flex flex-col items-start gap-1 rounded-[var(--radius)] border border-line bg-paper px-4 py-3 text-start hover:bg-ground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+    >
+      <span className="text-[0.9375rem] font-medium text-ink">{label}</span>
+      <span className="text-[0.8125rem] text-muted">{hint}</span>
+    </button>
+  );
+  return (
+    <div className="flex flex-col gap-5">
+      <Title sub={t("mfa.choose_description", { issuer })}>{t("mfa.enroll_title")}</Title>
+      <SignedInAs flow={flow} />
+      <div className="flex flex-col gap-3">
+        {option("passkey", t("mfa.choose_passkey"), t("mfa.choose_passkey_hint"))}
+        {option("app", t("mfa.choose_app"), t("mfa.choose_app_hint"))}
+      </div>
+      <CancelLink post={post} />
+    </div>
+  );
+}
+
+function EnrolPasskey({ flow, post, onEnrolled, onBack }: { flow: PublicFlow; post: Post; onEnrolled: (codes: string[]) => void; onBack: () => void }) {
+  const { t } = useI18n();
+  const errorText = useErrorText();
+  const [label, setLabel] = useState("");
+  const [trust, setTrust] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const create = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const options = await post<PasskeyCreationOptions>("mfa/passkey/register", {});
+      const credential = await createPasskey(options);
+      const res = await post<MfaEnrolled | PublicFlow>("mfa/passkey/register/finish", {
+        credential,
+        label: label.trim() || undefined,
+        remember_device: trust,
+      });
+      if ("recovery_codes" in res) onEnrolled(res.recovery_codes);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-5">
+      <Title sub={t("mfa.passkey_enroll_description")}>{t("mfa.passkey_enroll_title")}</Title>
+      <SignedInAs flow={flow} />
+      {error && <Alert tone="error">{error}</Alert>}
+      <TextField label={t("mfa.passkey_label")} value={label} onChange={(e) => setLabel(e.target.value)} maxLength={80} autoComplete="off" autoFocus />
+      <Checkbox label={t("mfa.trust_device")} checked={trust} onChange={(e) => setTrust(e.target.checked)} />
+      <Button type="button" busy={busy} onClick={() => void create()}>
+        {t("mfa.passkey_create")}
+      </Button>
+      <SwitchLink onClick={onBack}>{t("mfa.choose_other")}</SwitchLink>
+      <CancelLink post={post} />
+    </div>
+  );
+}
+
+function Enrol({ flow, post, onEnrolled, onBack }: { flow: PublicFlow; post: Post; onEnrolled: (codes: string[]) => void; onBack: (() => void) | null }) {
   const { t } = useI18n();
   const errorText = useErrorText();
   const [enrolment, setEnrolment] = useState<TotpEnrolment | null>(null);
@@ -166,7 +309,7 @@ function Enrol({ flow, post, onEnrolled }: { flow: PublicFlow; post: Post; onEnr
     setBusy(true);
     setError(null);
     try {
-      const res = await post<TotpConfirmed>("mfa/totp/confirm", { code, label: label.trim() || undefined, remember_device: trust });
+      const res = await post<MfaEnrolled>("mfa/totp/confirm", { code, label: label.trim() || undefined, remember_device: trust });
       onEnrolled(res.recovery_codes);
     } catch (err) {
       setError(errorText(err));
@@ -180,7 +323,7 @@ function Enrol({ flow, post, onEnrolled }: { flow: PublicFlow; post: Post; onEnr
   return (
     <form onSubmit={submit} className="flex flex-col gap-5">
       <Title sub={t("mfa.enroll_description", { issuer })}>{t("mfa.enroll_title")}</Title>
-      {flow.user && <p className="-mt-3 text-[0.875rem] text-muted">{t("common.signed_in_as", { username: flow.user.username })}</p>}
+      <SignedInAs flow={flow} />
       {error && <Alert tone="error">{error}</Alert>}
       {enrolment && qr ? (
         <div className="flex flex-col items-center gap-3 rounded-[var(--radius)] border border-line bg-paper p-4">
@@ -200,6 +343,7 @@ function Enrol({ flow, post, onEnrolled }: { flow: PublicFlow; post: Post; onEnr
       <Button type="submit" busy={busy} disabled={!enrolment || code.length < 6}>
         {t("mfa.verify_setup")}
       </Button>
+      {onBack && <SwitchLink onClick={onBack}>{t("mfa.choose_other")}</SwitchLink>}
       <CancelLink post={post} />
     </form>
   );

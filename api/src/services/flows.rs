@@ -23,9 +23,14 @@ use crate::services::login_flows::{self, FlowStage, LoginFlow};
 use crate::services::password::{self, SetPasswordOptions, VerifyOutcome};
 use crate::services::sessions::{self, NewSession, SsoSession};
 use crate::services::{
-    clients, consents, locale, notifications, profile_schema, totp, trusted_devices, users,
+    clients, consents, locale, notifications, passkeys, profile_schema, totp, trusted_devices,
+    users,
 };
 use crate::state::AppState;
+use webauthn_rs::prelude::{
+    CreationChallengeResponse, PublicKeyCredential, RegisterPublicKeyCredential,
+    RequestChallengeResponse,
+};
 
 /// What the UI needs to render the current step.
 #[derive(Debug, Clone, Serialize)]
@@ -63,7 +68,7 @@ pub struct PublicFlow {
 /// Second-factor state of the signed-in user, shown at the `mfa` stage.
 #[derive(Debug, Clone, Serialize)]
 pub struct MfaInfo {
-    /// Enrolled factor kinds (`totp`).
+    /// Enrolled factor kinds (`totp`, `webauthn`).
     pub factors: Vec<&'static str>,
     /// No factor yet: the user must enrol one now.
     pub enroll: bool,
@@ -220,10 +225,17 @@ pub async fn public_state(
             };
             let mfa = if flow.stage == FlowStage::Mfa {
                 let f = totp::factors_of(state, tenant.id, uid).await?;
+                let mut factors = vec![];
+                if f.totp {
+                    factors.push(totp::KIND_TOTP);
+                }
+                if f.webauthn {
+                    factors.push(passkeys::KIND);
+                }
                 Some(MfaInfo {
-                    factors: if f.totp { vec!["totp"] } else { vec![] },
-                    enroll: !f.totp,
-                    recovery_codes: f.totp && f.recovery_codes > 0,
+                    factors,
+                    enroll: !f.any(),
+                    recovery_codes: f.any() && f.recovery_codes > 0,
                 })
             } else {
                 None
@@ -913,19 +925,196 @@ async fn pass_second_factor(
             amr.push(m.to_string());
         }
     }
-    let acr = flow
-        .request
-        .acr_values
-        .iter()
-        .find(|a| a.ends_with(":mfa"))
-        .cloned()
-        .unwrap_or_else(|| ACR_MFA.to_string());
+    let acr = requested_mfa_acr(flow);
     sessions::refresh_auth(state, &mut session, amr.clone(), Some(acr)).await?;
     flow.amr = amr;
     flow.remember_device = (flow.remember_device || remember_device) && !flow.trusted_device;
     flow.attempts = 0;
     advance(state, &tenant.tenant, flow, false).await?;
     login_flows::save(state, flow).await
+}
+
+/// The MFA class the session asserts: the `*:mfa` class the client asked
+/// for, else the default.
+fn requested_mfa_acr(flow: &LoginFlow) -> String {
+    flow.request
+        .acr_values
+        .iter()
+        .find(|a| a.ends_with(":mfa"))
+        .cloned()
+        .unwrap_or_else(|| ACR_MFA.to_string())
+}
+
+/// `POST /flows/{id}/mfa/passkey/register`: creation options for a new
+/// passkey as the user's second factor.
+pub async fn mfa_passkey_register_begin(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &LoginFlow,
+) -> AppResult<CreationChallengeResponse> {
+    let user = mfa_user(state, tenant, flow).await?;
+    require_passkeys_enabled(tenant)?;
+    passkeys::begin_registration(state, &tenant.tenant, flow.id, &user).await
+}
+
+/// `POST /flows/{id}/mfa/passkey/register/finish`: store the passkey; it
+/// counts as passed for this sign-in. A user without recovery codes gets a
+/// set now, shown once.
+pub async fn mfa_passkey_register_finish(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    credential: &RegisterPublicKeyCredential,
+    label: Option<&str>,
+    remember_device: bool,
+    ip: Option<String>,
+) -> AppResult<MfaStep> {
+    let user = mfa_user(state, tenant, &flow).await?;
+    require_passkeys_enabled(tenant)?;
+    match passkeys::finish_registration(state, &tenant.tenant, flow.id, &user, credential, label)
+        .await?
+    {
+        Some(_) => {
+            let recovery_codes = if totp::factors_of(state, tenant.id(), user.id)
+                .await?
+                .recovery_codes
+                == 0
+            {
+                Some(totp::regenerate_recovery_codes(state, tenant.id(), user.id).await?)
+            } else {
+                None
+            };
+            pass_second_factor(
+                state,
+                tenant,
+                &mut flow,
+                &user,
+                &["hwk", "user"],
+                remember_device,
+            )
+            .await?;
+            Ok(MfaStep::Passed {
+                flow: Box::new(flow),
+                recovery_codes,
+            })
+        }
+        None => mfa_reject(state, tenant, flow, &user, ip).await,
+    }
+}
+
+/// `POST /flows/{id}/mfa/passkey/start`: an assertion challenge against the
+/// user's passkeys.
+pub async fn mfa_passkey_begin(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &LoginFlow,
+) -> AppResult<RequestChallengeResponse> {
+    let user = mfa_user(state, tenant, flow).await?;
+    passkeys::begin_authentication(state, &tenant.tenant, flow.id, &user).await
+}
+
+/// `POST /flows/{id}/mfa/passkey/finish`
+pub async fn mfa_passkey_finish(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    credential: &PublicKeyCredential,
+    remember_device: bool,
+    ip: Option<String>,
+) -> AppResult<MfaStep> {
+    let user = mfa_user(state, tenant, &flow).await?;
+    match passkeys::finish_authentication(state, &tenant.tenant, flow.id, &user, credential).await?
+    {
+        Some(v) => {
+            let methods: &[&str] = if v.user_verified {
+                &["hwk", "user"]
+            } else {
+                &["hwk"]
+            };
+            pass_second_factor(state, tenant, &mut flow, &user, methods, remember_device).await?;
+            Ok(MfaStep::Passed {
+                flow: Box::new(flow),
+                recovery_codes: None,
+            })
+        }
+        None => mfa_reject(state, tenant, flow, &user, ip).await,
+    }
+}
+
+fn require_passkeys_enabled(tenant: &TenantCtx) -> AppResult<()> {
+    if tenant.tenant.settings.auth.passkey {
+        Ok(())
+    } else {
+        Err(AppError::BadRequest(
+            "passkeys are disabled for this tenant".into(),
+        ))
+    }
+}
+
+/// `POST /flows/{id}/passkey/start`: a challenge any discoverable passkey of
+/// the tenant may answer (passwordless sign-in).
+pub async fn passkey_begin(
+    state: &AppState,
+    tenant: &TenantCtx,
+    flow: &LoginFlow,
+) -> AppResult<RequestChallengeResponse> {
+    if flow.stage != FlowStage::Authenticate {
+        return Err(AppError::BadRequest(
+            "flow is not at the authenticate step".into(),
+        ));
+    }
+    require_passkeys_enabled(tenant)?;
+    passkeys::begin_discoverable(state, &tenant.tenant, flow.id).await
+}
+
+/// `POST /flows/{id}/passkey/finish`: sign the passkey's owner in. With user
+/// verification the assertion is two factors (`hwk`, `user`, `mfa`), so no
+/// second step follows.
+pub async fn passkey_finish(
+    state: &AppState,
+    tenant: &TenantCtx,
+    mut flow: LoginFlow,
+    credential: &PublicKeyCredential,
+    ctx: RequestContext,
+) -> AppResult<AuthStep> {
+    if flow.stage != FlowStage::Authenticate {
+        return Err(AppError::BadRequest(
+            "flow is not at the authenticate step".into(),
+        ));
+    }
+    require_passkeys_enabled(tenant)?;
+    let Some((user_id, verified)) =
+        passkeys::finish_discoverable(state, &tenant.tenant, flow.id, credential).await?
+    else {
+        flow.attempts += 1;
+        login_flows::save(state, &flow).await?;
+        state.events.publish(
+            Event::new(
+                Some(tenant.id()),
+                Actor::System,
+                EventKind::LoginFailed {
+                    identifier: String::new(),
+                    reason: "passkey_invalid".into(),
+                },
+            )
+            .with_request(ctx.ip.clone(), None),
+        );
+        return Ok(AuthStep::Rejected {
+            flow: Box::new(flow),
+            locked: false,
+        });
+    };
+    let user = users::get(state, tenant.id(), user_id).await?;
+    if user.status != UserStatus::Active && user.status != UserStatus::Pending {
+        return Err(AppError::Forbidden("account is not active".into()));
+    }
+    let mut amr = vec!["hwk".to_string()];
+    if verified.user_verified {
+        amr.push("user".into());
+        amr.push("mfa".into());
+    }
+    let must_change = user.must_change_password && tenant.tenant.settings.auth.password;
+    complete_authentication(state, tenant, flow, &user, amr, ctx, must_change).await
 }
 
 async fn mfa_reject(
@@ -981,9 +1170,15 @@ async fn open_session(
         }
         None => None,
     };
+    // A first factor that is itself multi-factor (a passkey with user
+    // verification) asserts the MFA class straight away.
+    let acr = amr
+        .iter()
+        .any(|m| m == "mfa")
+        .then(|| requested_mfa_acr(flow));
     let mut session = match existing_session {
         Some(mut s) if s.user_id == user_id => {
-            sessions::refresh_auth(state, &mut s, amr.clone(), None).await?;
+            sessions::refresh_auth(state, &mut s, amr.clone(), acr).await?;
             s
         }
         _ => {
@@ -993,7 +1188,7 @@ async fn open_session(
                 NewSession {
                     user_id,
                     amr: amr.clone(),
-                    acr: None,
+                    acr,
                     ip: ip.clone(),
                     user_agent: user_agent.clone(),
                     policy: &tenant.settings.session,

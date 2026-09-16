@@ -4,12 +4,14 @@ import { useI18n } from "@/i18n/provider";
 import { ApiError } from "@/lib/api";
 import type { FlowError } from "@/lib/flow";
 import { toFlowError } from "@/lib/flow";
+import { PasskeyError } from "@/lib/passkeys";
 
 /** Human text for a failed request, in the page's language. */
 export function useErrorText() {
   const { t } = useI18n();
   return (e: FlowError | unknown | null): string | null => {
     if (!e) return null;
+    if (e instanceof PasskeyError) return t(`passkey.${e.code}`);
     const err: FlowError = isFlowError(e) ? e : toFlowError(e);
     if (err.kind === "expired") return t("common.expired");
     if (err.kind === "network") return t("common.error_network");
@@ -22,6 +24,8 @@ export function useErrorText() {
         return t("login.account_locked");
       case "invalid_code":
         return t("login.invalid_code");
+      case "invalid_passkey":
+        return t("login.invalid_passkey");
       case "conflict":
         return t("register.email_taken");
     }

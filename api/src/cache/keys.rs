@@ -167,3 +167,9 @@ pub fn totp_enrolment(tenant_id: Uuid, flow_id: Uuid) -> String {
 pub fn totp_used_step(tenant_id: Uuid, credential_id: Uuid, step: u64) -> String {
     format!("{PREFIX}:t:{tenant_id}:totp:{credential_id}:used:{step}")
 }
+
+/// Pending passkey ceremony state (registration or assertion challenge),
+/// bound to a login flow (or another scope) and the ceremony kind.
+pub fn passkey_ceremony(tenant_id: Uuid, scope: Uuid, kind: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:flow:{scope}:passkey:{kind}")
+}

@@ -1,5 +1,7 @@
 // Shapes returned by the rIDM API that the end-user pages consume.
 
+import type { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/browser";
+
 export type FlowStage =
   | "authenticate"
   | "register"
@@ -86,9 +88,11 @@ export interface PublicFlow {
   finish_url?: string;
 }
 
+export type Factor = "totp" | "webauthn";
+
 export interface MfaInfo {
   /** Enrolled factor kinds. */
-  factors: "totp"[];
+  factors: Factor[];
   /** No factor yet: the user must enrol one now. */
   enroll: boolean;
   /** Unused recovery codes remain. */
@@ -105,10 +109,24 @@ export interface TotpEnrolment {
   period: number;
 }
 
-/** Answer of `mfa/totp/confirm`: the codes are shown once, then the flow goes on. */
-export interface TotpConfirmed {
+/**
+ * Answer of `mfa/totp/confirm` and of `mfa/passkey/register/finish` when the
+ * factor is the user's first: the codes are shown once, then the flow goes on.
+ */
+export interface MfaEnrolled {
   recovery_codes: string[];
   flow: PublicFlow;
+}
+
+/** Answer of `mfa/passkey/register`: what `navigator.credentials.create` needs. */
+export interface PasskeyCreationOptions {
+  publicKey: PublicKeyCredentialCreationOptionsJSON;
+}
+
+/** Answer of `passkey/start` and `mfa/passkey/start`: what `navigator.credentials.get` needs. */
+export interface PasskeyRequestOptions {
+  publicKey: PublicKeyCredentialRequestOptionsJSON;
+  mediation?: "conditional" | "optional" | "required" | "silent";
 }
 
 export interface BrandingLink {

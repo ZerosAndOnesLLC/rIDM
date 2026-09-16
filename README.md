@@ -66,8 +66,23 @@ returns a set of ten single-use recovery codes, shown once; any of them replaces
 app for one sign-in and the user is told how many remain. Secrets are encrypted per
 row under the master key, recovery codes are hashed then encrypted, and the session
 records `amr` (`otp`, `mfa`) and `acr` (`urn:ridm:acr:mfa`, or the class the client
-asked for) so tokens say how the user signed in. Passkeys, OTP factors and the
-role-based policy modes follow later in Phase 7.
+asked for) so tokens say how the user signed in.
+
+Passkeys (WebAuthn) serve both as a passwordless sign-in and as a second step. With
+the tenant's `auth.passkey` option on, the login page offers "Sign in with a passkey":
+`POST /flows/{id}/passkey/start` issues a discoverable-credential challenge and
+`/passkey/finish` verifies the assertion, finds the credential by the id the
+authenticator presented, checks that the user handle names its owner, and opens the
+session. User verification is required, so a passkey sign-in is two factors already
+(`amr` `hwk`, `user`, `mfa`) and no second step follows. At the `mfa` stage a user
+enrols a passkey (`/mfa/passkey/register` then `/register/finish`, with a label,
+existing keys excluded; the first second factor also issues the recovery codes) or
+verifies with one (`/mfa/passkey/start` then `/finish`). The relying party id is the
+UI's host (or the tenant's custom domain); the API's own origin is accepted when it
+shares that host. Each passkey is one encrypted `webauthn` credential row (public key,
+sign counter and backup flags, the counter checked on every assertion), and
+challenges live in Redis for five minutes, bound to the flow and spent by the first
+answer. OTP factors and the role-based policy modes follow later in Phase 7.
 
 Locale is negotiated per request: the OIDC `ui_locales` parameter, then the user's
 stored locale, then the tenant default, constrained to the tenant's supported list
@@ -360,7 +375,8 @@ npm run build          # static export to ui/out
 mode). Set it at build time when hosting `ui/out` on a separate static host or CDN.
 
 `npm run e2e` runs the Playwright suite (the end-user journeys — password, magic link,
-registration, recovery, consent, logout — and the admin console journeys for every
+registration, recovery, two-step verification, passkeys through a virtual
+authenticator, consent, logout — and the admin console journeys for every
 page, with axe-core accessibility checks on every page in light, dark and phone width)
 against a running API and Mailpit; see [`ui/e2e/README.md`](ui/e2e/README.md).
 

@@ -66,6 +66,8 @@ test.describe("two-step verification", () => {
     await loginWithPassword(page, s, STEP_UP);
     await page.waitForURL(/\/mfa\//, { timeout: 30_000 });
     await expect(page.getByRole("heading", { name: "Set up two-step verification" })).toBeVisible({ timeout: 15_000 });
+    // The tenant offers passkeys too, so the first screen is a choice.
+    await page.getByRole("button", { name: /^Authenticator app/ }).click();
     await expect(page.getByRole("img", { name: /QR code to add/ })).toBeVisible({ timeout: 15_000 });
     secret = (await page.getByTestId("totp-secret").textContent())?.trim() ?? "";
     expect(secret).toMatch(/^[A-Z2-7]{16,}$/);

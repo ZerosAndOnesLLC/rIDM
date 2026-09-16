@@ -49,11 +49,13 @@ pub struct CredentialSecret {
     pub kind: String,
     pub label: Option<String>,
     pub data_enc: Vec<u8>,
+    pub external_id: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub last_used_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-const SECRET_COLUMNS: &str = "id, user_id, type, label, data_enc, created_at, last_used_at";
+const SECRET_COLUMNS: &str =
+    "id, user_id, type, label, data_enc, external_id, created_at, last_used_at";
 
 pub async fn list_secrets_of_type<'e>(
     exec: impl PgExecutor<'e>,
@@ -72,6 +74,26 @@ pub async fn list_secrets_of_type<'e>(
         .push(" ORDER BY created_at, id");
     qb.build_query_as::<CredentialSecret>()
         .fetch_all(exec)
+        .await
+}
+
+/// The one credential of `kind` presenting `external_id`, whoever holds it.
+pub async fn find_secret_by_external_id<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    kind: &str,
+    external_id: &str,
+) -> Result<Option<CredentialSecret>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("SELECT ");
+    qb.push(SECRET_COLUMNS)
+        .push(" FROM credentials WHERE tenant_id = ")
+        .push_bind(tenant_id)
+        .push(" AND type = ")
+        .push_bind(kind)
+        .push(" AND external_id = ")
+        .push_bind(external_id);
+    qb.build_query_as::<CredentialSecret>()
+        .fetch_optional(exec)
         .await
 }
 
@@ -100,6 +122,9 @@ pub struct NewCredential<'a> {
     pub label: Option<&'a str>,
     pub data_enc: &'a [u8],
     pub key_version: i32,
+    /// Identifier the credential presents itself with (a passkey's credential
+    /// id); unique per tenant and type.
+    pub external_id: Option<&'a str>,
 }
 
 pub async fn insert<'e>(
@@ -108,7 +133,7 @@ pub async fn insert<'e>(
     new: NewCredential<'_>,
 ) -> Result<Credential, sqlx::Error> {
     let mut qb = QueryBuilder::new(
-        "INSERT INTO credentials (id, tenant_id, user_id, type, label, data_enc, key_version) VALUES (",
+        "INSERT INTO credentials (id, tenant_id, user_id, type, label, data_enc, key_version, external_id) VALUES (",
     );
     qb.push_bind(new.id)
         .push(", ")
@@ -123,6 +148,8 @@ pub async fn insert<'e>(
         .push_bind(new.data_enc)
         .push(", ")
         .push_bind(new.key_version)
+        .push(", ")
+        .push_bind(new.external_id)
         .push(") RETURNING ")
         .push(COLUMNS);
     qb.build_query_as::<Credential>().fetch_one(exec).await

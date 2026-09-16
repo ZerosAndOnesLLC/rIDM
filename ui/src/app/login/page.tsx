@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { useI18n } from "@/i18n/provider";
 import { AuthShell } from "@/components/shell";
 import { Captcha } from "@/components/captcha";
@@ -11,8 +11,9 @@ import { Alert, Button, Checkbox, Divider, PasswordField, Spinner, TextField, Ti
 import { ApiError } from "@/lib/api";
 import { pageUrl, useFlow, type Post } from "@/lib/flow";
 import { usePageParams, WithParams } from "@/lib/params";
+import { assertPasskey, passkeysSupported } from "@/lib/passkeys";
 import { useTenant } from "@/lib/tenant";
-import type { AttributeDef, Method, PublicFlow } from "@/lib/types";
+import type { AttributeDef, Method, PasskeyRequestOptions, PublicFlow } from "@/lib/types";
 
 const ACCEPTS = ["authenticate", "password_change", "profile", "terms", "done"] as const;
 
@@ -104,6 +105,13 @@ const SEND_STEP: Record<Passwordless, string> = {
   sms_otp: "sms-otp",
 };
 
+const noop = () => () => {};
+
+/** Whether this browser can run a passkey ceremony (false during server rendering). */
+function usePasskeySupport(): boolean {
+  return useSyncExternalStore(noop, passkeysSupported, () => false);
+}
+
 function Authenticate({
   flow,
   post,
@@ -122,6 +130,9 @@ function Authenticate({
 }) {
   const { t } = useI18n();
   const errorText = useErrorText();
+  const passkeySupported = usePasskeySupport();
+  // Passkeys are a button, not a form: the browser runs the ceremony.
+  const passkey = flow.methods.includes("passkey") && passkeySupported;
   const methods = flow.methods.filter((m) => m !== "passkey");
   const [method, setMethod] = useState<Method>(methods.includes("password") ? "password" : (methods[0] ?? "password"));
   const [identifier, setIdentifier] = useState(flow.login_hint ?? "");
@@ -174,15 +185,40 @@ function Authenticate({
     void run(() => post(`${SEND_STEP[sent]}/verify`, { code, remember_device: remember }));
   };
   const cancel = () => run(() => post<{ redirect_to: string }>("cancel", {}));
+  const signInWithPasskey = () =>
+    run(async () => {
+      const options = await post<PasskeyRequestOptions>("passkey/start", {});
+      const credential = await assertPasskey(options);
+      await post("passkey/finish", { credential, remember_device: remember });
+    });
 
   const subtitle = t("login.subtitle", { client: flow.client.name });
+  const cancelLink = (
+    <button type="button" onClick={() => void cancel()} className="self-center text-[0.8125rem] text-muted hover:text-ink hover:underline underline-offset-4">
+      {t("common.cancel")}
+    </button>
+  );
+  const passkeyButton = passkey && (
+    <Button type="button" variant={methods.length === 0 ? "primary" : "secondary"} busy={busy} onClick={() => void signInWithPasskey()}>
+      {t("login.passkey")}
+    </Button>
+  );
 
   if (methods.length === 0) {
     return (
-      <>
+      <div className="flex flex-col gap-5">
         <Title sub={subtitle}>{t("login.title")}</Title>
-        <Alert tone="error">{t("login.no_methods")}</Alert>
-      </>
+        {error && <Alert tone="error">{error}</Alert>}
+        {passkey ? (
+          <>
+            <Checkbox label={t("login.remember_device")} checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+            {passkeyButton}
+            {cancelLink}
+          </>
+        ) : (
+          <Alert tone="error">{t("login.no_methods")}</Alert>
+        )}
+      </div>
     );
   }
 
@@ -285,10 +321,11 @@ function Authenticate({
         </form>
       )}
 
-      {others.length > 0 && (
+      {(others.length > 0 || passkey) && (
         <>
           <Divider label={t("login.or")} />
           <div className="flex flex-col gap-2">
+            {passkeyButton}
             {others.map((m) => (
               <Button
                 key={m}
@@ -306,9 +343,7 @@ function Authenticate({
         </>
       )}
 
-      <button type="button" onClick={() => void cancel()} className="self-center text-[0.8125rem] text-muted hover:text-ink hover:underline underline-offset-4">
-        {t("common.cancel")}
-      </button>
+      {cancelLink}
     </div>
   );
 }

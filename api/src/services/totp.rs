@@ -11,8 +11,6 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Utc};
 use redis::AsyncCommands as _;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
-use ridm_core::providers::Encrypted;
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use subtle::ConstantTimeEq as _;
@@ -24,13 +22,14 @@ use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::models::{Tenant, User};
 use crate::repos;
-use crate::services::notifications;
+use crate::services::credential_secrets::{decrypt, encrypt};
+use crate::services::{notifications, passkeys};
 use crate::state::AppState;
 
 pub const KIND_TOTP: &str = "totp";
 pub const KIND_RECOVERY: &str = "recovery_code";
 /// Credential types that count as a second factor.
-pub const SECOND_FACTOR_KINDS: &[&str] = &[KIND_TOTP, "webauthn"];
+pub const SECOND_FACTOR_KINDS: &[&str] = &[KIND_TOTP, passkeys::KIND];
 
 pub const DIGITS: u8 = 6;
 pub const PERIOD_SECS: u64 = 30;
@@ -82,8 +81,16 @@ pub struct Enrolment {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 pub struct Factors {
     pub totp: bool,
+    /// At least one passkey.
+    pub webauthn: bool,
     /// Unused recovery codes left.
     pub recovery_codes: usize,
+}
+
+impl Factors {
+    pub fn any(&self) -> bool {
+        self.totp || self.webauthn
+    }
 }
 
 /// Which factor passed.
@@ -93,41 +100,8 @@ pub enum Verified {
     RecoveryCode { remaining: usize },
 }
 
-fn aad(tenant_id: Uuid, id: Uuid) -> Vec<u8> {
-    format!("credentials:{tenant_id}:{id}").into_bytes()
-}
-
 fn hash(code: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(code.as_bytes()))
-}
-
-async fn encrypt<T: Serialize>(
-    state: &AppState,
-    tenant_id: Uuid,
-    id: Uuid,
-    value: &T,
-) -> AppResult<Encrypted> {
-    let plain = serde_json::to_vec(value)?;
-    state
-        .key_encryptor
-        .encrypt(&plain, &aad(tenant_id, id))
-        .await
-        .map_err(|e| AppError::Internal(format!("credential encrypt: {e}")))
-}
-
-async fn decrypt<T: DeserializeOwned>(
-    state: &AppState,
-    tenant_id: Uuid,
-    id: Uuid,
-    blob: &[u8],
-) -> AppResult<T> {
-    let enc = Encrypted::from_bytes(blob).map_err(|e| AppError::Internal(e.to_string()))?;
-    let plain = state
-        .key_encryptor
-        .decrypt(&enc, &aad(tenant_id, id))
-        .await
-        .map_err(|e| AppError::Internal(format!("credential decrypt: {e}")))?;
-    Ok(serde_json::from_slice(&plain)?)
 }
 
 /// otpauth labels cannot contain a colon.
@@ -264,6 +238,7 @@ pub async fn confirm_enrolment(
             label: Some(&label),
             data_enc: &enc.to_bytes(),
             key_version: enc.key_version as i32,
+            external_id: None,
         },
     )
     .await?;
@@ -333,6 +308,7 @@ pub async fn regenerate_recovery_codes(
             label: Some("Recovery codes"),
             data_enc: &enc.to_bytes(),
             key_version: enc.key_version as i32,
+            external_id: None,
         },
     )
     .await?;
@@ -358,6 +334,9 @@ pub async fn factors_of(state: &AppState, tenant_id: Uuid, user_id: Uuid) -> App
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let totp =
         repos::credentials::count_of_types(&mut *tx, tenant_id, user_id, &[KIND_TOTP]).await? > 0;
+    let webauthn =
+        repos::credentials::count_of_types(&mut *tx, tenant_id, user_id, &[passkeys::KIND]).await?
+            > 0;
     let recovery =
         repos::credentials::list_secrets_of_type(&mut *tx, tenant_id, user_id, KIND_RECOVERY)
             .await?;
@@ -369,6 +348,7 @@ pub async fn factors_of(state: &AppState, tenant_id: Uuid, user_id: Uuid) -> App
     }
     Ok(Factors {
         totp,
+        webauthn,
         recovery_codes,
     })
 }
