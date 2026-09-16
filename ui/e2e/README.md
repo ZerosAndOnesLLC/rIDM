@@ -44,7 +44,8 @@ owner (`ridm:owner` in `master`) so the console specs can sign in as them. Setti
 | `consent` | consent denied returns `access_denied` (approval runs inside every sign-in) |
 | `logout` | RP-initiated logout with confirmation |
 | `mfa` | client step-up (`acr_values`) enrols an authenticator app (choice screen, QR and manual key, wrong proof refused, recovery codes shown once), a step-up on a live session goes straight to the app code and the session then satisfies the class, a spent code is refused, a recovery code works once |
-| `account` | the account console: sign-in through the tenant, adding an authenticator app (recovery codes shown once), the factor listed, a step-up with "don't ask again" makes the browser trusted, the console forgets it, renews the codes and removes the app |
+| `account` | account console security page: sign in through the tenant, add an authenticator app (recovery codes shown once), trust a browser during a step-up, forget it, renew the codes, remove the app |
+| `account-profile` | account console: profile fields by the tenant's schema saved as edited (admin-only fields read-only), contact details, sessions list with another browser signed out from here, connected applications, export download, deletion dialog |
 | `mfa-otp` | the chooser enrols codes by email (a wrong code refused, recovery codes shown once), the next step-up emails a code and verifies it |
 | `passkey` | CDP virtual authenticator: a step-up enrols a passkey as the second step (recovery codes), the passkey signs in without a password (no second step), a later step-up verifies with it |
 | `console-a11y` | axe pass over every console page in its landing state (all pages light, the first eight dark, four at phone width with no horizontal overflow) |

@@ -466,6 +466,23 @@ UI_URL=http://localhost:3110 cargo run -p ridm-api             # API on :8090
 cd ui && API_PROXY=http://localhost:8090 npx next dev -p 3110   # UI on :3110
 ```
 
+### Account console
+
+The account console lives under `/account/` and is the self-service API's own client
+(see above). Signed out, every page shows a card asking which organisation to sign in
+through (`?tenant=` fills it in, the last one is remembered) and returns to the page
+afterwards. Four pages: **Profile** (the fields the tenant's profile schema declares,
+saved as they are edited, admin-only fields shown read-only; the language; the email
+address and phone number with a change proven by a code sent to the new destination,
+pending changes shown with a cancel, the number removable), **Security** (the password,
+with a change that asks for the current one and can sign out everywhere else; the second
+step and recovery codes; trusted devices; every live session with this browser marked,
+each one ending on its own or all but this one at once), **Applications** (the
+applications the user let in, with their scopes, privacy and terms links, and a "remove
+access" that also cancels their refresh tokens) and **Your data** (the export as a JSON
+download, and account deletion behind a dialog that asks for the username). A change the
+API refuses until the user signs in again sends them through sign-in and back.
+
 ### Admin console
 
 The console lives under `/console/` (the `/admin/*` paths are the API). Signed out, every

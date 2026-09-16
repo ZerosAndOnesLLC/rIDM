@@ -41,7 +41,7 @@ export function useSecurityChange() {
 }
 
 /** Text for an API refusal: field errors first, then the problem's own words. */
-function useProblemText() {
+export function useProblemText() {
   const { t } = useI18n();
   return (e: unknown): string => {
     const p = e as { detail?: string; errors?: { field: string; message: string }[] } | null;
