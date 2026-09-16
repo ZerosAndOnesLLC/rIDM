@@ -92,13 +92,6 @@ fn invalid_code() -> AppError {
     }])
 }
 
-/// A security change needs a recent sign-in, with the second step once the
-/// account has one.
-async fn recent(state: &AppState, ctx: &AccountCtx) -> AppResult<()> {
-    let mfa = totp::has_second_factor(state, ctx.tenant.id, ctx.user.id).await?;
-    ctx.require_recent_auth(mfa)
-}
-
 /// Recovery codes for a user who has none yet (their first factor).
 async fn first_recovery_codes(
     state: &AppState,
@@ -166,7 +159,7 @@ async fn totp_enroll(
     State(state): State<AppState>,
     ctx: AccountCtx,
 ) -> AppResult<Json<totp::Enrolment>> {
-    recent(&state, &ctx).await?;
+    ctx.require_recent(&state).await?;
     if !ctx.tenant.settings.mfa_methods.totp {
         return Err(AppError::BadRequest(
             "authenticator apps are disabled for this tenant".into(),
@@ -191,7 +184,7 @@ async fn totp_confirm(
     ctx: AccountCtx,
     Json(body): Json<CodeBody>,
 ) -> AppResult<Json<Enrolled>> {
-    recent(&state, &ctx).await?;
+    ctx.require_recent(&state).await?;
     let codes = totp::confirm_enrolment(
         &state,
         &ctx.tenant,
@@ -212,7 +205,7 @@ async fn passkey_register(
     State(state): State<AppState>,
     ctx: AccountCtx,
 ) -> AppResult<Json<Value>> {
-    recent(&state, &ctx).await?;
+    ctx.require_recent(&state).await?;
     if !ctx.tenant.settings.auth.passkey {
         return Err(AppError::BadRequest(
             "passkeys are disabled for this tenant".into(),
@@ -229,7 +222,7 @@ async fn passkey_register_finish(
     ctx: AccountCtx,
     Json(body): Json<PasskeyFinishBody>,
 ) -> AppResult<Json<Enrolled>> {
-    recent(&state, &ctx).await?;
+    ctx.require_recent(&state).await?;
     if !ctx.tenant.settings.auth.passkey {
         return Err(AppError::BadRequest(
             "passkeys are disabled for this tenant".into(),
@@ -258,7 +251,7 @@ async fn otp_enroll(
     channel: Channel,
     phone: Option<&str>,
 ) -> AppResult<Json<otp_factors::Sent>> {
-    recent(state, ctx).await?;
+    ctx.require_recent(state).await?;
     Ok(Json(
         otp_factors::begin_enrolment(
             state,
@@ -278,7 +271,7 @@ async fn otp_confirm(
     channel: Channel,
     code: &str,
 ) -> AppResult<Json<Enrolled>> {
-    recent(state, ctx).await?;
+    ctx.require_recent(state).await?;
     if !otp_factors::confirm_enrolment(state, &ctx.tenant, otp_scope(ctx), &ctx.user, channel, code)
         .await?
     {
@@ -343,7 +336,7 @@ async fn delete_credential(
     ctx: AccountCtx,
     Path(CredentialPath { credential_id }): Path<CredentialPath>,
 ) -> AppResult<StatusCode> {
-    recent(&state, &ctx).await?;
+    ctx.require_recent(&state).await?;
     let tid = ctx.tenant.id;
     let mut tx = db::tenant_tx(&state.db, tid).await?;
     let rows = repos::credentials::list_for_user(&mut *tx, tid, ctx.user.id).await?;
@@ -378,7 +371,7 @@ async fn recovery_codes(
     State(state): State<AppState>,
     ctx: AccountCtx,
 ) -> AppResult<Json<RecoveryCodes>> {
-    recent(&state, &ctx).await?;
+    ctx.require_recent(&state).await?;
     if !totp::has_second_factor(&state, ctx.tenant.id, ctx.user.id).await? {
         return Err(AppError::BadRequest(
             "recovery codes need a second factor to recover from".into(),

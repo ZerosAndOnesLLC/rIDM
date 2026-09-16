@@ -63,6 +63,14 @@ impl AccountCtx {
         }
     }
 
+    /// [`Self::require_recent_auth`] for a change to the account: the
+    /// second step is demanded once the account has one.
+    pub async fn require_recent(&self, state: &AppState) -> AppResult<()> {
+        let mfa =
+            crate::services::totp::has_second_factor(state, self.tenant.id, self.user.id).await?;
+        self.require_recent_auth(mfa)
+    }
+
     /// The scope enrolments started from the account console live under:
     /// the SSO session, so a reloaded page finds its pending enrolment.
     pub fn scope_id(&self) -> Uuid {

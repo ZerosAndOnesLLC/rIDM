@@ -1,3 +1,4 @@
+pub mod account;
 pub mod account_console;
 pub mod admin_access;
 pub mod admin_console;
@@ -12,6 +13,7 @@ pub mod claims;
 pub mod client_keys;
 pub mod clients;
 pub mod consents;
+pub mod contact_changes;
 pub mod credential_secrets;
 pub mod dcr;
 pub mod denylist;

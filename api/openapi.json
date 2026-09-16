@@ -12463,6 +12463,115 @@
         ]
       }
     },
+    "/t/{slug}/account/apps": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_list_apps",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConsentedApp"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/apps/{client_id}": {
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Withdraw the consent and the refresh tokens the application holds; its\nnext sign-in asks again.",
+        "operationId": "account_revoke_app",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "path",
+            "description": "The client's row id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/t/{slug}/account/devices": {
       "get": {
         "tags": [
@@ -12627,6 +12736,272 @@
         ]
       }
     },
+    "/t/{slug}/account/email/change": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_change_email",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewEmail"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid address or the current one (field errors)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Address in use",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many codes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_cancel_email_change",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/email/confirm": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_confirm_email_change",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Code"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Wrong code or nothing pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Address in use",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/export": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Everything held about the user as one JSON document, offered as a\ndownload. Secrets are never part of it.",
+        "operationId": "account_export",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountExport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/t/{slug}/account/me": {
       "get": {
         "tags": [
@@ -12667,6 +13042,74 @@
           },
           "403": {
             "description": "Token of another tenant or inactive account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Delete the account: every session, token and trusted device ends now,\nthe username and email free up, and the record is purged after the\norganisation's retention period. Needs a recent sign-in (with the\nsecond step once there is one). Administrators cannot delete\nthemselves.",
+        "operationId": "account_delete_me",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteAccount"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "description": "Confirmation mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required, not allowed, or an administrator",
             "content": {
               "application/json": {
                 "schema": {
@@ -13460,6 +13903,681 @@
           }
         ]
       }
+    },
+    "/t/{slug}/account/password": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_get_password",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_change_password",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePassword"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Wrong current password or policy failure (field errors)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/phone": {
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_remove_phone",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The number backs an SMS second step",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No number on the account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/phone/change": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_change_phone",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewPhone"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid number or the current one (field errors)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many codes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_cancel_phone_change",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/phone/confirm": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_confirm_phone_change",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Code"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Wrong code or nothing pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/profile": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_get_profile",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_patch_profile",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfilePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/sessions": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_list_sessions",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AccountSession"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_revoke_all_sessions",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "keep_current",
+            "in": "query",
+            "description": "Keep the session this request was made from.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Revoked"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/sessions/{session_id}": {
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_revoke_session",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Recent authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -13470,6 +14588,80 @@
           "jwt",
           "opaque"
         ]
+      },
+      "AccountExport": {
+        "type": "object",
+        "description": "Everything rIDM holds about one user, for a data-portability request.\nSecrets (password hashes, factor material, device keys) are never part\nof it.",
+        "required": [
+          "exported_at",
+          "tenant",
+          "user",
+          "credentials",
+          "trusted_devices",
+          "sessions",
+          "consents",
+          "roles",
+          "groups",
+          "audit_events"
+        ],
+        "properties": {
+          "audit_events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditEvent"
+            },
+            "description": "The user's audit trail (as actor or subject), newest first, capped."
+          },
+          "consents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConsentedApp"
+            }
+          },
+          "credentials": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Credential"
+            },
+            "description": "Second factors, passkeys and recovery-code sets (metadata only)."
+          },
+          "exported_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Group"
+            },
+            "description": "Groups the user belongs to, ancestors included."
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Effective role names."
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SsoSession"
+            }
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/ExportedTenant"
+          },
+          "trusted_devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrustedDevice"
+            }
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        }
       },
       "AccountMe": {
         "type": "object",
@@ -13531,6 +14723,87 @@
           },
           "username": {
             "type": "string"
+          }
+        }
+      },
+      "AccountPolicy": {
+        "type": "object",
+        "description": "Self-service rights of the account console.",
+        "properties": {
+          "deletion_retention_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Days a soft-deleted account stays recoverable before the purge job\nremoves it and everything attached to it.",
+            "default": 30,
+            "minimum": 0
+          },
+          "self_deletion": {
+            "type": "boolean",
+            "description": "Users may delete their own account (`DELETE /t/{slug}/account/me`).",
+            "default": true
+          }
+        }
+      },
+      "AccountSession": {
+        "type": "object",
+        "description": "A live browser session of the user.",
+        "required": [
+          "id",
+          "current",
+          "auth_time",
+          "amr",
+          "created_at",
+          "last_seen_at",
+          "expires_at"
+        ],
+        "properties": {
+          "acr": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "amr": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "auth_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "current": {
+            "type": "boolean",
+            "description": "The session this request was made from."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user_agent": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -14075,6 +15348,29 @@
           }
         }
       },
+      "ChangePassword": {
+        "type": "object",
+        "properties": {
+          "current_password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required while the account has a password.",
+            "default": null
+          },
+          "new_password": {
+            "type": "string",
+            "default": ""
+          },
+          "sign_out_others": {
+            "type": "boolean",
+            "description": "End every other session and its refresh tokens.",
+            "default": false
+          }
+        },
+        "additionalProperties": false
+      },
       "ClaimMapperRow": {
         "type": "object",
         "description": "A stored claim mapper row; `config` is the [`crate::models::ClaimMapper`] document.",
@@ -14432,6 +15728,18 @@
         ],
         "description": "Client as returned to administrators: every metadata column, plus the\nsecrets' ids and validity windows (never the secrets or their hashes)."
       },
+      "Code": {
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "CodeBody": {
         "type": "object",
         "required": [
@@ -14488,6 +15796,59 @@
           "user_id": {
             "type": "string",
             "format": "uuid"
+          }
+        }
+      },
+      "ConsentedApp": {
+        "type": "object",
+        "description": "An application the user granted scopes to.",
+        "required": [
+          "client_id",
+          "client",
+          "name",
+          "scopes",
+          "granted_at"
+        ],
+        "properties": {
+          "client": {
+            "type": "string",
+            "description": "The client's public `client_id`."
+          },
+          "client_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The client's row id (the key for revocation)."
+          },
+          "granted_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "logo_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "policy_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tos_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -14668,6 +16029,19 @@
             "default": "disabled"
           }
         }
+      },
+      "DeleteAccount": {
+        "type": "object",
+        "required": [
+          "confirm"
+        ],
+        "properties": {
+          "confirm": {
+            "type": "string",
+            "description": "The username, typed again."
+          }
+        },
+        "additionalProperties": false
       },
       "DeliveryStatus": {
         "type": "string",
@@ -14912,6 +16286,21 @@
           "secret": {
             "type": "string",
             "description": "Base32 secret for manual entry."
+          }
+        }
+      },
+      "ExportedTenant": {
+        "type": "object",
+        "required": [
+          "slug",
+          "display_name"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
           }
         }
       },
@@ -16151,6 +17540,18 @@
         },
         "additionalProperties": false
       },
+      "NewEmail": {
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "NewGroup": {
         "type": "object",
         "properties": {
@@ -16271,6 +17672,19 @@
           "name": {
             "type": "string",
             "default": ""
+          }
+        },
+        "additionalProperties": false
+      },
+      "NewPhone": {
+        "type": "object",
+        "required": [
+          "phone"
+        ],
+        "properties": {
+          "phone": {
+            "type": "string",
+            "description": "E.164."
           }
         },
         "additionalProperties": false
@@ -16945,6 +18359,24 @@
         },
         "additionalProperties": false
       },
+      "PasswordChanged": {
+        "type": "object",
+        "required": [
+          "signed_out",
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "$ref": "#/components/schemas/PasswordStatus"
+          },
+          "signed_out": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Other sessions ended.",
+            "minimum": 0
+          }
+        }
+      },
       "PasswordPolicy": {
         "type": "object",
         "properties": {
@@ -17000,6 +18432,45 @@
           }
         }
       },
+      "PasswordStatus": {
+        "type": "object",
+        "description": "The state of the user's password and the rules a new one must meet.",
+        "required": [
+          "enabled",
+          "set",
+          "must_change",
+          "policy"
+        ],
+        "properties": {
+          "changed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Passwords are a sign-in method of this tenant."
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "must_change": {
+            "type": "boolean"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/PasswordPolicy"
+          },
+          "set": {
+            "type": "boolean"
+          }
+        }
+      },
       "PasswordSummary": {
         "type": "object",
         "required": [
@@ -17032,6 +18503,24 @@
           },
           "set": {
             "type": "boolean"
+          }
+        }
+      },
+      "PendingChanges": {
+        "type": "object",
+        "description": "The changes awaiting their code, masked for display.",
+        "properties": {
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -17271,6 +18760,84 @@
             "type": "string"
           }
         }
+      },
+      "Profile": {
+        "type": "object",
+        "description": "The user's profile with the schema the console renders it by.",
+        "required": [
+          "username",
+          "email_verified",
+          "phone_verified",
+          "attributes",
+          "schema",
+          "pending",
+          "locales"
+        ],
+        "properties": {
+          "attributes": {
+            "description": "Values of the declared attributes (undeclared ones are internal)."
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email_verified": {
+            "type": "boolean"
+          },
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "locales": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Locales the tenant supports, for the locale picker."
+          },
+          "pending": {
+            "$ref": "#/components/schemas/PendingChanges",
+            "description": "Email or phone changes awaiting their code, masked."
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phone_verified": {
+            "type": "boolean"
+          },
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttributeDef"
+            },
+            "description": "The declared attributes in form order; `editable_by` says which\nthe user may change."
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "ProfilePatch": {
+        "type": "object",
+        "description": "A merge patch: only the fields present change. `attributes` replaces\nthe user-editable attributes (those left out are cleared; attributes\nthe user may not edit are kept whether sent unchanged or not).",
+        "properties": {
+          "attributes": {},
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "additionalProperties": false
       },
       "ProfileSchema": {
         "type": "object",
@@ -18692,6 +20259,18 @@
         "type": "object",
         "description": "Per-tenant configuration stored as JSONB. Every field has a default so that\nsettings written by older versions keep deserializing.",
         "properties": {
+          "account": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountPolicy",
+                "description": "What users may do to their own account from the account console."
+              }
+            ],
+            "default": {
+              "deletion_retention_days": 30,
+              "self_deletion": true
+            }
+          },
           "audit": {
             "oneOf": [
               {
@@ -19750,7 +21329,7 @@
     },
     {
       "name": "account",
-      "description": "Self-service account API: the signed-in user's second factors and trusted devices"
+      "description": "Self-service account API: the signed-in user's profile, password, contact details, second factors, trusted devices, sessions, consented applications, data export and account deletion"
     }
   ]
 }

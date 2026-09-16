@@ -184,3 +184,19 @@ pub fn totp_used_step(tenant_id: Uuid, credential_id: Uuid, step: u64) -> String
 pub fn passkey_ceremony(tenant_id: Uuid, scope: Uuid, kind: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:flow:{scope}:passkey:{kind}")
 }
+
+/// Pending email or phone change from the account console: the destination
+/// a code went to, awaiting its proof.
+pub fn contact_change(tenant_id: Uuid, user_id: Uuid, channel: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:user:{user_id}:contact:{channel}:pending")
+}
+
+/// The code proving a pending contact change.
+pub fn contact_change_code(tenant_id: Uuid, user_id: Uuid, channel: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:user:{user_id}:contact:{channel}:code")
+}
+
+/// Claimed while a contact-change code sent moments ago is still fresh.
+pub fn contact_change_cooldown(tenant_id: Uuid, user_id: Uuid, channel: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:user:{user_id}:contact:{channel}:cooldown")
+}

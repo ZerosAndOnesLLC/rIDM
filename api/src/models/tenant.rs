@@ -59,10 +59,32 @@ pub struct TenantSettings {
     pub captcha: CaptchaPolicy,
     pub notifications: NotificationPolicy,
     pub audit: crate::models::AuditPolicy,
+    /// What users may do to their own account from the account console.
+    pub account: AccountPolicy,
     /// Custom issuer host (Phase 9.3). `None` means `{PUBLIC_URL}/t/{slug}`.
     pub custom_domain: Option<String>,
     /// Feature flags: free-form keys the deployment or its clients consult.
     pub features: std::collections::BTreeMap<String, bool>,
+}
+
+/// Self-service rights of the account console.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(default)]
+pub struct AccountPolicy {
+    /// Users may delete their own account (`DELETE /t/{slug}/account/me`).
+    pub self_deletion: bool,
+    /// Days a soft-deleted account stays recoverable before the purge job
+    /// removes it and everything attached to it.
+    pub deletion_retention_days: u32,
+}
+
+impl Default for AccountPolicy {
+    fn default() -> Self {
+        Self {
+            self_deletion: true,
+            deletion_retention_days: 30,
+        }
+    }
 }
 
 /// Which security notices users receive (email, or SMS when they have no email).

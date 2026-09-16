@@ -192,25 +192,39 @@ role. The compose stack creates both and runs migrations in a one-shot `migrate`
 service; on Kubernetes use a Job. `MIGRATE_ON_START=true` is a simpler single-role mode
 for small installs.
 
-### Master key rotation
+### Self-service account API
 
-The account console at `/account/` lets users manage their own second step and
-trusted devices (the rest of the account console follows in Phase 8). It is an OIDC
-public client of the user's own tenant, `ridm-account-console` (PKCE, built in like
-the admin console's client, following `UI_URL`, undeletable and left out of exports),
-whose tokens carry the built-in `urn:ridm:account` audience and reach only the
-self-service API under `/t/{slug}/account/`: `GET me` (identity plus the session's
-`auth_time`, `acr` and `amr`), `GET mfa` (enrolled factors, recovery codes left, the
-methods the tenant offers), `POST mfa/totp/enroll|confirm`, `mfa/passkey/register[/finish]`,
-`mfa/{email|sms}/enroll|confirm` (the same services as the login-flow steps, scoped to
-the SSO session), `DELETE mfa/credentials/{id}` (the recovery codes go with the last
-factor), `POST mfa/recovery-codes` (a new set, shown once), `GET devices`,
-`DELETE devices[/{id}]`. Every change needs a sign-in from the last fifteen minutes,
-and one that passed the second step once the account has one; otherwise the API
-answers `403` with the problem type `urn:ridm:error:reauthentication-required` and the
-page sends the user back through sign-in (`max_age=0`, plus `acr_values` for the second
-step) and returns. A token may only act on its own subject and only in the tenant that
-issued it.
+The account console at `/account/` is an OIDC public client of the user's own tenant,
+`ridm-account-console` (PKCE, built in like the admin console's client, following
+`UI_URL`, undeletable and left out of exports), whose tokens carry the built-in
+`urn:ridm:account` audience and reach only the self-service API under
+`/t/{slug}/account/`. A token may only act on its own subject and only in the tenant
+that issued it, and its SSO session must still be alive. The routes:
+
+| Route | What it does |
+|-------|--------------|
+| `GET me` | identity plus the session's `auth_time`, `acr` and `amr` |
+| `GET/PATCH profile` | the profile by the tenant's schema: declared attributes with their values, which of them the user may edit (`editable_by: user`; the rest are kept as they are), the locale (one the tenant supports), pending contact changes |
+| `GET/PUT password` | the password's state and policy; a change needs the current password while one is set and can end every other session (`sign_out_others`) |
+| `POST email/change`, `POST email/confirm`, `DELETE email/change` | a six-digit code goes to the new address and the right code moves the account over, verified; the previous address is told; an address another account uses is a `409` |
+| `POST phone/change`, `POST phone/confirm`, `DELETE phone/change`, `DELETE phone` | the same by text message; the number cannot be removed while it backs an SMS second step |
+| `GET mfa`, `POST mfa/totp/enroll\|confirm`, `mfa/passkey/register[/finish]`, `mfa/{email\|sms}/enroll\|confirm`, `DELETE mfa/credentials/{id}`, `POST mfa/recovery-codes` | second factors and recovery codes (the same services as the login-flow steps, scoped to the SSO session; the recovery codes go with the last factor) |
+| `GET devices`, `DELETE devices[/{id}]` | trusted browsers |
+| `GET sessions`, `DELETE sessions[/{id}]` | live sessions (the current one first) and ending one or all of them, with their refresh tokens; `?keep_current=true` keeps this one |
+| `GET apps`, `DELETE apps/{client_id}` | applications the user consented to, and withdrawing that consent along with the application's refresh tokens |
+| `GET export` | everything held about the user as one JSON download: the record, credential metadata, devices, sessions, consents, roles, groups and the audit trail; never any secret material |
+| `DELETE me` | delete the account (the username typed again as confirmation): every session, token and device ends now and the row is soft-deleted, so the username and email free up at once; a daily job purges it after `settings.account.deletion_retention_days` (default 30, admin deletions too). `settings.account.self_deletion` switches it off per tenant, and administrators must be removed by another administrator |
+
+Every security change (a factor, a device, a session, the password, a contact
+detail, the export, deletion) needs a sign-in from the last fifteen minutes, and one
+that passed the second step once the account has one; otherwise the API answers `403`
+with the problem type `urn:ridm:error:reauthentication-required` and the page sends
+the user back through sign-in (`max_age=0`, plus `acr_values` for the second step) and
+returns. Contact-change codes follow the passwordless rules: hashed, single-use, ten
+minutes, five attempts, three sends per ten minutes, and a repeat inside twenty seconds
+reuses the pending code.
+
+### Breached-password check
 
 Breached-password check: with `password.check_breached` on, every password a user
 or administrator sets (registration, recovery, forced change, admin reset, imports
@@ -222,6 +236,8 @@ for air-gapped installs, and the tenant toggle is then inert). A refused passwor
 a validation error on the `password` field; a lookup failure is logged and lets the
 password through, so an outage never blocks sign-ups or resets. The checker is a
 `BreachChecker` provider, so another corpus can be plugged in.
+
+### Master key rotation
 
 Secrets at rest (signing keys, MFA credentials, IdP secrets) are encrypted with
 `MASTER_KEY`, and every ciphertext records the key generation that produced it. To
@@ -412,8 +428,8 @@ job creates upcoming partitions and drops each tenant's expired chain prefix, so
 remains stays contiguous. The global chain follows the master tenant's policy.
 
 Tenant settings cover the password, session, MFA, registration, locale, branding,
-key, discovery, DCR, auth-method, lockout, CAPTCHA, notification and audit-retention policies plus a
-free-form `features` flag map. IP rules and webhooks get their own resources later in
+key, discovery, DCR, auth-method, lockout, CAPTCHA, notification, audit-retention and
+account (self-deletion, deletion retention) policies plus a free-form `features` flag map. IP rules and webhooks get their own resources later in
 Phase 5.
 
 ### UI
