@@ -171,6 +171,7 @@ in [`.env.example`](.env.example). The essentials:
 | `RATE_LIMITS` | Master switch for request ceilings (default `true`; off only for tests and local experiments) |
 | `RATE_LIMIT_IP_PER_MINUTE` | Requests per minute one client address may make to every limited endpoint of every tenant together (default 6000; 0 = off). Per-tenant ceilings are in tenant settings |
 | `HSTS_MAX_AGE` | `Strict-Transport-Security` max-age in seconds, sent when `PUBLIC_URL` is https (default two years; 0 = off) |
+| `RETENTION_DAYS` | Days the hourly cleanup keeps spent rows (expired tokens and sessions, login attempts, sent messages, finished deliveries; default 30) |
 
 Health probes: `GET /healthz` (liveness) and `GET /readyz` (database + cache).
 `GET /.well-known/security.txt` serves the vulnerability disclosure policy.
@@ -240,6 +241,27 @@ plain bearer token, without a proof or with another key's proof is refused with 
 and the admin API. Clients registered with `dpop_bound_access_tokens` (console: client
 detail, or the DCR metadata field) must always present a proof. Server-provided nonces
 and `dpop_jkt` at `/authorize` are not implemented.
+
+### Background jobs
+
+An in-process scheduler runs every job on its interval with jitter, and each pass takes
+a Valkey leader lock (`ridm:lock:<job>`, compare-and-delete release), so a job runs on
+one node at a time however many nodes there are; a node that does not get the lock
+skips the pass. Every pass is counted and timed (`ridm_job_runs_total`,
+`ridm_job_duration_seconds`) and its outcome stored as the job's last run in Valkey
+(`ridm:jobs:last_run`, read by `jobs::status::all`).
+
+| Job | Every | What it does |
+|-----|-------|--------------|
+| `key_rotation` | 1 h | rotates and retires signing keys per the tenant key policy |
+| `audit_retention` | 24 h | creates upcoming audit partitions, drops expired chain prefixes |
+| `user_purge` | 24 h | hard-deletes soft-deleted users past the tenant's retention |
+| `webhook_delivery` | 30 s | retries webhook deliveries whose backoff elapsed (prompt delivery happens on the event) |
+| `message_delivery` | 30 s | sends queued and retrying email/SMS |
+| `cleanup` | 1 h | deletes spent rows older than `RETENTION_DAYS` (default 30): expired, revoked or consumed refresh tokens; ended sessions (kept a week at most); login attempts; sent or dead messages; delivered or dead webhook deliveries; device-code audit rows; expired, accepted or revoked invitations; expired or revoked trusted devices, personal access tokens and provisioning tokens — in batches of 5,000 rows |
+
+The two delivery jobs find the tenants with due work in one cross-tenant query and visit
+only those, so their cost follows the backlog rather than the number of tenants.
 
 ### Custom domains
 

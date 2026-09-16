@@ -348,6 +348,7 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
             ip_per_minute: 0,
         },
         hsts_max_age: 63_072_000,
+        retention_days: 30,
         tls: None,
         db_pool_min: 1,
         db_pool_max: 8,

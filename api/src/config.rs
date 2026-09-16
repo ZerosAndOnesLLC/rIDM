@@ -89,6 +89,9 @@ pub struct Config {
     /// `Strict-Transport-Security` max-age in seconds, sent when `PUBLIC_URL`
     /// is https; 0 disables the header.
     pub hsts_max_age: u64,
+    /// Days the hourly cleanup keeps spent rows (expired tokens and sessions,
+    /// login attempts, sent messages, finished webhook deliveries, ...).
+    pub retention_days: u32,
     pub tls: Option<TlsConfig>,
     pub db_pool_min: u32,
     pub db_pool_max: u32,
@@ -254,6 +257,13 @@ impl Config {
             )?,
         };
         let hsts_max_age = u64::from(parse_u32("HSTS_MAX_AGE", 63_072_000)?);
+        let retention_days = parse_u32("RETENTION_DAYS", 30)?;
+        if retention_days == 0 {
+            return Err(ConfigError::Invalid {
+                name: "RETENTION_DAYS",
+                reason: "must be at least 1".into(),
+            });
+        }
         let tls = match (optional("TLS_CERT"), optional("TLS_KEY")) {
             (Some(cert), Some(key)) => Some(TlsConfig {
                 cert_path: PathBuf::from(cert),
@@ -353,6 +363,7 @@ impl Config {
             trusted_proxies,
             rate_limits,
             hsts_max_age,
+            retention_days,
             tls,
             db_pool_min,
             db_pool_max,

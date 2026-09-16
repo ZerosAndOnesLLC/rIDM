@@ -120,6 +120,16 @@ pub async fn enqueue<'e>(
     qb.build_query_as::<OutboundMessage>().fetch_one(exec).await
 }
 
+/// Tenants with a message due right now (bypass transaction; the job visits only these).
+pub async fn tenants_with_due<'e>(exec: impl PgExecutor<'e>) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT DISTINCT tenant_id FROM outbound_messages \
+         WHERE status IN ('queued', 'sending') AND next_attempt_at <= now()",
+    )
+    .fetch_all(exec)
+    .await
+}
+
 /// Claim due messages for delivery (marks them `sending`).
 pub async fn claim_due<'e>(
     exec: impl PgExecutor<'e>,

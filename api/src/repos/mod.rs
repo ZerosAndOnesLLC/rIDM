@@ -1,5 +1,6 @@
 pub mod audit;
 pub mod claim_mappers;
+pub mod cleanup;
 pub mod clients;
 pub mod consents;
 pub mod credentials;
