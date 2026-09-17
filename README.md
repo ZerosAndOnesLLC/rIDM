@@ -140,6 +140,11 @@ client), then works the admin API with a tenant switcher for global administrato
 global search (`Ctrl`/`⌘ K`), keyboard shortcuts, light and dark themes and a phone
 layout. See [Admin console](#admin-console).
 
+The same admin API is driven from a terminal by `ridm`, a second binary in this
+repository: profiles and a login of its own, tenant configuration as code (export,
+diff, import), key and master-key rotation, and user and client creation. See
+[Command-line administration](#command-line-administration-ridm).
+
 ## Quick start (docker-compose)
 
 ```bash
@@ -583,6 +588,8 @@ rotate without downtime:
    (`<old version>=<old key>`). New writes use the new generation; old rows still decrypt.
 2. Run `ridm-api rotate-master-key` once (any node, same configuration). It re-encrypts
    every row under the current generation in batches. `--status` shows what remains.
+   `ridm master-key status` and `ridm master-key rotate` do the same over the admin API,
+   from anywhere that can reach the server.
 3. Remove the old key from `MASTER_KEY_PREVIOUS`.
 
 ### First-run bootstrap
@@ -602,7 +609,75 @@ ridm-api bootstrap --email admin@example.com [--username admin] [--password-stdi
 
 Bootstrap is idempotent: once any user in `master` holds the `ridm:owner` role it does
 nothing. The password must satisfy the master tenant's policy, and admins created
-from the environment must change it at first login.
+from the environment must change it at first login. `ridm bootstrap` takes the same
+flags and runs the same code, for operators who have the CLI rather than the server
+binary at hand.
+
+### Command-line administration (`ridm`)
+
+`crates/ridm-cli` builds a second binary, `ridm`, that works the admin API from a
+terminal — `cargo build -p ridm-cli`, or `cargo run -p ridm-cli -- <args>` while
+developing. It needs nothing but network access to the server and a token.
+
+```bash
+ridm login --url https://idm.example.com             # paste a personal access token
+ridm whoami
+
+ridm --tenant acme tenant export -o acme.json        # configuration as code
+ridm --tenant acme tenant diff   -f acme.json        # what an import would change
+ridm --tenant acme tenant import -f acme.json        # plan, confirm, apply
+
+ridm --tenant acme key rotate
+ridm --tenant acme user create alice --email alice@example.com --temporary-password
+ridm --tenant acme user reset alice --revoke-sessions
+ridm --tenant acme client create --name "Acme SPA" --type spa \
+     --redirect-uri https://acme.example/callback
+ridm master-key status
+```
+
+| Command | Does |
+|---------|------|
+| `login`, `logout`, `whoami`, `profile list\|use\|show` | credentials and which server they are for |
+| `bootstrap` | create the first global administrator (the database, not the API) |
+| `tenant list\|show\|create\|export\|import\|diff` | tenants and their configuration document |
+| `key list\|rotate` | a tenant's token signing keys |
+| `master-key status\|rotate` | the key that encrypts secrets at rest, deployment-wide |
+| `user create\|reset` | create a user; set or reset a password |
+| `client create` | register an OAuth client; its secret is printed once |
+
+**Authenticating.** An admin token must carry `urn:ridm:admin` in `aud` and belong to
+a user with `ridm:*` permissions (see [Admin API access](#admin-api-access)), so the
+CLI asks for that resource whatever the grant. `ridm login` takes three routes:
+
+- a **personal access token** (`rpat_…`) minted in the account console — the default,
+  needs no client registration, and is what CI should put in `RIDM_TOKEN`;
+- `--client-id X --client-secret-stdin`, **client credentials** of a machine client
+  whose service-account user holds admin roles;
+- `--client-id X --device`, the **device authorization grant**: the CLI prints a code,
+  the operator approves it in a browser, and the refresh token keeps the session alive.
+  The client must allow `urn:ietf:params:oauth:grant-type:device_code` and list
+  `urn:ridm:admin` in its audiences; the built-in console clients deliberately do not.
+
+**Profiles.** `ridm login` writes the server URL, the tenant and the credential to
+`~/.config/ridm/config.json` (`$XDG_CONFIG_HOME` or `$RIDM_CONFIG` if set), mode `0600`
+because a refresh token or a client secret may be in it. `--profile` picks one,
+`ridm profile use` changes the default, and `--url`/`--tenant`/`--token` (or `RIDM_URL`,
+`RIDM_TENANT`, `RIDM_TOKEN`) override a profile without writing anything — enough on
+their own for a pipeline that stores no file at all. An expiring OAuth credential is
+refreshed in place before the request that needs it.
+
+**Output and exit codes.** `--output json` prints the API response verbatim for `jq`;
+without it, results are tables and sentences. `0` succeeded, `1` the command ran and
+failed, `2` the command line or the configuration was wrong, and `3` from
+`tenant diff --exit-code` when the plan is not empty. Commands that destroy or rewrite
+(`tenant import`, `master-key rotate`) show what they are about to do and ask; `--yes`
+skips the question and is required when stdin is not a terminal.
+
+**Building without the database.** `bootstrap` is the one command that cannot use the
+admin API — no token can exist yet — so it links the server library and reads the
+server's own environment (`DATABASE_URL`, `REDIS_URL`, `MASTER_KEY`). Build with
+`--no-default-features` for a slim, HTTP-only `ridm` that leaves bootstrapping to
+`ridm-api bootstrap` in the container.
 
 ### Admin API access
 
@@ -1007,6 +1082,7 @@ the load tests in [`perf/README.md`](perf/README.md).
 | `api/` | `ridm-api`: the identity server (axum, sqlx, Valkey) |
 | `api/migrations/` | sqlx migrations (forward-only) |
 | `crates/ridm-core/` | shared types, provider traits, event definitions |
+| `crates/ridm-cli/` | `ridm`: command-line administration over the admin API |
 | `ui/` | Next.js 16 static export: admin console, account console, auth pages |
 | `deploy/` | docker-compose, Helm chart, reverse-proxy examples |
 | `api/fuzz/` | cargo-fuzz targets and their seed corpora |

@@ -1,0 +1,38 @@
+[package]
+name = "ridm-cli"
+description = "rIDM — command-line administration for the rIDM identity server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "ridm"
+path = "src/main.rs"
+
+[features]
+# `ridm bootstrap` reaches the database directly (no admin token exists yet),
+# which pulls the server library in. Build with `--no-default-features` for a
+# slim, HTTP-only CLI that leaves bootstrapping to `ridm-api bootstrap`.
+default = ["bootstrap"]
+bootstrap = ["dep:ridm-api", "dep:rustls"]
+
+[dependencies]
+ridm-api = { path = "../../api", version = "0.1.0-dev", optional = true }
+
+clap = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+rustls = { workspace = true, optional = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+
+dotenvy = { workspace = true }
+rpassword = { workspace = true }
+zeroize = { workspace = true }
