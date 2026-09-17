@@ -43,6 +43,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: api/fuzz
+          cache-on-failure: "true"
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-fuzz

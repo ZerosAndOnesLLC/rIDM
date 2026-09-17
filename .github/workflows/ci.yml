@@ -327,8 +327,9 @@ jobs:
     name: fuzz-smoke
     runs-on: ubuntu-latest
     # Five targets, a minute each. The sanitizer build of the whole dependency
-    # tree is the slow part, and only warm once the cache is populated.
-    timeout-minutes: 60
+    # tree is the slow part; the budget is for a cold one, and `cache-on-failure`
+    # keeps what a failed run built so the next is warm.
+    timeout-minutes: 90
     env:
       # `cargo fuzz` composes its own RUSTFLAGS (sanitizer, coverage); the
       # workspace's `-D warnings` has no business in that build.
@@ -339,6 +340,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: api/fuzz
+          cache-on-failure: "true"
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-fuzz

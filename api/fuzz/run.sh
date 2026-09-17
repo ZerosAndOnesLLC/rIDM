@@ -24,8 +24,16 @@ fi
 # nobody installed. Always build for the toolchain's own host.
 host="$(rustc +nightly -vV | sed -n 's/^host: //p')"
 
-# Time a run may take beyond its budget before the job gives up on it.
-grace=300
+# Build first, and outside the per-target timeout: `cargo fuzz run` would
+# otherwise build inside it, and a cold sanitizer build of the whole dependency
+# tree takes far longer than any sane grace on a fuzzing run.
+echo "::group::build (sanitizer)"
+cargo +nightly fuzz build --target "$host"
+echo "::endgroup::"
+
+# What a run may take beyond its budget — libFuzzer's own shutdown, writing the
+# corpus back — before the target is called hung. The build is already done.
+grace=120
 status=0
 for target in "${targets[@]}"; do
   echo "::group::fuzz $target (${seconds}s)"
@@ -33,11 +41,14 @@ for target in "${targets[@]}"; do
   if [ -d "fuzz/seeds/$target" ]; then
     cp -n "fuzz/seeds/$target"/* "fuzz/corpus/$target/" 2>/dev/null || true
   fi
-  if ! timeout $((seconds + grace)) cargo +nightly fuzz run --target "$host" "$target" -- \
-    -max_total_time="$seconds" -timeout=25 -rss_limit_mb=4096 -print_final_stats=1; then
-    echo "fuzz target $target failed"
-    status=1
-  fi
+  rc=0
+  timeout $((seconds + grace)) cargo +nightly fuzz run --target "$host" "$target" -- \
+    -max_total_time="$seconds" -timeout=25 -rss_limit_mb=4096 -print_final_stats=1 || rc=$?
+  case $rc in
+    0) ;;
+    124) echo "fuzz target $target ran past ${seconds}s + ${grace}s and was stopped"; status=1 ;;
+    *) echo "fuzz target $target failed (exit $rc)"; status=1 ;;
+  esac
   echo "::endgroup::"
 done
 
