@@ -25,18 +25,20 @@ WORKDIR /src
 # Cache dependency compilation separately from source changes. Cargo loads the
 # manifest of every workspace member even when only one package is built, so
 # each member needs its Cargo.toml and a stub target here — including
-# `ridm-cli`, whose binary the image does not ship.
+# `ridm-cli` and `ridm-auth`, which the image does not ship.
 COPY Cargo.toml Cargo.lock ./
 COPY api/Cargo.toml api/Cargo.toml
 COPY crates/ridm-core/Cargo.toml crates/ridm-core/Cargo.toml
 COPY crates/ridm-cli/Cargo.toml crates/ridm-cli/Cargo.toml
-RUN mkdir -p api/src crates/ridm-core/src crates/ridm-cli/src \
+COPY crates/ridm-auth/Cargo.toml crates/ridm-auth/Cargo.toml
+RUN mkdir -p api/src crates/ridm-core/src crates/ridm-cli/src crates/ridm-auth/src \
  && echo 'fn main() {}' > api/src/main.rs \
  && echo '' > api/src/lib.rs \
  && echo '' > crates/ridm-core/src/lib.rs \
  && echo 'fn main() {}' > crates/ridm-cli/src/main.rs \
+ && echo '' > crates/ridm-auth/src/lib.rs \
  && cargo build --release --locked -p ridm-api \
- && rm -rf api/src crates/ridm-core/src crates/ridm-cli/src
+ && rm -rf api/src crates/ridm-core/src crates/ridm-cli/src crates/ridm-auth/src
 
 COPY api api
 COPY crates crates

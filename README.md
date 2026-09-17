@@ -613,6 +613,49 @@ from the environment must change it at first login. `ridm bootstrap` takes the s
 flags and runs the same code, for operators who have the CLI rather than the server
 binary at hand.
 
+### Validating tokens in your own API (`ridm-auth`)
+
+[`crates/ridm-auth`](crates/ridm-auth/README.md) is the relying-party half, published to
+crates.io so a Rust service that accepts rIDM tokens does not have to write JWKS handling
+of its own. It verifies the signature against the tenant's published keys, checks that the
+token was meant for *that* API and not another of the same tenant, and answers the
+permission question.
+
+```rust
+let validator = ridm_auth::Validator::builder("https://idm.example.com/t/acme")
+    .audience("https://orders.example")   // the resource server identifier
+    .discover()                           // jwks_uri from the discovery document
+    .await?
+    .shared();
+
+let claims = validator.validate(token).await?;
+claims.require_permission("orders:read")?;
+```
+
+With the default `axum` feature, `Guard` is a route layer and `RidmClaims` an extractor;
+every refusal answers as RFC 6750 says it should — 401 `invalid_token`, 403
+`insufficient_scope`, 503 with `Retry-After` when the key set is out of reach, each with a
+`WWW-Authenticate` challenge.
+
+```rust
+Router::new()
+    .route("/orders", get(list_orders))
+    .route_layer(from_fn_with_state(
+        Guard::new(validator.clone()).permission("orders:read"),
+        guard,
+    ))
+    .with_state(validator);
+```
+
+The key set is cached and refreshed when a token names a key it has not seen, so a
+`ridm key rotate` is picked up without a restart; while the issuer is unreachable the last
+good set keeps answering. `typ` must be `at+jwt`, which is what stops an ID token being
+spent as an access token, and a sender-constrained token (`cnf.jkt`) is refused rather
+than silently downgraded to a bearer one, because this crate verifies no DPoP proof. It
+does not do revocation — rIDM's access tokens are short-lived, and an API that must react
+sooner should call `/introspect` instead. `api/tests/ridm_auth.rs` runs it against tokens
+this server really issues.
+
 ### Command-line administration (`ridm`)
 
 `crates/ridm-cli` builds a second binary, `ridm`, that works the admin API from a
@@ -1060,7 +1103,8 @@ The image is distroless, runs as non-root, has no dynamic OpenSSL dependency, an
 ### CI
 
 Every pull request runs the `ci` workflow: rustfmt, `cargo check`, clippy with warnings
-denied, `cargo audit`, `cargo deny`, ESLint, `tsc`, `npm audit`, unit tests, integration
+denied, `cargo audit`, `cargo deny`, `cargo package` for the published `ridm-auth`,
+ESLint, `tsc`, `npm audit`, unit tests, integration
 tests against Postgres and Valkey, coverage, the UI static export, the Playwright e2e
 suite, a k6 smoke with thresholds (`load-smoke`), a minute of fuzzing per target
 (`fuzz-smoke`) and a container image boot test. The `conformance` workflow runs the
@@ -1082,6 +1126,7 @@ the load tests in [`perf/README.md`](perf/README.md).
 | `api/` | `ridm-api`: the identity server (axum, sqlx, Valkey) |
 | `api/migrations/` | sqlx migrations (forward-only) |
 | `crates/ridm-core/` | shared types, provider traits, event definitions |
+| `crates/ridm-auth/` | `ridm-auth`: published to crates.io; validates rIDM tokens in someone else's Rust API |
 | `crates/ridm-cli/` | `ridm`: command-line administration over the admin API |
 | `ui/` | Next.js 16 static export: admin console, account console, auth pages |
 | `deploy/` | docker-compose, Helm chart, reverse-proxy examples |

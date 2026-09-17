@@ -1,0 +1,44 @@
+[package]
+name = "ridm-auth"
+description = "Validate rIDM (OpenID Connect) access tokens in a Rust API: JWKS cache, audience, scope, role and permission checks, with an axum extractor"
+keywords = ["oidc", "jwt", "oauth2", "axum", "authentication"]
+categories = ["authentication", "web-programming"]
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# This crate is published to crates.io and lands in other people's dependency
+# graphs, so — unlike the rest of the workspace — it asks for compatible ranges
+# rather than exact versions. The workspace lockfile still pins what CI builds.
+[dependencies]
+jsonwebtoken = { version = "11.0.0", features = ["aws_lc_rs"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["json"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.20"
+tokio = { version = "1.53.1", features = ["sync", "time"] }
+tracing = "0.1.44"
+
+axum = { version = "0.8.9", optional = true, default-features = false }
+http = { version = "1.5.0", optional = true }
+
+[dev-dependencies]
+axum = { version = "0.8.9", features = ["macros"] }
+tokio = { version = "1.53.1", features = ["full"] }
+tower = { version = "0.5.3", features = ["util"] }
+
+[features]
+default = ["axum", "rustls"]
+# `axum::RidmClaims`, the `guard` middleware and `IntoResponse for AuthError`.
+axum = ["dep:axum", "dep:http"]
+# TLS for the outbound calls this crate makes (discovery, the key set). There
+# is deliberately no `native-tls` alternative — rIDM uses rustls throughout,
+# and `deny.toml` bans the other. Turn this off and supply a client of your own
+# through `ValidatorBuilder::http_client` to use any TLS stack you like.
+rustls = ["reqwest/rustls"]
+
+[package.metadata.docs.rs]
+all-features = true
