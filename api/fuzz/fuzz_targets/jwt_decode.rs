@@ -28,8 +28,10 @@ fuzz_target!(|data: &[u8]| {
         return;
     };
     // Two more strings that arrive from a caller and are decoded before use.
+    // The legacy hash verifier is handed the input as both password and stored
+    // hash, so the bytes it compares are the fuzzer's rather than a constant.
     let _ = ridm_api::util::cursor::Cursor::decode(token);
-    let _ = ridm_api::services::password::legacy::verify(b"pw", token);
+    let _ = ridm_api::services::password::legacy::verify(data, token);
     let (key, _) = &*KEY;
     let mut validation = Validation::new(Algorithm::ES256);
     validation.validate_exp = false;

@@ -393,7 +393,10 @@ async fn every_delivery_is_signed_over_its_body_and_the_secret_can_be_rotated() 
     assert_eq!(status, 201, "{created}");
     let id: Uuid = created["id"].as_str().unwrap().parse().unwrap();
     let secret = created["secret"].as_str().unwrap().to_string();
-    assert!(secret.starts_with("whsec_"), "{secret}");
+    assert!(
+        secret.starts_with("whsec_"),
+        "secret does not carry the expected prefix"
+    );
 
     ping(&app, id);
     let first = recorded(&seen, 1).await.remove(0);
@@ -416,7 +419,8 @@ async fn every_delivery_is_signed_over_its_body_and_the_secret_can_be_rotated() 
     assert!(signature.starts_with(&format!("t={ts},v1=")));
     assert!((ts - chrono::Utc::now().timestamp()).abs() < 300, "t={ts}");
     // Neither another secret nor another body produces it.
-    assert_ne!(signature, webhooks::sign("whsec_other", ts, &first.body));
+    let other_secret = format!("whsec_{}", Uuid::new_v4().simple());
+    assert_ne!(signature, webhooks::sign(&other_secret, ts, &first.body));
     let mut tampered = first.body.clone();
     tampered.extend_from_slice(b" ");
     assert_ne!(signature, webhooks::sign(&secret, ts, &tampered));
