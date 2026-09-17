@@ -981,10 +981,20 @@ The image is distroless, runs as non-root, has no dynamic OpenSSL dependency, an
 ### CI
 
 Every pull request runs the `ci` workflow: rustfmt, `cargo check`, clippy with warnings
-denied, `cargo audit`, `cargo deny`, ESLint, `tsc`, unit tests, integration tests
-against Postgres and Valkey, the UI static export, and a container image boot test.
-`main` is protected; all checks are required. Dependencies are exact-pinned and updated
-by Renovate.
+denied, `cargo audit`, `cargo deny`, ESLint, `tsc`, `npm audit`, unit tests, integration
+tests against Postgres and Valkey, coverage, the UI static export, the Playwright e2e
+suite, a k6 smoke with thresholds (`load-smoke`), a minute of fuzzing per target
+(`fuzz-smoke`) and a container image boot test. The `conformance` workflow runs the
+OpenID Foundation suite on the same pull request. `main` is protected; all of those are
+required checks and no one can bypass them. Dependencies are exact-pinned and updated by
+Renovate.
+
+Two workflows run longer versions of the same suites off the pull-request path: `weekly`
+fuzzes each target for four hours (and the conformance plans run weekly too), and
+`release` runs the full 200-VU k6 baseline against a release build when a `v*` tag is
+pushed, uploading the summary for the release notes. The fuzz targets, their seeds and
+how to reproduce a crash are described in [`api/fuzz/README.md`](api/fuzz/README.md);
+the load tests in [`perf/README.md`](perf/README.md).
 
 ## Repository layout
 
@@ -995,6 +1005,9 @@ by Renovate.
 | `crates/ridm-core/` | shared types, provider traits, event definitions |
 | `ui/` | Next.js 16 static export: admin console, account console, auth pages |
 | `deploy/` | docker-compose, Helm chart, reverse-proxy examples |
+| `api/fuzz/` | cargo-fuzz targets and their seed corpora |
+| `perf/` | k6 load tests: the PR smoke and the release baseline |
+| `conformance/` | the OpenID Foundation conformance rig |
 | `.github/` | CI workflows, issue and PR templates |
 
 ## Roadmap

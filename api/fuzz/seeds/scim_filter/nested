@@ -1,0 +1,1 @@
+emails[type eq "work"].value co "example" and (active eq true or not (title pr))

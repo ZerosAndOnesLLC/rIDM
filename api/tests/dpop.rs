@@ -628,3 +628,62 @@ async fn exchange_cannot_strip_a_sender_constrained_binding() {
     let res = exchange(Some(proof(&victim_key, ProofOpts::new("POST", &url)))).await;
     assert_eq!(res.status(), 200, "{}", res.text().await.unwrap());
 }
+
+#[tokio::test]
+async fn a_resource_proof_is_good_for_one_request_at_one_url() {
+    let app = TestApp::spawn().await;
+    clients::create(
+        &app.state,
+        app.tenant.id,
+        Actor::System,
+        NewClient {
+            client_id: Some("spa".into()),
+            name: "spa".into(),
+            client_type: Some(ClientType::Spa),
+            redirect_uris: vec!["https://app.example/cb".into()],
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let k = key();
+    let at = bound_user_token(&app, &k.pair.kid, "spa", "spa").await;
+    let htu = app.tenant_url("/userinfo");
+    let call = |p: String| {
+        app.http
+            .get(&htu)
+            .header("authorization", format!("DPoP {at}"))
+            .header("dpop", p)
+            .send()
+    };
+    let for_this_request = || {
+        let mut o = ProofOpts::new("GET", &htu);
+        o.access_token = Some(&at);
+        proof(&k, o)
+    };
+
+    // One request per proof: the same one again is a replay.
+    let p = for_this_request();
+    let res = call(p.clone()).await.unwrap();
+    assert_eq!(res.status(), 200, "{}", res.text().await.unwrap());
+    let res = call(p).await.unwrap();
+    assert_eq!(res.status(), 401, "a proof was accepted twice");
+
+    // A fresh proof for another method, another endpoint, or minted too long
+    // ago is no good here either.
+    let mut wrong_method = ProofOpts::new("POST", &htu);
+    wrong_method.access_token = Some(&at);
+    assert_eq!(call(proof(&k, wrong_method)).await.unwrap().status(), 401);
+    let other = app.tenant_url("/token");
+    let mut wrong_url = ProofOpts::new("GET", &other);
+    wrong_url.access_token = Some(&at);
+    assert_eq!(call(proof(&k, wrong_url)).await.unwrap().status(), 401);
+    let mut old = ProofOpts::new("GET", &htu);
+    old.access_token = Some(&at);
+    old.iat = Utc::now().timestamp() - 600;
+    assert_eq!(call(proof(&k, old)).await.unwrap().status(), 401);
+
+    // A new proof for this request still works: only the replayed one was lost.
+    let res = call(for_this_request()).await.unwrap();
+    assert_eq!(res.status(), 200);
+}

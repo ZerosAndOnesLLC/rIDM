@@ -1,22 +1,41 @@
+# cargo-fuzz targets for the parsers that read attacker-supplied input
+# (working-plan.md §6). Excluded from the workspace: `cargo fuzz` builds this
+# crate with its own flags on nightly. Versions pinned exactly, as everywhere.
 [package]
 name = "ridm-api-fuzz"
 version = "0.0.0"
-publish = false
 edition = "2024"
+rust-version = "1.98"
+publish = false
 
 [package.metadata]
 cargo-fuzz = true
 
+# Its own workspace: this crate lives inside the `ridm-api` package directory,
+# where the root manifest's `exclude` does not reach.
+[workspace]
+
 [dependencies]
-libfuzzer-sys = "0.4"
+libfuzzer-sys = "=0.4.13"
 ridm-api = { path = ".." }
 ridm-core = { path = "../../crates/ridm-core" }
-jsonwebtoken = "11"
-serde_json = "1"
+jsonwebtoken = { version = "=11.0.0", features = ["aws_lc_rs"] }
+serde_json = "=1.0.151"
+url = "=2.5.8"
+
+[profile.release]
+debug = true
 
 [[bin]]
 name = "authorize_params"
 path = "fuzz_targets/authorize_params.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jwt_decode"
+path = "fuzz_targets/jwt_decode.rs"
 test = false
 doc = false
 bench = false
@@ -36,10 +55,8 @@ doc = false
 bench = false
 
 [[bin]]
-name = "jwt_decode"
-path = "fuzz_targets/jwt_decode.rs"
+name = "scim_filter"
+path = "fuzz_targets/scim_filter.rs"
 test = false
 doc = false
 bench = false
-
-[workspace]

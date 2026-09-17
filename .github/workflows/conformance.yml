@@ -5,6 +5,10 @@ name: conformance
 # front-channel logout plans, response_type=code. rIDM runs behind a TLS front
 # (Caddy, a private CA the suite trusts) as https://ridm.local; the static UI
 # is served on the same origin.
+#
+# `conformance` is a required status check on `main` (working-plan.md §6): the
+# job id is the check name configured in branch protection, so keep it stable.
+# The same plans run again weekly on the schedule below.
 
 on:
   pull_request:

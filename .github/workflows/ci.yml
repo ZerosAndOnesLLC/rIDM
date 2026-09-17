@@ -317,6 +317,34 @@ jobs:
         if: failure()
         run: tail -n 200 api.log
 
+  fuzz-smoke:
+    name: fuzz-smoke
+    runs-on: ubuntu-latest
+    # Five targets, a minute each, plus the sanitizer build.
+    timeout-minutes: 45
+    env:
+      # `cargo fuzz` composes its own RUSTFLAGS (sanitizer, coverage); the
+      # workspace's `-D warnings` has no business in that build.
+      RUSTFLAGS: ""
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api/fuzz
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      - name: fuzz (60 s per target)
+        run: api/fuzz/run.sh 60
+      - name: crashing inputs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-artifacts
+          path: api/fuzz/artifacts
+          retention-days: 30
+
   packaging:
     name: packaging
     runs-on: ubuntu-latest

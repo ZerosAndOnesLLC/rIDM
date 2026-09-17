@@ -15,7 +15,7 @@ Two shapes:
 | Run | Load | Thresholds | Where |
 |-----|------|------------|-------|
 | smoke (`SMOKE=1`) | 20 VUs on `/token`, 2 on the documents, 30 s | errors < 1 %, token p95 < 500 ms, documents p95 < 200 ms | every PR (`load-smoke` job, debug build) |
-| baseline | 200 VUs, 2 min (`VUS`, `DURATION`) | errors < 1 %, token p99 < 50 ms, documents p99 < 10 ms | on a release build before a release; target 5,000 token requests per second per node |
+| baseline | 200 VUs, 2 min (`VUS`, `DURATION`) | errors < 1 %, token p99 < 50 ms, documents p99 < 10 ms | the `release` workflow, on a release build, when a `v*` tag is pushed (or on demand, with `vus`/`duration` inputs); target 5,000 token requests per second per node |
 
 Run the API with `RATE_LIMITS=false` for any load test: the request guard would
 otherwise refuse the test's single address after its per-address ceiling (600 token
@@ -29,5 +29,8 @@ first lookup (fixed in Phase 9.10, regression test `api/tests/client_cache.rs`).
 
 The baseline needs a release build (`cargo build --release`), the argon2 defaults
 (client secrets are SHA-256 hashed, so `/token` does no password hashing), and
-Postgres and Valkey on the same network. Record the result in the release notes with
-the machine it ran on.
+Postgres and Valkey on the same network. The `release` workflow does all of that on a
+hosted runner and uploads `baseline.json`/`baseline.txt` as an artifact with the summary
+in the job output — a shared runner is not the machine to publish a number from, so run
+it again on the hardware a release is measured on and record that result, with the
+machine, in the release notes.

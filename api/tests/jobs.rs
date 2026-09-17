@@ -44,6 +44,18 @@ async fn backdate(app: &TestApp, table: &str, column: &str, tenant_id: Uuid, day
     tx.commit().await.unwrap();
 }
 
+/// Run the cleanup pass, waiting out whichever other test in this binary holds
+/// the leader lock at the moment.
+async fn cleanup_now(app: &TestApp) -> cleanup::Report {
+    for _ in 0..60 {
+        if let Some(report) = cleanup::run_once(&app.state).await.unwrap() {
+            return report;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("the cleanup job never took the leader lock");
+}
+
 #[tokio::test]
 async fn cleanup_removes_spent_rows_past_retention_and_keeps_the_rest() {
     let app = TestApp::spawn().await;
@@ -172,7 +184,7 @@ async fn cleanup_removes_spent_rows_past_retention_and_keeps_the_rest() {
         tx.commit().await.unwrap();
     }
     // Everything is fresh: nothing goes.
-    let before = cleanup::run_once(&app.state).await.unwrap().unwrap();
+    let before = cleanup_now(&app).await;
     assert_eq!(count(&app, "refresh_tokens", tid).await, 2);
     assert_eq!(count(&app, "sso_sessions", tid).await, 2);
     assert_eq!(count(&app, "login_attempts", tid).await, 2);
@@ -206,7 +218,7 @@ async fn cleanup_removes_spent_rows_past_retention_and_keeps_the_rest() {
     backdate(&app, "scim_tokens", "revoked_at", tid, 31).await;
     backdate(&app, "webhook_deliveries", "created_at", tid, 31).await;
 
-    let report = cleanup::run_once(&app.state).await.unwrap().unwrap();
+    let report = cleanup_now(&app).await;
     assert_eq!(count(&app, "refresh_tokens", tid).await, 1, "{report:?}");
     assert_eq!(
         count(&app, "sso_sessions", tid).await,
@@ -220,8 +232,11 @@ async fn cleanup_removes_spent_rows_past_retention_and_keeps_the_rest() {
         1,
         "pending rows stay"
     );
+    // The report names every table the pass visited. How many rows this
+    // particular pass deleted is not this test's business: a cleanup pass on
+    // any node purges every tenant, and other tests in this binary run one.
     assert!(
-        report["refresh_tokens"] >= 1 && report["login_attempts"] >= 2,
+        report.contains_key("refresh_tokens") && report.contains_key("login_attempts"),
         "{report:?}"
     );
     // A delivered one from long ago goes.
@@ -234,7 +249,7 @@ async fn cleanup_removes_spent_rows_past_retention_and_keeps_the_rest() {
             .unwrap();
         tx.commit().await.unwrap();
     }
-    cleanup::run_once(&app.state).await.unwrap();
+    cleanup_now(&app).await;
     assert_eq!(count(&app, "webhook_deliveries", tid).await, 0);
 }
 
@@ -254,7 +269,7 @@ async fn one_node_runs_a_job_at_a_time_and_the_run_is_recorded() {
             .is_none()
     );
     held.release().await.unwrap();
-    assert!(cleanup::run_once(&app.state).await.unwrap().is_some());
+    cleanup_now(&app).await;
 
     // The scheduler's bookkeeping: a recorded run is listed by name.
     status::record(
@@ -294,4 +309,39 @@ async fn delivery_jobs_run_without_visiting_idle_tenants() {
             .is_some()
     );
     assert!(started.elapsed() < Duration::from_secs(30));
+}
+
+#[tokio::test]
+async fn two_nodes_contend_for_the_lock_and_only_one_of_them_runs() {
+    // Two nodes: separate states and connection pools over one Postgres and
+    // one Valkey, which is all a second replica of the API is.
+    let a = TestApp::spawn().await;
+    let b = TestApp::spawn().await;
+
+    // Both reach for the cleanup lock at the same instant: never do both get
+    // it, and once it is free (other tests here run the same job) one does.
+    let mut winner = None;
+    for _ in 0..60 {
+        let (ga, gb) = tokio::join!(
+            leader::try_acquire(&a.state.redis, cleanup::JOB_NAME, Duration::from_secs(20)),
+            leader::try_acquire(&b.state.redis, cleanup::JOB_NAME, Duration::from_secs(20)),
+        );
+        let mut got: Vec<_> = [ga.unwrap(), gb.unwrap()].into_iter().flatten().collect();
+        assert!(got.len() < 2, "two nodes held the same job lock at once");
+        if let Some(lock) = got.pop() {
+            winner = Some(lock);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let winner = winner.expect("the lock was never free for either node");
+
+    // While that run is in progress, neither node starts a second copy — not
+    // the node that holds it, and not the one that does not.
+    assert!(cleanup::run_once(&a.state).await.unwrap().is_none());
+    assert!(cleanup::run_once(&b.state).await.unwrap().is_none());
+
+    // Released, the job runs again on the second node.
+    winner.release().await.unwrap();
+    cleanup_now(&b).await;
 }

@@ -314,6 +314,147 @@ async fn user_lifecycle_with_filters_put_and_patch() {
 }
 
 #[tokio::test]
+async fn the_filter_grammar_and_patch_removals_work_over_http() {
+    let fx = fixture().await;
+    for name in ["ann", "bob"] {
+        let (status, created) = fx.json(Method::POST, "/Users", Some(user_doc(name))).await;
+        assert_eq!(status, 201, "{created}");
+    }
+    // Deactivate bob so the combinators have something to separate.
+    let (_, list) = fx
+        .json(Method::GET, "/Users?filter=userName%20eq%20%22bob%22", None)
+        .await;
+    let bob = list["Resources"][0]["id"].as_str().unwrap().to_string();
+    let (status, _) = fx
+        .json(
+            Method::PATCH,
+            &format!("/Users/{bob}"),
+            Some(json!({ "Operations": [{ "op": "replace", "path": "active", "value": false }] })),
+        )
+        .await;
+    assert_eq!(status, 200);
+
+    // Every combinator the parser accepts, evaluated by the scan path.
+    let names = |list: &Value| -> Vec<String> {
+        let mut n: Vec<String> = list["Resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["userName"].as_str().unwrap().to_string())
+            .collect();
+        n.sort();
+        n
+    };
+    for (filter, expected) in [
+        (
+            "userName eq \"ann\" or userName eq \"bob\"",
+            vec!["ann", "bob"],
+        ),
+        ("not (userName eq \"bob\")", vec!["ann"]),
+        ("userName pr and active eq true", vec!["ann"]),
+        ("userName ne \"ann\"", vec!["bob"]),
+        (
+            "(userName sw \"a\" or userName sw \"b\") and active eq false",
+            vec!["bob"],
+        ),
+        (
+            "emails[type eq \"work\"].value ew \"@example.com\"",
+            vec!["ann", "bob"],
+        ),
+        ("locale eq \"en\" and not (active eq false)", vec!["ann"]),
+        ("userName gt \"ann\"", vec!["bob"]),
+        (
+            "externalId co \"ext-\" and userName le \"ann\"",
+            vec!["ann"],
+        ),
+    ] {
+        let (status, list) = fx
+            .json(
+                Method::GET,
+                &format!("/Users?filter={}", urlencoding(filter)),
+                None,
+            )
+            .await;
+        assert_eq!(status, 200, "{filter}: {list}");
+        assert_eq!(names(&list), expected, "{filter}: {list}");
+        assert_eq!(list["totalResults"], expected.len() as i64, "{filter}");
+    }
+    // Grammar refusals, each as an `invalidFilter`.
+    for bad in [
+        "userName eq",
+        "(userName eq \"a\"",
+        "userName eq \"a\" and",
+        "not userName eq \"a\"",
+        "emails[type eq \"work\".value eq \"x\"",
+    ] {
+        let (status, body) = fx
+            .json(
+                Method::GET,
+                &format!("/Users?filter={}", urlencoding(bad)),
+                None,
+            )
+            .await;
+        assert_eq!(status, 400, "{bad}: {body}");
+        assert_eq!(body["scimType"], "invalidFilter", "{bad}");
+    }
+
+    // PATCH `remove` (RFC 7644 §3.5.2): a whole attribute, and one element of
+    // a multi-valued attribute selected by a filter.
+    let (_, list) = fx
+        .json(Method::GET, "/Users?filter=userName%20eq%20%22ann%22", None)
+        .await;
+    let ann = list["Resources"][0]["id"].as_str().unwrap().to_string();
+    let (status, patched) = fx
+        .json(
+            Method::PATCH,
+            &format!("/Users/{ann}"),
+            Some(json!({
+                "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+                "Operations": [
+                    { "op": "add", "path": "emails", "value": [{ "value": "ann@home.example", "type": "home" }] },
+                    { "op": "remove", "path": "phoneNumbers" }
+                ]
+            })),
+        )
+        .await;
+    assert_eq!(status, 200, "{patched}");
+    assert!(patched.get("phoneNumbers").is_none(), "{patched}");
+    let (status, patched) = fx
+        .json(
+            Method::PATCH,
+            &format!("/Users/{ann}"),
+            Some(json!({
+                "Operations": [
+                    { "op": "remove", "path": "emails[type eq \"home\"]" }
+                ]
+            })),
+        )
+        .await;
+    assert_eq!(status, 200, "{patched}");
+    assert_eq!(patched["emails"].as_array().unwrap().len(), 1, "{patched}");
+    assert_eq!(patched["emails"][0]["value"], "ann@example.com");
+    // A `remove` needs something to remove, and an unknown op is a syntax error.
+    let (status, bad) = fx
+        .json(
+            Method::PATCH,
+            &format!("/Users/{ann}"),
+            Some(json!({ "Operations": [{ "op": "remove" }] })),
+        )
+        .await;
+    assert_eq!(status, 400, "{bad}");
+    assert_eq!(bad["scimType"], "noTarget");
+    let (status, bad) = fx
+        .json(
+            Method::PATCH,
+            &format!("/Users/{ann}"),
+            Some(json!({ "Operations": [{ "op": "merge", "path": "locale", "value": "de" }] })),
+        )
+        .await;
+    assert_eq!(status, 400, "{bad}");
+    assert_eq!(bad["scimType"], "invalidSyntax");
+}
+
+#[tokio::test]
 async fn listing_pages_through_users() {
     let fx = fixture().await;
     for i in 0..7 {

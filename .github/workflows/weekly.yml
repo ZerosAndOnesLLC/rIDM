@@ -1,0 +1,64 @@
+name: weekly
+
+# The long runs that are too slow for a pull request: four hours per fuzz
+# target (the PR check gives each one a minute). The weekly conformance run
+# lives with the rest of the suite in `conformance.yml`.
+
+on:
+  schedule:
+    - cron: "41 2 * * 6"
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Seconds per target
+        default: "14400"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz-long:
+    name: fuzz-long (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    # Four hours of fuzzing plus the sanitizer build, under the six-hour
+    # ceiling a hosted runner gives one job — hence one job per target.
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - authorize_params
+          - jwt_decode
+          - redirect_uri
+          - pkce
+          - scim_filter
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: "0"
+      # `cargo fuzz` composes its own RUSTFLAGS (sanitizer, coverage).
+      RUSTFLAGS: ""
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api/fuzz
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      - name: fuzz
+        run: api/fuzz/run.sh "${{ inputs.seconds || '14400' }}" "${{ matrix.target }}"
+      - name: corpus
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-corpus-${{ matrix.target }}
+          path: api/fuzz/corpus/${{ matrix.target }}
+          retention-days: 30
+      - name: crashing inputs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: api/fuzz/artifacts
+          retention-days: 90
