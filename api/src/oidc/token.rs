@@ -909,6 +909,17 @@ async fn token_exchange(
         })?;
     // Optional claims are read through `Value` (a missing key is `Null`, not a panic).
     let subject_claims = serde_json::Value::Object(subject_map.clone());
+    // A sender-constrained subject token may not be traded for a looser one:
+    // without this, anyone holding a stolen DPoP-bound token could exchange it
+    // for an unbound one and undo the binding (RFC 9449 §5).
+    if let Some(bound) = subject_claims["cnf"]["jkt"].as_str()
+        && dpop_jkt != Some(bound)
+    {
+        return Err(OAuthError::new(
+            OAuthErrorCode::InvalidGrant,
+            "subject_token is bound to a key this request did not prove",
+        ));
+    }
     let actor_claims = match (one("actor_token")?, one("actor_token_type")?) {
         (None, None) => None,
         (Some(token), Some(kind)) => {
@@ -979,6 +990,26 @@ async fn token_exchange(
         }
         if !wanted.iter().any(|w| w == a) {
             wanted.push(a.to_string());
+        }
+    }
+    // On every other grant the client acts for a user who authorized it, and an
+    // empty `allowed_audiences` means "no restriction". Exchange is different:
+    // the subject token may have been minted for someone else entirely, so an
+    // unrestricted client would be able to mint a token for any audience
+    // carrying any user's identity and permissions. Here the entitlement has to
+    // be explicit.
+    if client.allowed_audiences.is_empty() {
+        return Err(OAuthError::new(
+            OAuthErrorCode::InvalidTarget,
+            "this client has no audiences it may exchange for",
+        ));
+    }
+    for a in &wanted {
+        if !client.allowed_audiences.contains(a) {
+            return Err(OAuthError::new(
+                OAuthErrorCode::InvalidTarget,
+                format!("resource `{a}` is not allowed for this client"),
+            ));
         }
     }
     let audience = resolve_audience(state, tenant.id, client, &wanted, &role_ids).await?;

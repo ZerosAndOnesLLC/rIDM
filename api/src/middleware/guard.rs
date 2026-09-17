@@ -18,7 +18,7 @@ use axum::response::{IntoResponse, Response};
 
 use crate::error::{AppError, OAuthError};
 use crate::middleware::client_ip_addr;
-use crate::middleware::tenant::resolve_tenant;
+use crate::middleware::tenant::{is_valid_slug, resolve_tenant};
 use crate::services::ip_rules;
 use crate::services::rate_limit::{self, Category, Decision};
 use crate::state::AppState;
@@ -55,6 +55,18 @@ impl Guard {
 
 pub async fn guard(State(l): State<Guard>, req: Request, next: Next) -> Response {
     let slug = tenant_slug(req.uri().path());
+    // The guard reads the raw path, the handlers read axum's percent-decoded
+    // path parameter. A slug carrying an escape (`/t/%61cme/token`) would be
+    // invisible here and still reach the tenant, taking its IP rules and
+    // rate-limit buckets with it. A valid slug is `[a-z0-9-]` and so never
+    // needs escaping, which makes the two views equal exactly when the raw
+    // segment is already valid: anything else cannot name a tenant and is
+    // refused rather than passed on.
+    if let Some(raw) = slug
+        && !is_valid_slug(raw)
+    {
+        return refusal(l.style, AppError::NotFound("tenant"));
+    }
     let tenant = match slug {
         Some(slug) => match resolve_tenant(&l.state, slug).await {
             Ok(t) => t,

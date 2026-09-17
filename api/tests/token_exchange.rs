@@ -62,6 +62,9 @@ async fn fixture() -> Fx {
             client_type: Some(ClientType::Machine),
             allowed_grants: Some(vec![grants::CLIENT_CREDENTIALS.into(), GRANT.into()]),
             allowed_scopes: Some(vec!["openid".into(), "profile".into()]),
+            // Exchange demands an explicit entitlement: a client with no
+            // allowed audiences may not trade someone else's token for one.
+            allowed_audiences: vec!["https://orders.example".into()],
             ..Default::default()
         },
     )
@@ -419,4 +422,76 @@ async fn discovery_advertises_the_grant() {
             .iter()
             .any(|g| g == GRANT)
     );
+}
+
+/// Phase 9.12 review finding. On every other grant an empty
+/// `allowed_audiences` means "no restriction", because the client acts for a
+/// user who authorized it. A subject token presented here may have been minted
+/// for someone else entirely, so an unrestricted client could have traded any
+/// live token of the tenant for one aimed anywhere, carrying that user's
+/// identity and permissions. Exchange demands an explicit entitlement.
+#[tokio::test]
+async fn exchange_needs_an_explicit_audience_entitlement() {
+    let fx = fixture().await;
+    let subject = subject_token(&fx).await;
+
+    // A second client with the grant but nothing it may exchange for.
+    let created = clients::create(
+        &fx.app.state,
+        fx.app.tenant.id,
+        Actor::System,
+        NewClient {
+            client_id: Some("unentitled".into()),
+            name: "Unentitled".into(),
+            client_type: Some(ClientType::Machine),
+            allowed_grants: Some(vec![GRANT.into()]),
+            allowed_scopes: Some(vec!["openid".into()]),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let secret = created.client_secret.as_deref().unwrap().to_string();
+
+    let res = fx
+        .app
+        .http
+        .post(fx.app.tenant_url("/token"))
+        .basic_auth("unentitled", Some(&secret))
+        .form(&[
+            ("grant_type", GRANT),
+            ("subject_token", subject.as_str()),
+            ("subject_token_type", TT_ACCESS),
+            ("audience", "https://orders.example"),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["error"], "invalid_target", "{body}");
+
+    // The entitled client still exchanges for the audience it holds, and for
+    // nothing else.
+    let ok = exchange(
+        &fx,
+        &[
+            ("subject_token", &subject),
+            ("subject_token_type", TT_ACCESS),
+            ("audience", "https://orders.example"),
+        ],
+    )
+    .await;
+    assert_eq!(ok.status(), 200);
+    let res = exchange(
+        &fx,
+        &[
+            ("subject_token", &subject),
+            ("subject_token_type", TT_ACCESS),
+            ("audience", "https://elsewhere.example"),
+        ],
+    )
+    .await;
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["error"], "invalid_target", "{body}");
 }

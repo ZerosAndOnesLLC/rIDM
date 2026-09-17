@@ -356,8 +356,9 @@ async fn forwarded_addresses_count_only_behind_a_trusted_proxy() {
     set_policy(&trusted, trusted.tenant.id, policy(|p| p.flows_per_ip = 1)).await;
     let flow = trusted.tenant_url(&format!("/flows/{}", Uuid::new_v4()));
     let with = |name: &'static str, value: &str| trusted.http.get(&flow).header(name, value).send();
+    // Our own hop at the end is walked back over: the bucket is the client's.
     assert_eq!(
-        with("x-forwarded-for", "203.0.113.1, 10.0.0.9")
+        with("x-forwarded-for", "203.0.113.1, 127.0.0.1")
             .await
             .unwrap()
             .status(),
@@ -365,6 +366,15 @@ async fn forwarded_addresses_count_only_behind_a_trusted_proxy() {
     );
     assert_eq!(
         with("x-forwarded-for", "203.0.113.1")
+            .await
+            .unwrap()
+            .status(),
+        429
+    );
+    // Prepending an address of their choosing does not buy a fresh bucket:
+    // the rightmost entry that is not one of ours is what counts.
+    assert_eq!(
+        with("x-forwarded-for", "198.51.100.5, 203.0.113.1")
             .await
             .unwrap()
             .status(),

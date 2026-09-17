@@ -543,3 +543,88 @@ async fn discovery_lists_the_proof_algorithms() {
     let algs = doc["dpop_signing_alg_values_supported"].as_array().unwrap();
     assert!(algs.iter().any(|a| a == "ES256"));
 }
+
+/// Phase 9.12 review finding. Token exchange verified the subject token
+/// without looking at its `cnf`, so a stolen sender-constrained token could be
+/// traded for an unbound one and the binding simply dropped (RFC 9449 §5).
+#[tokio::test]
+async fn exchange_cannot_strip_a_sender_constrained_binding() {
+    let app = TestApp::spawn().await;
+    let victim_key = key();
+    let audience = "https://orders.example";
+    ridm_api::services::resource_servers::create(
+        &app.state,
+        app.tenant.id,
+        Actor::System,
+        ridm_api::models::NewResourceServer {
+            identifier: audience.into(),
+            name: "Orders".into(),
+            token_ttl_secs: None,
+            signing_alg: None,
+            allow_offline_access: None,
+        },
+    )
+    .await
+    .unwrap();
+    let created = clients::create(
+        &app.state,
+        app.tenant.id,
+        Actor::System,
+        NewClient {
+            client_id: Some("gateway".into()),
+            name: "Gateway".into(),
+            client_type: Some(ClientType::Machine),
+            allowed_grants: Some(vec![grants::TOKEN_EXCHANGE.into()]),
+            allowed_scopes: Some(vec!["openid".into(), "profile".into()]),
+            allowed_audiences: vec![audience.into()],
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let secret = created.client_secret.as_deref().unwrap().to_string();
+    // A token bound to the victim's key, as the attacker would have stolen it.
+    let stolen = bound_user_token(&app, &victim_key.pair.kid, audience, "frontend").await;
+
+    let exchange = |proof: Option<String>| {
+        let app = &app;
+        let secret = secret.clone();
+        let stolen = stolen.clone();
+        async move {
+            let mut req = app
+                .http
+                .post(app.tenant_url("/token"))
+                .basic_auth("gateway", Some(&secret))
+                .form(&[
+                    ("grant_type", grants::TOKEN_EXCHANGE),
+                    ("subject_token", stolen.as_str()),
+                    (
+                        "subject_token_type",
+                        "urn:ietf:params:oauth:token-type:access_token",
+                    ),
+                    ("audience", audience),
+                ]);
+            if let Some(p) = proof {
+                req = req.header("dpop", p);
+            }
+            req.send().await.unwrap()
+        }
+    };
+
+    // No proof at all: the binding would be dropped, so the exchange is refused.
+    let res = exchange(None).await;
+    assert_eq!(res.status(), 400);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["error"], "invalid_grant", "{body}");
+
+    // A proof from the attacker's own key is not the victim's key either.
+    let attacker = key();
+    let url = app.tenant_url("/token");
+    let res = exchange(Some(proof(&attacker, ProofOpts::new("POST", &url)))).await;
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["error"], "invalid_grant", "{body}");
+
+    // Holding the bound key, the legitimate presenter may still exchange.
+    let res = exchange(Some(proof(&victim_key, ProofOpts::new("POST", &url)))).await;
+    assert_eq!(res.status(), 200, "{}", res.text().await.unwrap());
+}

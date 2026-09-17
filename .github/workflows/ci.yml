@@ -44,7 +44,9 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
-          arguments: --all-features
+          # No `--all-features`: `deny.toml` sets it, and cargo-deny 0.19 only
+          # accepts that flag before the subcommand.
+          arguments: ""
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -62,6 +64,11 @@ jobs:
       - name: build scripts
         working-directory: ui
         run: npm run test:scripts
+      - name: npm audit
+        working-directory: ui
+        # The shipped bundle is what an end user runs; build-only tooling is
+        # covered by the lockfile review, not by failing the build.
+        run: npm audit --omit=dev
 
   unit:
     name: unit

@@ -35,6 +35,12 @@ mitigation, or a reason it is not considered a vulnerability) within **10 busine
 We ask for **90 days** from acknowledgement before public disclosure, or sooner once a
 fix is released.
 
+## Threat model
+
+[THREAT_MODEL.md](THREAT_MODEL.md) records the assets, trust boundaries, adversaries and
+mitigations, the assumptions a deployment must hold up, and the gaps we know about. Read
+it before deciding whether a behaviour is a vulnerability or a documented trade-off.
+
 ## Scope
 
 In scope: everything in this repository (API, UI, deployment manifests, container

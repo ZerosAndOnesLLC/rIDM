@@ -286,6 +286,13 @@ request naming `urn:ridm:acr:mfa` first demands a second factor while one that a
 `urn:ridm:acr:single` first does not. The `claims` request parameter is not implemented,
 which discovery states.
 
+Token exchange needs an explicit entitlement. On every other grant an empty
+`allowed_audiences` means "no restriction", because the client acts for a user who
+authorized it; a subject token presented for exchange may have been minted for someone
+else, so a client may only exchange for audiences it lists. A subject token carrying
+`cnf.jkt` can only be exchanged by a request that proves the same key, so exchange
+cannot strip a sender-constrained binding.
+
 ### OpenID conformance
 
 The OpenID Foundation conformance suite runs against rIDM from
@@ -1003,6 +1010,8 @@ organizations, adaptive auth, SAML, LDAP, HSM/KMS key custody.
 - [CONTRIBUTING.md](CONTRIBUTING.md): environment setup, conventions, test matrix, PR
   checklist.
 - [SECURITY.md](SECURITY.md): how to report vulnerabilities privately.
+- [THREAT_MODEL.md](THREAT_MODEL.md): what rIDM protects, from whom, what stops each
+  attack today, and what it leaves to the deployment.
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## License
