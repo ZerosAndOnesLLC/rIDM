@@ -19,6 +19,18 @@ pub async fn tenant_tx(db: &Db, tenant_id: Uuid) -> Result<Tx, sqlx::Error> {
     Ok(tx)
 }
 
+/// Begin a read-only transaction bound to `tenant_id` — for listings and
+/// statistics, on the replica pool when the deployment has one. A write
+/// inside it fails, so a query routed here by mistake cannot change data.
+pub async fn read_tx(db: &Db, tenant_id: Uuid) -> Result<Tx, sqlx::Error> {
+    let mut tx = db.begin().await?;
+    sqlx::query("SET TRANSACTION READ ONLY")
+        .execute(&mut *tx)
+        .await?;
+    bind_tenant(&mut tx, tenant_id).await?;
+    Ok(tx)
+}
+
 /// Begin a transaction that sees every tenant. Only for explicitly global
 /// operations (bootstrap, cross-tenant admin, background jobs); callers must
 /// audit what they touch.

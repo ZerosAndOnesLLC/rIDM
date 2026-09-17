@@ -185,18 +185,14 @@ pub async fn verify_proof(
         tenant.id,
         URL_SAFE_NO_PAD.encode(Sha256::digest(jti.as_bytes()))
     );
-    let mut conn = state
-        .redis
-        .get()
-        .await
-        .map_err(|e| AppError::from(e).to_string())?;
+    let mut conn = state.redis.get().await.map_err(|e| e.to_string())?;
     let fresh: bool = redis::cmd("SET")
         .arg(&key)
         .arg(1u8)
         .arg("NX")
         .arg("EX")
         .arg((MAX_AGE_SECS + MAX_SKEW_SECS) as u64)
-        .query_async(&mut *conn)
+        .query_async(&mut conn)
         .await
         .map_err(|e| AppError::from(e).to_string())?;
     if !fresh {

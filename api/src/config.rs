@@ -60,6 +60,9 @@ pub struct TlsConfig {
 pub struct Config {
     /// Postgres connection string.
     pub database_url: String,
+    /// A read replica for listings and statistics (`DATABASE_READ_URL`);
+    /// `None` sends them to the primary.
+    pub database_read_url: Option<String>,
     /// Redis / Valkey connection string.
     pub redis_url: String,
     /// Externally visible base URL, e.g. `https://id.example.com`. Issuer URLs
@@ -184,6 +187,7 @@ impl Config {
     /// Load configuration from the process environment.
     pub fn from_env() -> Result<Self, ConfigError> {
         let database_url = required("DATABASE_URL")?;
+        let database_read_url = optional("DATABASE_READ_URL");
         let redis_url = required("REDIS_URL")?;
         let public_url = parse("PUBLIC_URL", required("PUBLIC_URL")?, |v| {
             Url::parse(&v).map_err(|e| e.to_string()).and_then(|u| {
@@ -386,6 +390,7 @@ impl Config {
 
         Ok(Self {
             database_url,
+            database_read_url,
             redis_url,
             public_url,
             ui_url,

@@ -954,7 +954,7 @@ pub async fn jwks(
             .arg("NX")
             .arg("EX")
             .arg(JWKS_REFRESH_THROTTLE_SECS)
-            .query_async(&mut *conn)
+            .query_async(&mut conn)
             .await?;
         if !allowed {
             return Ok(cached

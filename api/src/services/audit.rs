@@ -160,7 +160,7 @@ pub async fn list(
     let limit = page_size(limit);
     let rows = match tenant_id {
         Some(t) => {
-            let mut tx = db::tenant_tx(&state.db, t).await?;
+            let mut tx = db::read_tx(&state.db_read, t).await?;
             let rows = repos::audit::list(&mut *tx, Some(t), filter, before, limit).await?;
             tx.commit().await?;
             rows

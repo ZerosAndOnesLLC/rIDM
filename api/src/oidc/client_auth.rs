@@ -282,11 +282,7 @@ async fn verify_assertion(
         return Err(invalid_client("client_assertion jti is required"));
     }
     let ttl = (exp - Utc::now().timestamp()).clamp(1, MAX_ASSERTION_LIFETIME_SECS) as u64;
-    let mut conn = state
-        .redis
-        .get()
-        .await
-        .map_err(|e| OAuthError::from(crate::error::AppError::from(e)))?;
+    let mut conn = state.redis.get().await.map_err(OAuthError::from)?;
     let fresh: bool = redis::cmd("SET")
         .arg(crate::cache::keys::client_assertion_jti(
             tenant.id(),

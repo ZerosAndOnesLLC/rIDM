@@ -13,6 +13,9 @@ use crate::db::Db;
 pub struct AppState {
     pub config: Arc<Config>,
     pub db: Db,
+    /// Read-heavy admin queries (listings, statistics): a replica when
+    /// configured, else the same pool as `db`.
+    pub db_read: Db,
     /// Raw Redis pool for sessions, flows, rate limits and other keyed state.
     pub redis: Cache,
     /// Read-through cache (L1 + Redis) for hot objects such as tenants.
@@ -30,7 +33,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(config: Config, db: Db, redis: Cache) -> Self {
-        let cache = CacheLayer::new(redis.clone(), &config.redis_url);
+        let cache = CacheLayer::new(redis.clone());
         let hasher = Arc::new(crate::services::password::Argon2Hasher::new(config.argon2));
         let key_encryptor =
             Arc::new(crate::services::key_encryptor::MasterKeyEncryptor::from_config(&config));
@@ -55,6 +58,7 @@ impl AppState {
         });
         Self {
             config: Arc::new(config),
+            db_read: db.clone(),
             db,
             redis,
             cache,

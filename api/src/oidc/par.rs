@@ -109,7 +109,7 @@ async fn handle(
         client_id: client.id,
         request: validated.request,
     };
-    let mut conn = state.redis.get().await.map_err(AppError::from)?;
+    let mut conn = state.redis.get().await?;
     let _: () = conn
         .set_ex(
             keys::par_request(tenant.id(), &id),
@@ -138,11 +138,7 @@ pub async fn take(
     if id.is_empty() || id.len() > 64 {
         return Err(page("invalid request_uri"));
     }
-    let mut conn = state
-        .redis
-        .get()
-        .await
-        .map_err(|e| Failure::Internal(AppError::from(e)))?;
+    let mut conn = state.redis.get().await.map_err(Failure::Internal)?;
     let raw: Option<String> = redis::cmd("GETDEL")
         .arg(keys::par_request(tenant.id(), id))
         .query_async(&mut conn)

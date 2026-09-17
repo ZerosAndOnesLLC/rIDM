@@ -125,11 +125,10 @@ async fn unknown_slug_is_negatively_cached() {
 #[tokio::test]
 async fn invalidation_propagates_between_nodes() {
     let app = TestApp::spawn().await;
-    let redis_url = app.state.config.redis_url.clone();
 
     // Two independent "nodes" sharing one Redis.
     let node_a = app.state.cache.clone();
-    let node_b = CacheLayer::new(app.state.redis.clone(), &redis_url);
+    let node_b = CacheLayer::new(app.state.redis.clone());
     let listener = node_a.spawn_invalidation_listener();
     // Give the subscriber time to connect before publishing.
     tokio::time::sleep(Duration::from_millis(300)).await;

@@ -68,9 +68,11 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     }
     let cache = cache::connect(&config)?;
     cache::ping(&cache).await?;
+    let db_read = db::connect_read(&config, &db).await?;
 
     let bootstrap = config.bootstrap.clone();
-    let state = AppState::new(config, db, cache);
+    let mut state = AppState::new(config, db, cache);
+    state.db_read = db_read;
     if let Some(b) = bootstrap {
         let outcome = bootstrap::run(
             &state,

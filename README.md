@@ -158,7 +158,8 @@ in [`.env.example`](.env.example). The essentials:
 | Variable | Purpose |
 |----------|---------|
 | `DATABASE_URL` | Postgres 16+ connection string; use a **non-superuser, DML-only** role (superusers bypass row level security, owners can disable it) |
-| `REDIS_URL` | Redis 8+ / Valkey connection string |
+| `REDIS_URL` | Valkey / Redis 8+: `redis://`, `redis+cluster://h1,h2`, or `redis+sentinel://s1,s2/<master>` (see [topologies](#valkey-topologies-and-postgres-read-replicas)) |
+| `DATABASE_READ_URL` | Optional read replica for listings and statistics |
 | `PUBLIC_URL` | Externally visible base URL; tenant issuers are `{PUBLIC_URL}/t/{slug}` |
 | `MASTER_KEY` / `MASTER_KEY_FILE` | 32-byte key (hex or base64) encrypting secrets at rest |
 | `BIND_ADDR` | Listen address, default `0.0.0.0:8080` |
@@ -244,6 +245,21 @@ plain bearer token, without a proof or with another key's proof is refused with 
 and the admin API. Clients registered with `dpop_bound_access_tokens` (console: client
 detail, or the DCR metadata field) must always present a proof. Server-provided nonces
 and `dpop_jkt` at `/authorize` are not implemented.
+
+### Valkey topologies and Postgres read replicas
+
+`REDIS_URL` picks the cache topology: `redis://host:6379` (one server, also
+`rediss://`), `redis+cluster://host1:7000,host2:7001` (a cluster: every command here
+touches one key at a time, so keys need no hash tags), or
+`redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster` (Sentinel-managed
+replication; the pool follows the current master and the cache-invalidation subscriber
+re-resolves it on reconnect). Credentials go before an `@` and apply to every host.
+
+`DATABASE_READ_URL` names a Postgres read replica. When set, listings and statistics
+(users, clients, groups, roles, invitations, webhook deliveries, the audit log, the
+overview) run there inside read-only transactions (a write routed by mistake fails);
+everything else, and every read that feeds a decision, stays on the primary. A listing
+may trail a change by the replica's lag. Unset, the same pool serves both.
 
 ### Observability
 

@@ -482,7 +482,7 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
         .await?;
         if let Some(code_hash) = &i.code_for_hash {
             // Remember which family a code produced so a replayed code can revoke it.
-            let mut conn = state.redis.get().await.map_err(AppError::from)?;
+            let mut conn = state.redis.get().await?;
             let _: () = conn
                 .set_ex(
                     cache_keys::code_family(i.tenant.id, code_hash),
@@ -531,7 +531,7 @@ async fn authorization_code(
 
     let Some(record) = auth_codes::consume(state, tenant.id, code).await? else {
         // Unknown or already used. If it was used, revoke what it produced (RFC 6749 §4.1.2).
-        let mut conn = state.redis.get().await.map_err(AppError::from)?;
+        let mut conn = state.redis.get().await?;
         let family: Option<String> = redis::cmd("GETDEL")
             .arg(cache_keys::code_family(tenant.id, &code_hash(code)))
             .query_async(&mut conn)

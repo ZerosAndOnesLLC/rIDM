@@ -124,7 +124,7 @@ async fn store(state: &AppState, key: &str, rec: &DeviceRecord, keep_ttl: bool) 
             .arg(key)
             .arg(raw)
             .arg("KEEPTTL")
-            .query_async(&mut *conn)
+            .query_async(&mut conn)
             .await?;
     } else {
         let _: () = conn.set_ex(key, raw, DEVICE_CODE_TTL_SECS).await?;
@@ -160,7 +160,7 @@ pub async fn issue(
             .arg("NX")
             .arg("EX")
             .arg(DEVICE_CODE_TTL_SECS)
-            .query_async(&mut *conn)
+            .query_async(&mut conn)
             .await?;
         if claimed.is_some() {
             break;
@@ -363,7 +363,7 @@ pub async fn poll(
             // Spent by the first poll that sees the approval.
             let taken: Option<String> = redis::cmd("GETDEL")
                 .arg(&key)
-                .query_async(&mut *conn)
+                .query_async(&mut conn)
                 .await?;
             if taken.is_none() {
                 return Ok(None);

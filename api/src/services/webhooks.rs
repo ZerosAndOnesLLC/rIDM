@@ -460,7 +460,7 @@ async fn deliver_promptly(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
         .arg("NX")
         .arg("EX")
         .arg(PROMPT_LOCK_SECS)
-        .query_async(&mut *conn)
+        .query_async(&mut conn)
         .await?;
     if !mine {
         return Ok(());
@@ -705,7 +705,7 @@ pub async fn list_deliveries(
     limit: i64,
 ) -> AppResult<Vec<WebhookDelivery>> {
     get(state, tenant_id, webhook_id).await?;
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let mut tx = db::read_tx(&state.db_read, tenant_id).await?;
     let rows = repos::webhooks::list_deliveries(
         &mut *tx,
         tenant_id,

@@ -217,7 +217,7 @@ pub async fn begin(
         .arg("NX")
         .arg("EX")
         .arg(RESEND_COOLDOWN_SECS)
-        .query_async(&mut *conn)
+        .query_async(&mut conn)
         .await?;
     drop(conn);
     if claimed.is_some() {

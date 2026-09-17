@@ -78,23 +78,19 @@ impl Decision {
     }
 }
 
-/// `KEYS[i]` counted against `ARGV[i]` milliseconds; returns `count, pttl` pairs.
+/// One bucket: count `KEYS[1]` in a window of `ARGV[1]` milliseconds and
+/// return `count, pttl`. One key per call keeps it valid on a cluster.
 static HIT: LazyLock<redis::Script> = LazyLock::new(|| {
     redis::Script::new(
         r#"
-local out = {}
-for i, key in ipairs(KEYS) do
-  local n = redis.call('INCR', key)
-  if n == 1 then redis.call('PEXPIRE', key, ARGV[i]) end
-  local ttl = redis.call('PTTL', key)
-  if ttl < 0 then
-    redis.call('PEXPIRE', key, ARGV[i])
-    ttl = tonumber(ARGV[i])
-  end
-  out[#out + 1] = n
-  out[#out + 1] = ttl
+local n = redis.call('INCR', KEYS[1])
+if n == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
+local ttl = redis.call('PTTL', KEYS[1])
+if ttl < 0 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+  ttl = tonumber(ARGV[1])
 end
-return out
+return {n, ttl}
 "#,
     )
 });
@@ -202,25 +198,23 @@ fn buckets(
 
 async fn count(state: &AppState, wants: &[Want]) -> AppResult<Vec<(u64, u64)>> {
     let mut conn = state.redis.get().await?;
-    let mut inv = HIT.prepare_invoke();
+    let mut out = Vec::with_capacity(wants.len());
     for w in wants {
-        inv.key(&w.key);
+        let pair: Vec<i64> = HIT
+            .key(&w.key)
+            .arg(w.window_ms)
+            .invoke_async(&mut conn)
+            .await
+            .map_err(|e| AppError::Cache(e.to_string()))?;
+        let n = pair
+            .first()
+            .copied()
+            .map(|n| u64::try_from(n).unwrap_or(u64::MAX))
+            .unwrap_or(0);
+        let ttl = pair.get(1).copied().unwrap_or(0).max(0) as u64;
+        out.push((n, ttl));
     }
-    for w in wants {
-        inv.arg(w.window_ms);
-    }
-    let flat: Vec<i64> = inv
-        .invoke_async(&mut *conn)
-        .await
-        .map_err(|e| AppError::Cache(e.to_string()))?;
-    Ok(flat
-        .chunks(2)
-        .map(|c| {
-            let n = u64::try_from(c[0]).unwrap_or(u64::MAX);
-            let ttl = c.get(1).copied().unwrap_or(0).max(0) as u64;
-            (n, ttl)
-        })
-        .collect())
+    Ok(out)
 }
 
 fn decide(wants: &[Want], counts: &[(u64, u64)]) -> Decision {

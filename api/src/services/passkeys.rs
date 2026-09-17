@@ -103,7 +103,7 @@ async fn put_state<T: Serialize>(
         .arg(serde_json::to_string(value)?)
         .arg("EX")
         .arg(CEREMONY_TTL_SECS)
-        .query_async(&mut *conn)
+        .query_async(&mut conn)
         .await?;
     Ok(())
 }
@@ -118,7 +118,7 @@ async fn take_state<T: DeserializeOwned>(
     let mut conn = state.redis.get().await?;
     let raw: Option<String> = redis::cmd("GETDEL")
         .arg(keys::passkey_ceremony(tenant_id, scope, kind))
-        .query_async(&mut *conn)
+        .query_async(&mut conn)
         .await?;
     match raw {
         Some(raw) => Ok(serde_json::from_str(&raw)?),
