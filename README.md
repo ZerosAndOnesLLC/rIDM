@@ -39,7 +39,10 @@ modes), `/par`, JWT-secured request objects, `/token` (authorization_code,
 refresh_token with rotation and reuse detection, client_credentials with service
 accounts; client_secret_basic/post, private_key_jwt, none), `/userinfo`,
 `/introspect`, `/revoke`, `/end_session` with back-channel and front-channel logout,
-dynamic client registration and management. Globally: WebFinger issuer discovery.
+dynamic client registration and management (`settings.dcr`: `mode`, `allowed_grants`,
+and `require_pkce`, on by default, which decides whether a dynamically registered
+confidential client must send a code challenge; public clients always must). Globally:
+WebFinger issuer discovery.
 
 Browser login is a flow API (`/flows/{id}/...`) that the UI drives step by step:
 password, magic link, email and SMS one-time codes, self-registration with
@@ -158,7 +161,9 @@ in [`.env.example`](.env.example). The essentials:
 | Variable | Purpose |
 |----------|---------|
 | `DATABASE_URL` | Postgres 16+ connection string; use a **non-superuser, DML-only** role (superusers bypass row level security, owners can disable it) |
-| `REDIS_URL` | Redis 8+ / Valkey connection string |
+| `REDIS_URL` | Valkey / Redis 8+: `redis://`, `redis+cluster://h1,h2`, or `redis+sentinel://s1,s2/<master>` (see [topologies](#valkey-topologies-and-postgres-read-replicas)) |
+| `DATABASE_READ_URL` | Optional read replica for listings and statistics |
+| `DB_POOL_MIN`, `DB_POOL_MAX`, `REDIS_POOL_MAX` | Connection pool sizes per node (2, 20, 32) |
 | `PUBLIC_URL` | Externally visible base URL; tenant issuers are `{PUBLIC_URL}/t/{slug}` |
 | `MASTER_KEY` / `MASTER_KEY_FILE` | 32-byte key (hex or base64) encrypting secrets at rest |
 | `BIND_ADDR` | Listen address, default `0.0.0.0:8080` |
@@ -168,9 +173,273 @@ in [`.env.example`](.env.example). The essentials:
 | `LOG_FORMAT`, `RUST_LOG` | `json` or `pretty`; tracing filter |
 | `DOCS_ENABLED` | Serve Swagger UI at `/docs` (off in production) |
 | `BREACH_CHECK_URL` | Have I Been Pwned compatible range endpoint for the breached-password check (default `https://api.pwnedpasswords.com/range/`; `off` for air-gapped installs) |
+| `RATE_LIMITS` | Master switch for request ceilings (default `true`; off only for tests and local experiments) |
+| `RATE_LIMIT_IP_PER_MINUTE` | Requests per minute one client address may make to every limited endpoint of every tenant together (default 6000; 0 = off). Per-tenant ceilings are in tenant settings |
+| `HSTS_MAX_AGE` | `Strict-Transport-Security` max-age in seconds, sent when `PUBLIC_URL` is https (default two years; 0 = off) |
+| `RETENTION_DAYS` | Days the hourly cleanup keeps spent rows (expired tokens and sessions, login attempts, sent messages, finished deliveries; default 30) |
+| `METRICS_TOKEN` | Bearer token `GET /metrics` demands; open when unset |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME` | Export traces over OTLP/HTTP to this collector base URL under this service name (`ridm`) |
+| `AUDIT_SINK_URL`, `AUDIT_SINK_TOKEN` | Ship every audit row to an HTTP endpoint (JSON batches, optional bearer) or a syslog receiver (`syslog://`, `syslog+tcp://`) |
 
-Health probes: `GET /healthz` (liveness) and `GET /readyz` (database + cache).
+Health probes: `GET /healthz` (liveness) and `GET /readyz` (database + cache); `GET /metrics` for Prometheus (see [Observability](#observability)).
 `GET /.well-known/security.txt` serves the vulnerability disclosure policy.
+
+### SCIM provisioning
+
+Each tenant exposes a SCIM 2.0 server (RFC 7643/7644) at `{PUBLIC_URL}/scim/v2/{slug}`:
+`ServiceProviderConfig`, `ResourceTypes`, `Schemas`, and `Users` and `Groups` with
+GET (filter, `startIndex`, `count`), POST, PUT, PATCH and DELETE, all as
+`application/scim+json` with SCIM error documents (`scimType`: `invalidFilter`,
+`invalidSyntax`, `invalidValue`, `noTarget`, `uniqueness`, `tooMany`). A provisioning
+system authenticates with a bearer token minted for the tenant (console: Provisioning;
+API: `/admin/tenants/{slug}/scim/tokens` under `ridm:scim:read`/`write`, which user
+managers hold): `rscim_` tokens are shown once, stored hashed, optionally expiring,
+revocable, and confined to their tenant. Changes are attributed to the token in the
+audit log.
+
+A SCIM User maps onto a user: `userName` ↔ username, `externalId` ↔ the new
+`external_id` column (unique per tenant), the primary `emails` entry ↔ email, the first
+`phoneNumbers` entry ↔ phone, `active` ↔ active/disabled, `locale` ↔ locale, and
+`name.givenName`, `name.familyName` and `displayName` ↔ the profile attributes
+`given_name`, `family_name` and `display_name` when the profile schema declares them
+(or allows undeclared attributes); `groups` is read-only. A SCIM Group maps onto a
+group: `displayName` ↔ name, `externalId` ↔ `attributes.externalId`, `members` ↔
+memberships (users). Deleting a user through SCIM soft-deletes it like the admin API.
+
+Filters follow the RFC grammar (`eq ne co sw ew gt ge lt le pr`, `and`/`or`/`not`,
+parentheses, dotted and `attr[filter].sub` paths, schema-URN prefixes, case-insensitive
+attribute names and string comparisons). A user filter that is one equality on
+`userName`, `externalId`, `emails`/`emails.value` or `id` (possibly `and`-ed with more
+conditions) is answered from the index; any other user filter is evaluated over the
+tenant's users up to 2,000 rows and refused beyond that with `tooMany`, so provisioning
+systems should look users up by those attributes (they do). Group filters run over all
+groups. `count` is clamped to 200 and `startIndex` beyond 2,000 is refused.
+
+PATCH applies RFC 7644 `add`, `replace` and `remove` operations to the resource's SCIM
+document — with or without `path`, simple and dotted paths, filtered multi-valued paths
+such as `emails[type eq "work"].value` and `members[value eq "<id>"]`, `"True"`/`"False"`
+strings for booleans — and stores the result as a full replace, so PATCH and PUT share
+one path.
+
+### Token exchange and DPoP
+
+**Token exchange (RFC 8693)**, `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`
+at `/token`, lets a client allowed that grant trade an access token of the tenant
+(`subject_token`, type `access_token` or `jwt`) for one aimed at other audiences
+(`audience` and `resource`, resolved like every other audience request) and optionally
+narrowed in `scope` (never widened, never beyond the client's own scopes). The new token
+keeps the subject, session, `amr` and `acr`, never outlives the subject token, comes
+without a refresh token and reports `issued_token_type`. With an `actor_token` the
+result is a delegation: `act` names the acting party (`sub`, `client_id`) and nests
+the previous `act` on re-exchange. Revoked, expired or foreign subject tokens are
+`invalid_grant`; unsupported token types `invalid_request`.
+
+**DPoP (RFC 9449)** sender-constrains tokens to a client-held key. A `DPoP` header on a
+token request — a `dpop+jwt` signed with the embedded public key, naming the method,
+the URL, a fresh `jti` and `iat` — binds every token of the response to the key's
+thumbprint: the access token carries `cnf.jkt`, `token_type` is `DPoP`, introspection
+reports both, and a public client's refresh token is bound too (a later refresh needs
+a proof from the same key, and a wrong key leaves the token unspent). Proofs are
+one-time within a five-minute window (replays are refused), may be no more than five
+minutes old or thirty seconds in the future, must match the request method and URL
+(query ignored; the custom domain and the `/t/{slug}` form both count), and at
+resources must carry `ath`, the hash of the very token. A bound token presented as a
+plain bearer token, without a proof or with another key's proof is refused with a
+`DPoP` challenge (`WWW-Authenticate: DPoP algs=...`) by `/userinfo`, the account API
+and the admin API. Clients registered with `dpop_bound_access_tokens` (console: client
+detail, or the DCR metadata field) must always present a proof. Server-provided nonces
+and `dpop_jkt` at `/authorize` are not implemented.
+
+### Performance
+
+The token path touches the database as little as possible: clients, tenants, signing
+keys, scopes and claim mappers are read through the two-level cache (in-process plus
+Valkey, evicted on every write); a user's effective roles and groups and the permissions
+a role set holds on a resource server are cached under the tenant's roles version
+(any role, group, membership, grant or permission change moves it); resource servers are
+cached by identifier and evicted when written. Discovery and JWKS documents are cached
+whole with an `ETag` and `Cache-Control: max-age=300`, and answer `304` to
+`If-None-Match`. The JWKS document hangs off a per-tenant keys version that every key
+change moves, so a document read before a key was written is never served after it, and
+a tenant's first key is generated by one node while the others wait for it (one active
+key per tenant and algorithm, enforced by a partial unique index): what a token is
+signed with is always in the set the server publishes. Every hot query runs on an index
+(reviewed with `EXPLAIN ANALYZE` in Phase 9.10). Pool sizes: `DB_POOL_MAX` (default 20; roughly twice the CPU count of the
+database server divided by the number of API nodes) and `REDIS_POOL_MAX` (default 32).
+
+Load tests live in [`perf/`](perf/README.md): a k6 script for `/token` and the
+discovery documents with a PR smoke (thresholds on a debug build, the `load-smoke`
+check) and a release baseline targeting 5,000 token requests per second per node.
+
+### Token claims
+
+An ID token carries the authentication context (`auth_time`, `amr`, and an `acr` that is
+`urn:ridm:acr:single` or `urn:ridm:acr:mfa`, both named in
+`acr_values_supported`) and the tenant's id as `tid`, which a relying party serving
+several tenants of one deployment keys on. The claims the `profile`, `email`, `address`
+and `phone` scopes ask for are read from `/userinfo`, since an access token is always
+issued alongside (OIDC Core §5.4); a client that would rather have them in the ID token
+too sets `id_token_scope_claims`. An ID token minted from a refresh token repeats the
+original `auth_time`, `amr` and `acr` (OIDC Core §12.2), which the token family stores.
+Replaying an authorization code revokes everything the first exchange produced: the
+refresh family and the access token, which is a JWT and stops through the `jti` denylist
+(RFC 6749 §4.1.2).
+
+`acr_values` is a preference list: rIDM honours the first class it recognises, so a
+request naming `urn:ridm:acr:mfa` first demands a second factor while one that accepts
+`urn:ridm:acr:single` first does not. The `claims` request parameter is not implemented,
+which discovery states.
+
+Token exchange needs an explicit entitlement. On every other grant an empty
+`allowed_audiences` means "no restriction", because the client acts for a user who
+authorized it; a subject token presented for exchange may have been minted for someone
+else, so a client may only exchange for audiences it lists. A subject token carrying
+`cnf.jkt` can only be exchanged by a request that proves the same key, so exchange
+cannot strip a sender-constrained binding.
+
+### OpenID conformance
+
+The OpenID Foundation conformance suite runs against rIDM from
+[`conformance/`](conformance/README.md): the suite's released images behind its own
+nginx, rIDM behind a Caddy TLS front as `https://ridm.local` (a private CA the suite
+trusts), and a headless Chromium driver that signs in, approves consent and confirms
+logout for every browser step the tests leave pending. The `conformance` workflow runs
+the configuration, basic (discovery + dynamic registration), RP-initiated, back-channel
+and front-channel logout certification plans on every pull request and weekly, fails on
+any finding not listed in `conformance/expected-failures.json`, and uploads the suite's
+exported logs as an artifact.
+
+### Valkey topologies and Postgres read replicas
+
+`REDIS_URL` picks the cache topology: `redis://host:6379` (one server, also
+`rediss://`), `redis+cluster://host1:7000,host2:7001` (a cluster: every command here
+touches one key at a time, so keys need no hash tags), or
+`redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster` (Sentinel-managed
+replication; the pool follows the current master and the cache-invalidation subscriber
+re-resolves it on reconnect). Credentials go before an `@` and apply to every host.
+
+`DATABASE_READ_URL` names a Postgres read replica. When set, listings and statistics
+(users, clients, groups, roles, invitations, webhook deliveries, the audit log, the
+overview) run there inside read-only transactions (a write routed by mistake fails);
+everything else, and every read that feeds a decision, stays on the primary. A listing
+may trail a change by the replica's lag. Unset, the same pool serves both.
+
+### Observability
+
+`GET /metrics` exposes Prometheus metrics (`text/plain; version=0.0.4`), open by default
+and behind `Authorization: Bearer <METRICS_TOKEN>` when that variable is set:
+
+| Metric | Labels | Meaning |
+|--------|--------|---------|
+| `ridm_http_requests_total`, `ridm_http_request_duration_seconds` | `method`, `route` (the matched pattern), `status` | every request, by route |
+| `ridm_token_requests_total` | `grant`, `outcome` (`issued` or the OAuth error) | `/token` grants |
+| `ridm_logins_total` | `method` (`password`, `webauthn`, `mfa`, ...), `outcome` (`success`, `invalid_credentials`, `locked`, `disabled`) | first-factor sign-ins |
+| `ridm_sessions_created_total` | | browser sessions opened |
+| `ridm_rate_limit_rejections_total`, `ridm_ip_rule_rejections_total{scope}` | | requests refused by the guard |
+| `ridm_webhook_deliveries_total{outcome}`, `ridm_webhook_deliveries_pending`, `ridm_messages_queued` | | delivery outcomes and queue depths (gauges refreshed by the delivery jobs) |
+| `ridm_job_runs_total{job,outcome}`, `ridm_job_duration_seconds{job}`, `ridm_cleanup_rows_total{table}` | | background jobs |
+| `ridm_audit_events_total`, `ridm_audit_sink_rows_total`, `ridm_audit_sink_failures_total`, `ridm_audit_sink_dropped_total` | | the audit writer and its export sink |
+
+Traces: set `OTEL_EXPORTER_OTLP_ENDPOINT` (the collector's base URL, e.g.
+`http://otel-collector:4318`) and every request span, with the spans inside it, is
+exported over OTLP/HTTP (protobuf) under `OTEL_SERVICE_NAME` (default `ridm`); unset, no
+exporter runs. Logs are JSON (`LOG_FORMAT=json`) with the current span's fields.
+
+Audit export: set `AUDIT_SINK_URL` and every audit row (as stored, with its chain
+sequence and hash) is also shipped: to `https://…` as JSON arrays of up to 100 rows
+(within a second of the first), with `Authorization: Bearer <AUDIT_SINK_TOKEN>` when
+set, retried three times with backoff; or to `syslog://host:514` (UDP) /
+`syslog+tcp://host:514` as one RFC 5424 message per row (`<134>1 <time> <host> ridm -
+<event name> - <json>`). The sink never slows the writer: a bounded queue drops rows
+when the destination falls behind and counts them.
+
+### Background jobs
+
+An in-process scheduler runs every job on its interval with jitter, and each pass takes
+a Valkey leader lock (`ridm:lock:<job>`, compare-and-delete release), so a job runs on
+one node at a time however many nodes there are; a node that does not get the lock
+skips the pass. Every pass is counted and timed (`ridm_job_runs_total`,
+`ridm_job_duration_seconds`) and its outcome stored as the job's last run in Valkey
+(`ridm:jobs:last_run`, read by `jobs::status::all`).
+
+| Job | Every | What it does |
+|-----|-------|--------------|
+| `key_rotation` | 1 h | rotates and retires signing keys per the tenant key policy |
+| `audit_retention` | 24 h | creates upcoming audit partitions, drops expired chain prefixes |
+| `user_purge` | 24 h | hard-deletes soft-deleted users past the tenant's retention |
+| `webhook_delivery` | 30 s | retries webhook deliveries whose backoff elapsed (prompt delivery happens on the event) |
+| `message_delivery` | 30 s | sends queued and retrying email/SMS |
+| `cleanup` | 1 h | deletes spent rows older than `RETENTION_DAYS` (default 30): expired, revoked or consumed refresh tokens; ended sessions (kept a week at most); login attempts; sent or dead messages; delivered or dead webhook deliveries; device-code audit rows; expired, accepted or revoked invitations; expired or revoked trusted devices, personal access tokens and provisioning tokens — in batches of 5,000 rows |
+
+The two delivery jobs find the tenants with due work in one cross-tenant query and visit
+only those, so their cost follows the backlog rather than the number of tenants.
+
+### Custom domains
+
+A tenant can be served on its own host: set `settings.custom_domain` (console: Settings →
+General → Custom domain) to a hostname such as `login.example.com` (a port is allowed for
+development), point the name at rIDM and terminate TLS for it. The tenant's issuer
+becomes `https://<host>`, and discovery, JWKS, `/authorize`, `/token`, the flow API and
+every other tenant endpoint answer on that host without the `/t/<slug>` prefix (the
+prefixed paths keep working and report the same issuer). Requests are matched by the
+`Host` header, or `X-Forwarded-Host` from a `TRUSTED_PROXIES` peer; the host is looked up
+through the tenant cache and takes effect the moment the setting changes. Domains are
+validated, lower-cased, unique across tenants and may not be the deployment's own hosts.
+The UI stays where `UI_URL` says until the embedded UI mode serves it on every host.
+
+### Rate limits, browser hardening and cross-origin policy
+
+Every OAuth and sign-in endpoint sits behind a request ceiling counted in fixed
+windows in Valkey, so all nodes share one view. Three endpoint families each have a
+per-address limit under `settings.rate_limits` (`token_per_ip` for `/token`,
+`/introspect`, `/revoke`, `/userinfo` and `/device_authorization`; `authorize_per_ip`
+for `/authorize`, `/par` and dynamic registration; `flows_per_ip` for the flow API,
+recovery, verification, invitations, device verification and brokering), the token
+family also has `token_per_client` (counted once the client is known and before its
+secret is checked, so guessing a secret is bounded), `tenant_total` caps everything
+together, and the deployment-wide `RATE_LIMIT_IP_PER_MINUTE` applies on top across
+tenants. Every limited response carries `RateLimit-Limit`, `RateLimit-Remaining` and
+`RateLimit-Reset` for the tightest bucket; a refused request is `429` with
+`Retry-After`, as `{"error": "slow_down"}` on OAuth endpoints, `application/problem+json`
+on the flow API, and a plain HTML page on browser navigations (`/authorize`,
+brokering). The client address is the TCP peer, or the first `X-Forwarded-For` /
+`Forwarded` address when the peer is in `TRUSTED_PROXIES`. Valkey being unreachable
+fails open with a warning. The admin console edits the policy under Settings → Rate
+limits; the defaults (per minute: 600 token, 1200 per client, 300 authorize, 600 flow,
+no tenant total) are meant for a busy office behind one NAT address.
+
+#### IP rules
+
+IP rules (`/admin/tenants/{slug}/ip-rules`, console `/console/ip-rules/`) form two scopes:
+tenant-wide and per client. Within a scope the most specific matching network decides;
+an address matching no rule passes unless the scope holds any `allow` rule, in which
+case the scope is an allow list and everything else is refused. Both scopes must pass.
+The tenant scope is checked by the request guard on the same endpoint families the
+rate limits cover, before anything else runs; the client scope once the client is known,
+at `/authorize` (a page, never a redirect to the client) and at every
+client-authenticated endpoint (`access_denied`, before the secret is examined). The flow
+API answers `403` as `application/problem+json`. Rules are cached per tenant and take
+effect the moment they change; if the rules cannot be read the request is refused, not
+waved through. The address is resolved like the rate limiter's, so behind a proxy set
+`TRUSTED_PROXIES` or every client appears as the proxy.
+
+Every response carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+`Referrer-Policy: no-referrer` and a `Content-Security-Policy` that lets nothing load
+from or frame an API response (`frame-ancestors 'none'` alone under `/docs`, which
+needs its scripts), plus `Strict-Transport-Security` when `PUBLIC_URL` is https. The
+UI's static export carries its own hash-based policy (see [UI](#ui)).
+
+Cross-origin requests are admitted by one rule set: the UI's and the API's own origins
+may call everything (the consoles and the sign-in pages run there, with cookies);
+discovery, JWKS, WebFinger and branding answer any origin; under `/t/{slug}/` the
+tenant's custom domain and any origin registered in `cors_origins` on one of the
+tenant's active clients are admitted (the
+union is cached per tenant and evicted on every client change); everything else gets no
+CORS headers. Because a preflight cannot say which client a `/token` call is for, the
+client-authenticated endpoints check again once the client is known: a browser `Origin`
+that is neither the UI's, the API's nor registered on that very client is refused with
+`invalid_request` even though the tenant admits it. Server-side clients send no
+`Origin` and are never checked.
 
 ## Development
 
@@ -440,8 +709,9 @@ pagination with `?cursor=&limit=`):
 | `GET /admin/audit`, `.../export`, `.../verify` | `ridm:audit:read` (global only) | the global chain: events with no tenant, such as master-key rotation |
 | `GET/POST /admin/tenants/{slug}/webhooks`, `GET/PATCH/DELETE .../{id}` | `ridm:webhooks:read` / `write` | `{name, url, events, enabled?, headers?, max_attempts?}`; `events` are exact names, prefixes (`user.*`) or `*`; the signing `secret` is returned once on create |
 | `POST .../webhooks/{id}/secret`, `POST .../webhooks/{id}/test` | `ridm:webhooks:write` | rotate the secret (shown once); deliver a `webhook.test` event now and report the attempt |
-| `GET .../webhooks/{id}/deliveries?status=&limit=`, `GET .../deliveries/{id}`, `POST .../deliveries/{id}/redeliver` | read / read / write | delivery log with status, attempts, last status code, error and a response snippet; redeliver requeues and attempts at once |
-| `GET/POST /admin/tenants/{slug}/ip-rules`, `GET/PATCH/DELETE .../{id}` | `ridm:tenants:read` / `write` | `{cidr, action?: allow|deny, client_id?, description?}`; networks are normalized; `?client_id=` or `?tenant_wide=true`; enforced from Phase 9.2 |
+| `GET .../webhooks/{id}/deliveries?status=&limit=`, `GET .../deliveries/{id}`, `POST .../deliveries/{id}/redeliver`, `POST .../deliveries/redeliver-dead` | read / read / write / write | delivery log with status, attempts, last status code, error and a response snippet; redeliver requeues and attempts at once; redeliver-dead does so for every dead delivery of the webhook and reports the count |
+| `GET/POST /admin/tenants/{slug}/scim/tokens`, `DELETE .../{id}` | `ridm:scim:read` / `write` | the tenant's SCIM base URL and provisioning tokens; `{name, expires_in_days?}` returns the `rscim_` token once; revoke stops it at once |
+| `GET/POST /admin/tenants/{slug}/ip-rules`, `GET/PATCH/DELETE .../{id}` | `ridm:tenants:read` / `write` | `{cidr, action?: allow|deny, client_id?, description?}`; networks are normalized; `?client_id=` or `?tenant_wide=true`; in force at once (see [IP rules](#ip-rules)) |
 | `GET/POST /admin/tenants/{slug}/identity-providers`, `GET/PATCH/DELETE .../{idp}` (id or alias), `GET .../presets`, `POST .../discover` | `ridm:idps:read` / `write` | upstream OpenID Connect and OAuth 2.0 providers: a `preset` (`google`, `microsoft`, `github`, `apple`, `gitlab`) fills in protocol, endpoints, scopes and mappers; an OIDC provider's endpoints are discovered from its `issuer` when left out; the `client_secret` is stored encrypted and never returned (`client_secret_set`), `null` clears it; `link_policy` (`verified_email`, `explicit`, `always_new`), `trust_email`, `mappers` (`subject`, `username`, `email`, `email_verified` claim names and `attributes` → claim), `hidden`, `sort_order`; every answer carries the `callback_url` to register upstream |
 | `GET /admin/tenants/{slug}/users/{user}/identities`, `DELETE .../identities/{idp_id}` | `ridm:users:read` / `write` | the upstream identities linked to a user, and unlinking one |
 | `GET /admin/tenants/{slug}/users/{user}/pats`, `DELETE .../pats/{token_id}` | `ridm:users:read` / `write` | a user's personal access tokens (metadata) and revoking one |
@@ -481,13 +751,26 @@ composites and permission grants bump the tenant's roles version (effective role
 admin permissions hang off it); claim mappers bump a mappers version; all of it
 propagates to every node's in-process cache through Valkey.
 
-Webhook deliveries are queued by an in-process subscriber of the event bus and sent by
-the `webhook_delivery` job (every 30 s, one runner per cluster): `POST` with a JSON body
-`{delivery_id, attempt, event}`, headers `X-RIDM-Event`, `X-RIDM-Delivery`, `X-RIDM-Webhook`
-and `X-RIDM-Signature: t=<unix>,v1=<hex HMAC-SHA256(secret, "<t>.<body>")>`. A 2xx
-counts as delivered; 5xx, 408, 425, 429 and network errors retry with backoff (30 s, 2 m,
-10 m, 30 m, 2 h, 6 h) up to `max_attempts`; other 4xx are dead at once. Secrets are stored
-encrypted under the master key and take part in master-key rotation.
+Webhook deliveries are queued by an in-process subscriber of the event bus and sent at
+once (one prompt pass per tenant at a time, under a short Valkey lock; on every node,
+since the queue hands each row to one sender only); retries are picked up by the
+`webhook_delivery` job (every 30 s, one runner per cluster, visiting only the tenants
+that have a delivery due, found with one query, so its cost follows the backlog rather
+than the number of tenants). A pass attempts up to eight
+deliveries at a time through one shared connection pool, so a slow endpoint does not
+hold up the others. Each delivery is a `POST` with a JSON body
+`{delivery_id, attempt, event}` and headers `X-RIDM-Event`, `X-RIDM-Delivery`,
+`X-RIDM-Webhook`, `X-RIDM-Timestamp` and
+`X-RIDM-Signature: t=<unix>,v1=<hex HMAC-SHA256(secret, "<t>.<body>")>` (verify the
+signature, then refuse stale `t` values and repeated `X-RIDM-Delivery` ids). A 2xx counts
+as delivered; 5xx, 408, 425, 429 and network errors retry with backoff (30 s, 2 m, 10 m,
+30 m, 2 h, 6 h) up to `max_attempts`; other 4xx are dead at once. A delivery that dies
+raises `webhook.delivery_dead` (audited, never itself delivered to a webhook), stays in
+the log with its last status and response snippet, and can be sent again one at a time
+or all at once (`POST .../deliveries/redeliver-dead`, the console's "Redeliver dead").
+Targets must be https (plain http only to loopback, for development) and never a
+private, link-local or unspecified address. Secrets are stored encrypted under the
+master key and take part in master-key rotation.
 
 Every domain event is appended to `audit_events` (monthly partitions, tenant RLS) by an
 in-process writer; rows are hash-chained per tenant (`SHA-256(prev_hash || row)`), so a
@@ -512,6 +795,17 @@ npm run build          # static export to ui/out
 
 `NEXT_PUBLIC_API_URL` is empty by default (same origin, for the embedded single-binary
 mode). Set it at build time when hosting `ui/out` on a separate static host or CDN.
+
+The build's `postbuild` step (`scripts/csp.mjs`, unit-tested with `npm run test:scripts`)
+gives every exported page a `Content-Security-Policy` `<meta>` tag: scripts may come
+from the page's origin, the CAPTCHA vendors, or be one of the page's own inline
+scripts (each allowed by its SHA-256 hash, since a static export has no nonces);
+connections and form posts may go to the page's origin and `NEXT_PUBLIC_API_URL`;
+styles stay inline (React style props and tenant custom CSS); images and fonts may
+come from anywhere over https (tenant logos), and objects are forbidden. A meta tag
+cannot restrict framing, so whoever serves `ui/out` (the embedded server, or your
+static host) should also send `X-Frame-Options: DENY` or
+`Content-Security-Policy: frame-ancestors 'none'`, and `Strict-Transport-Security`.
 
 `npm run e2e` runs the Playwright suite (the end-user journeys — password, magic link,
 registration, recovery, two-step verification, passkeys through a virtual
@@ -586,8 +880,8 @@ typed client reads from).
 Pages so far: **Tenants** (`/console/tenants/`: every tenant for global administrators,
 filter, "New tenant" dialog that lands on the new tenant's settings) and **Settings**
 (`/console/settings/`: every tenant setting on one page, grouped as general, sign-in,
-passwords and lockout, sessions and tokens, branding, locale and notices, keys, discovery
-and audit, plus a delete-tenant zone for global owners). Settings save as you go: each
+passwords and lockout, rate limits, sessions and tokens, branding, locale and notices,
+keys, discovery and audit, plus a delete-tenant zone for global owners). Settings save as you go: each
 change is applied to the page at once and joined into one JSON merge patch that is sent
 `PATCH /admin/tenants/{slug}` once typing pauses (600 ms, at most 2.5 s into continuous
 editing, and with `keepalive` when the tab is hidden or closed); the header shows
@@ -664,8 +958,7 @@ older ones) and can re-encrypt pending rows. **Audit log** (`/console/audit/`): 
 tenant's chain or, for global administrators, the global one; filters by event, time
 window, actor, subject and user; newer/older paging; expandable rows with the payload
 and hashes; JSON and CSV export; chain verification. **IP rules** (`/console/ip-rules/`):
-allow and deny networks per tenant or client, edited in place (stored now, enforced from
-Phase 9.2). **Webhooks** (`/console/webhooks/`): create (signing secret shown once),
+allow and deny networks per tenant or client, edited in place and in force at once. **Webhooks** (`/console/webhooks/`): create (signing secret shown once),
 events as exact names, prefixes or `*`, static headers, attempt limit, enable/disable,
 rotate the secret, send a test ping, and the delivery log with status filter, details
 and redelivery. **Messaging** (`/console/messaging/`): email provider (SMTP or HTTP
@@ -692,10 +985,20 @@ The image is distroless, runs as non-root, has no dynamic OpenSSL dependency, an
 ### CI
 
 Every pull request runs the `ci` workflow: rustfmt, `cargo check`, clippy with warnings
-denied, `cargo audit`, `cargo deny`, ESLint, `tsc`, unit tests, integration tests
-against Postgres and Valkey, the UI static export, and a container image boot test.
-`main` is protected; all checks are required. Dependencies are exact-pinned and updated
-by Renovate.
+denied, `cargo audit`, `cargo deny`, ESLint, `tsc`, `npm audit`, unit tests, integration
+tests against Postgres and Valkey, coverage, the UI static export, the Playwright e2e
+suite, a k6 smoke with thresholds (`load-smoke`), a minute of fuzzing per target
+(`fuzz-smoke`) and a container image boot test. The `conformance` workflow runs the
+OpenID Foundation suite on the same pull request. `main` is protected; all of those are
+required checks and no one can bypass them. Dependencies are exact-pinned and updated by
+Renovate.
+
+Two workflows run longer versions of the same suites off the pull-request path: `weekly`
+fuzzes each target for four hours (and the conformance plans run weekly too), and
+`release` runs the full 200-VU k6 baseline against a release build when a `v*` tag is
+pushed, uploading the summary for the release notes. The fuzz targets, their seeds and
+how to reproduce a crash are described in [`api/fuzz/README.md`](api/fuzz/README.md);
+the load tests in [`perf/README.md`](perf/README.md).
 
 ## Repository layout
 
@@ -706,6 +1009,9 @@ by Renovate.
 | `crates/ridm-core/` | shared types, provider traits, event definitions |
 | `ui/` | Next.js 16 static export: admin console, account console, auth pages |
 | `deploy/` | docker-compose, Helm chart, reverse-proxy examples |
+| `api/fuzz/` | cargo-fuzz targets and their seed corpora |
+| `perf/` | k6 load tests: the PR smoke and the release baseline |
+| `conformance/` | the OpenID Foundation conformance rig |
 | `.github/` | CI workflows, issue and PR templates |
 
 ## Roadmap
@@ -721,6 +1027,8 @@ organizations, adaptive auth, SAML, LDAP, HSM/KMS key custody.
 - [CONTRIBUTING.md](CONTRIBUTING.md): environment setup, conventions, test matrix, PR
   checklist.
 - [SECURITY.md](SECURITY.md): how to report vulnerabilities privately.
+- [THREAT_MODEL.md](THREAT_MODEL.md): what rIDM protects, from whom, what stops each
+  attack today, and what it leaves to the deployment.
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## License

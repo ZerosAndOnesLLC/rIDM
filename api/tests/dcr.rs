@@ -8,10 +8,15 @@ use ridm_core::events::Actor;
 use serde_json::{Value, json};
 
 async fn set_mode(app: &TestApp, mode: DcrMode, allowed: Vec<&str>) {
+    set_policy(app, mode, allowed, true).await;
+}
+
+async fn set_policy(app: &TestApp, mode: DcrMode, allowed: Vec<&str>, require_pkce: bool) {
     let settings = TenantSettings {
         dcr: DcrPolicy {
             mode,
             allowed_grants: allowed.into_iter().map(String::from).collect(),
+            require_pkce,
         },
         ..Default::default()
     };
@@ -379,5 +384,77 @@ async fn initial_access_tokens_gate_registration_with_a_use_budget() {
         !dcr::consume_initial_access_token(&app.state, app.tenant.id, &iat)
             .await
             .unwrap()
+    );
+}
+
+/// `dcr.require_pkce` decides whether a dynamically registered confidential
+/// client may authorize without a code challenge; public clients always must.
+#[tokio::test]
+async fn pkce_requirement_for_registered_clients_follows_the_policy() {
+    let app = TestApp::spawn().await;
+    let register = |auth: &'static str| {
+        let app = &app;
+        async move {
+            let res = app
+                .http
+                .post(app.tenant_url("/register"))
+                .json(&json!({
+                    "redirect_uris": ["https://rp.example/cb"],
+                    "token_endpoint_auth_method": auth,
+                }))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(res.status(), 201);
+            let reg: Value = res.json().await.unwrap();
+            reg["client_id"].as_str().unwrap().to_string()
+        }
+    };
+    let authorize = |client_id: String| {
+        let app = &app;
+        async move {
+            let res = app
+                .http
+                .get(app.tenant_url("/authorize"))
+                .query(&[
+                    ("client_id", client_id.as_str()),
+                    ("redirect_uri", "https://rp.example/cb"),
+                    ("response_type", "code"),
+                    ("scope", "openid"),
+                    ("state", "s"),
+                ])
+                .send()
+                .await
+                .unwrap();
+            assert!(res.status().is_redirection(), "{}", res.status());
+            res.headers()["location"].to_str().unwrap().to_string()
+        }
+    };
+
+    // Default policy: every registered client must send a code challenge.
+    set_policy(&app, DcrMode::Open, vec![], true).await;
+    let confidential = register("client_secret_basic").await;
+    let location = authorize(confidential).await;
+    assert!(
+        location.starts_with("https://rp.example/cb?")
+            && location.contains("error=invalid_request"),
+        "{location}"
+    );
+
+    // Relaxed policy: a confidential client proceeds to the login page.
+    set_policy(&app, DcrMode::Open, vec![], false).await;
+    let confidential = register("client_secret_basic").await;
+    let location = authorize(confidential).await;
+    assert!(
+        location.starts_with(app.state.config.ui_url.as_str()) && !location.contains("error="),
+        "{location}"
+    );
+    // A public client still must use PKCE.
+    let public = register("none").await;
+    let location = authorize(public).await;
+    assert!(
+        location.starts_with("https://rp.example/cb?")
+            && location.contains("error=invalid_request"),
+        "{location}"
     );
 }

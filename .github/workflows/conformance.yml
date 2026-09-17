@@ -1,0 +1,115 @@
+name: conformance
+
+# The OpenID Foundation conformance suite against rIDM: configuration, basic
+# (discovery + dynamic registration), RP-initiated, back-channel and
+# front-channel logout plans, response_type=code. rIDM runs behind a TLS front
+# (Caddy, a private CA the suite trusts) as https://ridm.local; the static UI
+# is served on the same origin.
+#
+# `conformance` is a required status check on `main` (working-plan.md §6): the
+# job id is the check name configured in branch protection, so keep it stable.
+# The same plans run again weekly on the schedule below.
+
+on:
+  pull_request:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  conformance:
+    name: conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_DB: ridm
+          POSTGRES_USER: ridm
+          POSTGRES_PASSWORD: ridm
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ridm -d ridm"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      valkey:
+        image: valkey/valkey:9.1.2-alpine3.24
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgres://ridm:ridm@localhost:5432/ridm
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: build api
+        run: cargo build -p ridm-api --locked
+      - name: build ui (same origin as the API behind the TLS front)
+        working-directory: ui
+        run: npm ci && npm run build
+      - name: serve ui
+        working-directory: ui
+        run: nohup npx -y serve@latest -l 3110 out > ../ui.log 2>&1 &
+      - name: certificates
+        run: conformance/certs.sh
+      - name: start api
+        env:
+          PUBLIC_URL: https://ridm.local
+          UI_URL: https://ridm.local
+          BIND_ADDR: 0.0.0.0:8090
+          MASTER_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          # Back-channel logout calls the suite, which serves a certificate from
+          # the private CA conformance/certs.sh issues.
+          SSL_CERT_FILE: ${{ github.workspace }}/conformance/certs/bundle.crt
+          COOKIE_SECURE: "false"
+          MIGRATE_ON_START: "true"
+          RATE_LIMITS: "false"
+          BOOTSTRAP_ADMIN_EMAIL: admin@ridm.local
+          BOOTSTRAP_ADMIN_PASSWORD: ChangeMe-Now-1234-e2e
+        run: |
+          nohup target/debug/ridm-api > api.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf localhost:8090/readyz && break; sleep 2; done
+          curl -sf localhost:8090/readyz
+      - name: prepare the master tenant (open registration, password sign-in, a full profile)
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q postgresql-client redis-tools
+          psql "$DATABASE_URL" -c "UPDATE tenants SET settings = settings || '{\"dcr\": {\"mode\": \"open\", \"allowed_grants\": [\"authorization_code\", \"refresh_token\", \"client_credentials\"], \"require_pkce\": false}, \"auth\": {\"password\": true}}'::jsonb WHERE slug = 'master'"
+          # The scope tests read every standard claim the requested scope covers
+          # from the userinfo endpoint, so the user needs a filled-in profile.
+          psql "$DATABASE_URL" -c "UPDATE users SET must_change_password = false, email_verified = true, locale = 'en', phone = '+15551234567', phone_verified = true, attributes = attributes || '{\"name\": \"Ada Lovelace\", \"given_name\": \"Ada\", \"family_name\": \"Lovelace\", \"middle_name\": \"Byron\", \"nickname\": \"Ada\", \"picture\": \"https://ridm.local/ada.png\", \"website\": \"https://ridm.local/ada\", \"profile\": \"https://ridm.local/u/ada\", \"gender\": \"female\", \"birthdate\": \"1990-05-15\", \"zoneinfo\": \"Europe/London\", \"address\": {\"formatted\": \"12 Mayfair, London\", \"street_address\": \"12 Mayfair\", \"locality\": \"London\", \"postal_code\": \"W1K\", \"country\": \"GB\"}}'::jsonb WHERE email = 'admin@ridm.local'"
+          redis-cli -u "$REDIS_URL" --scan --pattern 'ridm:*' | xargs -r redis-cli -u "$REDIS_URL" del
+      - name: suite
+        run: docker compose -f conformance/docker-compose.yml up -d
+      - name: run the plans
+        env:
+          OP_ISSUER: https://ridm.local/t/master
+          OP_UI_URL: https://ridm.local
+          OP_USER: admin@ridm.local
+          OP_PASSWORD: ChangeMe-Now-1234-e2e
+        run: conformance/run.sh
+      - name: results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: conformance-results
+          path: conformance/results
+          retention-days: 14
+      - name: logs
+        if: failure()
+        run: |
+          tail -n 100 api.log
+          docker compose -f conformance/docker-compose.yml logs --tail 100 server

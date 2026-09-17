@@ -162,7 +162,15 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
               )}
             </Field>
             <Toggle label="Require PKCE" checked={c.require_pkce} disabled={!editable} onChange={(v) => update({ require_pkce: v })} />
+            <Toggle label="DPoP-bound access tokens" hint="Every token request must carry a DPoP proof; the tokens only work with that key (RFC 9449)." checked={c.dpop_bound_access_tokens} disabled={!editable} onChange={(v) => update({ dpop_bound_access_tokens: v })} />
             <Toggle label="Ask users for consent" hint="Off for first-party applications." checked={c.require_consent} disabled={!editable} onChange={(v) => update({ require_consent: v })} />
+            <Toggle
+              label="Scope claims in the ID token"
+              hint="Repeat the profile, email, address and phone claims in the ID token. Off by default: with an access token issued they are read from the userinfo endpoint (OIDC Core 5.4)."
+              checked={c.id_token_scope_claims}
+              disabled={!editable}
+              onChange={(v) => update({ id_token_scope_claims: v })}
+            />
             <Field label="Subject identifier" hint="Pairwise subjects differ per sector so clients cannot correlate users.">
               {(fid, by) => (
                 <SelectInput id={fid} aria-describedby={by} value={c.subject_type} disabled={!editable} onChange={(e) => update({ subject_type: e.target.value as "public" | "pairwise" })}>

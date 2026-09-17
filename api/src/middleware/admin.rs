@@ -26,6 +26,8 @@ use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{MASTER_TENANT_ID, Tenant, UserStatus};
+use crate::oidc::bearer::Scheme;
+use crate::oidc::dpop;
 use crate::services::admin_access::{self, ADMIN_AUDIENCE, PermissionSet};
 use crate::services::personal_access_tokens as pats;
 use crate::services::tokens::{self, VerifyOptions};
@@ -187,14 +189,50 @@ impl IntoResponse for AdminRejection {
     }
 }
 
-pub(crate) fn bearer(headers: &HeaderMap) -> Option<String> {
+/// The access token from `Authorization: Bearer|DPoP <token>` (header only,
+/// never a query parameter) with the scheme it came under.
+pub(crate) fn bearer_with_scheme(headers: &HeaderMap) -> Option<(Scheme, String)> {
     let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
     let (scheme, rest) = value.split_once(' ')?;
-    if !scheme.eq_ignore_ascii_case("bearer") {
+    let scheme = if scheme.eq_ignore_ascii_case("bearer") {
+        Scheme::Bearer
+    } else if scheme.eq_ignore_ascii_case("dpop") {
+        Scheme::Dpop
+    } else {
         return None;
-    }
+    };
     let token = rest.trim();
-    (!token.is_empty()).then(|| token.to_string())
+    (!token.is_empty()).then(|| (scheme, token.to_string()))
+}
+
+/// Refuse a DPoP-bound token that is not presented with a valid proof.
+pub(crate) async fn require_binding(
+    state: &AppState,
+    tenant: &Tenant,
+    scheme: Scheme,
+    token: &str,
+    claims: &serde_json::Map<String, serde_json::Value>,
+    parts: &Parts,
+) -> Result<(), AdminRejection> {
+    let htu = dpop::htu_for_path(state, tenant, parts.uri.path());
+    let presented = dpop::Presented {
+        scheme,
+        token,
+        claims,
+    };
+    dpop::enforce_binding(
+        state,
+        tenant,
+        presented,
+        &parts.headers,
+        &parts.method,
+        &htu,
+    )
+    .await
+    .map_err(|d| {
+        tracing::debug!(reason = %d, "dpop binding refused");
+        AdminRejection::invalid()
+    })
 }
 
 /// The `tid` claim read without verification, only to pick the key set to
@@ -214,7 +252,8 @@ impl FromRequestParts<AppState> for AdminCtx {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, AdminRejection> {
-        let token = bearer(&parts.headers).ok_or_else(AdminRejection::missing)?;
+        let (scheme, token) =
+            bearer_with_scheme(&parts.headers).ok_or_else(AdminRejection::missing)?;
         if pats::looks_like_pat(&token) {
             return Self::from_personal_token(state, &token).await;
         }
@@ -240,6 +279,7 @@ impl FromRequestParts<AppState> for AdminCtx {
             AppError::Unauthorized => AdminRejection::invalid(),
             other => other.into(),
         })?;
+        require_binding(state, &tenant, scheme, &token, &claims, parts).await?;
 
         // The session the token was issued in must still be alive, so signing
         // out ends admin access before the token expires.
@@ -369,16 +409,19 @@ mod tests {
     #[test]
     fn bearer_header_parsing() {
         let mut h = HeaderMap::new();
-        assert!(bearer(&h).is_none());
+        assert!(bearer_with_scheme(&h).is_none());
         h.insert(header::AUTHORIZATION, HeaderValue::from_static("Basic abc"));
-        assert!(bearer(&h).is_none());
+        assert!(bearer_with_scheme(&h).is_none());
         h.insert(header::AUTHORIZATION, HeaderValue::from_static("Bearer "));
-        assert!(bearer(&h).is_none());
+        assert!(bearer_with_scheme(&h).is_none());
         h.insert(
             header::AUTHORIZATION,
             HeaderValue::from_static("bearer  tok "),
         );
-        assert_eq!(bearer(&h).as_deref(), Some("tok"));
+        assert_eq!(
+            bearer_with_scheme(&h),
+            Some((Scheme::Bearer, "tok".to_string()))
+        );
     }
 
     #[test]

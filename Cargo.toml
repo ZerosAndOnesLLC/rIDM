@@ -27,8 +27,8 @@ tokio = { version = "=1.53.1", features = ["full"] }
 
 # Storage
 sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls-ring", "postgres", "uuid", "chrono", "json", "migrate", "macros"] }
-deadpool-redis = { version = "=0.23.1", features = ["rt_tokio_1"] }
-redis = { version = "=1.7.0", features = ["tokio-rustls-comp", "script"] }
+deadpool-redis = { version = "=0.23.1", features = ["rt_tokio_1", "cluster", "sentinel"] }
+redis = { version = "=1.7.0", features = ["tokio-rustls-comp", "script", "cluster-async", "sentinel"] }
 
 # Crypto / tokens
 # Signing/verification via aws-lc-rs (constant-time RSA); the `rsa` crate is
@@ -89,6 +89,10 @@ tracing = "=0.1.44"
 tracing-subscriber = { version = "=0.3.23", features = ["env-filter", "json"] }
 metrics = "=0.24.6"
 metrics-exporter-prometheus = { version = "=0.18.3", default-features = false }
+opentelemetry = "=0.32.0"
+opentelemetry_sdk = { version = "=0.32.1", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "=0.32.0", default-features = false, features = ["trace", "http-proto", "reqwest-client", "reqwest-rustls"] }
+tracing-opentelemetry = "=0.33.0"
 
 # API docs
 utoipa = { version = "=5.5.0", features = ["axum_extras", "uuid", "chrono"] }

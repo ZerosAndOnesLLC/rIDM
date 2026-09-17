@@ -7,11 +7,12 @@ mod common;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use common::TestApp;
-use ridm_api::models::{ClientType, NewClient, NewUser};
+use ridm_api::models::{ClientType, IpRuleAction, NewClient, NewIpRule, NewUser};
 use ridm_api::services::sessions::{self, NewSession};
-use ridm_api::services::{clients, tenants, users};
+use ridm_api::services::{clients, ip_rules, tenants, users};
 use ridm_core::events::Actor;
 use serde_json::Value;
+use uuid::Uuid;
 
 const VERIFIER: &str = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 const CHALLENGE: &str = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
@@ -359,4 +360,122 @@ async fn open_redirect_and_injection_attempts_are_refused() {
         .unwrap();
     let html = res.text().await.unwrap();
     assert!(!html.contains("<script>"));
+}
+
+/// Phase 9.12 review finding. The request guard read the tenant from the raw
+/// URI path while the handlers read axum's percent-decoded path parameter, so
+/// `/t/%61cme/...` reached the tenant with its IP rules and rate-limit buckets
+/// skipped. A slug is `[a-z0-9-]` and never needs escaping, so anything the
+/// guard cannot read as a slug is refused instead of passed on.
+#[tokio::test]
+async fn an_escaped_tenant_slug_cannot_dodge_the_guard() {
+    let app = TestApp::spawn_configured(axum::Router::new(), |state| {
+        let mut config = (*state.config).clone();
+        config.trusted_proxies = vec!["127.0.0.0/8".parse().unwrap()];
+        state.config = std::sync::Arc::new(config);
+    })
+    .await;
+    ip_rules::create(
+        &app.state,
+        app.tenant.id,
+        Actor::System,
+        NewIpRule {
+            client_id: None,
+            action: Some(IpRuleAction::Deny),
+            cidr: "198.51.100.0/24".into(),
+            description: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let slug = &app.tenant.slug;
+    // The escape spells the same slug: the first byte, percent-encoded.
+    let first = slug.as_bytes()[0];
+    let escaped = format!("%{first:02x}{}", &slug[1..]);
+    let url = |s: &str| format!("{}/t/{}/flows/{}", app.base_url, s, Uuid::new_v4());
+
+    let refused = app
+        .http
+        .get(url(slug))
+        .header("x-forwarded-for", "198.51.100.7")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), 403, "the rule refuses the plain slug");
+
+    let escaped_res = app
+        .http
+        .get(url(&escaped))
+        .header("x-forwarded-for", "198.51.100.7")
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(
+        escaped_res.status(),
+        200,
+        "an escaped slug must not reach the tenant past its IP rules"
+    );
+    assert!(
+        escaped_res.status() == 403 || escaped_res.status() == 404,
+        "unexpected status {} for an escaped slug",
+        escaped_res.status()
+    );
+}
+
+/// Phase 9.12 review finding. The client address came from the leftmost
+/// `X-Forwarded-For` entry, which is whatever the caller sent when the proxy
+/// appends rather than overwrites (an AWS load balancer, nginx's
+/// `$proxy_add_x_forwarded_for`). The chain is now read from the right, past
+/// our own proxies, so a caller cannot choose the address a rule matches.
+#[tokio::test]
+async fn a_forged_forwarded_entry_cannot_choose_the_client_address() {
+    let app = TestApp::spawn_configured(axum::Router::new(), |state| {
+        let mut config = (*state.config).clone();
+        config.trusted_proxies = vec!["127.0.0.0/8".parse().unwrap()];
+        state.config = std::sync::Arc::new(config);
+    })
+    .await;
+    // The tenant admits its office range only.
+    ip_rules::create(
+        &app.state,
+        app.tenant.id,
+        Actor::System,
+        NewIpRule {
+            client_id: None,
+            action: Some(IpRuleAction::Allow),
+            cidr: "203.0.113.0/24".into(),
+            description: None,
+        },
+    )
+    .await
+    .unwrap();
+    let flow = |ip: &str| {
+        let app = &app;
+        let value = ip.to_string();
+        async move {
+            app.http
+                .get(app.tenant_url(&format!("/flows/{}", Uuid::new_v4())))
+                .header("x-forwarded-for", value)
+                .send()
+                .await
+                .unwrap()
+                .status()
+        }
+    };
+
+    // The office address is admitted; an outside one is not.
+    assert_ne!(flow("203.0.113.9").await, 403);
+    assert_eq!(flow("198.51.100.7").await, 403);
+
+    // The attacker prepends the office address; the proxy appends their real
+    // one. The rightmost untrusted entry is what counts, so the rule holds.
+    assert_eq!(
+        flow("203.0.113.9, 198.51.100.7").await,
+        403,
+        "a forged leftmost entry must not pass the allow list"
+    );
+    // A chain ending in our own proxy still reports the address before it.
+    assert_eq!(flow("198.51.100.7, 127.0.0.1").await, 403);
+    assert_ne!(flow("203.0.113.9, 127.0.0.1").await, 403);
 }

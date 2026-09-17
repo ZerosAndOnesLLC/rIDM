@@ -1,6 +1,6 @@
 "use client";
 
-import { Field, NumberInput, Section, SelectInput, TagsInput } from "@/components/console/form";
+import { Field, NumberInput, Section, SelectInput, TagsInput, Toggle } from "@/components/console/form";
 import { GRANTS, RSA_BITS, SIGNING_ALGS } from "@/lib/console/settings";
 import { useSettingsEditor } from "./context";
 
@@ -66,6 +66,13 @@ export function AdvancedSection() {
           </label>
         ))}
       </fieldset>
+      <Toggle
+        label="Registered confidential clients must use PKCE"
+        hint="Public clients always must. Off matches the OpenID Connect basic profile, whose clients authenticate with a secret and send no code challenge."
+        checked={dcr.require_pkce}
+        disabled={!editable}
+        onChange={(v) => update({ dcr: { require_pkce: v } })}
+      />
 
       <Field label="Audit retention" hint="Days to keep audit rows; 0 keeps them forever.">
         {(id, by) => <NumberInput id={id} describedBy={by} value={audit.retention_days} min={0} onValue={(v) => v !== null && update({ audit: { retention_days: v } })} unit="days" />}

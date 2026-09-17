@@ -174,21 +174,21 @@ async fn admin_runs_the_webhook_lifecycle_with_signed_deliveries() {
         .find(|x| x["event_name"] == "user.created")
         .unwrap()
         .clone();
-    assert_eq!(pending["status"], "pending");
-    // The job spans every tenant in the shared test database, so only our
-    // own delivery's outcome is asserted.
-    let (delivered, _failed) = ridm_api::jobs::webhook_delivery::run_once(&app.state)
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(delivered >= 1, "{delivered}");
-    let (_, after, _) = get_json(
+    // The dispatcher sends at once (Phase 9.5), so the row is pending only
+    // for an instant; the job (every tenant of the shared database) is a
+    // no-op for it afterwards and must not fail.
+    let after = wait_deliveries(
         &app,
         &format!("{base}/{id}/deliveries/{}", pending["id"].as_str().unwrap()),
-        Some(&t),
+        &t,
+        |d| d["status"] == "delivered",
     )
     .await;
     assert_eq!(after["status"], "delivered");
+    ridm_api::jobs::webhook_delivery::run_once(&app.state)
+        .await
+        .unwrap()
+        .unwrap();
     {
         let got = inbox.lock().unwrap();
         let (headers, body) = got.hits.last().unwrap();

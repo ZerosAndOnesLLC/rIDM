@@ -105,6 +105,20 @@ pub async fn list<'e>(
     qb.build_query_as::<Tenant>().fetch_all(exec).await
 }
 
+/// Tenant whose custom domain is `host` (lower-case, as stored).
+pub async fn find_by_custom_domain<'e>(
+    exec: impl PgExecutor<'e>,
+    host: &str,
+) -> Result<Option<Tenant>, sqlx::Error> {
+    sqlx::query_as::<_, Tenant>(
+        "SELECT id, slug, display_name, status, settings, pairwise_salt, created_at, updated_at FROM tenants \
+         WHERE lower(settings->>'custom_domain') = $1 LIMIT 1",
+    )
+    .bind(host)
+    .fetch_optional(exec)
+    .await
+}
+
 /// Tenant whose discovery settings list `domain` (lower-case). First match wins.
 pub async fn find_by_email_domain<'e>(
     exec: impl PgExecutor<'e>,

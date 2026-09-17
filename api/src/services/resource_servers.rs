@@ -4,6 +4,7 @@
 //! to roles is how custom admin roles are built.
 
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::db;
@@ -14,6 +15,9 @@ use crate::models::{
 use crate::repos;
 use crate::services::roles;
 use crate::state::AppState;
+
+/// Cached audience lookups; every write evicts, the TTL bounds a missed one.
+const CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(300);
 
 fn validate_identifier(s: &str) -> AppResult<String> {
     let id = s.trim().to_string();
@@ -58,6 +62,71 @@ pub async fn list(state: &AppState, tenant_id: Uuid) -> AppResult<Vec<ResourceSe
     Ok(rows)
 }
 
+/// Resource server by identifier through the cache (the token endpoint's
+/// audience lookup); evicted by every write to the server.
+pub async fn find_by_identifier_cached(
+    state: &AppState,
+    tenant_id: Uuid,
+    identifier: &str,
+) -> AppResult<Option<Arc<ResourceServer>>> {
+    let db = state.db.clone();
+    let ident = identifier.to_string();
+    state
+        .cache
+        .get_or_load(
+            &crate::cache::keys::resource_server(tenant_id, identifier),
+            CACHE_TTL,
+            || async move {
+                let mut tx = db::tenant_tx(&db, tenant_id).await?;
+                let rs = repos::resource_servers::find_by_identifier(&mut *tx, tenant_id, &ident)
+                    .await?;
+                tx.commit().await?;
+                Ok(rs)
+            },
+        )
+        .await
+}
+
+/// Permission names `role_ids` hold on `rs_id`, cached under the roles
+/// version so any grant change is seen at once.
+pub async fn permissions_for_roles_cached(
+    state: &AppState,
+    tenant_id: Uuid,
+    rs_id: Uuid,
+    role_ids: &[Uuid],
+) -> AppResult<Arc<Vec<String>>> {
+    if role_ids.is_empty() {
+        return Ok(Arc::new(vec![]));
+    }
+    let version = roles::roles_version(state, tenant_id).await?;
+    let mut sorted: Vec<Uuid> = role_ids.to_vec();
+    sorted.sort();
+    sorted.dedup();
+    let roles_key = {
+        use sha2::Digest as _;
+        let mut h = sha2::Sha256::new();
+        for id in &sorted {
+            h.update(id.as_bytes());
+        }
+        hex::encode(&h.finalize()[..12])
+    };
+    let db = state.db.clone();
+    let key =
+        crate::cache::keys::resource_server_permissions(tenant_id, &version, rs_id, &roles_key);
+    let loaded = state
+        .cache
+        .get_or_load(&key, CACHE_TTL, || async move {
+            let mut tx = db::tenant_tx(&db, tenant_id).await?;
+            let perms =
+                repos::resource_servers::permissions_for_roles(&mut *tx, tenant_id, rs_id, &sorted)
+                    .await?;
+            tx.commit().await?;
+            Ok(Some(perms))
+        })
+        .await?;
+    Ok(loaded.unwrap_or_default())
+}
+
 pub async fn get(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<ResourceServer> {
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let rs = repos::resource_servers::find_by_id(&mut *tx, tenant_id, id).await?;
@@ -94,6 +163,13 @@ pub async fn create(
         other => other,
     })?;
     tx.commit().await?;
+    state
+        .cache
+        .invalidate(&[crate::cache::keys::resource_server(
+            tenant_id,
+            &rs.identifier,
+        )])
+        .await?;
     state.events.publish(Event::new(
         Some(tenant_id),
         actor,
@@ -143,6 +219,13 @@ pub async fn update(
             resource_server_id: id,
         },
     ));
+    state
+        .cache
+        .invalidate(&[crate::cache::keys::resource_server(
+            tenant_id,
+            &rs.identifier,
+        )])
+        .await?;
     Ok(rs)
 }
 
@@ -163,7 +246,10 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
     roles::bump_roles_version(state, tenant_id).await?;
     state
         .cache
-        .invalidate(&[crate::cache::keys::scopes(tenant_id)])
+        .invalidate(&[
+            crate::cache::keys::scopes(tenant_id),
+            crate::cache::keys::resource_server(tenant_id, &current.identifier),
+        ])
         .await?;
     state.events.publish(Event::new(
         Some(tenant_id),

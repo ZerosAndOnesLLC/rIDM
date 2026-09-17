@@ -61,6 +61,8 @@ pub struct TenantSettings {
     pub audit: crate::models::AuditPolicy,
     /// What users may do to their own account from the account console.
     pub account: AccountPolicy,
+    /// Request ceilings on the OAuth and sign-in endpoints.
+    pub rate_limits: RateLimitPolicy,
     /// Custom issuer host (Phase 9.3). `None` means `{PUBLIC_URL}/t/{slug}`.
     pub custom_domain: Option<String>,
     /// Feature flags: free-form keys the deployment or its clients consult.
@@ -203,13 +205,65 @@ impl Default for LockoutPolicy {
     }
 }
 
+/// Request ceilings enforced on this tenant's OAuth and sign-in endpoints
+/// (counted in fixed windows in Valkey, shared by every node). Each limit is
+/// requests per `window_secs`; 0 switches that limit off. The deployment-wide
+/// per-address ceiling (`RATE_LIMIT_IP_PER_MINUTE`) applies on top.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(default)]
+pub struct RateLimitPolicy {
+    pub enabled: bool,
+    /// Window length in seconds (1..=3600).
+    pub window_secs: u32,
+    /// `/token`, `/introspect`, `/revoke`, `/userinfo`, `/device_authorization` per client address.
+    pub token_per_ip: u32,
+    /// The same endpoints per authenticated client (counted before the
+    /// secret is checked, so guessing a secret is bounded too).
+    pub token_per_client: u32,
+    /// `/authorize`, `/par` and dynamic registration per client address.
+    pub authorize_per_ip: u32,
+    /// The browser flow API (flows, recovery, verification, invitations,
+    /// device verification, brokering) per client address.
+    pub flows_per_ip: u32,
+    /// Every limited endpoint together, across all addresses (0 = off).
+    pub tenant_total: u32,
+}
+
+impl Default for RateLimitPolicy {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            window_secs: 60,
+            token_per_ip: 600,
+            token_per_client: 1200,
+            authorize_per_ip: 300,
+            flows_per_ip: 600,
+            tenant_total: 0,
+        }
+    }
+}
+
 /// Dynamic client registration policy (RFC 7591).
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct DcrPolicy {
     pub mode: DcrMode,
     /// Grant types a dynamically registered client may request.
     pub allowed_grants: Vec<String>,
+    /// Whether dynamically registered confidential clients must use PKCE at
+    /// `/authorize` (public clients always must). On by default; the OpenID
+    /// Connect basic profile registers confidential clients without PKCE.
+    pub require_pkce: bool,
+}
+
+impl Default for DcrPolicy {
+    fn default() -> Self {
+        Self {
+            mode: DcrMode::default(),
+            allowed_grants: Vec::new(),
+            require_pkce: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]

@@ -31,7 +31,6 @@ pub struct InvalidationMessage {
 #[derive(Clone)]
 pub struct CacheLayer {
     redis: RedisPool,
-    redis_url: String,
     l1: Arc<L1Cache>,
     node_id: Uuid,
     pub l1_ttl: Duration,
@@ -46,10 +45,9 @@ enum Lookup<T> {
 }
 
 impl CacheLayer {
-    pub fn new(redis: RedisPool, redis_url: &str) -> Self {
+    pub fn new(redis: RedisPool) -> Self {
         Self {
             redis,
-            redis_url: redis_url.to_string(),
             l1: Arc::new(L1Cache::default()),
             node_id: Uuid::now_v7(),
             l1_ttl: Duration::from_secs(15),
@@ -132,7 +130,10 @@ impl CacheLayer {
             self.l1.remove(k);
         }
         let mut conn = self.redis.get().await?;
-        let _: () = conn.del(keys).await?;
+        // One key per DEL: a cluster refuses multi-key commands across slots.
+        for k in keys {
+            let _: () = conn.del(k).await?;
+        }
         let msg = serde_json::to_string(&InvalidationMessage {
             node_id: self.node_id,
             keys: keys.to_vec(),
@@ -147,11 +148,11 @@ impl CacheLayer {
     pub fn spawn_invalidation_listener(&self) -> tokio::task::JoinHandle<()> {
         let l1 = self.l1.clone();
         let node_id = self.node_id;
-        let url = self.redis_url.clone();
+        let redis = self.redis.clone();
         tokio::spawn(async move {
             let mut backoff = Duration::from_millis(200);
             loop {
-                match Self::listen(&url, node_id, &l1).await {
+                match Self::listen(&redis, node_id, &l1).await {
                     Ok(()) => backoff = Duration::from_millis(200),
                     Err(err) => {
                         tracing::warn!(error = %err, "cache invalidation listener disconnected");
@@ -163,10 +164,14 @@ impl CacheLayer {
         })
     }
 
-    async fn listen(url: &str, node_id: Uuid, l1: &L1Cache) -> Result<(), redis::RedisError> {
+    async fn listen(
+        redis: &RedisPool,
+        node_id: Uuid,
+        l1: &L1Cache,
+    ) -> Result<(), redis::RedisError> {
         use futures::StreamExt as _;
 
-        let client = redis::Client::open(url)?;
+        let client = redis.pubsub_client().await?;
         let mut pubsub = client.get_async_pubsub().await?;
         pubsub.subscribe(keys::INVALIDATION_CHANNEL).await?;
         // Anything cached before we were listening may be stale.

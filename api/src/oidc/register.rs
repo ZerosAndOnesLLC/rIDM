@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use crate::error::AppError;
 use crate::middleware::TenantCtx;
 use crate::models::{
-    Client, ClientSubjectType, ClientType, DcrMode, IdTokenEncryptionConfig, NewClient,
+    Client, ClientSubjectType, ClientType, DcrMode, DcrPolicy, IdTokenEncryptionConfig, NewClient,
     TokenEndpointAuthMethod, grants,
 };
 use crate::oidc::bearer;
@@ -55,6 +55,10 @@ pub struct Metadata {
     pub frontchannel_logout_uri: Option<String>,
     pub initiate_login_uri: Option<String>,
     pub require_pushed_authorization_requests: Option<bool>,
+    pub dpop_bound_access_tokens: Option<bool>,
+    /// rIDM extension: repeat the scope-derived standard claims in the ID
+    /// token instead of only at the userinfo endpoint.
+    pub id_token_scope_claims: Option<bool>,
     pub software_id: Option<String>,
     pub software_version: Option<String>,
 }
@@ -101,7 +105,8 @@ fn metadata_error(e: AppError) -> Response {
 }
 
 /// Map RFC 7591 metadata onto rIDM's client model.
-pub fn to_new_client(m: &Metadata, policy_grants: &[String]) -> Result<NewClient, AppError> {
+pub fn to_new_client(m: &Metadata, policy: &DcrPolicy) -> Result<NewClient, AppError> {
+    let policy_grants = &policy.allowed_grants;
     let bad = |d: &str| AppError::BadRequest(d.to_string());
     let auth_method = match m.token_endpoint_auth_method.as_deref() {
         None | Some("client_secret_basic") => TokenEndpointAuthMethod::ClientSecretBasic,
@@ -198,12 +203,14 @@ pub fn to_new_client(m: &Metadata, policy_grants: &[String]) -> Result<NewClient
         id_token_encryption,
         subject_type: Some(subject_type),
         sector_identifier_uri: m.sector_identifier_uri.clone(),
-        require_pkce: None,
+        require_pkce: Some(policy.require_pkce),
         require_consent: Some(true),
+        id_token_scope_claims: m.id_token_scope_claims,
         cors_origins: vec![],
         initiate_login_uri: m.initiate_login_uri.clone(),
         backchannel_logout_uri: m.backchannel_logout_uri.clone(),
         frontchannel_logout_uri: m.frontchannel_logout_uri.clone(),
+        dpop_bound_access_tokens: m.dpop_bound_access_tokens,
     })
 }
 
@@ -222,6 +229,8 @@ pub fn to_metadata(state: &AppState, tenant: &TenantCtx, client: &Client) -> Val
         "scope": client.allowed_scopes.join(" "),
         "registration_client_uri": format!("{}/register/{}", tenant.issuer(state), client.client_id),
         "client_id_issued_at": client.created_at.timestamp(),
+        "dpop_bound_access_tokens": client.dpop_bound_access_tokens,
+        "id_token_scope_claims": client.id_token_scope_claims,
     });
     for (k, val) in [
         ("client_uri", &client.client_uri),
@@ -293,7 +302,7 @@ async fn register(
             );
         }
     };
-    let input = match to_new_client(&metadata, &policy.allowed_grants) {
+    let input = match to_new_client(&metadata, policy) {
         Ok(i) => i,
         Err(e) => return metadata_error(e),
     };
@@ -394,7 +403,7 @@ async fn update(
             "client_id cannot be changed",
         );
     }
-    let input = match to_new_client(&metadata, &tenant.tenant.settings.dcr.allowed_grants) {
+    let input = match to_new_client(&metadata, &tenant.tenant.settings.dcr) {
         Ok(i) => i,
         Err(e) => return metadata_error(e),
     };

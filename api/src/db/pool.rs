@@ -10,10 +10,22 @@ use crate::config::Config;
 pub type Db = PgPool;
 
 pub async fn connect(config: &Config) -> Result<Db, sqlx::Error> {
-    let options = config
-        .database_url
+    connect_url(config, &config.database_url, "ridm-api").await
+}
+
+/// The pool read-heavy admin queries use: a replica when
+/// `DATABASE_READ_URL` is set, otherwise the primary itself.
+pub async fn connect_read(config: &Config, primary: &Db) -> Result<Db, sqlx::Error> {
+    match &config.database_read_url {
+        Some(url) => connect_url(config, url, "ridm-api-read").await,
+        None => Ok(primary.clone()),
+    }
+}
+
+async fn connect_url(config: &Config, url: &str, name: &str) -> Result<Db, sqlx::Error> {
+    let options = url
         .parse::<PgConnectOptions>()?
-        .application_name("ridm-api")
+        .application_name(name)
         .log_slow_statements(tracing::log::LevelFilter::Warn, Duration::from_millis(250));
 
     PgPoolOptions::new()

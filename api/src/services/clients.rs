@@ -8,6 +8,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::Utc;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use sqlx::types::Json;
 use subtle::ConstantTimeEq as _;
@@ -263,10 +264,12 @@ pub fn resolve(
         sector_identifier_uri: input.sector_identifier_uri,
         require_pkce: input.require_pkce.unwrap_or(default_pkce),
         require_consent: input.require_consent.unwrap_or(true),
+        id_token_scope_claims: input.id_token_scope_claims.unwrap_or(false),
         cors_origins: input.cors_origins,
         initiate_login_uri: input.initiate_login_uri,
         backchannel_logout_uri: input.backchannel_logout_uri,
         frontchannel_logout_uri: input.frontchannel_logout_uri,
+        dpop_bound_access_tokens: input.dpop_bound_access_tokens.unwrap_or(false),
         service_account_user_id: None,
         registration_access_token_hash: None,
         status: ClientStatus::Active,
@@ -274,6 +277,15 @@ pub fn resolve(
         updated_at: now,
     };
     Ok((client, secret))
+}
+
+/// Cache entries a client write must evict: the client document and the
+/// tenant's CORS allow list (the union of every active client's origins).
+pub fn client_cache_keys(tenant_id: Uuid, client_id: &str) -> Vec<String> {
+    vec![
+        cache_keys::client_by_client_id(tenant_id, client_id),
+        cache_keys::client_origins(tenant_id),
+    ]
 }
 
 pub async fn create(
@@ -293,10 +305,7 @@ pub async fn create(
     tx.commit().await?;
     state
         .cache
-        .invalidate(&[cache_keys::client_by_client_id(
-            tenant_id,
-            &client.client_id,
-        )])
+        .invalidate(&client_cache_keys(tenant_id, &client.client_id))
         .await?;
     state.events.publish(Event::new(
         Some(tenant_id),
@@ -319,6 +328,36 @@ pub async fn get(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<Clien
     c.ok_or(AppError::NotFound("client"))
 }
 
+/// The client as cached in Valkey. `Client` keeps its secret hashes and the
+/// registration token hash out of JSON (they must never reach an API
+/// response), so the cache carries them explicitly: without this, a node
+/// reading the document from Valkey would hold a client that can never
+/// authenticate.
+#[derive(Debug, Serialize, Deserialize)]
+struct CachedClient {
+    #[serde(flatten)]
+    client: Client,
+    secret_hashes: Vec<ClientSecretHash>,
+    registration_access_token_hash: Option<Vec<u8>>,
+}
+
+impl CachedClient {
+    fn wrap(client: Client) -> Self {
+        Self {
+            secret_hashes: client.secret_hashes.0.clone(),
+            registration_access_token_hash: client.registration_access_token_hash.clone(),
+            client,
+        }
+    }
+
+    fn unwrap(self) -> Client {
+        let mut client = self.client;
+        client.secret_hashes = Json(self.secret_hashes);
+        client.registration_access_token_hash = self.registration_access_token_hash;
+        client
+    }
+}
+
 /// Lookup by public `client_id` through the cache (hot path for every OAuth request).
 pub async fn find_by_client_id(
     state: &AppState,
@@ -330,7 +369,7 @@ pub async fn find_by_client_id(
     }
     let db = state.db.clone();
     let cid = client_id.to_string();
-    state
+    let cached = state
         .cache
         .get_or_load(
             &cache_keys::client_by_client_id(tenant_id, client_id),
@@ -339,10 +378,23 @@ pub async fn find_by_client_id(
                 let mut tx = db::tenant_tx(&db, tenant_id).await?;
                 let c = repos::clients::find_by_client_id(&mut *tx, tenant_id, &cid).await?;
                 tx.commit().await?;
-                Ok(c)
+                Ok(c.map(CachedClient::wrap))
             },
         )
-        .await
+        .await?;
+    Ok(cached.map(|c| Arc::new(CachedClient::clone_inner(&c))))
+}
+
+impl CachedClient {
+    /// A fresh `Client` from the shared cache entry.
+    fn clone_inner(this: &Arc<Self>) -> Client {
+        Self {
+            client: this.client.clone(),
+            secret_hashes: this.secret_hashes.clone(),
+            registration_access_token_hash: this.registration_access_token_hash.clone(),
+        }
+        .unwrap()
+    }
 }
 
 pub async fn list(
@@ -354,7 +406,7 @@ pub async fn list(
 ) -> AppResult<Page<Client>> {
     let after = cursor.map(Cursor::decode).transpose()?;
     let limit = page_size(limit);
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let mut tx = db::read_tx(&state.db_read, tenant_id).await?;
     let rows = repos::clients::list(&mut *tx, tenant_id, search, after, limit).await?;
     tx.commit().await?;
     Ok(Page::from_rows(rows, limit, |c| Cursor {
@@ -430,10 +482,7 @@ pub async fn rotate_secret(
     tx.commit().await?;
     state
         .cache
-        .invalidate(&[cache_keys::client_by_client_id(
-            tenant_id,
-            &client.client_id,
-        )])
+        .invalidate(&client_cache_keys(tenant_id, &client.client_id))
         .await?;
     state.events.publish(Event::new(
         Some(tenant_id),
@@ -464,10 +513,7 @@ pub async fn revoke_old_secrets(
     tx.commit().await?;
     state
         .cache
-        .invalidate(&[cache_keys::client_by_client_id(
-            tenant_id,
-            &client.client_id,
-        )])
+        .invalidate(&client_cache_keys(tenant_id, &client.client_id))
         .await?;
     state.events.publish(Event::new(
         Some(tenant_id),
@@ -494,10 +540,7 @@ pub async fn set_status(
     tx.commit().await?;
     state
         .cache
-        .invalidate(&[cache_keys::client_by_client_id(
-            tenant_id,
-            &client.client_id,
-        )])
+        .invalidate(&client_cache_keys(tenant_id, &client.client_id))
         .await?;
     state.events.publish(Event::new(
         Some(tenant_id),
@@ -522,10 +565,7 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
     }
     state
         .cache
-        .invalidate(&[cache_keys::client_by_client_id(
-            tenant_id,
-            &client.client_id,
-        )])
+        .invalidate(&client_cache_keys(tenant_id, &client.client_id))
         .await?;
     state.events.publish(Event::new(
         Some(tenant_id),
@@ -577,10 +617,13 @@ pub async fn update_metadata(
     tx.commit().await?;
     state
         .cache
-        .invalidate(&[
-            cache_keys::client_by_client_id(tenant_id, &client.client_id),
-            cache_keys::client_jwks(tenant_id, client.id),
-        ])
+        .invalidate(
+            &[
+                client_cache_keys(tenant_id, &client.client_id),
+                vec![cache_keys::client_jwks(tenant_id, client.id)],
+            ]
+            .concat(),
+        )
         .await?;
     state.events.publish(Event::new(
         Some(tenant_id),
@@ -625,10 +668,7 @@ pub async fn revoke_secret(
     tx.commit().await?;
     state
         .cache
-        .invalidate(&[cache_keys::client_by_client_id(
-            tenant_id,
-            &client.client_id,
-        )])
+        .invalidate(&client_cache_keys(tenant_id, &client.client_id))
         .await?;
     state.events.publish(Event::new(
         Some(tenant_id),
@@ -689,10 +729,7 @@ pub async fn enable_service_account(
     }
     state
         .cache
-        .invalidate(&[cache_keys::client_by_client_id(
-            tenant_id,
-            &client.client_id,
-        )])
+        .invalidate(&client_cache_keys(tenant_id, &client.client_id))
         .await?;
     state.events.publish(Event::new(
         Some(tenant_id),
@@ -723,10 +760,7 @@ pub async fn disable_service_account(
     }
     state
         .cache
-        .invalidate(&[cache_keys::client_by_client_id(
-            tenant_id,
-            &client.client_id,
-        )])
+        .invalidate(&client_cache_keys(tenant_id, &client.client_id))
         .await?;
     state.events.publish(Event::new(
         Some(tenant_id),
@@ -761,10 +795,7 @@ pub async fn issue_registration_token(
     // token must stop working at once.
     state
         .cache
-        .invalidate(&[cache_keys::client_by_client_id(
-            tenant_id,
-            &client.client_id,
-        )])
+        .invalidate(&client_cache_keys(tenant_id, &client.client_id))
         .await?;
     Ok(token)
 }

@@ -137,6 +137,11 @@ pub const CATALOGUE: &[PermissionDef] = &[
         "ridm:webhooks:write",
         "Create, change and delete webhooks; redeliver events"
     ),
+    perm!("ridm:scim:read", "View SCIM provisioning tokens"),
+    perm!(
+        "ridm:scim:write",
+        "Create and revoke SCIM provisioning tokens"
+    ),
 ];
 
 /// Which catalogue entries a built-in role receives.
@@ -200,6 +205,8 @@ pub const BUILT_IN_ROLES: &[BuiltInRole] = &[
             "ridm:groups:write",
             "ridm:roles:read",
             "ridm:audit:read",
+            "ridm:scim:read",
+            "ridm:scim:write",
         ]),
     },
     BuiltInRole {

@@ -157,6 +157,7 @@ pub async fn create(
             user_id: req.user_id,
         },
     ));
+    metrics::counter!("ridm_sessions_created_total").increment(1);
     Ok(session)
 }
 
@@ -331,7 +332,7 @@ pub async fn list_live_for_user(
         .collect();
     let raws: Vec<Option<String>> = redis::cmd("MGET")
         .arg(&session_keys)
-        .query_async(&mut *conn)
+        .query_async(&mut conn)
         .await?;
     let now = Utc::now();
     let mut live = Vec::with_capacity(raws.len());

@@ -124,15 +124,21 @@ pub fn spawn_writer(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         loop {
             match rx.recv().await {
-                Ok(envelope) => {
-                    if let Err(err) = record(&state, &envelope.event).await {
+                Ok(envelope) => match record(&state, &envelope.event).await {
+                    Ok(row) => {
+                        metrics::counter!("ridm_audit_events_total").increment(1);
+                        if let Some(sink) = &state.audit_sink {
+                            sink.offer(row);
+                        }
+                    }
+                    Err(err) => {
                         tracing::error!(
                             event = envelope.event.name(),
                             error = %err,
                             "audit: could not record event"
                         );
                     }
-                }
+                },
                 Err(RecvError::Lagged(n)) => {
                     tracing::warn!(skipped = n, "audit: event bus lagged, events not recorded");
                 }
@@ -154,7 +160,7 @@ pub async fn list(
     let limit = page_size(limit);
     let rows = match tenant_id {
         Some(t) => {
-            let mut tx = db::tenant_tx(&state.db, t).await?;
+            let mut tx = db::read_tx(&state.db_read, t).await?;
             let rows = repos::audit::list(&mut *tx, Some(t), filter, before, limit).await?;
             tx.commit().await?;
             rows

@@ -348,6 +348,19 @@ pub enum EventKind {
     WebhookTest {
         webhook_id: Uuid,
     },
+    ScimTokenCreated {
+        token_id: Uuid,
+    },
+    ScimTokenRevoked {
+        token_id: Uuid,
+    },
+    /// A delivery exhausted its attempts (or was refused outright) and
+    /// waits in the dead-letter log for an administrator.
+    WebhookDeliveryDead {
+        webhook_id: Uuid,
+        delivery_id: Uuid,
+        event_name: String,
+    },
     IpRuleCreated {
         rule_id: Uuid,
     },
@@ -480,6 +493,9 @@ impl EventKind {
             Self::WebhookDeleted { .. } => "webhook.deleted",
             Self::WebhookSecretRotated { .. } => "webhook.secret_rotated",
             Self::WebhookTest { .. } => "webhook.test",
+            Self::WebhookDeliveryDead { .. } => "webhook.delivery_dead",
+            Self::ScimTokenCreated { .. } => "scim_token.created",
+            Self::ScimTokenRevoked { .. } => "scim_token.revoked",
             Self::IpRuleCreated { .. } => "ip_rule.created",
             Self::IpRuleUpdated { .. } => "ip_rule.updated",
             Self::IpRuleDeleted { .. } => "ip_rule.deleted",

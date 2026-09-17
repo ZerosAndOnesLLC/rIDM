@@ -161,7 +161,8 @@ async fn relying_party_journey() {
     assert_eq!(id_claims["nonce"], "n-1");
     assert_eq!(id_claims["aud"], "rp");
     assert_eq!(id_claims["iss"], disco["issuer"]);
-    assert_eq!(id_claims["email"], "alice@example.com");
+    // The scope-derived claims are read from userinfo (OIDC Core §5.4).
+    assert!(id_claims.get("email").is_none(), "{id_claims}");
 
     // 4. UserInfo.
     let ui: Value = app

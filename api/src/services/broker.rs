@@ -217,7 +217,7 @@ pub async fn redeem_link_ticket(
     let mut conn = state.redis.get().await?;
     let raw: Option<String> = redis::cmd("GETDEL")
         .arg(keys::broker_link_ticket(tenant_id, &hash(ticket)))
-        .query_async(&mut *conn)
+        .query_async(&mut conn)
         .await?;
     let (user_id, for_idp, return_to): (Uuid, Uuid, Option<String>) = raw
         .and_then(|r| serde_json::from_str(&r).ok())
@@ -286,7 +286,7 @@ async fn take_state(
     let mut conn = state.redis.get().await?;
     let raw: Option<String> = redis::cmd("GETDEL")
         .arg(keys::broker_state(tenant_id, &hash(token)))
-        .query_async(&mut *conn)
+        .query_async(&mut conn)
         .await?;
     Ok(raw.and_then(|r| serde_json::from_str(&r).ok()))
 }

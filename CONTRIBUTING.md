@@ -61,7 +61,7 @@ matrix. The short version:
 | Coverage | `cargo llvm-cov --workspace --all-features --html` |
 | UI lint / types / build | `npm run lint && npm run typecheck && npm run build` |
 | Supply chain | `cargo audit && cargo deny check` |
-| Fuzz (nightly) | `cd api/fuzz && cargo +nightly fuzz run authorize_params -- -max_total_time=60` |
+| Fuzz (nightly) | `api/fuzz/run.sh 60` (one target: `api/fuzz/run.sh 60 authorize_params`) |
 
 Integration tests need Postgres and Valkey (or any Redis-protocol server). Point them at running servers with
 `RIDM_TEST_DATABASE_URL` and `RIDM_TEST_REDIS_URL` (for example the docker-compose
@@ -80,6 +80,11 @@ merges.
 - Open an issue or discussion first for anything larger than a bug fix.
 - Keep PRs focused; one logical change per PR.
 - `main` is protected: every required status check must pass and no one can bypass.
+  Those checks are `static`, `unit`, `integration`, `coverage`, `ui-build`, `ui-e2e`,
+  `load-smoke`, `fuzz-smoke`, `packaging` (all in the `ci` workflow) and `conformance`.
+  Adding a suite means adding it to `working-plan.md` §6 and to branch protection in the
+  same pull request. The long runs — four hours a fuzz target (`weekly`) and the 200-VU
+  load baseline (`release`) — do not gate a pull request.
 - Do not bump versions. Releases bump `Cargo.toml` and `package.json` once, at release time.
 - Update `README.md` (and docs) when behaviour or configuration changes.
 - Commit messages: imperative subject line, body explains *why*.

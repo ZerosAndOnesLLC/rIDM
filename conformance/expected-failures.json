@@ -1,0 +1,20 @@
+[
+    {
+        "test-name": "oidcc-server",
+        "variant": "*",
+        "configuration-filename": "*",
+        "current-block": "",
+        "condition": "EnsureIdTokenDoesNotContainNonRequestedClaims",
+        "expected-result": "warning",
+        "comment": "The ID token carries `tid`, the tenant's id. One rIDM deployment issues for many tenants, so a relying party serving several of them keys on it; the issuer only names the tenant's slug. Documented in the README under Token claims."
+    },
+    {
+        "test-name": "oidcc-claims-essential",
+        "variant": "*",
+        "configuration-filename": "*",
+        "current-block": "",
+        "condition": "EnsureUserInfoContainsName",
+        "expected-result": "warning",
+        "comment": "rIDM does not implement the `claims` request parameter (OIDC Core 5.5) and says so in discovery with `claims_parameter_supported: false`, so a claim asked for that way is not returned. The scopes cover the same claims."
+    }
+]

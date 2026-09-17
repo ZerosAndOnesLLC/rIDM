@@ -1133,6 +1133,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/tenants/{slug}/scim/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["scim_list"];
+        put?: never;
+        /** The token is returned once, in this response. */
+        post: operations["scim_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/scim/tokens/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["scim_revoke"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/tenants/{slug}/scopes": {
         parameters: {
             query?: never;
@@ -1643,6 +1676,22 @@ export interface paths {
         get: operations["webhooks_deliveries"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/webhooks/{webhook}/deliveries/redeliver-dead": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["webhooks_redeliver_dead"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2593,10 +2642,21 @@ export interface components {
             /** Format: date-time */
             created_at: string;
             description?: string | null;
+            /**
+             * @description Every access token must be sender-constrained with a DPoP proof
+             *     (RFC 9449 §5.2 `dpop_bound_access_tokens`).
+             */
+            dpop_bound_access_tokens: boolean;
             frontchannel_logout_uri?: string | null;
             /** Format: uuid */
             id: string;
             id_token_encryption?: null | components["schemas"]["IdTokenEncryptionConfig"];
+            /**
+             * @description Carry the claims the `profile`, `email`, `address` and `phone` scopes
+             *     ask for in the ID token as well. Off by default: with an access token
+             *     issued, they belong at the userinfo endpoint (OIDC Core §5.4).
+             */
+            id_token_scope_claims: boolean;
             /** Format: int32 */
             id_token_ttl_secs?: number | null;
             initiate_login_uri?: string | null;
@@ -2721,6 +2781,10 @@ export interface components {
             /** @description The bearer token, shown once. */
             token: string;
         };
+        /** @description The token is returned once, here. */
+        CreatedScimToken: components["schemas"]["ScimToken"] & {
+            token: string;
+        };
         /** @description Response to a create or password change that minted a temporary password. */
         CreatedUser: components["schemas"]["User"] & {
             temporary_password?: string | null;
@@ -2769,6 +2833,13 @@ export interface components {
             allowed_grants: string[];
             /** @default disabled */
             mode: components["schemas"]["DcrMode"];
+            /**
+             * @description Whether dynamically registered confidential clients must use PKCE at
+             *     `/authorize` (public clients always must). On by default; the OpenID
+             *     Connect basic profile registers confidential clients without PKCE.
+             * @default true
+             */
+            require_pkce: boolean;
         };
         DeleteAccount: {
             /** @description The username, typed again. */
@@ -3479,9 +3550,13 @@ export interface components {
             /** @default null */
             description: string | null;
             /** @default null */
+            dpop_bound_access_tokens: boolean | null;
+            /** @default null */
             frontchannel_logout_uri: string | null;
             /** @default null */
             id_token_encryption: null | components["schemas"]["IdTokenEncryptionConfig"];
+            /** @default null */
+            id_token_scope_claims: boolean | null;
             /**
              * Format: int32
              * @default null
@@ -3677,6 +3752,16 @@ export interface components {
             /** @default  */
             name: string;
         };
+        NewScimToken: {
+            /**
+             * Format: int32
+             * @description Days until the token expires; absent for a token without expiry.
+             * @default null
+             */
+            expires_in_days: number | null;
+            /** @default  */
+            name: string;
+        };
         NewScope: {
             /** @default [] */
             claims: string[];
@@ -3818,6 +3903,8 @@ export interface components {
                 deleted_at?: string | null;
                 email?: string | null;
                 email_verified: boolean;
+                /** @description The provisioning system's identifier (SCIM `externalId`), unique per tenant. */
+                external_id?: string | null;
                 /** Format: int32 */
                 failed_attempts: number;
                 /** Format: uuid */
@@ -4115,6 +4202,54 @@ export interface components {
             display_name: string;
             preset?: string | null;
         };
+        /**
+         * @description Request ceilings enforced on this tenant's OAuth and sign-in endpoints
+         *     (counted in fixed windows in Valkey, shared by every node). Each limit is
+         *     requests per `window_secs`; 0 switches that limit off. The deployment-wide
+         *     per-address ceiling (`RATE_LIMIT_IP_PER_MINUTE`) applies on top.
+         */
+        RateLimitPolicy: {
+            /**
+             * Format: int32
+             * @description `/authorize`, `/par` and dynamic registration per client address.
+             * @default 300
+             */
+            authorize_per_ip: number;
+            /** @default true */
+            enabled: boolean;
+            /**
+             * Format: int32
+             * @description The browser flow API (flows, recovery, verification, invitations,
+             *     device verification, brokering) per client address.
+             * @default 600
+             */
+            flows_per_ip: number;
+            /**
+             * Format: int32
+             * @description Every limited endpoint together, across all addresses (0 = off).
+             * @default 0
+             */
+            tenant_total: number;
+            /**
+             * Format: int32
+             * @description The same endpoints per authenticated client (counted before the
+             *     secret is checked, so guessing a secret is bounded too).
+             * @default 1200
+             */
+            token_per_client: number;
+            /**
+             * Format: int32
+             * @description `/token`, `/introspect`, `/revoke`, `/userinfo`, `/device_authorization` per client address.
+             * @default 600
+             */
+            token_per_ip: number;
+            /**
+             * Format: int32
+             * @description Window length in seconds (1..=3600).
+             * @default 60
+             */
+            window_secs: number;
+        };
         RecoveryCodes: {
             recovery_codes: string[];
         };
@@ -4140,6 +4275,11 @@ export interface components {
         RegistrationTokenView: {
             registration_access_token: string;
             registration_client_uri: string;
+        };
+        /** @description How many dead deliveries went back on the queue. */
+        Requeued: {
+            /** Format: int64 */
+            requeued: number;
         };
         ResourceServer: {
             allow_offline_access: boolean;
@@ -4293,6 +4433,28 @@ export interface components {
          * @enum {string}
          */
         RsaBits: "B2048" | "B3072" | "B4096";
+        /** @description A bearer token a provisioning system uses against `/scim/v2/{tenant}`. */
+        ScimToken: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            last_used_at?: string | null;
+            name: string;
+            /** Format: date-time */
+            revoked_at?: string | null;
+            /** Format: uuid */
+            tenant_id: string;
+        };
+        /** @description The tenant's tokens and where a provisioning system should point. */
+        ScimTokens: {
+            /** @description `{PUBLIC_URL}/scim/v2/{slug}`. */
+            base_url: string;
+            tokens: components["schemas"]["ScimToken"][];
+        };
         Scope: {
             claims: string[];
             /** Format: date-time */
@@ -4652,7 +4814,8 @@ export interface components {
             /**
              * @default {
              *       "allowed_grants": [],
-             *       "mode": "disabled"
+             *       "mode": "disabled",
+             *       "require_pkce": true
              *     }
              */
             dcr: components["schemas"]["DcrPolicy"];
@@ -4733,6 +4896,18 @@ export interface components {
              *     }
              */
             password: components["schemas"]["PasswordPolicy"];
+            /**
+             * @default {
+             *       "authorize_per_ip": 300,
+             *       "enabled": true,
+             *       "flows_per_ip": 600,
+             *       "tenant_total": 0,
+             *       "token_per_client": 1200,
+             *       "token_per_ip": 600,
+             *       "window_secs": 60
+             *     }
+             */
+            rate_limits: components["schemas"]["RateLimitPolicy"];
             /**
              * @default {
              *       "allowed_email_domains": [],
@@ -4828,6 +5003,8 @@ export interface components {
             deleted_at?: string | null;
             email?: string | null;
             email_verified: boolean;
+            /** @description The provisioning system's identifier (SCIM `externalId`), unique per tenant. */
+            external_id?: string | null;
             /** Format: int32 */
             failed_attempts: number;
             /** Format: uuid */
@@ -4896,6 +5073,8 @@ export interface components {
             email: string | null;
             /** @default null */
             email_verified: boolean | null;
+            /** @default null */
+            external_id: string | null;
             /** @default null */
             locale: string | null;
             /** @default null */
@@ -11385,6 +11564,166 @@ export interface operations {
             };
         };
     };
+    scim_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScimTokens"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    scim_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewScimToken"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedScimToken"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    scim_revoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     scopes_list: {
         parameters: {
             query?: never;
@@ -13933,6 +14272,65 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebhookDelivery"][];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    webhooks_redeliver_dead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                webhook: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Requeued"];
                 };
             };
             /** @description Bad request */

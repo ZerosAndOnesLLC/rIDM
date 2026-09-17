@@ -129,7 +129,11 @@ fn decode_header(jwt: &str) -> serde_json::Value {
 async fn access_and_id_tokens_sign_and_verify_for_every_algorithm() {
     for alg in [SigningAlg::RS256, SigningAlg::ES256, SigningAlg::EdDSA] {
         let fx = fixture(alg).await;
-        let client = TokenClient::public("web-app");
+        // Opted in, so one ID token carries every claim shape this test signs.
+        let client = TokenClient {
+            id_token_scope_claims: true,
+            ..TokenClient::public("web-app")
+        };
         let scopes: Vec<String> = ["openid", "profile", "email"].map(String::from).to_vec();
         let issuer = format!("{}/t/{}", fx.app.base_url, fx.tenant.slug);
 
@@ -147,6 +151,8 @@ async fn access_and_id_tokens_sign_and_verify_for_every_algorithm() {
                 auth_time: None,
                 amr: &["pwd".into()],
                 acr: None,
+                cnf_jkt: None,
+                act: None,
             },
         )
         .await
@@ -304,6 +310,8 @@ async fn expired_tokens_and_revoked_keys_are_rejected() {
             auth_time: None,
             amr: &[],
             acr: None,
+            cnf_jkt: None,
+            act: None,
         },
     )
     .await
@@ -352,6 +360,8 @@ async fn expired_tokens_and_revoked_keys_are_rejected() {
             auth_time: None,
             amr: &[],
             acr: None,
+            cnf_jkt: None,
+            act: None,
         },
     )
     .await
@@ -476,6 +486,8 @@ async fn mappers_and_encrypted_id_tokens() {
             auth_time: None,
             amr: &[],
             acr: None,
+            cnf_jkt: None,
+            act: None,
         },
     )
     .await

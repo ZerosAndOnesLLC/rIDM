@@ -25,6 +25,13 @@ pub struct IssueRequest<'a> {
     pub scopes: &'a [String],
     pub audiences: &'a [String],
     pub ttl: Duration,
+    /// Bind the family to a DPoP key (public clients presenting a proof).
+    pub dpop_jkt: Option<&'a str>,
+    /// Authentication context to repeat in every ID token minted from this
+    /// family (OIDC Core §12.2).
+    pub auth_time: Option<DateTime<Utc>>,
+    pub amr: &'a [String],
+    pub acr: Option<&'a str>,
 }
 
 /// A freshly minted token: the secret is only ever returned here.
@@ -52,21 +59,29 @@ async fn insert_in(
     expires_at: DateTime<Utc>,
 ) -> AppResult<Issued> {
     let token = random_token();
-    let record = repos::refresh_tokens::insert(
-        &mut *tx,
+    let now = Utc::now();
+    let row = RefreshToken {
+        id: Uuid::now_v7(),
         tenant_id,
-        Uuid::now_v7(),
         family_id,
-        req.client_id,
-        req.user_id,
-        req.session_id,
-        &hash(&token),
-        req.scopes,
-        req.audiences,
+        client_id: req.client_id.to_string(),
+        user_id: req.user_id,
+        session_id: req.session_id,
+        token_hash: hash(&token),
+        scopes: req.scopes.to_vec(),
+        audiences: req.audiences.to_vec(),
+        auth_time: req.auth_time,
+        amr: req.amr.to_vec(),
+        acr: req.acr.map(str::to_string),
         expires_at,
-    )
-    .await
-    .map_err(AppError::from_db)?;
+        dpop_jkt: req.dpop_jkt.map(str::to_string),
+        consumed_at: None,
+        revoked_at: None,
+        created_at: now,
+    };
+    let record = repos::refresh_tokens::insert(&mut *tx, &row)
+        .await
+        .map_err(AppError::from_db)?;
     Ok(Issued { token, record })
 }
 
@@ -92,11 +107,14 @@ pub async fn issue(state: &AppState, tenant_id: Uuid, req: IssueRequest<'_>) -> 
 /// * already consumed → theft is assumed: the whole family is revoked and
 ///   `invalid_grant` is returned (the legitimate client's next attempt fails
 ///   too, forcing a fresh login).
+/// * bound to a DPoP key (`dpop_jkt`) and the request's proof key differs →
+///   `invalid_grant`, and the token stays unspent (RFC 9449 §5).
 pub async fn rotate(
     state: &AppState,
     tenant_id: Uuid,
     client_id: &str,
     presented: &str,
+    dpop_jkt: Option<&str>,
 ) -> Result<Issued, OAuthError> {
     if !presented.starts_with(PREFIX) || presented.len() > 256 {
         return Err(OAuthError::new(
@@ -154,6 +172,14 @@ pub async fn rotate(
             "refresh token expired",
         ));
     }
+    if let Some(bound) = current.dpop_jkt.as_deref()
+        && dpop_jkt != Some(bound)
+    {
+        return Err(OAuthError::new(
+            OAuthErrorCode::InvalidGrant,
+            "refresh token is bound to another DPoP key",
+        ));
+    }
 
     repos::refresh_tokens::mark_consumed(&mut *tx, tenant_id, current.id).await?;
     let req = IssueRequest {
@@ -163,8 +189,12 @@ pub async fn rotate(
         scopes: &current.scopes,
         audiences: &current.audiences,
         ttl: Duration::zero(),
+        dpop_jkt: current.dpop_jkt.as_deref(),
+        auth_time: current.auth_time,
+        amr: &current.amr,
+        acr: current.acr.as_deref(),
     };
-    // The family keeps its absolute expiry; rotation never extends it.
+    // The family keeps its absolute expiry (and its DPoP binding); rotation never extends it.
     let issued = insert_in(
         &mut tx,
         tenant_id,

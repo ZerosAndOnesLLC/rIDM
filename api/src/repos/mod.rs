@@ -1,5 +1,6 @@
 pub mod audit;
 pub mod claim_mappers;
+pub mod cleanup;
 pub mod clients;
 pub mod consents;
 pub mod credentials;
@@ -18,6 +19,7 @@ pub mod provider_settings;
 pub mod refresh_tokens;
 pub mod resource_servers;
 pub mod roles;
+pub mod scim_tokens;
 pub mod scopes;
 pub mod sessions;
 pub mod signing_keys;

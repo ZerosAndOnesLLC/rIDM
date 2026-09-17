@@ -1,14 +1,20 @@
 //! Outbound webhooks: configuration with an encrypted HMAC secret, a
-//! dispatcher that turns bus events into queued deliveries, and a delivery
-//! pass with retries, backoff and dead-lettering. Every delivery carries
-//! `X-RIDM-Signature: t=<unix>,v1=<hex HMAC-SHA256(secret, "<t>.<body>")>`.
+//! dispatcher that turns bus events into queued deliveries and sends them
+//! at once, and a delivery pass (also run by the `webhook_delivery` job for
+//! retries) with concurrent attempts, backoff and dead-lettering. Every
+//! delivery carries `X-RIDM-Signature: t=<unix>,v1=<hex HMAC-SHA256(secret,
+//! "<t>.<body>")>`; a dead letter raises `webhook.delivery_dead`.
 
+use std::sync::LazyLock;
 use std::time::Duration as StdDuration;
+
+use futures::StreamExt as _;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{Duration, Utc};
 use hmac::{Hmac, KeyInit as _, Mac as _};
+use redis::AsyncCommands as _;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use ridm_core::providers::Encrypted;
 use serde::Serialize;
@@ -29,6 +35,22 @@ const SECRET_PREFIX: &str = "whsec_";
 const DEFAULT_MAX_ATTEMPTS: i32 = 8;
 const REQUEST_TIMEOUT: StdDuration = StdDuration::from_secs(10);
 const SNIPPET_BYTES: usize = 512;
+/// Deliveries attempted at the same time within one pass.
+const CONCURRENCY: usize = 8;
+/// Deliveries one prompt pass (right after an event) takes on.
+const PROMPT_BATCH: i64 = 50;
+/// Lock that keeps one prompt pass per tenant in flight at a time.
+const PROMPT_LOCK_SECS: u64 = 15;
+
+/// One connection pool for every delivery.
+static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .timeout(REQUEST_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
+        .user_agent("rIDM-Webhooks/1")
+        .build()
+        .expect("reqwest client")
+});
 
 fn aad(tenant_id: Uuid, id: Uuid) -> Vec<u8> {
     format!("webhooks:{tenant_id}:{id}").into_bytes()
@@ -64,9 +86,39 @@ async fn decrypt_secret(state: &AppState, w: &Webhook) -> AppResult<Zeroizing<St
     Ok(Zeroizing::new(String::from_utf8_lossy(&plain).into_owned()))
 }
 
+/// Literal addresses that must never be a webhook target: this server's
+/// own network (SSRF). Loopback stays allowed for plain-http development.
+fn is_private_literal(host: &str) -> bool {
+    let bare = host.trim_start_matches('[').trim_end_matches(']');
+    match bare.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(ip)) => {
+            ip.is_private()
+                || ip.is_link_local()
+                || ip.is_unspecified()
+                || ip.is_broadcast()
+                || (ip.octets()[0] == 100 && (64..128).contains(&ip.octets()[1]))
+                || ip.octets()[0] == 0
+        }
+        Ok(std::net::IpAddr::V6(ip)) => {
+            ip.is_unspecified()
+                || (ip.segments()[0] & 0xfe00) == 0xfc00
+                || (ip.segments()[0] & 0xffc0) == 0xfe80
+                || ip
+                    .to_ipv4_mapped()
+                    .is_some_and(|v4| v4.is_private() || v4.is_link_local() || v4.is_loopback())
+        }
+        Err(_) => false,
+    }
+}
+
 fn validate_url(raw: &str) -> AppResult<()> {
     let u = url::Url::parse(raw)
         .map_err(|_| AppError::BadRequest(format!("url: `{raw}` is not a valid URL")))?;
+    if is_private_literal(u.host_str().unwrap_or_default()) {
+        return Err(AppError::BadRequest(
+            "url: private, link-local and unspecified addresses are not allowed".into(),
+        ));
+    }
     match u.scheme() {
         "https" => Ok(()),
         "http"
@@ -356,6 +408,11 @@ pub async fn dispatch(state: &AppState, event: &Event) -> AppResult<usize> {
         return Ok(0);
     };
     let name = event.name();
+    // A dead letter's own event never becomes a delivery: a failing endpoint
+    // would otherwise breed one new delivery per death, forever.
+    if name == "webhook.delivery_dead" {
+        return Ok(0);
+    }
     // Deliveries of our own configuration changes would loop on themselves only
     // in the sense of noise; they are still events and are delivered.
     let targets: Vec<Webhook> = enabled_cached(state, tenant_id)
@@ -382,7 +439,42 @@ pub async fn dispatch(state: &AppState, event: &Event) -> AppResult<usize> {
         .await?;
     }
     tx.commit().await?;
+    // Send now rather than at the job's next tick; retries stay with the job.
+    let prompt = state.clone();
+    tokio::spawn(async move {
+        if let Err(err) = deliver_promptly(&prompt, tenant_id).await {
+            tracing::warn!(%tenant_id, error = %err, "prompt webhook delivery failed");
+        }
+    });
     Ok(targets.len())
+}
+
+/// One prompt delivery pass per tenant at a time (a short Valkey lock);
+/// when a pass is already running it will pick the new rows up itself.
+async fn deliver_promptly(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
+    let key = format!("{}:t:{tenant_id}:webhooks:prompt", cache_keys::PREFIX);
+    let mut conn = state.redis.get().await?;
+    let mine: bool = redis::cmd("SET")
+        .arg(&key)
+        .arg(1u8)
+        .arg("NX")
+        .arg("EX")
+        .arg(PROMPT_LOCK_SECS)
+        .query_async(&mut conn)
+        .await?;
+    if !mine {
+        return Ok(());
+    }
+    // Rows the current pass may have committed after this one's claim are
+    // few; drain until a pass finds nothing so none waits for the job.
+    loop {
+        let (delivered, failed) = deliver_due(state, tenant_id, PROMPT_BATCH).await?;
+        if delivered + failed == 0 {
+            break;
+        }
+    }
+    let _: () = conn.del(&key).await.unwrap_or(());
+    Ok(())
 }
 
 /// Subscribe to the event bus and queue deliveries; the delivery job sends them.
@@ -450,16 +542,11 @@ async fn attempt(state: &AppState, w: &Webhook, delivery: &WebhookDelivery) -> A
         "event": delivery.payload,
     }))?;
     let ts = Utc::now().timestamp();
-    let client = reqwest::Client::builder()
-        .timeout(REQUEST_TIMEOUT)
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-    let mut req = client
+    let mut req = HTTP
         .post(&w.url)
         .header("content-type", "application/json")
-        .header("user-agent", "rIDM-Webhooks/1")
         .header("x-ridm-event", &delivery.event_name)
+        .header("x-ridm-timestamp", ts.to_string())
         .header("x-ridm-delivery", delivery.id.to_string())
         .header("x-ridm-webhook", w.id.to_string())
         .header("x-ridm-signature", sign(&secret, ts, &body));
@@ -504,7 +591,8 @@ async fn attempt(state: &AppState, w: &Webhook, delivery: &WebhookDelivery) -> A
     })
 }
 
-/// Deliver due deliveries of one tenant. Returns (delivered, failed).
+/// Deliver due deliveries of one tenant, several at a time. Returns
+/// (delivered, failed); a failure that is dead raises `webhook.delivery_dead`.
 pub async fn deliver_due(
     state: &AppState,
     tenant_id: Uuid,
@@ -514,53 +602,99 @@ pub async fn deliver_due(
     repos::webhooks::requeue_stale(&mut *tx, tenant_id, Utc::now() - Duration::minutes(10)).await?;
     let claimed = repos::webhooks::claim_due(&mut *tx, tenant_id, limit).await?;
     tx.commit().await?;
+    let outcomes: Vec<AppResult<bool>> = futures::stream::iter(claimed)
+        .map(|d| deliver_one(state, tenant_id, d))
+        .buffer_unordered(CONCURRENCY)
+        .collect()
+        .await;
     let mut delivered = 0;
     let mut failed = 0;
-    for d in claimed {
-        let webhook = get(state, tenant_id, d.webhook_id).await;
-        let outcome = match &webhook {
-            Ok(w) if w.enabled => attempt(state, w, &d).await?,
-            Ok(_) => Attempt {
-                status: None,
-                snippet: None,
-                error: Some("webhook is disabled".into()),
-                retryable: false,
-            },
-            Err(_) => continue,
-        };
-        let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-        match outcome.error {
-            None => {
-                repos::webhooks::mark_delivered(
-                    &mut *tx,
-                    tenant_id,
-                    d.id,
-                    outcome.status.unwrap_or(200),
-                    outcome.snippet.as_deref(),
-                )
-                .await?;
-                delivered += 1;
-            }
-            Some(err) => {
-                let attempts = d.attempts + 1;
-                let dead = !outcome.retryable || attempts >= d.max_attempts;
-                repos::webhooks::mark_failed(
-                    &mut *tx,
-                    tenant_id,
-                    d.id,
-                    outcome.status,
-                    &err,
-                    outcome.snippet.as_deref(),
-                    Utc::now() + backoff(attempts),
-                    dead,
-                )
-                .await?;
-                failed += 1;
-            }
+    for o in outcomes {
+        match o? {
+            true => delivered += 1,
+            false => failed += 1,
         }
-        tx.commit().await?;
     }
     Ok((delivered, failed))
+}
+
+/// One claimed delivery: attempt, record, dead-letter. `Ok(true)` when delivered.
+async fn deliver_one(state: &AppState, tenant_id: Uuid, d: WebhookDelivery) -> AppResult<bool> {
+    let webhook = get(state, tenant_id, d.webhook_id).await;
+    let outcome = match &webhook {
+        Ok(w) if w.enabled => attempt(state, w, &d).await?,
+        Ok(_) => Attempt {
+            status: None,
+            snippet: None,
+            error: Some("webhook is disabled".into()),
+            retryable: false,
+        },
+        // The webhook vanished under the queue (cascade takes the rows too).
+        Err(_) => return Ok(false),
+    };
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let result = match outcome.error {
+        None => {
+            repos::webhooks::mark_delivered(
+                &mut *tx,
+                tenant_id,
+                d.id,
+                outcome.status.unwrap_or(200),
+                outcome.snippet.as_deref(),
+            )
+            .await?;
+            metrics::counter!("ridm_webhook_deliveries_total", "outcome" => "delivered")
+                .increment(1);
+            Ok(true)
+        }
+        Some(err) => {
+            let attempts = d.attempts + 1;
+            let dead = !outcome.retryable || attempts >= d.max_attempts;
+            repos::webhooks::mark_failed(
+                &mut *tx,
+                tenant_id,
+                d.id,
+                outcome.status,
+                &err,
+                outcome.snippet.as_deref(),
+                Utc::now() + backoff(attempts),
+                dead,
+            )
+            .await?;
+            metrics::counter!(
+                "ridm_webhook_deliveries_total",
+                "outcome" => if dead { "dead" } else { "retry" }
+            )
+            .increment(1);
+            if dead {
+                tracing::warn!(%tenant_id, webhook = %d.webhook_id, delivery = %d.id, event = %d.event_name, error = %err, "webhook delivery dead-lettered");
+                state.events.publish(Event::new(
+                    Some(tenant_id),
+                    Actor::System,
+                    EventKind::WebhookDeliveryDead {
+                        webhook_id: d.webhook_id,
+                        delivery_id: d.id,
+                        event_name: d.event_name.clone(),
+                    },
+                ));
+            }
+            Ok(false)
+        }
+    };
+    tx.commit().await?;
+    result
+}
+
+/// Put every dead delivery of a webhook back on the queue and send now.
+pub async fn redeliver_dead(state: &AppState, tenant_id: Uuid, webhook_id: Uuid) -> AppResult<u64> {
+    get(state, tenant_id, webhook_id).await?;
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let n = repos::webhooks::requeue_dead(&mut *tx, tenant_id, webhook_id).await?;
+    tx.commit().await?;
+    if n > 0 {
+        deliver_due(state, tenant_id, i64::try_from(n).unwrap_or(i64::MAX)).await?;
+    }
+    Ok(n)
 }
 
 pub async fn list_deliveries(
@@ -571,7 +705,7 @@ pub async fn list_deliveries(
     limit: i64,
 ) -> AppResult<Vec<WebhookDelivery>> {
     get(state, tenant_id, webhook_id).await?;
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let mut tx = db::read_tx(&state.db_read, tenant_id).await?;
     let rows = repos::webhooks::list_deliveries(
         &mut *tx,
         tenant_id,
@@ -676,6 +810,22 @@ mod tests {
         assert!(validate_events(&["User.Created".into()]).is_err());
         assert!(validate_events(&["*.created".into()]).is_err());
         assert!(validate_events(&[]).is_err());
+    }
+
+    #[test]
+    fn private_targets_are_refused() {
+        assert!(validate_url("https://10.1.2.3/hook").is_err());
+        assert!(validate_url("https://192.168.0.9/hook").is_err());
+        assert!(validate_url("https://169.254.169.254/latest").is_err());
+        assert!(validate_url("https://100.64.0.1/").is_err());
+        assert!(validate_url("https://[fd00::1]/").is_err());
+        assert!(validate_url("https://[::ffff:10.0.0.1]/").is_err());
+        assert!(
+            validate_url("http://127.0.0.1:9/hook").is_ok(),
+            "loopback for dev"
+        );
+        assert!(validate_url("https://hooks.example.com/x").is_ok());
+        assert!(validate_url("http://hooks.example.com/x").is_err());
     }
 
     #[test]

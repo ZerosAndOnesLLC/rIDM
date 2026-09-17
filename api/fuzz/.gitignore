@@ -1,0 +1,5 @@
+# `cargo fuzz` writes here; only the seed inputs under `seeds/` are committed.
+target/
+corpus/
+artifacts/
+coverage/

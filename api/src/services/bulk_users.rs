@@ -297,6 +297,7 @@ async fn import_one(
             attributes: row.attributes,
             locale: row.locale,
             org_id: None,
+            external_id: None,
             defer_required: false,
         },
     )

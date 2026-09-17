@@ -1,0 +1,1 @@
+client_id=app&request_uri=urn%3Aietf%3Aparams%3Aoauth%3Arequest_uri%3A6esc&prompt=none&max_age=0&acr_values=urn%3Aridm%3Aacr%3Amfa&resource=https%3A%2F%2Fapi.example%2F&resource=https%3A%2F%2Fother.example%2F

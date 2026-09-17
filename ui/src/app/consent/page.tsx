@@ -75,7 +75,7 @@ function ConsentPage() {
             ))}
           </ul>
           <div className="flex flex-col gap-2 sm:flex-row-reverse">
-            <Button type="button" busy={busy === "approve"} disabled={busy !== null} onClick={() => void decide(true)}>
+            <Button id="consent-approve" type="button" busy={busy === "approve"} disabled={busy !== null} onClick={() => void decide(true)}>
               {t("consent.approve")}
             </Button>
             <Button type="button" variant="secondary" busy={busy === "deny"} disabled={busy !== null} onClick={() => void decide(false)}>

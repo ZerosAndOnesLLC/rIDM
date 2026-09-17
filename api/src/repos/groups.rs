@@ -9,7 +9,7 @@ const COLUMNS: &str =
     "id, tenant_id, parent_id, name, description, attributes, created_at, updated_at";
 const USER_COLUMNS: &str = "u.id, u.tenant_id, u.org_id, u.username, u.email, u.email_verified, u.phone, \
     u.phone_verified, u.password_hash, u.password_algo, u.must_change_password, u.password_expires_at, \
-    u.password_changed_at, u.status, u.attributes, u.locale, u.last_login_at, u.failed_attempts, \
+    u.password_changed_at, u.status, u.attributes, u.locale, u.external_id, u.last_login_at, u.failed_attempts, \
     u.locked_until, u.deleted_at, u.terms_accepted_at, u.created_at, u.updated_at";
 
 pub async fn find_by_id<'e>(

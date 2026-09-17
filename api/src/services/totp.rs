@@ -168,7 +168,7 @@ pub async fn begin_enrolment(
         .arg("NX")
         .arg("EX")
         .arg(ENROLMENT_TTL_SECS)
-        .query_async(&mut *conn)
+        .query_async(&mut conn)
         .await?;
     let secret = if claimed.is_some() {
         fresh
@@ -376,7 +376,7 @@ async fn mark_step_used(
         .arg("NX")
         .arg("EX")
         .arg(ttl)
-        .query_async(&mut *conn)
+        .query_async(&mut conn)
         .await?;
     Ok(set.is_some())
 }

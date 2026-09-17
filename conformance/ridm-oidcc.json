@@ -1,0 +1,17 @@
+{
+    "description": "rIDM ($OP_ISSUER); browser steps are driven by conformance/driver.mjs",
+    "server": {
+        "discoveryUrl": "$OP_ISSUER/.well-known/openid-configuration",
+        "login_hint": "$OP_USER"
+    },
+    "client": {
+        "client_name": "conformance-first"
+    },
+    "client2": {
+        "client_name": "conformance-second"
+    },
+    "client_secret_post": {
+        "client_name": "conformance-post"
+    },
+    "browser": []
+}

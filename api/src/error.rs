@@ -278,6 +278,9 @@ pub struct OAuthError {
     pub error_uri: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub state: Option<String>,
+    /// Seconds a rate-limited caller should wait (`Retry-After`; 429).
+    #[serde(skip)]
+    pub retry_after_secs: Option<u64>,
 }
 
 impl OAuthError {
@@ -287,6 +290,7 @@ impl OAuthError {
             error_description: Some(description.into()),
             error_uri: None,
             state: None,
+            retry_after_secs: None,
         }
     }
 
@@ -296,7 +300,18 @@ impl OAuthError {
             error_description: None,
             error_uri: None,
             state: None,
+            retry_after_secs: None,
         }
+    }
+
+    /// A refused request that may be retried after `secs` (rendered as 429).
+    pub fn rate_limited(secs: u64) -> Self {
+        let mut e = Self::new(
+            OAuthErrorCode::SlowDown,
+            format!("too many requests; retry after {secs} seconds"),
+        );
+        e.retry_after_secs = Some(secs);
+        e
     }
 
     pub fn with_state(mut self, state: Option<String>) -> Self {
@@ -336,7 +351,7 @@ impl From<AppError> for OAuthError {
             }
             AppError::NotFound(what) => Self::invalid_request(format!("{what} not found")),
             AppError::Conflict(m) => Self::invalid_request(m),
-            AppError::RateLimited { .. } => Self::code(OAuthErrorCode::SlowDown),
+            AppError::RateLimited { retry_after_secs } => Self::rate_limited(retry_after_secs),
             AppError::Unavailable(_) => Self::code(OAuthErrorCode::TemporarilyUnavailable),
             AppError::Database(_) | AppError::Cache(_) | AppError::Internal(_) => {
                 tracing::error!(error = ?err, "oauth request failed");
@@ -354,11 +369,19 @@ impl From<sqlx::Error> for OAuthError {
 
 impl IntoResponse for OAuthError {
     fn into_response(self) -> Response {
-        let status = self.error.status();
+        let status = match self.retry_after_secs {
+            Some(_) => StatusCode::TOO_MANY_REQUESTS,
+            None => self.error.status(),
+        };
         let mut response = (status, axum::Json(&self)).into_response();
         let headers = response.headers_mut();
         headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
         headers.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+        if let Some(secs) = self.retry_after_secs
+            && let Ok(v) = HeaderValue::from_str(&secs.to_string())
+        {
+            headers.insert(header::RETRY_AFTER, v);
+        }
         if self.error == OAuthErrorCode::InvalidClient {
             headers.insert(
                 header::WWW_AUTHENTICATE,

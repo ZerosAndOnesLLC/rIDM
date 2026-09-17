@@ -1,0 +1,26 @@
+[
+    {
+        "test-name": "oidcc-idtoken-unsigned",
+        "variant": "*",
+        "configuration-filename": "*",
+        "comment": "rIDM signs every ID token; `none` is not offered as an `id_token_signing_alg`, which the suite accepts for certification."
+    },
+    {
+        "test-name": "oidcc-request-uri-unsigned-supported-correctly-or-rejected-as-unsupported",
+        "variant": "*",
+        "configuration-filename": "*",
+        "comment": "Request objects must be signed: `none` is not in `request_object_signing_alg_values_supported`."
+    },
+    {
+        "test-name": "oidcc-unsigned-request-object-supported-correctly-or-rejected-as-unsupported",
+        "variant": "*",
+        "configuration-filename": "*",
+        "comment": "Request objects must be signed: `none` is not in `request_object_signing_alg_values_supported`."
+    },
+    {
+        "test-name": "oidcc-ensure-request-object-with-redirect-uri",
+        "variant": "*",
+        "configuration-filename": "*",
+        "comment": "The test builds an unsigned request object, which rIDM does not accept."
+    }
+]

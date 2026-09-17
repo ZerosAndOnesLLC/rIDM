@@ -35,9 +35,17 @@ pub fn profile_schema(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:profile_schema")
 }
 
-/// Published (active + retiring) keys of a tenant, i.e. the JWKS document.
-pub fn jwks(tenant_id: Uuid) -> String {
-    format!("{PREFIX}:t:{tenant_id}:jwks")
+/// Per-tenant version token folded into the JWKS cache key. Bumped on every
+/// signing-key change, so a document read before that change cannot be stored
+/// after it (deleting the key would leave that race open).
+pub fn keys_version(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:keys:ver")
+}
+
+/// Published (pending + active + retiring) keys of a tenant, i.e. the JWKS
+/// document, under the keys version.
+pub fn jwks(tenant_id: Uuid, version: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:jwks:{version}")
 }
 
 pub fn tenant_by_email_domain(domain: &str) -> String {
@@ -241,4 +249,48 @@ pub fn device_guesses(tenant_id: Uuid, ip: &str) -> String {
 /// Claimed while a personal access token's `last_used_at` is fresh enough.
 pub fn pat_touched(tenant_id: Uuid, token_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:pat:{token_id}:touched")
+}
+
+/// Fixed-window rate-limit counter for one bucket (see `services::rate_limit`).
+pub fn rate_limit(bucket: &str) -> String {
+    format!("{PREFIX}:rl:{bucket}")
+}
+
+/// Union of the CORS origins of a tenant's active clients (the CORS layer's
+/// allow list); evicted with every client change.
+pub fn client_origins(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:client_origins")
+}
+
+/// Every IP rule of a tenant (tenant-wide and per client), evicted on any rule change.
+pub fn ip_rules(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:ip_rules")
+}
+
+/// A resource server by identifier (the token endpoint's audience lookup).
+pub fn resource_server(tenant_id: Uuid, identifier: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:rs:{identifier}")
+}
+
+/// Permission names a set of roles holds on a resource server, under the
+/// roles version (any grant, role or permission change moves it).
+pub fn resource_server_permissions(
+    tenant_id: Uuid,
+    version: &str,
+    rs_id: Uuid,
+    roles_key: &str,
+) -> String {
+    format!("{PREFIX}:t:{tenant_id}:rsperms:{version}:{rs_id}:{roles_key}")
+}
+
+/// A user's groups (direct or effective) under the roles version, which
+/// every membership change bumps.
+pub fn user_groups(tenant_id: Uuid, version: &str, user_id: Uuid, effective: bool) -> String {
+    let kind = if effective { "eff" } else { "direct" };
+    format!("{PREFIX}:t:{tenant_id}:groups:{version}:{kind}:user:{user_id}")
+}
+
+/// Tenant document keyed by its custom domain (the request host).
+pub fn tenant_by_host(host: &str) -> String {
+    format!("{PREFIX}:tenant:host:{host}")
 }

@@ -46,9 +46,11 @@ async fn main() {
             std::process::exit(2);
         }
     };
-    telemetry::init(config.log_format);
+    telemetry::init_server(&config);
 
-    if let Err(err) = run(config).await {
+    let outcome = run(config).await;
+    telemetry::shutdown();
+    if let Err(err) = outcome {
         tracing::error!(error = %err, "fatal");
         std::process::exit(1);
     }
@@ -66,9 +68,11 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     }
     let cache = cache::connect(&config)?;
     cache::ping(&cache).await?;
+    let db_read = db::connect_read(&config, &db).await?;
 
     let bootstrap = config.bootstrap.clone();
-    let state = AppState::new(config, db, cache);
+    let mut state = AppState::new(config, db, cache);
+    state.db_read = db_read;
     if let Some(b) = bootstrap {
         let outcome = bootstrap::run(
             &state,

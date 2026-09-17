@@ -1,19 +1,56 @@
 //! Liveness and readiness probes.
 
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
 
 use crate::state::AppState;
-use crate::{cache, db};
+use crate::{cache, db, telemetry};
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
+        .route("/metrics", get(metrics))
+}
+
+/// Prometheus exposition of every counter, gauge and histogram; behind
+/// `METRICS_TOKEN` (`Authorization: Bearer`) when the deployment sets one.
+async fn metrics(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Some(expected) = &state.config.metrics_token {
+        let presented = headers
+            .get(header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .map(str::trim);
+        let ok = presented.is_some_and(|p| {
+            use subtle::ConstantTimeEq as _;
+            p.as_bytes().ct_eq(expected.expose().as_bytes()).into()
+        });
+        if !ok {
+            return (
+                StatusCode::UNAUTHORIZED,
+                [(
+                    header::WWW_AUTHENTICATE,
+                    HeaderValue::from_static("Bearer realm=\"metrics\""),
+                )],
+                "metrics token required",
+            )
+                .into_response();
+        }
+    }
+    let body = telemetry::prometheus().render();
+    (
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/plain; version=0.0.4; charset=utf-8"),
+        )],
+        body,
+    )
+        .into_response()
 }
 
 #[derive(Serialize)]

@@ -3,6 +3,7 @@ pub mod bearer;
 pub mod client_auth;
 pub mod device;
 pub mod discovery;
+pub mod dpop;
 pub mod end_session;
 pub mod introspect;
 pub mod jar;

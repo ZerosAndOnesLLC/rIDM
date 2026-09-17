@@ -215,7 +215,7 @@ async fn issue(
         .arg("NX")
         .arg("EX")
         .arg(RESEND_COOLDOWN_SECS)
-        .query_async(&mut *conn)
+        .query_async(&mut conn)
         .await?;
     if claimed.is_some() {
         let key = code_key(tenant.id, scope.id, channel, purpose);

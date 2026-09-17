@@ -136,6 +136,10 @@ async fn password_reset_by_email_token() {
             scopes: &[],
             audiences: &[],
             ttl: chrono::Duration::days(1),
+            dpop_jkt: None,
+            auth_time: None,
+            amr: &[],
+            acr: None,
         },
     )
     .await
@@ -227,7 +231,7 @@ async fn password_reset_by_email_token() {
         VerifyOutcome::Invalid
     );
     assert!(
-        refresh_tokens::rotate(&app.state, tid, "spa", &rt.token)
+        refresh_tokens::rotate(&app.state, tid, "spa", &rt.token, None)
             .await
             .is_err(),
         "refresh tokens revoked by the reset"

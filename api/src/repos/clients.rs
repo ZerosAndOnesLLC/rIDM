@@ -11,8 +11,8 @@ const COLUMNS: &str = "id, tenant_id, client_id, name, client_type, description,
     tos_uri, policy_uri, secret_hashes, jwks, jwks_uri, token_endpoint_auth_method, redirect_uris, \
     post_logout_redirect_uris, allowed_grants, allowed_scopes, allowed_audiences, access_token_ttl_secs, \
     refresh_token_ttl_secs, id_token_ttl_secs, access_token_format, id_token_encryption, subject_type, \
-    sector_identifier_uri, require_pkce, require_consent, cors_origins, initiate_login_uri, \
-    backchannel_logout_uri, frontchannel_logout_uri, service_account_user_id, \
+    sector_identifier_uri, require_pkce, require_consent, id_token_scope_claims, cors_origins, initiate_login_uri, \
+    backchannel_logout_uri, frontchannel_logout_uri, dpop_bound_access_tokens, service_account_user_id, \
     registration_access_token_hash, status, created_at, updated_at";
 
 pub async fn find_by_id<'e>(
@@ -51,8 +51,9 @@ pub async fn insert<'e>(exec: impl PgExecutor<'e>, c: &Client) -> Result<Client,
          redirect_uris, post_logout_redirect_uris, allowed_grants, allowed_scopes, allowed_audiences, \
          access_token_ttl_secs, refresh_token_ttl_secs, id_token_ttl_secs, access_token_format, \
          id_token_encryption, subject_type, sector_identifier_uri, require_pkce, require_consent, \
+         id_token_scope_claims, \
          cors_origins, initiate_login_uri, backchannel_logout_uri, frontchannel_logout_uri, \
-         service_account_user_id, registration_access_token_hash, status) VALUES (",
+         dpop_bound_access_tokens, service_account_user_id, registration_access_token_hash, status) VALUES (",
     );
     let mut s = qb.separated(", ");
     s.push_bind(c.id)
@@ -83,10 +84,12 @@ pub async fn insert<'e>(exec: impl PgExecutor<'e>, c: &Client) -> Result<Client,
         .push_bind(&c.sector_identifier_uri)
         .push_bind(c.require_pkce)
         .push_bind(c.require_consent)
+        .push_bind(c.id_token_scope_claims)
         .push_bind(&c.cors_origins)
         .push_bind(&c.initiate_login_uri)
         .push_bind(&c.backchannel_logout_uri)
         .push_bind(&c.frontchannel_logout_uri)
+        .push_bind(c.dpop_bound_access_tokens)
         .push_bind(c.service_account_user_id)
         .push_bind(&c.registration_access_token_hash)
         .push_bind(c.status);
@@ -152,6 +155,20 @@ pub async fn delete<'e>(
         .execute(exec)
         .await?;
     Ok(res.rows_affected() > 0)
+}
+
+/// Every distinct CORS origin registered on an active client of the tenant.
+pub async fn active_cors_origins<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT DISTINCT o FROM clients, unnest(cors_origins) AS o \
+         WHERE tenant_id = $1 AND status = 'active'",
+    )
+    .bind(tenant_id)
+    .fetch_all(exec)
+    .await
 }
 
 /// Keyset-paginated list with optional case-insensitive prefix search on client_id / name.
@@ -230,6 +247,8 @@ pub async fn update_metadata<'e>(
     qb.push(", sector_identifier_uri = ")
         .push_bind(&c.sector_identifier_uri);
     qb.push(", require_pkce = ").push_bind(c.require_pkce);
+    qb.push(", id_token_scope_claims = ")
+        .push_bind(c.id_token_scope_claims);
     qb.push(", require_consent = ").push_bind(c.require_consent);
     qb.push(", cors_origins = ").push_bind(&c.cors_origins);
     qb.push(", initiate_login_uri = ")
@@ -238,6 +257,8 @@ pub async fn update_metadata<'e>(
         .push_bind(&c.backchannel_logout_uri);
     qb.push(", frontchannel_logout_uri = ")
         .push_bind(&c.frontchannel_logout_uri);
+    qb.push(", dpop_bound_access_tokens = ")
+        .push_bind(c.dpop_bound_access_tokens);
     qb.push(" WHERE tenant_id = ")
         .push_bind(c.tenant_id)
         .push(" AND id = ")

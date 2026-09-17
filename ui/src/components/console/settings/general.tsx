@@ -36,7 +36,7 @@ export function GeneralSection() {
       <Field label="Slug" hint="Part of the issuer URL; it cannot change.">
         {(id) => <TextInput id={id} value={draft.slug} readOnly disabled />}
       </Field>
-      <Field label="Custom domain" hint="Issuer host override; enforced once custom domains land (Phase 9).">
+      <Field label="Custom domain" hint="Serve this tenant on its own host: point the name at rIDM (with TLS) and its issuer becomes https://<host>, with discovery, JWKS and every endpoint answering there without the /t/<slug> prefix.">
         {(id, by) => (
           <TextInput
             id={id}

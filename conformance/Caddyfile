@@ -1,0 +1,12 @@
+# TLS front for the OP under test: the suite (and its browser) talks to
+# https://ridm.local. API paths go to rIDM, everything else to the UI (the
+# static export served by any file server, or the Next.js dev server).
+{
+	auto_https off
+}
+https://ridm.local {
+	tls /certs/ridm.crt /certs/ridm.key
+	@api path /t/* /admin/* /scim/* /.well-known/* /openapi.json /healthz /readyz /metrics /docs*
+	reverse_proxy @api {$RIDM_API_UPSTREAM}
+	reverse_proxy {$RIDM_UI_UPSTREAM}
+}

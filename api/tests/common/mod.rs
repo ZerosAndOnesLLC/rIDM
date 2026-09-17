@@ -330,6 +330,7 @@ async fn fully_migrated(db: &Db) -> bool {
 pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Config {
     Config {
         database_url: database_url.to_string(),
+        database_read_url: None,
         redis_url: redis_url.to_string(),
         public_url: public_url.parse().expect("public url"),
         ui_url: public_url.parse().expect("ui url"),
@@ -341,9 +342,23 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
         docs_enabled: true,
         cookie_secure: false,
         trusted_proxies: vec![],
+        // Off by default so parallel tests from one address never trip a
+        // ceiling; the rate-limit suite switches it on through `spawn_configured`.
+        rate_limits: ridm_api::config::RateLimitConfig {
+            enabled: false,
+            ip_per_minute: 0,
+        },
+        hsts_max_age: 63_072_000,
+        retention_days: 30,
+        otlp_endpoint: None,
+        otel_service_name: "ridm-test".into(),
+        metrics_token: None,
+        audit_sink_url: None,
+        audit_sink_token: None,
         tls: None,
         db_pool_min: 1,
         db_pool_max: 8,
+        redis_pool_max: 16,
         migrate_on_start: false,
         // Cheap parameters keep the test suite fast; production uses Config defaults.
         argon2: ridm_api::config::Argon2Params {

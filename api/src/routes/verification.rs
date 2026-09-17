@@ -11,7 +11,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::middleware::TenantCtx;
-use crate::routes::flows::client_ip;
+use crate::middleware::client_ip;
 use crate::services::flows::{self, AuthStep};
 use crate::services::{registration, sessions};
 use crate::state::AppState;

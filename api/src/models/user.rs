@@ -37,6 +37,8 @@ pub struct User {
     pub status: UserStatus,
     pub attributes: serde_json::Value,
     pub locale: Option<String>,
+    /// The provisioning system's identifier (SCIM `externalId`), unique per tenant.
+    pub external_id: Option<String>,
     pub last_login_at: Option<DateTime<Utc>>,
     pub failed_attempts: i32,
     pub locked_until: Option<DateTime<Utc>>,
@@ -69,6 +71,7 @@ pub struct NewUser {
     pub attributes: Option<serde_json::Value>,
     pub locale: Option<String>,
     pub org_id: Option<Uuid>,
+    pub external_id: Option<String>,
     /// Required profile attributes may be missing for now (an account made
     /// from an upstream identity fills them in at the profile step). Never
     /// set from a request body.
@@ -94,6 +97,8 @@ pub struct UserUpdate {
     #[serde(deserialize_with = "double_option")]
     pub org_id: Option<Option<Uuid>>,
     pub must_change_password: Option<bool>,
+    #[serde(deserialize_with = "double_option")]
+    pub external_id: Option<Option<String>>,
 }
 
 impl UserUpdate {
@@ -108,6 +113,7 @@ impl UserUpdate {
             && self.locale.is_none()
             && self.org_id.is_none()
             && self.must_change_password.is_none()
+            && self.external_id.is_none()
     }
 }
 
@@ -144,6 +150,7 @@ mod tests {
             status: UserStatus::Active,
             attributes: serde_json::json!({}),
             locale: None,
+            external_id: None,
             last_login_at: None,
             failed_attempts: 0,
             locked_until: None,

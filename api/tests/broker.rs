@@ -990,6 +990,8 @@ async fn account_token(fx: &Fx, user_id: Uuid) -> String {
             auth_time: Some(Utc::now()),
             amr: &["pwd".into()],
             acr: None,
+            cnf_jkt: None,
+            act: None,
         },
     )
     .await

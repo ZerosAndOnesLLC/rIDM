@@ -279,6 +279,7 @@ function Authenticate({
       label={method === "sms_otp" ? t("common.phone") : method === "password" ? t("common.identifier") : t("common.email")}
       value={identifier}
       onChange={(e) => setIdentifier(e.target.value)}
+      name="identifier"
       autoComplete={method === "sms_otp" ? "tel" : method === "password" ? "username" : "email"}
       inputMode={method === "sms_otp" ? "tel" : method === "password" ? "text" : "email"}
       autoFocus={!preview && !flow.login_hint}
@@ -297,6 +298,7 @@ function Authenticate({
           {identifierField}
           <PasswordField
             label={t("common.password")}
+            name="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
@@ -305,7 +307,7 @@ function Authenticate({
           />
           {flow.captcha && <Captcha challenge={flow.captcha} onToken={onToken} />}
           <Checkbox label={t("login.remember_device")} checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-          <Button type="submit" busy={busy} disabled={flow.captcha ? !captcha : false}>
+          <Button id="login-submit" type="submit" busy={busy} disabled={flow.captcha ? !captcha : false}>
             {t("common.continue")}
           </Button>
           <div className="flex flex-wrap justify-between gap-3 text-[0.875rem]">

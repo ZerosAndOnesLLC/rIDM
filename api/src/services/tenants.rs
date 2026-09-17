@@ -12,7 +12,7 @@ use crate::error::{AppError, AppResult};
 use crate::middleware::{TENANT_CACHE_TTL, is_valid_slug, tenant_cache_keys};
 use crate::models::{MASTER_TENANT_ID, Tenant, TenantSettings, TenantStatus};
 use crate::repos;
-use crate::services::locale;
+use crate::services::{locale, rate_limit};
 use crate::state::AppState;
 use crate::util::cursor::{Cursor, Page, page_size};
 
@@ -47,9 +47,14 @@ pub async fn create(state: &AppState, actor: Actor, input: NewTenant) -> AppResu
     }
     let mut settings = input.settings.unwrap_or_default();
     locale::validate_settings(&mut settings.locale)?;
+    rate_limit::validate_policy(&settings.rate_limits)?;
+    settings.custom_domain = normalize_custom_domain(state, settings.custom_domain.as_deref())?;
     let tenant = repos::tenants::insert(&state.db, Uuid::now_v7(), &slug, display_name, &settings)
         .await
         .map_err(|e| match AppError::from_db(e) {
+            AppError::Conflict(_) if settings.custom_domain.is_some() => AppError::Conflict(
+                format!("tenant slug `{slug}` is taken or custom_domain is already used"),
+            ),
             AppError::Conflict(_) => AppError::Conflict(format!("tenant slug `{slug}` is taken")),
             other => other,
         })?;
@@ -66,6 +71,41 @@ pub async fn create(state: &AppState, actor: Actor, input: NewTenant) -> AppResu
     super::admin_console::ensure(state, tenant.id).await?;
     super::account_console::ensure(state, tenant.id).await?;
     Ok(tenant)
+}
+
+/// Lower-case a custom domain and reject anything that is not a hostname
+/// (with an optional port) or that is one of the deployment's own hosts.
+pub fn normalize_custom_domain(state: &AppState, raw: Option<&str>) -> AppResult<Option<String>> {
+    let Some(raw) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    let host = raw.to_ascii_lowercase();
+    let (name, port) = match host.rsplit_once(':') {
+        Some((n, p)) if !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()) => (n, Some(p)),
+        _ => (host.as_str(), None),
+    };
+    let label_ok = |l: &str| {
+        !l.is_empty()
+            && l.len() <= 63
+            && l.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+            && !l.starts_with('-')
+            && !l.ends_with('-')
+    };
+    let valid = !name.is_empty()
+        && name.len() <= 253
+        && name.split('.').all(label_ok)
+        && port.is_none_or(|p| p.parse::<u16>().is_ok_and(|n| n > 0));
+    if !valid {
+        return Err(AppError::BadRequest(
+            "custom_domain must be a hostname such as login.example.com".into(),
+        ));
+    }
+    if state.config.primary_hosts().contains(&host) {
+        return Err(AppError::BadRequest(
+            "custom_domain may not be the deployment's own host".into(),
+        ));
+    }
+    Ok(Some(host))
 }
 
 /// Cached lookup by id (same cache the slug resolver uses; evicted on every write).
@@ -93,6 +133,8 @@ pub async fn update(
 ) -> AppResult<Tenant> {
     if let Some(settings) = patch.settings.as_mut() {
         locale::validate_settings(&mut settings.locale)?;
+        rate_limit::validate_policy(&settings.rate_limits)?;
+        settings.custom_domain = normalize_custom_domain(state, settings.custom_domain.as_deref())?;
     }
     if let Some(name) = &patch.display_name
         && (name.trim().is_empty() || name.len() > 255)
@@ -117,7 +159,12 @@ pub async fn update(
         patch.settings.as_ref(),
     )
     .await
-    .map_err(AppError::from_db)?
+    .map_err(|e| match AppError::from_db(e) {
+        AppError::Conflict(_) => {
+            AppError::Conflict("custom_domain is already used by another tenant".into())
+        }
+        other => other,
+    })?
     .ok_or(AppError::NotFound("tenant"))?;
     let mut keys = tenant_cache_keys(&before);
     keys.extend(tenant_cache_keys(&tenant));

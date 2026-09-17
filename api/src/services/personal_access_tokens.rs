@@ -252,7 +252,7 @@ async fn touch(state: &AppState, rec: &PersonalAccessToken) -> AppResult<()> {
         .arg("NX")
         .arg("EX")
         .arg(TOUCH_INTERVAL_SECS)
-        .query_async(&mut *conn)
+        .query_async(&mut conn)
         .await?;
     drop(conn);
     if claimed.is_some() {

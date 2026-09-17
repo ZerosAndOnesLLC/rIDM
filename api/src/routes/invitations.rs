@@ -10,7 +10,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::middleware::TenantCtx;
-use crate::routes::flows::client_ip;
+use crate::middleware::client_ip;
 use crate::services::flows::{self, AuthStep};
 use crate::services::registration::RegistrationInput;
 use crate::services::{invitations, sessions};
@@ -73,7 +73,7 @@ async fn accept(
         sessions::NewSession {
             user_id: user.id,
             amr: vec!["otp".into()],
-            acr: None,
+            acr: Some(flows::ACR_SINGLE.to_string()),
             ip: ctx.ip.clone(),
             user_agent: ctx.user_agent.clone(),
             policy,

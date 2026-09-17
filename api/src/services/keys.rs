@@ -13,12 +13,23 @@ use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
+use redis::AsyncCommands as _;
+
 use crate::cache::keys as cache_keys;
 use crate::db;
 use crate::error::{AppError, AppResult};
+use crate::jobs::leader;
 use crate::models::{KeyPolicy, KeyStatus, RsaBits, SigningAlg, SigningKey};
 use crate::repos;
 use crate::state::AppState;
+
+/// How long the keys version token lives; any key change writes a new one.
+const KEYS_VERSION_TTL: u64 = 24 * 60 * 60;
+/// One node at a time generates a tenant's first key. Long enough for an RSA
+/// key on a slow (debug) build, short enough that a dead node is not waited on.
+const CREATE_LOCK_TTL: std::time::Duration = std::time::Duration::from_secs(120);
+/// How long the others wait for the key that node is generating.
+const CREATE_WAIT: std::time::Duration = std::time::Duration::from_secs(90);
 
 /// A freshly generated key pair.
 pub struct GeneratedKey {
@@ -170,10 +181,7 @@ pub async fn create(
     .map_err(AppError::from_db)?;
     tx.commit().await?;
 
-    state
-        .cache
-        .invalidate(&[cache_keys::jwks(tenant_id)])
-        .await?;
+    bump_keys_version(state, tenant_id).await?;
     state.events.publish(Event::new(
         Some(tenant_id),
         actor,
@@ -235,10 +243,7 @@ pub async fn activate(
         .await?
         .ok_or(AppError::NotFound("signing key"))?;
     tx.commit().await?;
-    state
-        .cache
-        .invalidate(&[cache_keys::jwks(tenant_id)])
-        .await?;
+    bump_keys_version(state, tenant_id).await?;
     for r in retired {
         publish_status(state, tenant_id, actor.clone(), &r, KeyStatus::Retiring);
     }
@@ -272,10 +277,7 @@ pub async fn retire(
     .await?
     .ok_or(AppError::NotFound("signing key"))?;
     tx.commit().await?;
-    state
-        .cache
-        .invalidate(&[cache_keys::jwks(tenant_id)])
-        .await?;
+    bump_keys_version(state, tenant_id).await?;
     publish_status(state, tenant_id, actor, &key, KeyStatus::Retiring);
     Ok(key)
 }
@@ -298,10 +300,7 @@ pub async fn revoke(
     .await?
     .ok_or(AppError::NotFound("signing key"))?;
     tx.commit().await?;
-    state
-        .cache
-        .invalidate(&[cache_keys::jwks(tenant_id)])
-        .await?;
+    bump_keys_version(state, tenant_id).await?;
     publish_status(state, tenant_id, actor, &key, KeyStatus::Revoked);
     Ok(key)
 }
@@ -327,7 +326,49 @@ pub async fn rotate(
     activate(state, tenant_id, policy, actor, fresh.id).await
 }
 
+/// Current keys version for a tenant, creating one if absent. Every cached
+/// JWKS document hangs off it.
+pub async fn keys_version(state: &AppState, tenant_id: Uuid) -> AppResult<String> {
+    let key = cache_keys::keys_version(tenant_id);
+    let mut conn = state.redis.get().await?;
+    if let Some(v) = conn.get::<_, Option<String>>(&key).await? {
+        return Ok(v);
+    }
+    let fresh = Uuid::now_v7().simple().to_string();
+    // SET NX so concurrent initialisers agree on one token.
+    let set: bool = redis::cmd("SET")
+        .arg(&key)
+        .arg(&fresh)
+        .arg("NX")
+        .arg("EX")
+        .arg(KEYS_VERSION_TTL)
+        .query_async(&mut conn)
+        .await?;
+    if set {
+        return Ok(fresh);
+    }
+    Ok(conn.get::<_, Option<String>>(&key).await?.unwrap_or(fresh))
+}
+
+/// Replace the keys version, orphaning every cached JWKS document of the
+/// tenant. Used instead of deleting the entry: a document read before a key
+/// change can still be written after it, and would then outlive the delete.
+pub async fn bump_keys_version(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
+    let key = cache_keys::keys_version(tenant_id);
+    let mut conn = state.redis.get().await?;
+    let _: () = conn
+        .set_ex(&key, Uuid::now_v7().simple().to_string(), KEYS_VERSION_TTL)
+        .await?;
+    Ok(())
+}
+
 /// The active key for the tenant's default algorithm, created on first use.
+///
+/// One node generates it: a key costs real CPU (RSA especially) and every
+/// request that finds none would otherwise generate one of its own, leaving
+/// several active keys behind — of which tokens would use the newest while a
+/// JWKS document fetched moments earlier named another. The others wait here
+/// for the key rather than making their own.
 pub async fn ensure_active(
     state: &AppState,
     tenant_id: Uuid,
@@ -336,6 +377,36 @@ pub async fn ensure_active(
     if let Some(k) = active(state, tenant_id, policy.default_alg).await? {
         return Ok(k);
     }
+    let lock_name = format!("keys:{tenant_id}:{}", policy.default_alg.as_str());
+    let deadline = std::time::Instant::now() + CREATE_WAIT;
+    loop {
+        if let Some(lock) = leader::try_acquire(&state.redis, &lock_name, CREATE_LOCK_TTL).await? {
+            // Ours to make, unless another holder finished between the two checks.
+            let made = match active(state, tenant_id, policy.default_alg).await? {
+                Some(k) => Ok(k),
+                None => first_key(state, tenant_id, policy).await,
+            };
+            lock.release().await?;
+            return made;
+        }
+        // Someone else is generating it. Wait for the key, not for the lock.
+        if let Some(k) = active(state, tenant_id, policy.default_alg).await? {
+            return Ok(k);
+        }
+        if std::time::Instant::now() >= deadline {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+    // The holder died or is slower than the wait. Make one; the unique index
+    // over (tenant, alg) for active keys keeps whichever lands first.
+    tracing::warn!(%tenant_id, "waited out another node's first signing key; making one");
+    first_key(state, tenant_id, policy).await
+}
+
+/// Create the tenant's first active key, adopting another node's if it landed
+/// first (the partial unique index turns that into a conflict).
+async fn first_key(state: &AppState, tenant_id: Uuid, policy: &KeyPolicy) -> AppResult<SigningKey> {
     match create(
         state,
         tenant_id,
