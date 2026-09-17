@@ -35,9 +35,17 @@ pub fn profile_schema(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:profile_schema")
 }
 
-/// Published (active + retiring) keys of a tenant, i.e. the JWKS document.
-pub fn jwks(tenant_id: Uuid) -> String {
-    format!("{PREFIX}:t:{tenant_id}:jwks")
+/// Per-tenant version token folded into the JWKS cache key. Bumped on every
+/// signing-key change, so a document read before that change cannot be stored
+/// after it (deleting the key would leave that race open).
+pub fn keys_version(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:keys:ver")
+}
+
+/// Published (pending + active + retiring) keys of a tenant, i.e. the JWKS
+/// document, under the keys version.
+pub fn jwks(tenant_id: Uuid, version: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:jwks:{version}")
 }
 
 pub fn tenant_by_email_domain(domain: &str) -> String {

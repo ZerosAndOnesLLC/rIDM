@@ -44,10 +44,13 @@ pub async fn load_jwks(state: &AppState, tenant: &TenantCtx) -> Result<Arc<Cache
     let tenant_id = tenant.id();
     let policy = tenant.tenant.settings.keys.clone();
     let st = state.clone();
+    // Read the version before the keys: a document built under an older
+    // version is stored under that older key and never served again.
+    let version = keys::keys_version(state, tenant_id).await?;
     let cached = state
         .cache
         .get_or_load(
-            &cache_keys::jwks(tenant_id),
+            &cache_keys::jwks(tenant_id, &version),
             JWKS_CACHE_TTL,
             || async move {
                 let mut keys = keys::published_jwks(&st, tenant_id).await?;
