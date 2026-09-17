@@ -320,8 +320,9 @@ jobs:
   fuzz-smoke:
     name: fuzz-smoke
     runs-on: ubuntu-latest
-    # Five targets, a minute each, plus the sanitizer build.
-    timeout-minutes: 45
+    # Five targets, a minute each. The sanitizer build of the whole dependency
+    # tree is the slow part, and only warm once the cache is populated.
+    timeout-minutes: 60
     env:
       # `cargo fuzz` composes its own RUSTFLAGS (sanitizer, coverage); the
       # workspace's `-D warnings` has no business in that build.

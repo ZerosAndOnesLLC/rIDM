@@ -19,6 +19,11 @@ if [ ${#targets[@]} -eq 0 ]; then
   mapfile -t targets < <(cargo +nightly fuzz list)
 fi
 
+# `cargo fuzz` defaults the target triple to the one it was itself built for,
+# and a binstalled cargo-fuzz is a musl build — which then asks for a musl std
+# nobody installed. Always build for the toolchain's own host.
+host="$(rustc +nightly -vV | sed -n 's/^host: //p')"
+
 # Time a run may take beyond its budget before the job gives up on it.
 grace=300
 status=0
@@ -28,7 +33,7 @@ for target in "${targets[@]}"; do
   if [ -d "fuzz/seeds/$target" ]; then
     cp -n "fuzz/seeds/$target"/* "fuzz/corpus/$target/" 2>/dev/null || true
   fi
-  if ! timeout $((seconds + grace)) cargo +nightly fuzz run "$target" -- \
+  if ! timeout $((seconds + grace)) cargo +nightly fuzz run --target "$host" "$target" -- \
     -max_total_time="$seconds" -timeout=25 -rss_limit_mb=4096 -print_final_stats=1; then
     echo "fuzz target $target failed"
     status=1
