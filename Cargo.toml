@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["api", "crates/ridm-core"]
+members = ["api", "crates/ridm-core", "crates/ridm-cli"]
 # cargo-fuzz crates are built by `cargo fuzz`, not as workspace members.
 exclude = ["api/fuzz"]
 
@@ -83,6 +83,7 @@ async-trait = "=0.1.92"
 futures = "=0.3.34"
 
 # Config / observability
+clap = { version = "=4.6.7", features = ["derive", "env"] }
 dotenvy = "=0.15.7"
 rpassword = "=7.5.4"
 tracing = "=0.1.44"

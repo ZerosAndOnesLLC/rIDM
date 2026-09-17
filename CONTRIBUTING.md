@@ -21,6 +21,16 @@ cd ui && npm install && npm run dev
 Ports are overridable through `RIDM_PG_PORT`, `RIDM_VALKEY_PORT`, `RIDM_HTTP_PORT` and
 `RIDM_MAILPIT_UI_PORT` if the defaults collide with something on your machine.
 
+The workspace also builds `ridm`, the administration CLI (`crates/ridm-cli`). Point it at
+a local server without writing a profile:
+
+```bash
+cargo run -p ridm-cli -- --url http://localhost:8080 --token "$RIDM_TOKEN" whoami
+```
+
+Set `RIDM_CONFIG` to a scratch path when a change touches profiles, so a test run never
+rewrites your own `~/.config/ridm/config.json`.
+
 ## Conventions
 
 **Rust**
