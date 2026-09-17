@@ -5,6 +5,14 @@
 // session across a module's authorizations (prompt=none, id_token_hint,
 // max_age); modules start signed out. Runs inside the suite's network:
 //   CONFORMANCE_SERVER=https://nginx:8443/ OP_USER=... OP_PASSWORD=... node driver.mjs
+//
+// TLS is verified: the suite's certificate comes from the rig's own CA, which
+// `certs.sh` issues for `nginx` among other names and `run.sh` hands to Node as
+// NODE_EXTRA_CA_CERTS. `DRIVER_INSECURE_TLS=1` on `run.sh` gives up that
+// verification (a rig whose certificates were made elsewhere); nothing here
+// turns it off on its own. The browser is the exception: Chromium takes no CA
+// file, and its image has no NSS tooling to import one, so the contexts this
+// driver opens accept the rig's certificates by `ignoreHTTPSErrors`.
 
 import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -19,8 +27,6 @@ if (!USER || !PASSWORD) throw new Error("OP_USER and OP_PASSWORD are required");
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
-// The suite's certificate is self-signed.
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 const api = async (path, init) => {
   const res = await fetch(SERVER + path, { headers: { accept: "application/json" }, ...init });
   if (!res.ok) throw new Error(`${path}: ${res.status} ${(await res.text()).slice(0, 120)}`);

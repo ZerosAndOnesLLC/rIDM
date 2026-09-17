@@ -44,6 +44,14 @@ page mark the visit. Its log is saved to `results/driver.log`. The rIDM under te
 behind `https://ridm.local`, a Caddy front with a certificate from a private CA
 (`certs.sh`) that the suite trusts through a mounted Java truststore.
 
+The driver verifies the suite's certificate: `certs.sh` issues it for `nginx` among
+other names, and `run.sh` mounts the CA into the container as `NODE_EXTRA_CA_CERTS`.
+`DRIVER_INSECURE_TLS=1 conformance/run.sh` gives that up, for a rig whose certificates
+came from somewhere else; the driver never turns verification off by itself. The browser
+it drives is the exception — Chromium takes no CA file and the image carries no NSS
+tooling to import one — so those contexts accept the rig's certificates through
+Playwright's `ignoreHTTPSErrors`.
+
 Plans run by default: configuration, basic (discovery + dynamic registration), and
 RP-initiated, back-channel and front-channel logout, all with `response_type=code`
 (rIDM issues no implicit or hybrid responses, so the dynamic and hybrid plans do not

@@ -41,8 +41,17 @@ mkdir -p results
 # Chromium inside the suite's network visits every URL the tests leave pending.
 PW_IMAGE="${PW_IMAGE:-mcr.microsoft.com/playwright:v1.63.0-noble}"
 docker rm -f conformance-driver >/dev/null 2>&1 || true
+# The driver verifies the suite's certificate against the CA certs.sh issued it
+# from (`nginx` is one of its names). DRIVER_INSECURE_TLS=1 gives that up, for a
+# rig whose certificates came from somewhere else.
+tls=(-v "$PWD/certs:/certs:ro" -e NODE_EXTRA_CA_CERTS=/certs/ca.crt)
+if [ "${DRIVER_INSECURE_TLS:-0}" = "1" ]; then
+  echo "DRIVER_INSECURE_TLS=1: the driver will not verify the suite's certificate" >&2
+  tls=(-e NODE_TLS_REJECT_UNAUTHORIZED=0)
+fi
 docker run -d --name conformance-driver --network conformance_default \
   -v "$PWD/driver.mjs:/driver.mjs:ro" -v "$PWD/../ui/node_modules:/node_modules:ro" \
+  "${tls[@]}" \
   -e NODE_PATH=/node_modules -e CONFORMANCE_SERVER=https://nginx:8443/ \
   -e OP_USER="$OP_USER" -e OP_PASSWORD="$OP_PASSWORD" \
   "$PW_IMAGE" node /driver.mjs >/dev/null
