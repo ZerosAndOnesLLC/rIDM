@@ -160,6 +160,7 @@ in [`.env.example`](.env.example). The essentials:
 | `DATABASE_URL` | Postgres 16+ connection string; use a **non-superuser, DML-only** role (superusers bypass row level security, owners can disable it) |
 | `REDIS_URL` | Valkey / Redis 8+: `redis://`, `redis+cluster://h1,h2`, or `redis+sentinel://s1,s2/<master>` (see [topologies](#valkey-topologies-and-postgres-read-replicas)) |
 | `DATABASE_READ_URL` | Optional read replica for listings and statistics |
+| `DB_POOL_MIN`, `DB_POOL_MAX`, `REDIS_POOL_MAX` | Connection pool sizes per node (2, 20, 32) |
 | `PUBLIC_URL` | Externally visible base URL; tenant issuers are `{PUBLIC_URL}/t/{slug}` |
 | `MASTER_KEY` / `MASTER_KEY_FILE` | 32-byte key (hex or base64) encrypting secrets at rest |
 | `BIND_ADDR` | Listen address, default `0.0.0.0:8080` |
@@ -245,6 +246,23 @@ plain bearer token, without a proof or with another key's proof is refused with 
 and the admin API. Clients registered with `dpop_bound_access_tokens` (console: client
 detail, or the DCR metadata field) must always present a proof. Server-provided nonces
 and `dpop_jkt` at `/authorize` are not implemented.
+
+### Performance
+
+The token path touches the database as little as possible: clients, tenants, signing
+keys, scopes and claim mappers are read through the two-level cache (in-process plus
+Valkey, evicted on every write); a user's effective roles and groups and the permissions
+a role set holds on a resource server are cached under the tenant's roles version
+(any role, group, membership, grant or permission change moves it); resource servers are
+cached by identifier and evicted when written. Discovery and JWKS documents are cached
+whole with an `ETag` and `Cache-Control: max-age=300`, and answer `304` to
+`If-None-Match`. Every hot query runs on an index (reviewed with `EXPLAIN ANALYZE` in
+Phase 9.10). Pool sizes: `DB_POOL_MAX` (default 20; roughly twice the CPU count of the
+database server divided by the number of API nodes) and `REDIS_POOL_MAX` (default 32).
+
+Load tests live in [`perf/`](perf/README.md): a k6 script for `/token` and the
+discovery documents with a PR smoke (thresholds on a debug build, the `load-smoke`
+check) and a release baseline targeting 5,000 token requests per second per node.
 
 ### Valkey topologies and Postgres read replicas
 

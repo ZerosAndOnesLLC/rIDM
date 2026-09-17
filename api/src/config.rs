@@ -107,6 +107,8 @@ pub struct Config {
     pub tls: Option<TlsConfig>,
     pub db_pool_min: u32,
     pub db_pool_max: u32,
+    /// Valkey connections per node (`REDIS_POOL_MAX`, default 32).
+    pub redis_pool_max: u32,
     /// Apply pending migrations at startup.
     pub migrate_on_start: bool,
     pub argon2: Argon2Params,
@@ -318,6 +320,7 @@ impl Config {
             }
         };
         let db_pool_min = parse_u32("DB_POOL_MIN", 2)?;
+        let redis_pool_max = parse_u32("REDIS_POOL_MAX", 32)?.max(1);
         let db_pool_max = parse_u32("DB_POOL_MAX", 20)?;
         if db_pool_min > db_pool_max {
             return Err(ConfigError::Invalid {
@@ -413,6 +416,7 @@ impl Config {
             tls,
             db_pool_min,
             db_pool_max,
+            redis_pool_max,
             migrate_on_start,
             argon2,
             breach_check_url,

@@ -259,6 +259,29 @@ pub fn ip_rules(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:ip_rules")
 }
 
+/// A resource server by identifier (the token endpoint's audience lookup).
+pub fn resource_server(tenant_id: Uuid, identifier: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:rs:{identifier}")
+}
+
+/// Permission names a set of roles holds on a resource server, under the
+/// roles version (any grant, role or permission change moves it).
+pub fn resource_server_permissions(
+    tenant_id: Uuid,
+    version: &str,
+    rs_id: Uuid,
+    roles_key: &str,
+) -> String {
+    format!("{PREFIX}:t:{tenant_id}:rsperms:{version}:{rs_id}:{roles_key}")
+}
+
+/// A user's groups (direct or effective) under the roles version, which
+/// every membership change bumps.
+pub fn user_groups(tenant_id: Uuid, version: &str, user_id: Uuid, effective: bool) -> String {
+    let kind = if effective { "eff" } else { "direct" };
+    format!("{PREFIX}:t:{tenant_id}:groups:{version}:{kind}:user:{user_id}")
+}
+
 /// Tenant document keyed by its custom domain (the request host).
 pub fn tenant_by_host(host: &str) -> String {
     format!("{PREFIX}:tenant:host:{host}")

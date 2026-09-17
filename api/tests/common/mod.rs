@@ -358,6 +358,7 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
         tls: None,
         db_pool_min: 1,
         db_pool_max: 8,
+        redis_pool_max: 16,
         migrate_on_start: false,
         // Cheap parameters keep the test suite fast; production uses Config defaults.
         argon2: ridm_api::config::Argon2Params {

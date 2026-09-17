@@ -255,6 +255,61 @@ jobs:
           name: playwright-report
           path: ui/playwright-report
 
+  load-smoke:
+    name: load-smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_DB: ridm
+          POSTGRES_USER: ridm
+          POSTGRES_PASSWORD: ridm
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ridm -d ridm"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      valkey:
+        image: valkey/valkey:9.1.2-alpine3.24
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgres://ridm:ridm@localhost:5432/ridm
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: build api
+        run: cargo build -p ridm-api --locked
+      - name: start api
+        env:
+          PUBLIC_URL: http://localhost:8090
+          BIND_ADDR: 127.0.0.1:8090
+          MASTER_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          COOKIE_SECURE: "false"
+          MIGRATE_ON_START: "true"
+          RATE_LIMITS: "false"
+          BOOTSTRAP_ADMIN_EMAIL: admin@ridm.local
+          BOOTSTRAP_ADMIN_PASSWORD: ChangeMe-Now-1234-e2e
+        run: |
+          nohup target/debug/ridm-api > api.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf localhost:8090/readyz && break; sleep 2; done
+          curl -sf localhost:8090/readyz
+      - name: open dynamic registration on master (the test registers its own client)
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q postgresql-client redis-tools
+          psql "$DATABASE_URL" -c "UPDATE tenants SET settings = jsonb_set(jsonb_set(settings, '{dcr,mode}', '\"open\"'), '{dcr,allowed_grants}', '[\"client_credentials\"]') WHERE slug = 'master'"
+          redis-cli -u "$REDIS_URL" --scan --pattern 'ridm:tenant:*' | xargs -r redis-cli -u "$REDIS_URL" del
+      - uses: grafana/setup-k6-action@v1
+      - name: k6 smoke
+        run: k6 run -e BASE_URL=http://localhost:8090 -e TENANT=master -e SMOKE=1 perf/token.js
+      - name: api log
+        if: failure()
+        run: tail -n 200 api.log
+
   packaging:
     name: packaging
     runs-on: ubuntu-latest

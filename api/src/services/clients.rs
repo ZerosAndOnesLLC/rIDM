@@ -8,6 +8,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::Utc;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use sqlx::types::Json;
 use subtle::ConstantTimeEq as _;
@@ -326,6 +327,36 @@ pub async fn get(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<Clien
     c.ok_or(AppError::NotFound("client"))
 }
 
+/// The client as cached in Valkey. `Client` keeps its secret hashes and the
+/// registration token hash out of JSON (they must never reach an API
+/// response), so the cache carries them explicitly: without this, a node
+/// reading the document from Valkey would hold a client that can never
+/// authenticate.
+#[derive(Debug, Serialize, Deserialize)]
+struct CachedClient {
+    #[serde(flatten)]
+    client: Client,
+    secret_hashes: Vec<ClientSecretHash>,
+    registration_access_token_hash: Option<Vec<u8>>,
+}
+
+impl CachedClient {
+    fn wrap(client: Client) -> Self {
+        Self {
+            secret_hashes: client.secret_hashes.0.clone(),
+            registration_access_token_hash: client.registration_access_token_hash.clone(),
+            client,
+        }
+    }
+
+    fn unwrap(self) -> Client {
+        let mut client = self.client;
+        client.secret_hashes = Json(self.secret_hashes);
+        client.registration_access_token_hash = self.registration_access_token_hash;
+        client
+    }
+}
+
 /// Lookup by public `client_id` through the cache (hot path for every OAuth request).
 pub async fn find_by_client_id(
     state: &AppState,
@@ -337,7 +368,7 @@ pub async fn find_by_client_id(
     }
     let db = state.db.clone();
     let cid = client_id.to_string();
-    state
+    let cached = state
         .cache
         .get_or_load(
             &cache_keys::client_by_client_id(tenant_id, client_id),
@@ -346,10 +377,23 @@ pub async fn find_by_client_id(
                 let mut tx = db::tenant_tx(&db, tenant_id).await?;
                 let c = repos::clients::find_by_client_id(&mut *tx, tenant_id, &cid).await?;
                 tx.commit().await?;
-                Ok(c)
+                Ok(c.map(CachedClient::wrap))
             },
         )
-        .await
+        .await?;
+    Ok(cached.map(|c| Arc::new(CachedClient::clone_inner(&c))))
+}
+
+impl CachedClient {
+    /// A fresh `Client` from the shared cache entry.
+    fn clone_inner(this: &Arc<Self>) -> Client {
+        Self {
+            client: this.client.clone(),
+            secret_hashes: this.secret_hashes.clone(),
+            registration_access_token_hash: this.registration_access_token_hash.clone(),
+        }
+        .unwrap()
+    }
 }
 
 pub async fn list(

@@ -286,11 +286,11 @@ async fn resolve_audience(
             permissions,
         });
     }
-    let mut tx = crate::db::tenant_tx(&state.db, tenant_id).await?;
     for identifier in &wanted {
-        let Some(rs) =
-            crate::repos::resource_servers::find_by_identifier(&mut *tx, tenant_id, identifier)
-                .await?
+        let Some(rs) = crate::services::resource_servers::find_by_identifier_cached(
+            state, tenant_id, identifier,
+        )
+        .await?
         else {
             return Err(OAuthError::new(
                 OAuthErrorCode::InvalidTarget,
@@ -317,18 +317,17 @@ async fn resolve_audience(
             ttl_override = Some(ttl_override.map_or(ttl, |t| t.min(ttl)));
         }
         if !role_ids.is_empty() {
-            let perms = crate::repos::resource_servers::permissions_for_roles(
-                &mut *tx, tenant_id, rs.id, role_ids,
+            let perms = crate::services::resource_servers::permissions_for_roles_cached(
+                state, tenant_id, rs.id, role_ids,
             )
             .await?;
-            for p in perms {
-                if !permissions.contains(&p) {
-                    permissions.push(p);
+            for p in perms.iter() {
+                if !permissions.contains(p) {
+                    permissions.push(p.clone());
                 }
             }
         }
     }
-    tx.commit().await?;
     Ok(Audience {
         audiences,
         ttl_override,

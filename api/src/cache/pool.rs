@@ -140,9 +140,9 @@ impl ConnectionLike for CacheConn {
     }
 }
 
-fn pool_config() -> PoolConfig {
+fn pool_config(max_size: u32) -> PoolConfig {
     PoolConfig {
-        max_size: 32,
+        max_size: max_size as usize,
         timeouts: Timeouts {
             wait: Some(Duration::from_secs(5)),
             create: Some(Duration::from_secs(5)),
@@ -184,10 +184,11 @@ impl Cache {
 
 pub fn connect(config: &Config) -> Result<Cache, AppError> {
     let topology = Topology::parse(&config.redis_url).map_err(AppError::Cache)?;
+    let pool = pool_config(config.redis_pool_max);
     let inner = match &topology {
         Topology::Single { url } => {
             let mut cfg = deadpool_redis::Config::from_url(url);
-            cfg.pool = Some(pool_config());
+            cfg.pool = Some(pool);
             Inner::Single(
                 cfg.create_pool(Some(Runtime::Tokio1))
                     .map_err(|e| AppError::Cache(e.to_string()))?,
@@ -195,7 +196,7 @@ pub fn connect(config: &Config) -> Result<Cache, AppError> {
         }
         Topology::Cluster { urls } => {
             let mut cfg = deadpool_redis::cluster::Config::from_urls(urls.clone());
-            cfg.pool = Some(pool_config());
+            cfg.pool = Some(pool);
             Inner::Cluster(
                 cfg.create_pool(Some(Runtime::Tokio1))
                     .map_err(|e| AppError::Cache(e.to_string()))?,
@@ -207,7 +208,7 @@ pub fn connect(config: &Config) -> Result<Cache, AppError> {
                 master.clone(),
                 deadpool_redis::sentinel::SentinelServerType::Master,
             );
-            cfg.pool = Some(pool_config());
+            cfg.pool = Some(pool);
             Inner::Sentinel(
                 cfg.create_pool(Some(Runtime::Tokio1))
                     .map_err(|e| AppError::Cache(e.to_string()))?,

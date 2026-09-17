@@ -11,6 +11,10 @@ use crate::repos;
 use crate::services::roles::bump_roles_version;
 use crate::state::AppState;
 
+/// Group memberships are versioned by the roles version; the TTL only bounds
+/// a missed bump.
+const GROUPS_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+
 fn validate_name(name: &str) -> AppResult<String> {
     let n = name.trim();
     if n.is_empty() || n.len() > 255 {
@@ -212,18 +216,29 @@ pub async fn members(state: &AppState, tenant_id: Uuid, group_id: Uuid) -> AppRe
     Ok(rows)
 }
 
+/// A user's groups, cached under the roles version (membership, group and
+/// role changes all bump it), so token issuance does not walk the tree.
 pub async fn groups_of_user(
     state: &AppState,
     tenant_id: Uuid,
     user_id: Uuid,
     effective: bool,
 ) -> AppResult<Vec<Group>> {
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    let rows = if effective {
-        repos::groups::effective_groups_of_user(&mut *tx, tenant_id, user_id).await?
-    } else {
-        repos::groups::direct_groups_of_user(&mut *tx, tenant_id, user_id).await?
-    };
-    tx.commit().await?;
-    Ok(rows)
+    let version = crate::services::roles::roles_version(state, tenant_id).await?;
+    let key = crate::cache::keys::user_groups(tenant_id, &version, user_id, effective);
+    let db = state.db.clone();
+    let loaded = state
+        .cache
+        .get_or_load(&key, GROUPS_TTL, || async move {
+            let mut tx = db::tenant_tx(&db, tenant_id).await?;
+            let rows = if effective {
+                repos::groups::effective_groups_of_user(&mut *tx, tenant_id, user_id).await?
+            } else {
+                repos::groups::direct_groups_of_user(&mut *tx, tenant_id, user_id).await?
+            };
+            tx.commit().await?;
+            Ok(Some(rows))
+        })
+        .await?;
+    Ok(loaded.map(|g| (*g).clone()).unwrap_or_default())
 }
