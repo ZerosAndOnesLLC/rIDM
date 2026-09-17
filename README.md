@@ -39,7 +39,10 @@ modes), `/par`, JWT-secured request objects, `/token` (authorization_code,
 refresh_token with rotation and reuse detection, client_credentials with service
 accounts; client_secret_basic/post, private_key_jwt, none), `/userinfo`,
 `/introspect`, `/revoke`, `/end_session` with back-channel and front-channel logout,
-dynamic client registration and management. Globally: WebFinger issuer discovery.
+dynamic client registration and management (`settings.dcr`: `mode`, `allowed_grants`,
+and `require_pkce`, on by default, which decides whether a dynamically registered
+confidential client must send a code challenge; public clients always must). Globally:
+WebFinger issuer discovery.
 
 Browser login is a flow API (`/flows/{id}/...`) that the UI drives step by step:
 password, magic link, email and SMS one-time codes, self-registration with
@@ -263,6 +266,37 @@ database server divided by the number of API nodes) and `REDIS_POOL_MAX` (defaul
 Load tests live in [`perf/`](perf/README.md): a k6 script for `/token` and the
 discovery documents with a PR smoke (thresholds on a debug build, the `load-smoke`
 check) and a release baseline targeting 5,000 token requests per second per node.
+
+### Token claims
+
+An ID token carries the authentication context (`auth_time`, `amr`, and an `acr` that is
+`urn:ridm:acr:single` or `urn:ridm:acr:mfa`, both named in
+`acr_values_supported`) and the tenant's id as `tid`, which a relying party serving
+several tenants of one deployment keys on. The claims the `profile`, `email`, `address`
+and `phone` scopes ask for are read from `/userinfo`, since an access token is always
+issued alongside (OIDC Core §5.4); a client that would rather have them in the ID token
+too sets `id_token_scope_claims`. An ID token minted from a refresh token repeats the
+original `auth_time`, `amr` and `acr` (OIDC Core §12.2), which the token family stores.
+Replaying an authorization code revokes everything the first exchange produced: the
+refresh family and the access token, which is a JWT and stops through the `jti` denylist
+(RFC 6749 §4.1.2).
+
+`acr_values` is a preference list: rIDM honours the first class it recognises, so a
+request naming `urn:ridm:acr:mfa` first demands a second factor while one that accepts
+`urn:ridm:acr:single` first does not. The `claims` request parameter is not implemented,
+which discovery states.
+
+### OpenID conformance
+
+The OpenID Foundation conformance suite runs against rIDM from
+[`conformance/`](conformance/README.md): the suite's released images behind its own
+nginx, rIDM behind a Caddy TLS front as `https://ridm.local` (a private CA the suite
+trusts), and a headless Chromium driver that signs in, approves consent and confirms
+logout for every browser step the tests leave pending. The `conformance` workflow runs
+the configuration, basic (discovery + dynamic registration), RP-initiated, back-channel
+and front-channel logout certification plans on every pull request and weekly, fails on
+any finding not listed in `conformance/expected-failures.json`, and uploads the suite's
+exported logs as an artifact.
 
 ### Valkey topologies and Postgres read replicas
 

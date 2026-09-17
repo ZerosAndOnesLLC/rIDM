@@ -27,6 +27,11 @@ pub struct IssueRequest<'a> {
     pub ttl: Duration,
     /// Bind the family to a DPoP key (public clients presenting a proof).
     pub dpop_jkt: Option<&'a str>,
+    /// Authentication context to repeat in every ID token minted from this
+    /// family (OIDC Core §12.2).
+    pub auth_time: Option<DateTime<Utc>>,
+    pub amr: &'a [String],
+    pub acr: Option<&'a str>,
 }
 
 /// A freshly minted token: the secret is only ever returned here.
@@ -54,22 +59,29 @@ async fn insert_in(
     expires_at: DateTime<Utc>,
 ) -> AppResult<Issued> {
     let token = random_token();
-    let record = repos::refresh_tokens::insert(
-        &mut *tx,
+    let now = Utc::now();
+    let row = RefreshToken {
+        id: Uuid::now_v7(),
         tenant_id,
-        Uuid::now_v7(),
         family_id,
-        req.client_id,
-        req.user_id,
-        req.session_id,
-        &hash(&token),
-        req.scopes,
-        req.audiences,
+        client_id: req.client_id.to_string(),
+        user_id: req.user_id,
+        session_id: req.session_id,
+        token_hash: hash(&token),
+        scopes: req.scopes.to_vec(),
+        audiences: req.audiences.to_vec(),
+        auth_time: req.auth_time,
+        amr: req.amr.to_vec(),
+        acr: req.acr.map(str::to_string),
         expires_at,
-        req.dpop_jkt,
-    )
-    .await
-    .map_err(AppError::from_db)?;
+        dpop_jkt: req.dpop_jkt.map(str::to_string),
+        consumed_at: None,
+        revoked_at: None,
+        created_at: now,
+    };
+    let record = repos::refresh_tokens::insert(&mut *tx, &row)
+        .await
+        .map_err(AppError::from_db)?;
     Ok(Issued { token, record })
 }
 
@@ -178,6 +190,9 @@ pub async fn rotate(
         audiences: &current.audiences,
         ttl: Duration::zero(),
         dpop_jkt: current.dpop_jkt.as_deref(),
+        auth_time: current.auth_time,
+        amr: &current.amr,
+        acr: current.acr.as_deref(),
     };
     // The family keeps its absolute expiry (and its DPoP binding); rotation never extends it.
     let issued = insert_in(

@@ -39,6 +39,9 @@ pub struct TokenClient {
     pub access_token_ttl: Duration,
     pub id_token_ttl: Duration,
     pub mappers: Vec<ClaimMapper>,
+    /// Repeat the scope-derived standard claims in the ID token (opt-in;
+    /// OIDC Core §5.4 puts them at the userinfo endpoint).
+    pub id_token_scope_claims: bool,
 }
 
 impl TokenClient {
@@ -87,6 +90,7 @@ impl TokenClient {
                 crate::models::ClientSubjectType::Pairwise => SubjectType::Pairwise,
             },
             sector_identifier,
+            id_token_scope_claims: client.id_token_scope_claims,
             id_token_encryption,
             access_token_ttl: Duration::from_secs(
                 client
@@ -113,6 +117,7 @@ impl TokenClient {
             access_token_ttl: Duration::from_secs(300),
             id_token_ttl: Duration::from_secs(300),
             mappers: vec![],
+            id_token_scope_claims: false,
         }
     }
 }
@@ -360,7 +365,13 @@ pub async fn issue_id_token(state: &AppState, req: IdTokenRequest<'_>) -> AppRes
     let now = Utc::now();
     let exp = now + chrono::Duration::from_std(req.client.id_token_ttl).unwrap_or_default();
 
-    let mut claims = standard_claims(req.user, req.scopes);
+    // With an access token issued, the scope-derived claims are read from the
+    // userinfo endpoint (OIDC Core §5.4); a client may ask for them here too.
+    let mut claims = if req.client.id_token_scope_claims {
+        standard_claims(req.user, req.scopes)
+    } else {
+        Map::new()
+    };
     let ctx = ClaimContext {
         tenant: req.tenant,
         user: Some(req.user),

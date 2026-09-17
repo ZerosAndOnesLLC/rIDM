@@ -16,9 +16,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use redis::AsyncCommands as _;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
@@ -34,7 +34,7 @@ use crate::services::refresh_tokens::{self, IssueRequest};
 use crate::services::tokens::{
     self, AccessTokenRequest, IdTokenRequest, TokenClient, VerifyOptions,
 };
-use crate::services::{auth_codes, groups, roles, scopes, users};
+use crate::services::{auth_codes, denylist, groups, roles, scopes, users};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -469,6 +469,9 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
                 scopes: i.scopes,
                 audiences: &i.audience.audiences,
                 ttl,
+                auth_time: i.auth_time,
+                amr: &i.amr,
+                acr: i.acr.as_deref(),
                 // Public clients' refresh tokens are bound to the proof key
                 // (RFC 9449 §5); confidential clients are bound by their credentials.
                 dpop_jkt: if i.client.is_public() {
@@ -479,23 +482,36 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
             },
         )
         .await?;
-        if let Some(code_hash) = &i.code_for_hash {
-            // Remember which family a code produced so a replayed code can revoke it.
-            let mut conn = state.redis.get().await?;
-            let _: () = conn
-                .set_ex(
-                    cache_keys::code_family(i.tenant.id, code_hash),
-                    issued.record.family_id.to_string(),
-                    600,
-                )
-                .await
-                .map_err(AppError::from)?;
-        }
-        Some(issued.token.to_string())
+        Some(issued)
     } else {
         None
     };
     let _ = i.with_refresh;
+
+    // Remember what this authorization code produced, so replaying it can undo
+    // all of it (RFC 6749 §4.1.2): the refresh family and the access token,
+    // which is a JWT and stops only through the `jti` denylist.
+    if let Some(code_hash) = &i.code_for_hash {
+        let grant = CodeGrant {
+            family_id: refresh.as_ref().map(|r| r.record.family_id),
+            access_jti: at
+                .claims
+                .get("jti")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string),
+            access_expires_at: at.expires_at,
+        };
+        let mut conn = state.redis.get().await?;
+        let _: () = conn
+            .set_ex(
+                cache_keys::code_family(i.tenant.id, code_hash),
+                serde_json::to_string(&grant).unwrap_or_default(),
+                600,
+            )
+            .await
+            .map_err(AppError::from)?;
+    }
+    let refresh = refresh.map(|r| r.token.to_string());
 
     Ok(TokenResponse {
         access_token: at.token,
@@ -510,6 +526,15 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
         id_token,
         scope: Some(i.scopes.join(" ")),
     })
+}
+
+/// What one authorization code produced, kept for ten minutes so a replay of
+/// the code can revoke it.
+#[derive(Serialize, Deserialize)]
+struct CodeGrant {
+    family_id: Option<Uuid>,
+    access_jti: Option<String>,
+    access_expires_at: DateTime<Utc>,
 }
 
 fn code_hash(code: &str) -> String {
@@ -529,18 +554,27 @@ async fn authorization_code(
     let verifier = one("code_verifier")?;
 
     let Some(record) = auth_codes::consume(state, tenant.id, code).await? else {
-        // Unknown or already used. If it was used, revoke what it produced (RFC 6749 §4.1.2).
+        // Unknown or already used. If it was used, revoke everything it
+        // produced (RFC 6749 §4.1.2): the refresh family and the access token.
         let mut conn = state.redis.get().await?;
-        let family: Option<String> = redis::cmd("GETDEL")
+        let stored: Option<String> = redis::cmd("GETDEL")
             .arg(cache_keys::code_family(tenant.id, &code_hash(code)))
             .query_async(&mut conn)
             .await
             .map_err(AppError::from)?;
-        if let Some(f) = family.and_then(|f| Uuid::parse_str(&f).ok()) {
-            let mut tx = crate::db::tenant_tx(&state.db, tenant.id).await?;
-            crate::repos::refresh_tokens::revoke_family(&mut *tx, tenant.id, f).await?;
-            tx.commit().await?;
-            tracing::warn!(tenant = %tenant.id, client = %client.client_id, "authorization code replayed; token family revoked");
+        if let Some(grant) = stored
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<CodeGrant>(s).ok())
+        {
+            if let Some(f) = grant.family_id {
+                let mut tx = crate::db::tenant_tx(&state.db, tenant.id).await?;
+                crate::repos::refresh_tokens::revoke_family(&mut *tx, tenant.id, f).await?;
+                tx.commit().await?;
+            }
+            if let Some(jti) = &grant.access_jti {
+                denylist::deny(state, tenant.id, jti, grant.access_expires_at).await?;
+            }
+            tracing::warn!(tenant = %tenant.id, client = %client.client_id, "authorization code replayed; its tokens revoked");
         }
         return Err(OAuthError::new(
             OAuthErrorCode::InvalidGrant,
@@ -731,9 +765,11 @@ async fn refresh_token(
             scopes: &scopes,
             audience,
             session_id: rotated.record.session_id,
-            auth_time: None,
-            amr: vec![],
-            acr: None,
+            // OIDC Core §12.2: the refreshed ID token repeats the original
+            // authentication context.
+            auth_time: rotated.record.auth_time,
+            amr: rotated.record.amr.clone(),
+            acr: rotated.record.acr.clone(),
             nonce: None,
             with_refresh: Some(rotated.record.family_id),
             issue_refresh: false,

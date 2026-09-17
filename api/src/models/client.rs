@@ -152,6 +152,10 @@ pub struct Client {
     pub sector_identifier_uri: Option<String>,
     pub require_pkce: bool,
     pub require_consent: bool,
+    /// Carry the claims the `profile`, `email`, `address` and `phone` scopes
+    /// ask for in the ID token as well. Off by default: with an access token
+    /// issued, they belong at the userinfo endpoint (OIDC Core §5.4).
+    pub id_token_scope_claims: bool,
     pub cors_origins: Vec<String>,
     pub initiate_login_uri: Option<String>,
     pub backchannel_logout_uri: Option<String>,
@@ -220,6 +224,7 @@ pub struct NewClient {
     pub sector_identifier_uri: Option<String>,
     pub require_pkce: Option<bool>,
     pub require_consent: Option<bool>,
+    pub id_token_scope_claims: Option<bool>,
     pub cors_origins: Vec<String>,
     pub initiate_login_uri: Option<String>,
     pub backchannel_logout_uri: Option<String>,

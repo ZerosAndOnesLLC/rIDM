@@ -466,6 +466,9 @@ async fn a_bound_refresh_token_needs_the_same_key() {
             audiences: &[],
             ttl: chrono::Duration::minutes(10),
             dpop_jkt: Some(&k.pair.kid),
+            auth_time: None,
+            amr: &[],
+            acr: None,
         },
     )
     .await

@@ -14,7 +14,7 @@ use ridm_api::models::{
 use ridm_api::services::admin_access::ADMIN_ROLE;
 use ridm_api::services::password::{self, SetPasswordOptions};
 use ridm_api::services::tenants::{self, TenantUpdate};
-use ridm_api::services::{clients, roles, totp, users};
+use ridm_api::services::{clients, flows, roles, totp, users};
 use ridm_core::events::Actor;
 use serde_json::{Value, json};
 use totp_rs::{Algorithm, Builder, Secret};
@@ -338,12 +338,12 @@ async fn a_step_up_on_a_live_session_skips_the_password_and_tokens_say_how_the_u
     user(&fx, "alice").await;
     let http = client();
 
-    // Plain sign-in: one factor, no `acr`.
+    // Plain sign-in: one factor, and the session says so.
     let (_, after) = password_login(&http, &fx, "alice", &[]).await;
     assert_eq!(after["stage"], "done");
     let claims = id_claims(&fx, &finish(&http, &after).await).await;
     assert_eq!(claims["amr"], json!(["pwd"]));
-    assert!(claims.get("acr").is_none(), "{claims}");
+    assert_eq!(claims["acr"], flows::ACR_SINGLE, "{claims}");
 
     // The client asks for an MFA class: the live session goes straight to
     // the second factor (no password again), enrolling first.
@@ -429,7 +429,7 @@ async fn a_trusted_device_skips_the_policy_but_never_a_requested_step_up() {
     assert_eq!(after["stage"], "done");
     let claims = id_claims(&fx, &finish(&http, &after).await).await;
     assert_eq!(claims["amr"], json!(["pwd"]));
-    assert!(claims.get("acr").is_none(), "{claims}");
+    assert_eq!(claims["acr"], flows::ACR_SINGLE, "{claims}");
 
     // A client step-up is still honoured on the trusted browser.
     let (_, after) = password_login(

@@ -264,6 +264,7 @@ pub fn resolve(
         sector_identifier_uri: input.sector_identifier_uri,
         require_pkce: input.require_pkce.unwrap_or(default_pkce),
         require_consent: input.require_consent.unwrap_or(true),
+        id_token_scope_claims: input.id_token_scope_claims.unwrap_or(false),
         cors_origins: input.cors_origins,
         initiate_login_uri: input.initiate_login_uri,
         backchannel_logout_uri: input.backchannel_logout_uri,

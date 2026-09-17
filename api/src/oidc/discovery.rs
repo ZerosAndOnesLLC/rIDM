@@ -67,7 +67,7 @@ pub const CAPABILITIES: Capabilities = Capabilities {
     dpop: true,
 };
 
-pub const STANDARD_CLAIMS: [&str; 24] = [
+pub const STANDARD_CLAIMS: [&str; 30] = [
     "sub",
     "iss",
     "aud",
@@ -85,12 +85,18 @@ pub const STANDARD_CLAIMS: [&str; 24] = [
     "middle_name",
     "nickname",
     "preferred_username",
+    "profile",
     "picture",
     "website",
+    "gender",
+    "birthdate",
+    "zoneinfo",
+    "updated_at",
     "email",
     "email_verified",
     "phone_number",
     "phone_number_verified",
+    "address",
     "locale",
 ];
 
@@ -139,6 +145,7 @@ pub struct ProviderMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub revocation_endpoint_auth_methods_supported: Option<Vec<&'static str>>,
     pub claims_supported: Vec<&'static str>,
+    pub acr_values_supported: Vec<&'static str>,
     pub claim_types_supported: Vec<&'static str>,
     pub claims_parameter_supported: bool,
     pub request_parameter_supported: bool,
@@ -237,6 +244,10 @@ pub fn build(
             .then(|| auth_methods.clone()),
         revocation_endpoint_auth_methods_supported: caps.revocation.then(|| auth_methods.clone()),
         claims_supported: STANDARD_CLAIMS.to_vec(),
+        acr_values_supported: vec![
+            crate::services::flows::ACR_SINGLE,
+            crate::services::flows::ACR_MFA,
+        ],
         claim_types_supported: vec!["normal"],
         claims_parameter_supported: caps.claims_parameter,
         request_parameter_supported: caps.jar,

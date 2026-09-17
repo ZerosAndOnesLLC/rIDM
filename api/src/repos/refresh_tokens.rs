@@ -7,42 +7,36 @@ use uuid::Uuid;
 use crate::models::RefreshToken;
 
 const COLUMNS: &str = "id, tenant_id, family_id, client_id, user_id, session_id, token_hash, scopes, \
-    audiences, expires_at, dpop_jkt, consumed_at, revoked_at, created_at";
+    audiences, auth_time, amr, acr, expires_at, dpop_jkt, consumed_at, revoked_at, created_at";
 
-#[allow(clippy::too_many_arguments)]
+/// Insert a token row as assembled by the service and return it as stored.
 pub async fn insert<'e>(
     exec: impl PgExecutor<'e>,
-    tenant_id: Uuid,
-    id: Uuid,
-    family_id: Uuid,
-    client_id: &str,
-    user_id: Option<Uuid>,
-    session_id: Option<Uuid>,
-    token_hash: &[u8],
-    scopes: &[String],
-    audiences: &[String],
-    expires_at: DateTime<Utc>,
-    dpop_jkt: Option<&str>,
+    t: &RefreshToken,
 ) -> Result<RefreshToken, sqlx::Error> {
-    sqlx::query_as::<_, RefreshToken>(
+    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "INSERT INTO refresh_tokens (id, tenant_id, family_id, client_id, user_id, session_id, \
-         token_hash, scopes, audiences, expires_at, dpop_jkt) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) \
-         RETURNING id, tenant_id, family_id, client_id, user_id, session_id, token_hash, scopes, \
-         audiences, expires_at, dpop_jkt, consumed_at, revoked_at, created_at",
-    )
-    .bind(id)
-    .bind(tenant_id)
-    .bind(family_id)
-    .bind(client_id)
-    .bind(user_id)
-    .bind(session_id)
-    .bind(token_hash)
-    .bind(scopes)
-    .bind(audiences)
-    .bind(expires_at)
-    .bind(dpop_jkt)
-    .fetch_one(exec)
-    .await
+         token_hash, scopes, audiences, auth_time, amr, acr, expires_at, dpop_jkt) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING ",
+    );
+    qb.push(COLUMNS);
+    sqlx::query_as::<_, RefreshToken>(qb.sql())
+        .bind(t.id)
+        .bind(t.tenant_id)
+        .bind(t.family_id)
+        .bind(&t.client_id)
+        .bind(t.user_id)
+        .bind(t.session_id)
+        .bind(&t.token_hash)
+        .bind(&t.scopes)
+        .bind(&t.audiences)
+        .bind(t.auth_time)
+        .bind(&t.amr)
+        .bind(t.acr.as_deref())
+        .bind(t.expires_at)
+        .bind(t.dpop_jkt.as_deref())
+        .fetch_one(exec)
+        .await
 }
 
 /// Lock the row for update so concurrent rotations of the same token serialize.

@@ -57,6 +57,9 @@ fn req<'a>(
         audiences: &[],
         ttl,
         dpop_jkt: None,
+        auth_time: None,
+        amr: &[],
+        acr: None,
     }
 }
 

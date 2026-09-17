@@ -1,0 +1,68 @@
+# The OpenID Foundation conformance suite (https://gitlab.com/openid/conformance-suite)
+# from its released images. The image's entrypoint builds the Java command from
+# these variables (a `command:` override is ignored). Inside the compose network
+# the suite calls itself https://nginx:8443, where its own browser lands on the
+# test callbacks; this host reaches its API at https://localhost:18443/ (self-signed,
+# dev mode needs no token). The suite reaches the OP under test and its UI at
+# host.docker.internal (mapped to the host on Linux too), so rIDM must publish
+# that name as issuer and UI URL for the run.
+#
+#   docker compose -f conformance/docker-compose.yml up -d
+
+services:
+  mongodb:
+    image: mongo:6.0.13
+  server:
+    image: registry.gitlab.com/openid/conformance-suite:release-v5.2.4
+    depends_on:
+      - mongodb
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # The suite's own address: this host's, so that both its browser (in
+      # this network) and the OP under test (on the host, for back-channel
+      # logout) reach it by the same name. certs.sh writes SUITE_HOST to
+      # conformance/.env and issues nginx's certificate for it.
+      BASE_URL: https://${SUITE_HOST:?run conformance/certs.sh first}:8443
+      BASE_MTLS_URL: https://${SUITE_HOST}:8444
+      MONGODB_HOST: mongodb
+      OIDC_GOOGLE_CLIENTID: unused
+      OIDC_GOOGLE_SECRET: unused
+      OIDC_GITLAB_CLIENTID: unused
+      OIDC_GITLAB_SECRET: unused
+      # The OP under test sits behind conformance/certs (our own CA): trust it.
+      JAVA_EXTRA_ARGS: -Dfintechlabs.devmode=true -Dfintechlabs.startredir=true -Djavax.net.ssl.trustStore=/certs/truststore.p12 -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.trustStoreType=PKCS12
+    volumes:
+      - ./certs:/certs:ro
+  ridm:
+    # https://ridm.local → the rIDM under test: API paths to RIDM_API_UPSTREAM,
+    # the rest to RIDM_UI_UPSTREAM. Both default to this host's own address,
+    # which certs.sh writes to conformance/.env: host.docker.internal does not
+    # reach the host under Docker Desktop on WSL2.
+    image: caddy:2-alpine
+    environment:
+      RIDM_API_UPSTREAM: ${RIDM_API_UPSTREAM:-${SUITE_HOST}:8090}
+      RIDM_UI_UPSTREAM: ${RIDM_UI_UPSTREAM:-${SUITE_HOST}:3110}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+    networks:
+      default:
+        aliases:
+          - ridm.local
+  nginx:
+    image: registry.gitlab.com/openid/conformance-suite/nginx:release-v5.2.4
+    ports:
+      # The suite's API for this host, and its own BASE_URL on this host's
+      # address, which its callback and back-channel URLs carry. The OP under
+      # test trusts the certificate mounted below through
+      # SSL_CERT_FILE=conformance/certs/bundle.crt.
+      - "127.0.0.1:18443:8443"
+      - "${SUITE_HOST}:8443:8443"
+    volumes:
+      - ./certs/suite.crt:/etc/ssl/certs/nginx-selfsigned.crt:ro
+      - ./certs/suite.key:/etc/ssl/private/nginx-selfsigned.key:ro
+    depends_on:
+      - server

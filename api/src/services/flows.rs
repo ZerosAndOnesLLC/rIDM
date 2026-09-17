@@ -104,6 +104,10 @@ fn offered_factors(tenant: &Tenant, user: &User) -> Vec<&'static str> {
 /// `acr` recorded on a session once a second factor passed, unless the client
 /// asked for another `*:mfa` class.
 pub const ACR_MFA: &str = "urn:ridm:acr:mfa";
+/// `acr` recorded on a session established with one factor. A session always
+/// carries a class, so a request that asked for `acr_values` gets an `acr`
+/// claim back (OIDC Core §3.1.2.1) even when nothing it named was met.
+pub const ACR_SINGLE: &str = "urn:ridm:acr:single";
 /// Wrong second-factor codes tolerated per flow before it is discarded.
 pub const MFA_MAX_ATTEMPTS: u32 = 5;
 
@@ -828,13 +832,20 @@ pub fn is_mfa_acr(acr: &str) -> bool {
     acr.ends_with(":mfa")
 }
 
-/// The MFA class a request asks for, if any. Other requested classes are
-/// voluntary (OIDC Core §5.5.1.1): the session's actual class is returned.
+/// The MFA class a request asks for, if any.
+///
+/// `acr_values` is a preference list, most preferred first (OIDC Core
+/// §3.1.2.1), and rIDM honours the first class it recognises: an MFA class
+/// there is a step-up request, while a weaker class ahead of it means the
+/// client will settle for that. Classes rIDM cannot assert are skipped, and
+/// asking for none of them is voluntary either way — the session's actual
+/// class is what the token reports.
 pub fn requested_mfa_class(acr_values: &[String]) -> Option<&str> {
     acr_values
         .iter()
         .map(String::as_str)
-        .find(|a| is_mfa_acr(a))
+        .find(|a| is_mfa_acr(a) || *a == ACR_SINGLE)
+        .filter(|a| is_mfa_acr(a))
 }
 
 /// Whether the flow must pass a second factor before continuing.
@@ -1380,10 +1391,11 @@ async fn open_session(
     };
     // A first factor that is itself multi-factor (a passkey with user
     // verification) asserts the MFA class straight away.
-    let acr = amr
-        .iter()
-        .any(|m| m == "mfa")
-        .then(|| requested_mfa_acr(flow));
+    let acr = Some(if amr.iter().any(|m| m == "mfa") {
+        requested_mfa_acr(flow)
+    } else {
+        ACR_SINGLE.to_string()
+    });
     let mut session = match existing_session {
         Some(mut s) if s.user_id == user_id => {
             sessions::refresh_auth(state, &mut s, amr.clone(), acr).await?;
@@ -1648,4 +1660,32 @@ pub async fn resume_after_verification(
     Ok(Some(
         complete_authentication(state, tenant, flow, user, vec!["otp".into()], ctx, false).await?,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn v(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn the_first_recognised_acr_class_decides_a_step_up() {
+        // Nothing asked for, or nothing rIDM knows: voluntary.
+        assert_eq!(requested_mfa_class(&v(&[])), None);
+        assert_eq!(requested_mfa_class(&v(&["urn:example:gold"])), None);
+        // An MFA class alone, or preferred over a weaker one, is a step-up.
+        assert_eq!(requested_mfa_class(&v(&[ACR_MFA])), Some(ACR_MFA));
+        assert_eq!(
+            requested_mfa_class(&v(&["urn:example:gold", ACR_MFA, ACR_SINGLE])),
+            Some(ACR_MFA)
+        );
+        assert_eq!(
+            requested_mfa_class(&v(&["urn:rp:own:mfa"])),
+            Some("urn:rp:own:mfa")
+        );
+        // A class the session already reaches, preferred first, is enough.
+        assert_eq!(requested_mfa_class(&v(&[ACR_SINGLE, ACR_MFA])), None);
+    }
 }

@@ -28,6 +28,18 @@ test("policy allows self, the hashes, the API and the captcha vendors", () => {
   assert.match(buildPolicy({ hashes: [], apiOrigin: null }), /connect-src 'self' https:/);
 });
 
+test("only the logout page may frame a relying party", () => {
+  const plain = buildPolicy({ hashes: [], apiOrigin: "https://id.example.com" });
+  assert.match(plain, /frame-src https:\/\/challenges\.cloudflare\.com https:\/\/\*\.hcaptcha\.com;/);
+  // Front-channel logout loads each client's logout URI in a hidden iframe.
+  const logout = buildPolicy({ hashes: [], apiOrigin: "https://id.example.com", framesRelyingParties: true });
+  assert.match(logout, /frame-src [^;]*https:;/);
+  assert.doesNotMatch(logout, /frame-src [^;]*http:;/);
+  // A deployment served over plain http (development) frames those too.
+  const dev = buildPolicy({ hashes: [], apiOrigin: "http://localhost:8090", framesRelyingParties: true });
+  assert.match(dev, /frame-src [^;]*https: http:;/);
+});
+
 test("origin of the API url", () => {
   assert.equal(originOf("https://id.example.com/base/"), "https://id.example.com");
   assert.equal(originOf(""), null);

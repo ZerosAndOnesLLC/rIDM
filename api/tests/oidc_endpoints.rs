@@ -481,6 +481,16 @@ async fn rp_initiated_logout_with_hint_and_backchannel_notification() {
         .unwrap();
     // Front-channel URIs exist → an HTML page with the iframe, then a refresh to the RP.
     assert_eq!(res.status(), 200);
+    // The page's policy must admit the relying party it frames; the API's
+    // blanket `default-src 'none'` would block the logout altogether.
+    let csp = res.headers()["content-security-policy"]
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        csp.contains("frame-src https://app.example;"),
+        "front-channel page CSP: {csp}"
+    );
     let set_cookie = res.headers()["set-cookie"].to_str().unwrap().to_string();
     assert!(
         set_cookie.contains("Max-Age=0"),

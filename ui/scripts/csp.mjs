@@ -47,9 +47,18 @@ export function inlineScriptHashes(html) {
   return [...hashes];
 }
 
+/**
+ * Pages that frame a relying party's own URL. Front-channel logout (OIDC
+ * Front-Channel Logout 1.0 §3) signs the user out of every connected
+ * application by loading its logout URI in a hidden iframe, and those URIs
+ * belong to the tenant's clients, not to this origin.
+ */
+const FRAMES_RELYING_PARTIES = /(^|\/)logout\/index\.html$/;
+
 /** The policy string for one page. */
-export function buildPolicy({ hashes, apiOrigin }) {
+export function buildPolicy({ hashes, apiOrigin, framesRelyingParties = false }) {
   const api = apiOrigin ? [apiOrigin] : [];
+  const rp = framesRelyingParties ? (apiOrigin?.startsWith("http://") ? ["https:", "http:"] : ["https:"]) : [];
   const directives = [
     ["default-src", ["'self'"]],
     ["script-src", ["'self'", ...hashes, ...CAPTCHA_SCRIPTS]],
@@ -57,7 +66,7 @@ export function buildPolicy({ hashes, apiOrigin }) {
     ["img-src", ["'self'", "data:", "blob:", "https:", "http:"]],
     ["font-src", ["'self'", "data:", "https:"]],
     ["connect-src", ["'self'", ...api, ...CAPTCHA_CONNECT]],
-    ["frame-src", CAPTCHA_FRAMES],
+    ["frame-src", [...CAPTCHA_FRAMES, ...rp]],
     ["worker-src", ["'self'", "blob:"]],
     ["media-src", ["'self'"]],
     ["manifest-src", ["'self'"]],
@@ -98,7 +107,11 @@ export async function run(outDir, apiUrl) {
   if (files.length === 0) throw new Error(`no pages under ${outDir}`);
   for (const file of files) {
     const html = await readFile(file, "utf8");
-    const policy = buildPolicy({ hashes: inlineScriptHashes(html), apiOrigin });
+    const policy = buildPolicy({
+      hashes: inlineScriptHashes(html),
+      apiOrigin,
+      framesRelyingParties: FRAMES_RELYING_PARTIES.test(file.replaceAll("\\", "/")),
+    });
     await writeFile(file, injectMeta(html, policy));
   }
   return files.length;

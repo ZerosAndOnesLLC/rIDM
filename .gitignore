@@ -48,3 +48,8 @@ ui/CLAUDE.md
 ui/e2e/.state.json
 ui/test-results/
 ui/playwright-report/
+conformance/.venv/
+conformance/results/
+conformance/certs/
+__pycache__/
+*.pyc

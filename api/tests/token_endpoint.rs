@@ -210,7 +210,8 @@ async fn authorization_code_pkce_round_trip_then_refresh_rotation() {
     .await
     .unwrap();
     assert_eq!(id_claims["nonce"], "n1");
-    assert_eq!(id_claims["email"], "alice@example.com");
+    // The scope-derived claims are read from userinfo (OIDC Core §5.4).
+    assert!(id_claims.get("email").is_none(), "{id_claims:?}");
     assert_eq!(
         id_claims["at_hash"],
         tokens::half_hash(SigningAlg::RS256, at)

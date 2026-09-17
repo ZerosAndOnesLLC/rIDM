@@ -73,7 +73,7 @@ async fn accept(
         sessions::NewSession {
             user_id: user.id,
             amr: vec!["otp".into()],
-            acr: None,
+            acr: Some(flows::ACR_SINGLE.to_string()),
             ip: ctx.ip.clone(),
             user_agent: ctx.user_agent.clone(),
             policy,

@@ -137,6 +137,9 @@ async fn password_reset_by_email_token() {
             audiences: &[],
             ttl: chrono::Duration::days(1),
             dpop_jkt: None,
+            auth_time: None,
+            amr: &[],
+            acr: None,
         },
     )
     .await

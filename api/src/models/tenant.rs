@@ -244,12 +244,26 @@ impl Default for RateLimitPolicy {
 }
 
 /// Dynamic client registration policy (RFC 7591).
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct DcrPolicy {
     pub mode: DcrMode,
     /// Grant types a dynamically registered client may request.
     pub allowed_grants: Vec<String>,
+    /// Whether dynamically registered confidential clients must use PKCE at
+    /// `/authorize` (public clients always must). On by default; the OpenID
+    /// Connect basic profile registers confidential clients without PKCE.
+    pub require_pkce: bool,
+}
+
+impl Default for DcrPolicy {
+    fn default() -> Self {
+        Self {
+            mode: DcrMode::default(),
+            allowed_grants: Vec::new(),
+            require_pkce: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]

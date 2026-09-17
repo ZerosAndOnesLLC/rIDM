@@ -33,6 +33,7 @@ pub fn standard_claims(user: &User, scopes: &[String]) -> Map<String, Value> {
             ("family_name", "family_name"),
             ("middle_name", "middle_name"),
             ("nickname", "nickname"),
+            ("profile", "profile"),
             ("picture", "picture"),
             ("website", "website"),
             ("gender", "gender"),

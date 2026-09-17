@@ -17073,6 +17073,7 @@
           "subject_type",
           "require_pkce",
           "require_consent",
+          "id_token_scope_claims",
           "cors_origins",
           "dpop_bound_access_tokens",
           "status",
@@ -17165,6 +17166,10 @@
                 "$ref": "#/components/schemas/IdTokenEncryptionConfig"
               }
             ]
+          },
+          "id_token_scope_claims": {
+            "type": "boolean",
+            "description": "Carry the claims the `profile`, `email`, `address` and `phone` scopes\nask for in the ID token as well. Off by default: with an access token\nissued, they belong at the userinfo endpoint (OIDC Core §5.4)."
           },
           "id_token_ttl_secs": {
             "type": [
@@ -17699,6 +17704,11 @@
               }
             ],
             "default": "disabled"
+          },
+          "require_pkce": {
+            "type": "boolean",
+            "description": "Whether dynamically registered confidential clients must use PKCE at\n`/authorize` (public clients always must). On by default; the OpenID\nConnect basic profile registers confidential clients without PKCE.",
+            "default": true
           }
         }
       },
@@ -19765,6 +19775,13 @@
               {
                 "$ref": "#/components/schemas/IdTokenEncryptionConfig"
               }
+            ],
+            "default": null
+          },
+          "id_token_scope_claims": {
+            "type": [
+              "boolean",
+              "null"
             ],
             "default": null
           },
@@ -23216,7 +23233,8 @@
             ],
             "default": {
               "allowed_grants": [],
-              "mode": "disabled"
+              "mode": "disabled",
+              "require_pkce": true
             }
           },
           "discovery": {

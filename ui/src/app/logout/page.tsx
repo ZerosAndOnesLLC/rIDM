@@ -97,7 +97,7 @@ function LogoutPage() {
           {error && <Alert tone="error">{error}</Alert>}
           {!view.signed_in && <Alert tone="info">{t("logout.done")}</Alert>}
           <div className="flex flex-col gap-2 sm:flex-row-reverse">
-            <Button type="button" busy={busy === "yes"} disabled={busy !== null} onClick={() => void decide(true)}>
+            <Button id="logout-confirm" type="button" busy={busy === "yes"} disabled={busy !== null} onClick={() => void decide(true)}>
               {t("logout.sign_out")}
             </Button>
             <Button type="button" variant="secondary" busy={busy === "no"} disabled={busy !== null} onClick={() => void decide(false)}>

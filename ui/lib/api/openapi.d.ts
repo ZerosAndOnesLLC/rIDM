@@ -2651,6 +2651,12 @@ export interface components {
             /** Format: uuid */
             id: string;
             id_token_encryption?: null | components["schemas"]["IdTokenEncryptionConfig"];
+            /**
+             * @description Carry the claims the `profile`, `email`, `address` and `phone` scopes
+             *     ask for in the ID token as well. Off by default: with an access token
+             *     issued, they belong at the userinfo endpoint (OIDC Core §5.4).
+             */
+            id_token_scope_claims: boolean;
             /** Format: int32 */
             id_token_ttl_secs?: number | null;
             initiate_login_uri?: string | null;
@@ -2827,6 +2833,13 @@ export interface components {
             allowed_grants: string[];
             /** @default disabled */
             mode: components["schemas"]["DcrMode"];
+            /**
+             * @description Whether dynamically registered confidential clients must use PKCE at
+             *     `/authorize` (public clients always must). On by default; the OpenID
+             *     Connect basic profile registers confidential clients without PKCE.
+             * @default true
+             */
+            require_pkce: boolean;
         };
         DeleteAccount: {
             /** @description The username, typed again. */
@@ -3542,6 +3555,8 @@ export interface components {
             frontchannel_logout_uri: string | null;
             /** @default null */
             id_token_encryption: null | components["schemas"]["IdTokenEncryptionConfig"];
+            /** @default null */
+            id_token_scope_claims: boolean | null;
             /**
              * Format: int32
              * @default null
@@ -4799,7 +4814,8 @@ export interface components {
             /**
              * @default {
              *       "allowed_grants": [],
-             *       "mode": "disabled"
+             *       "mode": "disabled",
+             *       "require_pkce": true
              *     }
              */
             dcr: components["schemas"]["DcrPolicy"];

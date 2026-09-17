@@ -292,7 +292,23 @@ fn finish(
              <p>Signing you out…</p><a href=\"{target}\">Continue</a></body></html>",
             target = crate::oidc::authorize::html_escape(&target)
         );
-        (
+        // The page's whole purpose is to frame the relying parties, so it
+        // carries its own policy naming exactly their origins; the API's
+        // `default-src 'none'` would block every one of them.
+        let mut origins: Vec<String> = outcome
+            .frontchannel_logout_uris
+            .iter()
+            .filter_map(|u| url::Url::parse(u).ok())
+            .map(|u| u.origin().ascii_serialization())
+            .collect();
+        origins.sort();
+        origins.dedup();
+        let csp = format!(
+            "default-src 'none'; frame-src {}; style-src 'unsafe-inline'; \
+             frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+            origins.join(" ")
+        );
+        let mut res = (
             StatusCode::OK,
             [(
                 header::CONTENT_TYPE,
@@ -300,7 +316,11 @@ fn finish(
             )],
             html,
         )
-            .into_response()
+            .into_response();
+        if let Ok(v) = HeaderValue::from_str(&csp) {
+            res.headers_mut().insert(header::CONTENT_SECURITY_POLICY, v);
+        }
+        res
     };
     let h = res.headers_mut();
     if let Ok(v) = HeaderValue::from_str(&sessions::clear_cookie_header(state, &tenant.tenant)) {
