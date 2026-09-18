@@ -5,11 +5,13 @@
 
 use chrono::{DateTime, Duration, Utc};
 use futures::stream::{self, Stream};
+use ridm_core::events::Envelope;
 use ridm_core::events::{Actor, Event};
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
-use tokio::sync::broadcast::error::RecvError;
+use tokio::sync::broadcast;
+use tokio::sync::broadcast::error::{RecvError, TryRecvError};
 use uuid::Uuid;
 
 use crate::db;
@@ -146,6 +148,49 @@ pub fn spawn_writer(state: AppState) -> tokio::task::JoinHandle<()> {
             }
         }
     })
+}
+
+/// The audit trail of a one-shot command (`ridm-api bootstrap`,
+/// `ridm-api rotate-master-key`, `ridm bootstrap`). A server records through
+/// [`spawn_writer`]; a command exits as soon as it has acted, before a
+/// background task would get to the events, so it subscribes before acting
+/// and writes what was published before it exits. Rows go to the database
+/// only: the external audit sink ships asynchronously and would not finish.
+pub struct CommandRecorder {
+    rx: broadcast::Receiver<Envelope>,
+}
+
+impl CommandRecorder {
+    pub fn start(state: &AppState) -> Self {
+        Self {
+            rx: state.events.subscribe(),
+        }
+    }
+
+    /// Record every event published since [`CommandRecorder::start`].
+    /// Returns how many could not be recorded (each is also logged).
+    pub async fn flush(mut self, state: &AppState) -> usize {
+        let mut failed = 0;
+        loop {
+            match self.rx.try_recv() {
+                Ok(envelope) => {
+                    if let Err(err) = record(state, &envelope.event).await {
+                        failed += 1;
+                        tracing::error!(
+                            event = envelope.event.name(),
+                            error = %err,
+                            "audit: could not record event"
+                        );
+                    }
+                }
+                Err(TryRecvError::Lagged(n)) => {
+                    failed += n as usize;
+                    tracing::warn!(skipped = n, "audit: event bus lagged, events not recorded");
+                }
+                Err(TryRecvError::Empty | TryRecvError::Closed) => return failed,
+            }
+        }
+    }
 }
 
 /// Newest first. `tenant_id = None` reads the global chain.

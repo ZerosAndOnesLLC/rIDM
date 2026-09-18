@@ -586,6 +586,39 @@ cargo run -p ridm-api                          # runs as the DML-only ridm_app r
 `--env-file .env` is needed because compose otherwise looks for `deploy/.env`, and the
 compose file refuses to start without `MASTER_KEY`.
 
+**`make` shortcuts.** The `Makefile` wraps the commands above and the ones that follow;
+`make` alone lists them. It reads ports and URLs from `.env` and needs nothing beyond
+Docker, cargo and npm (`make watch` also wants `watchexec`).
+
+```bash
+make setup        # Postgres, Valkey and Mailpit; migrations; first admin; a token
+make api          # the API from source           (or: make watch, restarting on change)
+make ui           # the UI with hot reload, :3110 (API_PROXY to the API)
+make seed         # the demo and acme tenants, below
+make lint test    # rustfmt, clippy, UI lint and types; unit tests
+```
+
+`make token` runs `ridm bootstrap --issue-token`: it creates the first global
+administrator if there is none and mints a 30-day personal access token for it straight
+through the database into `target/dev/token` (mode 0600), so a fresh stack can be
+scripted without a browser (`make token ADMIN=<username>` when the owner is not
+`admin`). `make seed` then loads two tenants through the admin API: **`demo`**, the one
+the [example applications](#example-relying-parties) use, and **`acme`**
+([`dev/acme-tenant.json`](dev/acme-tenant.json)), a tenant for working on the consoles —
+a profile schema, a group tree whose groups carry roles, one client of each type and
+120 users spread across the groups, some disabled or unverified (`ACME_USERS=500 make
+seed` for more). Both are re-runnable.
+
+**Hot reload.** `make ui` runs `next dev`, which reloads pages as they are edited. The
+API is a compiled binary: `make watch` restarts it when Rust, SQL or TOML under `api/`
+or `crates/` changes. A restart does not apply a new migration (`make migrate` does, as
+the schema owner), and it drops every in-memory cache, which is harmless because each
+reads through Valkey. Debug builds compile RSA key generation and argon2 hashing with
+optimisations (`[profile.dev.package.*]` in `Cargo.toml`), so creating a tenant or
+signing in is not the slow part of a dev loop. All outgoing mail lands in Mailpit
+(`make mail` prints its address); the API sends there when `.env` has
+`SMTP_HOST=localhost`, `SMTP_PORT=1025` and `SMTP_SECURITY=none`.
+
 Two database roles are used on purpose: `ridm_migrator` owns the schema and runs
 migrations; `ridm_app` (what the API uses) has DML privileges only. Postgres superusers
 bypass row level security and table owners can disable it, so neither may be the API's
@@ -749,7 +782,9 @@ post-logout `http://localhost:3000/`, CORS `http://localhost:3000`); an existing
 left as it is. `ridm-api bootstrap` migrates only when `MIGRATE_ON_START=true`;
 otherwise, with migrations pending, it exits `1` and asks for `ridm-api migrate` first.
 `ridm bootstrap` takes the same flags and runs the same code, for operators who have
-the CLI rather than the server binary at hand.
+the CLI rather than the server binary at hand; its `--issue-token NAME [--token-days N]`
+also mints a personal access token for the administrator and prints it alone on stdout
+(what `make token` uses).
 
 ### Validating tokens in your own API (`ridm-auth`)
 
@@ -1323,6 +1358,8 @@ cd docs && mdbook serve --open     # live reload; the API reference page needs .
 | `crates/ridm-cli/` | `ridm`: command-line administration over the admin API |
 | `ui/` | Next.js 16 static export: admin console, account console, auth pages |
 | `examples/` | three relying parties: an axum resource server, a Next.js SPA, a confidential web app |
+| `dev/` | development seed data (`make seed`) |
+| `Makefile` | development shortcuts (`make` lists them) |
 | `deploy/` | docker-compose (a Helm chart and reverse-proxy examples come in Phase 11) |
 | `docs/` | the documentation site (mdBook): concepts, quickstarts, admin guide, reference, deployment, migration |
 | `api/fuzz/` | cargo-fuzz targets and their seed corpora |

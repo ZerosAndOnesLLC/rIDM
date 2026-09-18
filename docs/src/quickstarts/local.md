@@ -17,6 +17,24 @@ page builds from source.
 | Docker with Compose v2 | any recent | Postgres, Valkey and Mailpit |
 | `curl`, `jq`, `python3`, `openssl` | any | the setup script and the examples below |
 
+## The short way
+
+The repository's `Makefile` runs the steps below. With `.env` written as in
+[step 1](#1-configure):
+
+```bash
+make setup     # step 2 and 3, the first administrator, and an admin token
+make api       # step 4, in one terminal (make watch restarts it on every change)
+make ui        # step 5, in another; next dev reloads pages as you edit them
+make seed      # step 7, plus a second tenant, acme, with 120 users to page through
+```
+
+`make setup` gets its token from `ridm bootstrap --issue-token` (see
+[The ridm command line](../admin/cli.md#a-token-without-a-browser)) and writes it
+to `target/dev/token`, which is what `make seed` uses; step 6 is only needed for
+a token of your own choosing. `make` alone lists every target. The rest of this
+page is what those targets do, one step at a time.
+
 ## Ports
 
 The server's own default listen address is `0.0.0.0:8080`, and the compose file
@@ -146,8 +164,9 @@ curl -s http://localhost:8090/readyz
 curl -s http://localhost:8090/t/master/.well-known/openid-configuration | jq .issuer
 ```
 
-A debug build generates an RSA signing key the first time a tenant needs one,
-which takes a few seconds.
+The server generates an RSA signing key the first time a tenant needs one.
+Debug builds compile the RSA and argon2 crates optimised, so that and password
+hashing take milliseconds rather than seconds.
 
 ## 5. Start the UI
 
@@ -178,7 +197,19 @@ in [The admin and account consoles](../admin/consoles.md).
 ## 6. Give the CLI a token
 
 Every `ridm` command except `bootstrap` talks to the admin API with a bearer
-token. The simplest one is a personal access token:
+token. On a development machine the quickest is to have `ridm bootstrap` mint
+one for the administrator, straight through the database:
+
+```bash
+cargo build -p ridm-cli
+export RIDM_URL=http://localhost:8090
+export RIDM_TOKEN=$(target/debug/ridm bootstrap --no-migrate --issue-token local-dev)
+```
+
+That token carries every permission the administrator holds and expires in 30
+days (`--token-days`). The way that works against any server, including one
+whose database you cannot reach, is a personal access token from the account
+console:
 
 1. Open the account console at <http://localhost:3110/account/?tenant=master>,
    signed in as `admin`.

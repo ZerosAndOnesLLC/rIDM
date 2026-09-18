@@ -29,7 +29,8 @@ also calls the admin API directly with `curl`, which cannot read a token that
 global administrator (see [GETTING-STARTED.md](../GETTING-STARTED.md#getting-an-admin-token-for-the-cli)
 for doing it without a browser); it needs `ridm:tenants:*`, `ridm:users:*` and
 `ridm:roles:*`, and creating the tenant needs `ridm:tenants:create`, which only
-`ridm:owner` holds.
+`ridm:owner` holds. On a development machine `make token` mints one for the owner
+into `target/dev/token`, and `make seed` runs this script with it.
 
 Then, from the repository root:
 

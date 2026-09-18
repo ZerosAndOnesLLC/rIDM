@@ -119,3 +119,21 @@ proptest = "=1.11.0"
 lto = "thin"
 codegen-units = 1
 strip = true
+
+# Debug builds still optimise the two deliberately expensive computations:
+# the big-integer arithmetic behind RSA key generation (unoptimised, one key
+# takes seconds, and creating a tenant or rotating its keys waits for one) and
+# argon2 password hashing (every sign-in and password change). Only these
+# crates are affected; everything else keeps fast, debuggable dev builds.
+[profile.dev.package.rsa]
+opt-level = 3
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
+[profile.dev.package.num-integer]
+opt-level = 3
+[profile.dev.package.num-traits]
+opt-level = 3
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3

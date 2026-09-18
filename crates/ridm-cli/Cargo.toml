@@ -18,10 +18,11 @@ path = "src/main.rs"
 # which pulls the server library in. Build with `--no-default-features` for a
 # slim, HTTP-only CLI that leaves bootstrapping to `ridm-api bootstrap`.
 default = ["bootstrap"]
-bootstrap = ["dep:ridm-api", "dep:rustls"]
+bootstrap = ["dep:ridm-api", "dep:ridm-core", "dep:rustls"]
 
 [dependencies]
 ridm-api = { path = "../../api", version = "0.1.0-dev", optional = true }
+ridm-core = { workspace = true, optional = true }
 
 clap = { workspace = true }
 tokio = { workspace = true }
