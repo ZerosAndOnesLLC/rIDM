@@ -7,7 +7,9 @@
 // (React style props and tenant custom CSS). The policy is injected as a
 // <meta> tag so it works on any static host; framing rules cannot be set
 // from a meta tag, so the host (or the embedded server) still sends
-// X-Frame-Options / frame-ancestors, as the README documents.
+// X-Frame-Options / frame-ancestors, as the README documents: DENY for
+// every page but /login/, which the console's branding preview frames from
+// the same origin (SAMEORIGIN).
 //
 // Runs as `postbuild`; fails the build when a page cannot be processed.
 
@@ -55,9 +57,19 @@ export function inlineScriptHashes(html) {
  */
 const FRAMES_RELYING_PARTIES = /(^|\/)logout\/index\.html$/;
 
+/**
+ * Pages that frame this origin's own pages: the console's settings page shows
+ * the tenant's login page in an iframe as a live branding preview, and the
+ * login page's server answers `frame-ancestors 'self'` for exactly that. Every
+ * console page gets it, not only settings: the console navigates client-side,
+ * so the policy in force is the one of whichever console page loaded first.
+ */
+const FRAMES_SELF = /(^|\/)console\/(.+\/)?index\.html$/;
+
 /** The policy string for one page. */
-export function buildPolicy({ hashes, apiOrigin, framesRelyingParties = false }) {
+export function buildPolicy({ hashes, apiOrigin, framesRelyingParties = false, framesSelf = false }) {
   const api = apiOrigin ? [apiOrigin] : [];
+  const self = framesSelf ? ["'self'"] : [];
   const rp = framesRelyingParties ? (apiOrigin?.startsWith("http://") ? ["https:", "http:"] : ["https:"]) : [];
   const directives = [
     ["default-src", ["'self'"]],
@@ -66,7 +78,7 @@ export function buildPolicy({ hashes, apiOrigin, framesRelyingParties = false })
     ["img-src", ["'self'", "data:", "blob:", "https:", "http:"]],
     ["font-src", ["'self'", "data:", "https:"]],
     ["connect-src", ["'self'", ...api, ...CAPTCHA_CONNECT]],
-    ["frame-src", [...CAPTCHA_FRAMES, ...rp]],
+    ["frame-src", [...self, ...CAPTCHA_FRAMES, ...rp]],
     ["worker-src", ["'self'", "blob:"]],
     ["media-src", ["'self'"]],
     ["manifest-src", ["'self'"]],
@@ -107,10 +119,12 @@ export async function run(outDir, apiUrl) {
   if (files.length === 0) throw new Error(`no pages under ${outDir}`);
   for (const file of files) {
     const html = await readFile(file, "utf8");
+    const path = file.replaceAll("\\", "/");
     const policy = buildPolicy({
       hashes: inlineScriptHashes(html),
       apiOrigin,
-      framesRelyingParties: FRAMES_RELYING_PARTIES.test(file.replaceAll("\\", "/")),
+      framesRelyingParties: FRAMES_RELYING_PARTIES.test(path),
+      framesSelf: FRAMES_SELF.test(path),
     });
     await writeFile(file, injectMeta(html, policy));
   }

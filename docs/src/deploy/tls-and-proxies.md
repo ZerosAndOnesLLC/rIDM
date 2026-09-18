@@ -23,10 +23,11 @@ what clients see. A `PUBLIC_URL` that does not match what clients type produces 
 whose `iss` no relying party accepts, so set it before registering any client and treat
 changing it as a migration for every relying party.
 
-`UI_URL` is where the static sign-in pages and consoles are served. It defaults to
-`PUBLIC_URL`, which is right when the proxy serves `ui/out` on the same host (the
-recommended layout, and the one the snippets below use). Set it only when the UI lives
-elsewhere; see [Deployment overview](overview.md#where-the-ui-is-served-from-today).
+`UI_URL` is where the sign-in pages and consoles are served. It defaults to
+`PUBLIC_URL`, which is right when rIDM serves its embedded UI (the default, and the
+layout the snippets below use) or when the proxy serves `ui/out` on the same host. Set
+it only when the UI lives elsewhere; see
+[Deployment overview](overview.md#where-the-ui-is-served-from).
 
 Every node must have the same `PUBLIC_URL` and `UI_URL`.
 
@@ -116,9 +117,9 @@ the UI belongs on the same origin as the API (or at least the same site).
 
 Official reverse-proxy examples are plan item 11.3 and do not exist yet. The two configs
 below are starting points, written for this application but not tested in CI: review
-them against your environment. Both assume the recommended layout: one host,
-`id.example.com`, serving `ui/out` from disk and passing the API paths to rIDM nodes on
-port 8080. Set `TRUSTED_PROXIES` on the nodes to the proxy's address.
+them against your environment. Both assume the default layout: one host,
+`id.example.com`, with the UI embedded in the server, so every path goes to the rIDM
+nodes on port 8080. Set `TRUSTED_PROXIES` on the nodes to the proxy's address.
 
 ```nginx
 upstream ridm_api {
@@ -141,24 +142,46 @@ server {
     ssl_certificate     /etc/nginx/tls/id.example.com/fullchain.pem;
     ssl_certificate_key /etc/nginx/tls/id.example.com/privkey.pem;
 
-    # The API. /metrics is deliberately not proxied: scrape it on the private network.
-    location ~ ^/(t|admin|scim|\.well-known)/ {
+    # The API and the embedded UI's pages alike.
+    location / {
         proxy_pass http://ridm_api;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+    # Bulk user import accepts up to 32 MiB.
+    location /admin/ {
         client_max_body_size 32m;
-    }
-    location ~ ^/(openapi\.json|healthz|readyz)$ {
         proxy_pass http://ridm_api;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
+    # Scrape /metrics on the private network instead.
+    location = /metrics { return 404; }
+}
+```
 
-    # The UI: a static export where every page is a directory with an index.html.
+Notes on it:
+
+- `Host` is passed through unchanged. That is what rIDM compares against `PUBLIC_URL`'s
+  host and against tenants' custom domains.
+- rIDM sends its own security headers on every response, pages included (framing is
+  refused everywhere except the login page, which only its own origin may frame, for the
+  console's branding preview), and HSTS when `PUBLIC_URL` is https. The proxy adds none.
+- `/docs` is served only if you turned `DOCS_ENABLED` on, which production should not.
+
+**Hosting `ui/out` yourself** (a binary built without the embedded UI): route only the
+API paths to rIDM and serve the files, adding the headers a page's `<meta>` policy cannot
+set. The console frames `/login/` for its branding preview, so that one page must allow
+its own origin:
+
+```nginx
+    location ~ ^/(t|admin|scim|\.well-known)/ { proxy_pass http://ridm_api; ... }
+    location ~ ^/(openapi\.json|healthz|readyz)$ { proxy_pass http://ridm_api; ... }
+
     root /srv/ridm/ui/out;
     location / {
         try_files $uri $uri/ =404;
@@ -167,20 +190,15 @@ server {
         add_header Strict-Transport-Security "max-age=63072000" always;
         add_header X-Content-Type-Options "nosniff" always;
     }
+    location = /login/ {
+        try_files /login/index.html =404;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Content-Security-Policy "frame-ancestors 'self'" always;
+        add_header Strict-Transport-Security "max-age=63072000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+    }
     error_page 404 /404.html;
-}
 ```
-
-Notes on it:
-
-- `Host` is passed through unchanged. That is what rIDM compares against `PUBLIC_URL`'s
-  host and against tenants' custom domains.
-- The UI location adds framing and HSTS headers because the pages' own
-  `Content-Security-Policy` is a `<meta>` tag, which cannot forbid framing. rIDM adds its
-  own security headers (and HSTS when `PUBLIC_URL` is https) to API responses, so the
-  API locations do not need them.
-- Add `/docs` to the API locations only if you turned `DOCS_ENABLED` on, which
-  production should not.
 
 ## A starting point for Caddy
 
@@ -190,28 +208,15 @@ unless you set one.
 
 ```caddy
 id.example.com {
-	@api path /t/* /admin/* /scim/* /.well-known/* /openapi.json /healthz /readyz
-	handle @api {
-		reverse_proxy 10.0.1.11:8080 10.0.1.12:8080 {
-			health_uri /readyz
-		}
-	}
-
-	handle {
-		root * /srv/ridm/ui/out
-		try_files {path} {path}/index.html
-		file_server
-		header {
-			X-Frame-Options "DENY"
-			Content-Security-Policy "frame-ancestors 'none'"
-			Strict-Transport-Security "max-age=63072000"
-			X-Content-Type-Options "nosniff"
-		}
+	respond /metrics 404
+	reverse_proxy 10.0.1.11:8080 10.0.1.12:8080 {
+		health_uri /readyz
 	}
 }
 ```
 
-The repository's OpenID conformance setup puts Caddy in front of rIDM in the same way
+The repository's OpenID conformance setup puts Caddy in front of rIDM in the
+separately-hosted layout, API paths to the server and the rest to `ui/out`
 ([`conformance/Caddyfile`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/conformance/Caddyfile)),
 with its own certificates and both upstreams on the host.
 

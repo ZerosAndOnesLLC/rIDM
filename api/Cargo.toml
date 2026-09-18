@@ -16,6 +16,13 @@ path = "src/main.rs"
 name = "ridm_api"
 path = "src/lib.rs"
 
+[features]
+# Compile the UI's static export (`ui/out`, from `npm run build` in `ui/`)
+# into the binary and serve it on the API's origin: the single-binary deploy
+# the container image ships. Off by default so a Rust-only checkout builds
+# without Node; a debug build reads the files from `ui/out` at run time.
+embedded-ui = []
+
 [dependencies]
 ridm-core = { workspace = true }
 

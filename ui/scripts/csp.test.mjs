@@ -68,3 +68,18 @@ test("run processes every page and hashes each page's own scripts", async () => 
   assert.doesNotMatch(login, new RegExp(sha("a()").replaceAll("+", "\\+")));
   assert.match(login, /connect-src 'self' http:\/\/localhost:8090/);
 });
+
+test("console pages may frame this origin, other pages may not", async () => {
+  assert.match(buildPolicy({ hashes: [], apiOrigin: null, framesSelf: true }), /frame-src 'self' https:/);
+  assert.doesNotMatch(buildPolicy({ hashes: [], apiOrigin: null }), /frame-src 'self'/);
+  const dir = await mkdtemp(join(tmpdir(), "csp-"));
+  // The console navigates client-side, so the settings page's preview runs
+  // under the policy of whichever console page was loaded first.
+  const pages = ["console", "console/settings", "console/users", "login", "account"];
+  for (const p of pages) await mkdir(join(dir, p), { recursive: true });
+  for (const p of pages) await writeFile(join(dir, p, "index.html"), `<html><head></head><body></body></html>`);
+  assert.equal(await run(dir, ""), pages.length);
+  const policy = async (p) => readFile(join(dir, p, "index.html"), "utf8");
+  for (const p of ["console", "console/settings", "console/users"]) assert.match(await policy(p), /frame-src 'self'/, p);
+  for (const p of ["login", "account"]) assert.doesNotMatch(await policy(p), /frame-src 'self'/, p);
+});

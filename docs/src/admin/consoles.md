@@ -7,12 +7,12 @@ rIDM ships two browser consoles in its Next.js UI (`ui/`):
 - the **account console** at `/account/`, where end users manage their own profile,
   security and connected applications.
 
-Both are static pages served from wherever the UI is hosted, the same host as the
-login pages. `UI_URL` tells the server where that is (it defaults to `PUBLIC_URL`),
-because the consoles' built-in clients redirect there. Today the UI is served by
-`next dev` or by any static host serving the `ui/out` export; serving it from the
-API binary itself is planned, not present. See
-[Deployment overview](../deploy/overview.md).
+Both are static pages served wherever the UI is, the same host as the login pages:
+by the server itself in the container image (the embedded UI), or by `next dev` or any
+static host serving the `ui/out` export. `UI_URL` tells the server where that is (it
+defaults to `PUBLIC_URL`, the embedded UI's origin), because the consoles' built-in
+clients redirect there. See
+[Deployment overview](../deploy/overview.md#where-the-ui-is-served-from).
 
 Neither console has privileges of its own. Each is an ordinary OIDC public client of
 the tenant you sign in through, and every action it takes is an API call made with

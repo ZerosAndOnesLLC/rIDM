@@ -106,6 +106,16 @@ API_PROXY=http://localhost:8090 npx next dev -p 3110
 API, so the pages call it same-origin exactly as they do in embedded mode and
 session cookies work without CORS.
 
+That is the setup for working on the pages. To run them the way the container image
+does, compiled into the API and served on its own origin, build the export once and
+start the API with the feature and without `UI_URL`; the consoles are then at
+<http://localhost:8090/console/> and `/account/`:
+
+```bash
+cd ui && NEXT_PUBLIC_API_URL= npm run build && cd ..
+cargo run -p ridm-api --features embedded-ui
+```
+
 | Page | URL | For |
 |------|-----|-----|
 | Admin console | <http://localhost:3110/console/> | tenants, users, roles, clients, keys, sessions, audit |

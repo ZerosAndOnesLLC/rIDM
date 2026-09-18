@@ -229,12 +229,18 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: redis-cli (protocol-compatible client; global setup clears the tenant cache in Valkey)
         run: sudo apt-get update -q && sudo apt-get install -y -q redis-tools
-      - name: build api
-        run: cargo build -p ridm-api --locked
+      # The suite drives the artifact that ships: the static export compiled
+      # into the API (embedded UI mode), everything on one origin.
+      - name: build ui (static export, same origin)
+        working-directory: ui
+        env:
+          NEXT_PUBLIC_API_URL: ""
+        run: npm run build
+      - name: build api (embedded ui)
+        run: cargo build -p ridm-api --locked --features embedded-ui
       - name: start api
         env:
           PUBLIC_URL: http://localhost:8090
-          UI_URL: http://localhost:3110
           BIND_ADDR: 127.0.0.1:8090
           MASTER_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           COOKIE_SECURE: "false"
@@ -253,6 +259,7 @@ jobs:
         working-directory: ui
         env:
           CI: "true"
+          E2E_UI_URL: http://localhost:8090
           E2E_API_URL: http://localhost:8090
           E2E_MAILPIT_URL: http://localhost:8025
           E2E_DATABASE_URL: postgres://ridm:ridm@localhost:5432/ridm

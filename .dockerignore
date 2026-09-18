@@ -2,6 +2,9 @@ target
 ui/node_modules
 ui/.next
 ui/out
+ui/test-results
+ui/playwright-report
+ui/tsconfig.tsbuildinfo
 .git
 .env
 .env.*

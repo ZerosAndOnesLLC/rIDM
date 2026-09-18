@@ -28,10 +28,10 @@ The source is in [`docs/`](docs/); this README stays the developer's overview.
   token rotation with reuse detection, device flow, PAR, JAR/JARM, DCR, RP-initiated,
   back-channel and front-channel logout, token exchange, DPoP. No implicit, hybrid, or
   password grants.
-- **One image, plus a static UI.** A deployment is the API image plus Postgres and
-  Valkey; the UI is a static export for any static host or CDN. Serving the UI
-  from the API binary itself (a single-binary mode) is planned for Phase 11.1 and
-  not built yet.
+- **One image.** A deployment is the API image plus Postgres and Valkey. The image
+  compiles the UI's static export into the server, which serves the sign-in pages and
+  both consoles on its own origin; the same export can also go on any static host or
+  CDN.
 - **Config as code.** Every tenant exports to one JSON document and imports
   idempotently, for GitOps and reproducible environments.
 - **Built for scale.** Stateless API nodes, cache-first reads, short-lived JWTs, Valkey
@@ -186,7 +186,8 @@ curl http://localhost:8080/readyz
 The `dev` profile adds [Mailpit](http://localhost:8025) to catch outbound email and, on
 first run, seeds a global administrator in the `master` tenant (`admin@ridm.local` /
 `ChangeMe-Now-1234` unless `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` say
-otherwise; the password must be changed at first sign-in) and the public SPA client
+otherwise; the password must be changed at first sign-in; the image serves the admin
+console at <http://localhost:8080/console/>) and the public SPA client
 `sample-spa` in `master` (PKCE, redirect `http://localhost:3000/callback`, post-logout
 `http://localhost:3000/`, CORS origin `http://localhost:3000`). Use `--profile prod`
 for a stack without those extras. With `-f deploy/docker-compose.yml`, compose reads
@@ -1116,8 +1117,22 @@ npm run lint && npm run typecheck
 npm run build          # static export to ui/out
 ```
 
-`NEXT_PUBLIC_API_URL` is empty by default (same origin: `ui/out` served on the API's
-host, behind the same reverse proxy, as the planned embedded mode will also do). Set it at build time when hosting `ui/out` on a separate static host or CDN.
+`NEXT_PUBLIC_API_URL` is empty by default (same origin: the pages call the host they
+were loaded from). Set it at build time when hosting `ui/out` on a separate static host
+or CDN.
+
+**Embedded UI mode.** `cargo build -p ridm-api --features embedded-ui` compiles `ui/out`
+into the binary (`api/src/routes/ui.rs`, `rust-embed`; a debug build reads the files
+from `ui/out` at run time instead), and the server then serves the pages itself as the
+router's fallback when `UI_URL` is its own origin (the default) and `EMBEDDED_UI` is not
+`false`. API routes always win; a miss under an API prefix (`/t/`, `/admin`, `/scim/`,
+`/.well-known/`, the probes, `/metrics`, `/docs`, `/openapi.json`) stays the API's bare
+`404`; `/login` redirects to `/login/` (`308`, query kept); unknown paths get the
+export's `404.html`; `/_next/static/` is cached for a year as immutable and everything
+else revalidates against a weak `ETag`; text is gzip-compressed on request. The
+container image builds the export in a Node stage and always enables the feature. The
+feature is off by default so a Rust-only checkout builds without Node, and CI's `ui-e2e`
+job runs the Playwright suite against an API built with it.
 
 The build's `postbuild` step (`scripts/csp.mjs`, unit-tested with `npm run test:scripts`)
 gives every exported page a `Content-Security-Policy` `<meta>` tag: scripts may come
@@ -1126,9 +1141,12 @@ scripts (each allowed by its SHA-256 hash, since a static export has no nonces);
 connections and form posts may go to the page's origin and `NEXT_PUBLIC_API_URL`;
 styles stay inline (React style props and tenant custom CSS); images and fonts may
 come from anywhere over https (tenant logos), and objects are forbidden. A meta tag
-cannot restrict framing, so whoever serves `ui/out` (your reverse proxy or static
-host) should also send `X-Frame-Options: DENY` or
-`Content-Security-Policy: frame-ancestors 'none'`, and `Strict-Transport-Security`.
+cannot restrict framing, so the embedded server sends `X-Frame-Options: DENY` and
+`frame-ancestors 'none'` with every page but `/login/`, which the console's branding
+preview frames and which therefore gets `SAMEORIGIN` and `frame-ancestors 'self'`; the
+console pages' meta policy is the only one with `frame-src 'self'`. A reverse proxy or
+static host serving `ui/out` itself must send the same headers, and
+`Strict-Transport-Security`.
 
 `npm run e2e` runs the Playwright suite (the end-user journeys — password, magic link,
 registration, recovery, two-step verification, passkeys through a virtual
@@ -1314,7 +1332,9 @@ docker build -f api/Dockerfile -t ridm .
 docker buildx build --platform linux/amd64,linux/arm64 -f api/Dockerfile -t ridm .
 ```
 
-The image is distroless, runs as non-root, has no dynamic OpenSSL dependency, and its
+The build compiles the UI's static export (built in a Node stage) into the binary, so
+the image serves the sign-in pages and consoles itself. The image is distroless, runs
+as non-root, has no dynamic OpenSSL dependency, and its
 `HEALTHCHECK` runs `/ridm-api --healthcheck`, which asks `/healthz` on `BIND_ADDR`
 (loopback when bound to all interfaces), over HTTPS trusting exactly `TLS_CERT` when
 native TLS is on.

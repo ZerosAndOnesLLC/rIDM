@@ -13,6 +13,16 @@ UI_URL=http://localhost:3110 SMTP_HOST=localhost SMTP_PORT=1025 SMTP_SECURITY=no
 cd ui && npm run e2e            # starts `next dev -p 3110` itself
 ```
 
+CI runs the suite against the artifact that ships instead: the static export compiled
+into the API (embedded UI mode), pages and API on one origin. To do the same locally:
+
+```bash
+cd ui && NEXT_PUBLIC_API_URL= npm run build && cd ..
+SMTP_HOST=localhost SMTP_PORT=1025 SMTP_SECURITY=none SMTP_FROM='rIDM <no-reply@ridm.local>' \
+  cargo run -p ridm-api --features embedded-ui      # UI_URL unset: the pages are served on :8090
+cd ui && E2E_UI_URL=http://localhost:8090 npm run e2e
+```
+
 Global setup prepares the `master` tenant directly in the database (password,
 magic-link, email-code and passkey sign-in and registration enabled, dynamic client
 registration open), registers a

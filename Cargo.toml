@@ -108,7 +108,7 @@ utoipa-axum = "=0.2.0"
 utoipa-swagger-ui = { version = "=9.0.2", features = ["axum"] }
 
 # Embedded UI
-rust-embed = "=8.12.0"
+rust-embed = { version = "=8.12.0", features = ["mime-guess"] }
 
 # Dev
 testcontainers-modules = { version = "=0.15.0", features = ["postgres", "redis"] }

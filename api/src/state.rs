@@ -29,6 +29,9 @@ pub struct AppState {
     pub breach: Option<Arc<dyn ridm_core::providers::BreachChecker>>,
     /// External destination every audit row is also shipped to.
     pub audit_sink: Option<crate::services::audit_sink::AuditSink>,
+    /// The UI this node serves itself (embedded UI mode); `None` when the
+    /// build has none or `UI_URL` points elsewhere.
+    pub ui: Option<crate::routes::ui::EmbeddedUi>,
 }
 
 impl AppState {
@@ -57,6 +60,7 @@ impl AppState {
                 }
             }
         });
+        let ui = crate::routes::ui::EmbeddedUi::from_build(&config);
         Self {
             config: Arc::new(config),
             db_read: db.clone(),
@@ -69,6 +73,7 @@ impl AppState {
             senders: Arc::new(crate::messaging::DefaultSenderFactory),
             breach,
             audit_sink,
+            ui,
         }
     }
 }
