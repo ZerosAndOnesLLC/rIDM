@@ -1,0 +1,22 @@
+# Overlay on deploy/docker-compose.yml for the examples smoke test (run.sh).
+#
+# The API joins the host's network. The examples run on the host, and one of
+# them is called *by* rIDM: back-channel logout POSTs to
+# http://localhost:3200/backchannel-logout, the URI the demo tenant
+# registers, and from a container on the default bridge `localhost` is the
+# container itself. On the host network it is the host, as it is for a
+# developer running the API with `cargo run`.
+#
+# Everything else is the stack as shipped: the same image, the one-shot
+# `migrate` service as the schema owner, the API as the DML-only role.
+services:
+  api:
+    network_mode: host
+    ports: !reset []
+    environment:
+      DATABASE_URL: postgres://${RIDM_APP_USER:-ridm_app}:${RIDM_APP_PASSWORD:-ridm_app}@127.0.0.1:${RIDM_PG_PORT:-5432}/ridm
+      REDIS_URL: redis://127.0.0.1:${RIDM_VALKEY_PORT:-6379}
+      BIND_ADDR: 127.0.0.1:${RIDM_HTTP_PORT:-8080}
+      # The sign-in pages (rIDM's UI, served by run.sh on the host).
+      UI_URL: ${UI_URL:?set UI_URL}
+      COOKIE_SECURE: "false"

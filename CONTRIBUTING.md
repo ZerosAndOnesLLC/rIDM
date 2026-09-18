@@ -100,7 +100,8 @@ merges.
 - Keep PRs focused; one logical change per PR.
 - `main` is protected: every required status check must pass and no one can bypass.
   Those checks are `static`, `unit`, `integration`, `coverage`, `ui-build`, `ui-e2e`,
-  `load-smoke`, `fuzz-smoke`, `packaging` (all in the `ci` workflow) and `conformance`.
+  `load-smoke`, `fuzz-smoke`, `packaging`, `examples-smoke` (all in the `ci` workflow) and
+  `conformance`.
   Adding a suite means adding it to `working-plan.md` §6 and to branch protection in the
   same pull request. The long runs — four hours a fuzz target (`weekly`) and the 200-VU
   load baseline (`release`) — do not gate a pull request.

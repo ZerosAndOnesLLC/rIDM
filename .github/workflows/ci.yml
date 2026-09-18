@@ -387,3 +387,48 @@ jobs:
           done
           docker compose -f deploy/docker-compose.yml --profile prod logs api
           exit 1
+
+  # The example applications against the shipped stack: the image above under
+  # docker-compose, the first admin and token from `ridm bootstrap`, the demo
+  # tenant from examples/setup.sh, then real sign-ins in headless Chromium
+  # (examples/smoke/run.sh says what is checked).
+  examples-smoke:
+    name: examples-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: build image (amd64)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: api/Dockerfile
+          push: false
+          load: true
+          tags: ridm:ci
+          cache-from: type=gha
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            ui/package-lock.json
+            examples/nextjs-spa/package-lock.json
+      - name: npm ci (ui)
+        working-directory: ui
+        run: npm ci
+      - name: playwright browsers
+        working-directory: ui
+        run: npx playwright install --with-deps chromium
+      - name: smoke
+        env:
+          RIDM_IMAGE: ridm:ci
+        run: examples/smoke/run.sh
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: examples-smoke
+          path: target/smoke
+          retention-days: 7
