@@ -63,8 +63,10 @@ impl Config {
                 .trim_end_matches('/')
                 .to_string(),
             api_audience: var("API_AUDIENCE", "https://orders.example"),
-            // `offline_access` is what asks for a refresh token; without it the
-            // session ends when the access token does.
+            // `offline_access` asks for a refresh token that survives the rIDM
+            // sign-in session timing out (a sign-out or a revoked session still
+            // ends it); without it the refresh token stops working when that
+            // session ends (sign-out, idle or absolute timeout).
             scopes: var(
                 "SCOPES",
                 "openid profile email offline_access orders:read orders:write",

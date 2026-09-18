@@ -2,15 +2,19 @@
 
 Validate [rIDM](https://github.com/ZerosAndOnesLLC/rIDM) access tokens in a Rust API.
 
-rIDM issues signed JWT access tokens. A resource server that accepts one has to
+rIDM issues signed JWT access tokens (unless a client is registered for opaque
+ones; see below). A resource server that accepts one has to
 verify its signature against the issuer's published keys, check that the token
 was meant for *it* and not for some other API of the same tenant, and decide
 whether the subject may do what it is asking. This crate is those three steps,
 and nothing else.
 
+The crate is not on crates.io yet; it is published with rIDM's first release.
+Until then, depend on it from the repository:
+
 ```toml
 [dependencies]
-ridm-auth = "0.1"
+ridm-auth = { git = "https://github.com/ZerosAndOnesLLC/rIDM" }
 ```
 
 ## Verifying a token
@@ -77,7 +81,8 @@ reached, each with a `WWW-Authenticate` challenge and `Cache-Control: no-store`.
 * `typ` is `at+jwt` — which is what stops an ID token being spent as an access
   token. Pass `.token_type(None)` to accept any.
 * `alg` is asymmetric, is one of `DEFAULT_ALGORITHMS`, and matches what the key
-  was published for.
+  was published for. rIDM signs with the algorithm the resource server names
+  (`RS256`, `RS384`, `RS512`, `ES256` or `EdDSA`), or the tenant's default.
 * `iss` is the configured issuer and `aud` names this API. An audience is
   required: without one, any token from the tenant would open your API.
 * `exp` and `nbf`, forgiving 60 seconds of clock skew by default.
@@ -92,6 +97,10 @@ reached, each with a `WWW-Authenticate` challenge and `Cache-Control: no-store`.
   silently downgraded to a bearer token. Turn on
   `.allow_sender_constrained(true)` only if something ahead of your API verifies
   the proof.
+* **Opaque access tokens.** A client registered with
+  `access_token_format: opaque` receives `at_…` references, not JWTs; only
+  rIDM's introspection endpoint can say what one means. An API that serves such
+  clients must call `/introspect` for their tokens.
 * **Encrypted tokens.** rIDM encrypts ID tokens, never access tokens.
 * **Getting a token.** This is the resource-server half; it is not a client
   library.

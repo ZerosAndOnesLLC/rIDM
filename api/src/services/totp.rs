@@ -325,6 +325,39 @@ pub async fn regenerate_recovery_codes(
     Ok(codes)
 }
 
+/// Delete one of the user's credentials (with `second_factors_only`, only a
+/// second factor). Removing the last second factor takes the recovery codes
+/// with it: there is nothing left for them to recover. The account console
+/// and the admin API both remove factors through here. Returns the removed
+/// credential's kind, `None` when there is no such credential.
+pub async fn remove_credential(
+    state: &AppState,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    credential_id: Uuid,
+    second_factors_only: bool,
+) -> AppResult<Option<String>> {
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let rows = repos::credentials::list_for_user(&mut *tx, tenant_id, user_id).await?;
+    let Some(row) = rows.iter().find(|c| c.id == credential_id) else {
+        return Ok(None);
+    };
+    let second_factor = SECOND_FACTOR_KINDS.contains(&row.kind.as_str());
+    if second_factors_only && !second_factor {
+        return Ok(None);
+    }
+    repos::credentials::delete(&mut *tx, tenant_id, user_id, credential_id).await?;
+    let others = rows
+        .iter()
+        .filter(|c| c.id != credential_id && SECOND_FACTOR_KINDS.contains(&c.kind.as_str()))
+        .count();
+    if second_factor && others == 0 {
+        repos::credentials::delete_of_type(&mut *tx, tenant_id, user_id, KIND_RECOVERY).await?;
+    }
+    tx.commit().await?;
+    Ok(Some(row.kind.clone()))
+}
+
 /// Does the user hold any second factor (TOTP or passkey)?
 pub async fn has_second_factor(
     state: &AppState,

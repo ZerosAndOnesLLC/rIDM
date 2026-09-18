@@ -107,13 +107,20 @@ async fn handle(
         created_at: now,
         expires_at: now,
     };
-    // A browser already signed in skips straight to what is left (a second
-    // step, the profile, consent, or nothing).
+    // A browser already signed in skips straight to what is left (a forced
+    // password change, a second step, the profile, consent, or nothing),
+    // judged the way `/authorize` judges a session: a user who is gone or no
+    // longer active signs in again, and a password change the session still
+    // owes comes first.
     if let Some(session) = sessions::from_request(state, &tenant.tenant, headers).await? {
-        flow.session_id = Some(session.id);
-        flow.user_id = Some(session.user_id);
-        flow.amr = session.amr.clone();
-        flows::advance(state, &tenant.tenant, &mut flow, false).await?;
+        let owed = flows::unfinished_stage(state, &tenant.tenant, &session, headers).await?;
+        if owed != Some(FlowStage::Authenticate) {
+            flow.session_id = Some(session.id);
+            flow.user_id = Some(session.user_id);
+            flow.amr = session.amr.clone();
+            let must_change_password = owed == Some(FlowStage::PasswordChange);
+            flows::advance(state, &tenant.tenant, &mut flow, must_change_password).await?;
+        }
     }
     let flow = login_flows::create(state, flow).await?;
     let page = broker::page_for(flow.stage);

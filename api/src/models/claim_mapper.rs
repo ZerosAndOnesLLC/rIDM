@@ -18,7 +18,8 @@ pub enum TokenKind {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum MapperKind {
     /// Copy a user field (`username`, `email`, ...) or a profile attribute
-    /// (`attributes.department`).
+    /// (`attributes.department`; a bare name that is no user field is read
+    /// as an attribute too).
     UserAttribute {
         attribute: String,
         claim: String,
@@ -32,7 +33,8 @@ pub enum MapperKind {
         #[serde(default)]
         full_path: bool,
     },
-    /// Names of the user's effective roles (realm roles, or one client's).
+    /// Names of the user's effective roles: realm roles, or with
+    /// `client_id` (the client's public id) that client's roles only.
     Roles {
         claim: String,
         #[serde(default)]
@@ -106,6 +108,10 @@ pub const PROTECTED_CLAIMS: &[&str] = &[
     "client_id",
     "scope",
     "typ",
+    // Sender constraint and delegation: a mapper writing these could bind a
+    // token to a key or name an actor that never took part.
+    "cnf",
+    "act",
 ];
 
 /// Input for creating a claim mapper: `config` is the mapper document

@@ -16,7 +16,7 @@ use crate::messaging::{self, Outgoing};
 use crate::models::{MessageChannel, Tenant, User, UserStatus};
 use crate::repos;
 use crate::services::password::{self, SetPasswordOptions};
-use crate::services::{passwordless, refresh_tokens, registration, users};
+use crate::services::{logout, passwordless, refresh_tokens, registration, users};
 use crate::state::AppState;
 
 pub const RESET_TTL_SECS: u64 = 60 * 60;
@@ -58,17 +58,21 @@ pub async fn request_password_reset(
     let link = state
         .config
         .ui_page("recover", &[("tenant", &tenant.slug), ("token", &token)]);
-    messaging::send(state, tenant, Outgoing {
-        channel: MessageChannel::Email,
-        event: "password_reset",
-        recipient: user.email.as_deref().unwrap_or_default(),
-        locale: Some(&crate::services::locale::negotiate(
-            requested_locales,
-            user.locale.as_deref(),
-            &tenant.settings.locale,
-        )),
-        vars: serde_json::json!({"user": {"username": user.username}, "link": link, "expires_minutes": RESET_TTL_SECS / 60}),
-    })
+    messaging::send(
+        state,
+        tenant,
+        Outgoing {
+            channel: MessageChannel::Email,
+            event: "password_reset",
+            recipient: user.email.as_deref().unwrap_or_default(),
+            locale: Some(&crate::services::locale::negotiate(
+                requested_locales,
+                user.locale.as_deref(),
+                &tenant.settings.locale,
+            )),
+            vars: messaging::vars::link(&user.username, &link, RESET_TTL_SECS / 60),
+        },
+    )
     .await?;
     state.events.publish(Event::new(
         Some(tenant.id),
@@ -126,6 +130,9 @@ pub async fn complete_password_reset(
     )
     .await?;
     tx.commit().await?;
+    // Whoever knew the old password may hold a session: end them all (the
+    // relying parties are told) along with every refresh token.
+    logout::end_sessions_for_user(state, tenant, user_id, None).await?;
     refresh_tokens::revoke_for_user(state, tenant.id, Actor::User { id: user_id }, user_id, None)
         .await?;
     state.events.publish(Event::new(

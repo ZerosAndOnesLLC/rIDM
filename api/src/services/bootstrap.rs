@@ -3,7 +3,9 @@
 //! `master`, nothing is changed.
 //!
 //! Triggered at startup from `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD`,
-//! or interactively with `ridm-api bootstrap`.
+//! or interactively with `ridm-api bootstrap`. `BOOTSTRAP_SAMPLE_CLIENT=true`
+//! also makes sure `master` has the sample public client
+//! ([`ensure_sample_client`]).
 
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use uuid::Uuid;
@@ -11,15 +13,23 @@ use zeroize::Zeroizing;
 
 use crate::db;
 use crate::error::{AppError, AppResult};
-use crate::models::{MASTER_TENANT_ID, MASTER_TENANT_SLUG, NewUser, Principal, Role};
+use crate::models::{
+    ClientType, MASTER_TENANT_ID, MASTER_TENANT_SLUG, NewClient, NewUser, Principal, Role,
+};
 use crate::repos;
 use crate::services::password::{self, SetPasswordOptions};
-use crate::services::{admin_access, roles, tenants, users};
+use crate::services::{admin_access, clients, roles, tenants, users};
 use crate::state::AppState;
 
 /// Built-in role in `master` granting every admin permission across all
 /// tenants (see [`crate::services::admin_access`]).
 pub const GLOBAL_OWNER_ROLE: &str = admin_access::OWNER_ROLE;
+
+/// `client_id` of the development sample client.
+pub const SAMPLE_CLIENT_ID: &str = "sample-spa";
+/// Where the sample client's authorization responses go: a SPA on the usual
+/// development port.
+pub const SAMPLE_CLIENT_REDIRECT: &str = "http://localhost:3000/callback";
 
 #[derive(Debug, Clone)]
 pub struct BootstrapRequest {
@@ -186,4 +196,47 @@ pub async fn run(state: &AppState, req: BootstrapRequest) -> AppResult<Bootstrap
     Ok(BootstrapOutcome::Created {
         admin_user_id: admin.id,
     })
+}
+
+/// Make sure `master` has the development sample client: a public SPA client
+/// ([`SAMPLE_CLIENT_ID`]) with PKCE, redirecting to [`SAMPLE_CLIENT_REDIRECT`].
+/// Idempotent: an existing client with that id is left as it is. Returns
+/// whether it was created now.
+pub async fn ensure_sample_client(state: &AppState) -> AppResult<bool> {
+    if clients::find_by_client_id(state, MASTER_TENANT_ID, SAMPLE_CLIENT_ID)
+        .await?
+        .is_some()
+    {
+        return Ok(false);
+    }
+    let created = clients::create(
+        state,
+        MASTER_TENANT_ID,
+        Actor::System,
+        NewClient {
+            client_id: Some(SAMPLE_CLIENT_ID.into()),
+            name: "Sample SPA".into(),
+            client_type: Some(ClientType::Spa),
+            description: Some("Development sample client (BOOTSTRAP_SAMPLE_CLIENT)".into()),
+            redirect_uris: vec![SAMPLE_CLIENT_REDIRECT.into()],
+            post_logout_redirect_uris: vec!["http://localhost:3000/".into()],
+            cors_origins: vec!["http://localhost:3000".into()],
+            ..Default::default()
+        },
+    )
+    .await;
+    match created {
+        Ok(_) => {
+            tracing::info!(
+                tenant = MASTER_TENANT_SLUG,
+                client_id = SAMPLE_CLIENT_ID,
+                redirect_uri = SAMPLE_CLIENT_REDIRECT,
+                "bootstrap: sample public client created"
+            );
+            Ok(true)
+        }
+        // Another node created it at the same moment.
+        Err(AppError::Conflict(_)) => Ok(false),
+        Err(e) => Err(e),
+    }
 }

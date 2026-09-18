@@ -214,6 +214,16 @@ pub fn resolve(
             ));
         }
     }
+    let access_token_format = input.access_token_format.unwrap_or(AccessTokenFormat::Jwt);
+    // The consoles' own clients stay on JWTs: they are first-party, and the
+    // account and admin APIs are what they call on every page.
+    if access_token_format == AccessTokenFormat::Opaque
+        && super::admin_console::is_builtin_client(&client_id)
+    {
+        return Err(AppError::BadRequest(
+            "the built-in console clients use JWT access tokens".into(),
+        ));
+    }
     let allowed_scopes = input.allowed_scopes.unwrap_or_else(|| match client_type {
         ClientType::Machine => vec![],
         _ => STANDARD_SCOPES.iter().map(|s| s.to_string()).collect(),
@@ -258,7 +268,7 @@ pub fn resolve(
         access_token_ttl_secs: input.access_token_ttl_secs,
         refresh_token_ttl_secs: input.refresh_token_ttl_secs,
         id_token_ttl_secs: input.id_token_ttl_secs,
-        access_token_format: input.access_token_format.unwrap_or(AccessTokenFormat::Jwt),
+        access_token_format,
         id_token_encryption: input.id_token_encryption.map(Json),
         subject_type,
         sector_identifier_uri: input.sector_identifier_uri,

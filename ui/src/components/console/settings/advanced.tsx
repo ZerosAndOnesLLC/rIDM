@@ -1,7 +1,17 @@
 "use client";
 
-import { Field, NumberInput, Section, SelectInput, TagsInput, Toggle } from "@/components/console/form";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus } from "lucide-react";
+import { useState } from "react";
+import { Field, NumberInput, Section, SelectInput, TagsInput, TextInput, Toggle } from "@/components/console/form";
+import { Badge, Button } from "@/components/console/ui";
+import { Spinner } from "@/components/ui";
+import { formatDate } from "@/i18n";
+import type { InitialAccessToken } from "@/lib/console/ops";
+import { useConsole } from "@/lib/console/session";
 import { GRANTS, RSA_BITS, SIGNING_ALGS } from "@/lib/console/settings";
+import { ErrorLine } from "../access/common";
+import { RevealModal, type Revealed } from "../clients/reveal";
 import { useSettingsEditor } from "./context";
 
 export function AdvancedSection() {
@@ -66,6 +76,7 @@ export function AdvancedSection() {
           </label>
         ))}
       </fieldset>
+      {dcr.mode === "initial_access_token" && <InitialAccessTokens slug={draft.slug} />}
       <Toggle
         label="Registered confidential clients must use PKCE"
         hint="Public clients always must. Off matches the OpenID Connect basic profile, whose clients authenticate with a secret and send no code challenge."
@@ -78,5 +89,121 @@ export function AdvancedSection() {
         {(id, by) => <NumberInput id={id} describedBy={by} value={audit.retention_days} min={0} onValue={(v) => v !== null && update({ audit: { retention_days: v } })} unit="days" />}
       </Field>
     </Section>
+  );
+}
+
+/**
+ * Initial access tokens (RFC 7591 §1.2): what `/register` demands in this
+ * mode. Each is shown once when issued, with an optional expiry and budget
+ * of registrations, and can be revoked.
+ */
+function InitialAccessTokens({ slug }: { slug: string }) {
+  const { client, can } = useConsole();
+  const qc = useQueryClient();
+  const editable = can("ridm:clients:write");
+  const tokens = useQuery({
+    queryKey: ["dcr-tokens", slug],
+    enabled: can("ridm:clients:read"),
+    queryFn: async () => {
+      const { data, error } = await client.GET("/admin/tenants/{slug}/dcr/initial-access-tokens", { params: { path: { slug } } });
+      if (error) throw new Error(error.detail ?? error.title);
+      return data;
+    },
+  });
+  const [description, setDescription] = useState("");
+  const [hours, setHours] = useState<number | null>(24);
+  const [uses, setUses] = useState<number | null>(1);
+  const [revealed, setRevealed] = useState<Revealed | null>(null);
+  const invalidate = () => void qc.invalidateQueries({ queryKey: ["dcr-tokens", slug] });
+  const issue = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await client.POST("/admin/tenants/{slug}/dcr/initial-access-tokens", {
+        params: { path: { slug } },
+        body: { description: description.trim() || null, expires_in_secs: hours === null ? null : hours * 3600, max_uses: uses },
+      });
+      if (error) throw new Error(error.detail ?? error.title);
+      return data;
+    },
+    onSuccess: (t) => {
+      setDescription("");
+      invalidate();
+      setRevealed({ title: "Initial access token issued", description: "Registering software sends it as its bearer token to the registration endpoint; it is shown only now.", values: [{ label: "Initial access token", value: t.token }] });
+    },
+  });
+  const revoke = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await client.DELETE("/admin/tenants/{slug}/dcr/initial-access-tokens/{token}", { params: { path: { slug, token: id } } });
+      if (error) throw new Error(error.detail ?? error.title);
+    },
+    onSuccess: invalidate,
+  });
+  const state = (t: InitialAccessToken): { label: string; tone: "neutral" | "danger" | "ok" } => {
+    if (t.revoked_at) return { label: "revoked", tone: "neutral" };
+    if (t.expires_at && new Date(t.expires_at) < new Date()) return { label: "expired", tone: "danger" };
+    if (t.max_uses != null && t.uses >= t.max_uses) return { label: "used up", tone: "neutral" };
+    return { label: "active", tone: "ok" };
+  };
+  if (!can("ridm:clients:read")) return null;
+  return (
+    <div className="flex flex-col gap-3 sm:col-span-2">
+      <h3 className="text-[0.8125rem] font-medium text-ink">Initial access tokens</h3>
+      <RevealModal revealed={revealed} onClose={() => setRevealed(null)} />
+      <ErrorLine error={issue.error ?? revoke.error} />
+      {editable && (
+        <form
+          className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem_8rem_auto] sm:items-end"
+          onSubmit={(e) => {
+            e.preventDefault();
+            issue.mutate();
+          }}
+        >
+          <label className="flex flex-col gap-1 text-[0.8125rem] text-muted">
+            Description
+            <TextInput value={description} onChange={(e) => setDescription(e.target.value)} placeholder="CI pipeline" maxLength={200} />
+          </label>
+          <label className="flex flex-col gap-1 text-[0.8125rem] text-muted">
+            Expires in
+            <NumberInput id="dcr-token-hours" value={hours} min={1} nullable onValue={setHours} unit="h" />
+          </label>
+          <label className="flex flex-col gap-1 text-[0.8125rem] text-muted">
+            Registrations
+            <NumberInput id="dcr-token-uses" value={uses} min={1} nullable onValue={setUses} />
+          </label>
+          <Button type="submit" disabled={issue.isPending}>
+            <Plus className="size-4" aria-hidden /> Issue token
+          </Button>
+        </form>
+      )}
+      {tokens.isPending ? (
+        <Spinner label="Loading…" />
+      ) : tokens.isError ? (
+        <ErrorLine error={tokens.error} />
+      ) : tokens.data.length === 0 ? (
+        <p className="text-[0.875rem] text-muted">No initial access tokens yet; registration is closed until one is issued.</p>
+      ) : (
+        <ul className="divide-y divide-line">
+          {tokens.data.map((t) => {
+            const s = state(t);
+            return (
+              <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-[0.875rem]">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-ink">{t.description ?? "Untitled"}</span>
+                  <Badge tone={s.tone}>{s.label}</Badge>
+                  <span className="text-[0.8125rem] text-muted">
+                    {t.uses} of {t.max_uses ?? "unlimited"} used · created {formatDate("en", t.created_at)}
+                    {t.expires_at ? ` · expires ${formatDate("en", t.expires_at)}` : " · no expiry"}
+                  </span>
+                </div>
+                {editable && !t.revoked_at && (
+                  <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={revoke.isPending} onClick={() => revoke.mutate(t.id)}>
+                    Revoke
+                  </Button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }

@@ -21,7 +21,7 @@ use crate::services::tenants::{self, NewTenant, TenantUpdate};
 use crate::services::{captcha, profile_schema, provider_settings};
 use crate::state::AppState;
 use crate::util::cursor::Page;
-use crate::util::patch::{diff_paths, merge_patch};
+use crate::util::patch::{diff_paths, drop_on_variant_change, merge_patch};
 
 pub fn tenants_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -110,6 +110,9 @@ async fn update(
             }
             let current = tenants::get(&state, tenant.id).await?;
             let mut doc = serde_json::to_value(&current.settings.0)?;
+            // `mfa` is a tagged enum: `{"mfa": {"mode": "optional"}}` switches
+            // the variant and leaves nothing of `required_for_roles` behind.
+            drop_on_variant_change(&mut doc, &patch, "mfa", "mode");
             merge_patch(&mut doc, &patch);
             let settings: TenantSettings = serde_json::from_value(doc.clone())
                 .map_err(|e| AppError::BadRequest(format!("invalid settings: {e}")))?;

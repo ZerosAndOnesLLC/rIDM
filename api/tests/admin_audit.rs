@@ -270,21 +270,24 @@ async fn retention_purges_old_rows_and_the_chain_still_verifies() {
         app.state.events.publish(Event::new(
             Some(tid),
             Actor::System,
-            EventKind::CacheInvalidate {
-                entity: "test".into(),
-                id: i.to_string(),
+            EventKind::PersonalTokenRevoked {
+                user_id: Uuid::nil(),
+                token_id: Uuid::from_u128(i),
             },
         ));
     }
-    let page = wait_for(&app, &format!("{base}?name=cache.invalidate"), &t, |p| {
-        p["items"].as_array().unwrap().len() >= 3
-    })
+    let page = wait_for(
+        &app,
+        &format!("{base}?name=personal_token.revoked"),
+        &t,
+        |p| p["items"].as_array().unwrap().len() >= 3,
+    )
     .await;
     let survivor = page["items"][0]["id"].as_str().unwrap().to_string();
     let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
     sqlx::query(
         "UPDATE audit_events SET occurred_at = now() - interval '3 days' \
-         WHERE tenant_id = $1 AND name = 'cache.invalidate' AND id <> $2",
+         WHERE tenant_id = $1 AND name = 'personal_token.revoked' AND id <> $2",
     )
     .bind(tid)
     .bind(Uuid::parse_str(&survivor).unwrap())
@@ -298,7 +301,12 @@ async fn retention_purges_old_rows_and_the_chain_still_verifies() {
         .await
         .unwrap();
     assert!(purged >= 2, "{purged}");
-    let (_, after, _) = get_json(&app, &format!("{base}?name=cache.invalidate"), Some(&t)).await;
+    let (_, after, _) = get_json(
+        &app,
+        &format!("{base}?name=personal_token.revoked"),
+        Some(&t),
+    )
+    .await;
     let ids: Vec<&str> = after["items"]
         .as_array()
         .unwrap()

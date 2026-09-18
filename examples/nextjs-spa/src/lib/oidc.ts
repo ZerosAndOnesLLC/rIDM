@@ -88,8 +88,10 @@ export async function beginSignIn(options: { prompt?: "none" } = {}): Promise<vo
     nonce,
     code_challenge: await codeChallenge(verifier),
     code_challenge_method: "S256",
-    // Which API the access token should be good for. Without it the token is
-    // audienced to this client and the orders API refuses it.
+    // Which API the access token should be good for (RFC 8707). Without it
+    // rIDM falls back to the client's registered audiences plus those of any
+    // resource-bound scope requested, and to this client itself only when
+    // there are none, in which case the orders API refuses the token.
     resource: config.apiAudience,
   });
   if (options.prompt) query.set("prompt", options.prompt);

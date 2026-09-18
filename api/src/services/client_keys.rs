@@ -71,9 +71,12 @@ async fn fetch(uri: &str) -> AppResult<Value> {
     if parsed.scheme() != "https" {
         return Err(AppError::BadRequest("jwks_uri must use https".into()));
     }
-    let client = reqwest::Client::builder()
+    // A client registration (possibly a dynamic, anonymous one) chose this
+    // URL: public addresses only (SSRF).
+    crate::util::outbound::check_url(uri)
+        .map_err(|e| AppError::BadRequest(format!("jwks_uri: {e}")))?;
+    let client = crate::util::outbound::client_builder()
         .timeout(Duration::from_secs(5))
-        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| AppError::Internal(e.to_string()))?;
     let res = client

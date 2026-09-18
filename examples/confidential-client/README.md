@@ -39,20 +39,28 @@ back-channel logout URI. [`demo-tenant.json`](../demo-tenant.json) already does.
 | `main.rs` | the routes, and the two validators |
 
 1. **`/login`** mints `state`, `nonce` and a PKCE verifier, remembers them, and
-   redirects. `resource=https://orders.example` (RFC 8707) is what makes the
-   access token good for the orders API rather than for this client.
+   redirects. `resource=https://orders.example` (RFC 8707) names the API the
+   access token is for. Without it rIDM falls back to the client's registered
+   audiences (plus those of any resource-bound scope requested), and to the
+   client itself only when there are none; asking explicitly keeps the app
+   from depending on how the client happens to be registered.
 2. **`/callback`** refuses anything it cannot account for: an error parameter, a
    missing code, a `state` it did not issue or has already spent, a token
    endpoint refusal, an ID token that does not verify, a `nonce` that does not
    match. Only then does a session open.
 3. **Calling the API** refreshes the access token when it has run out. rIDM
    rotates refresh tokens, so what comes back replaces what went in —
-   presenting the old one again ends the whole family.
+   presenting the old one again ends the whole family. The default `SCOPES`
+   include `offline_access`, which the orders resource server allows, so the
+   refresh token survives the rIDM session timing out (a sign-out still
+   revokes it); without it the refresh token stops working as soon as the SSO
+   session ends.
 4. **`/logout`** hands the refresh token back (RFC 7009), clears the cookie, and
    *then* redirects to the end-session endpoint. Without that last step the next
    sign-in is silent and instant, and the user thinks the sign-out failed.
 5. **`/backchannel-logout`** ends the session here when the user signed out
-   somewhere else — another app, an administrator revoking the session, a
+   somewhere else — another app, an administrator revoking the session or
+   disabling the user, a password change that signs out other sessions, a
    password reset. No browser is involved, so the answer is a status code.
 
 ## What `ridm-auth` does here

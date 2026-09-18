@@ -269,3 +269,139 @@ async fn migration_files_are_well_formed() {
         );
     }
 }
+
+/// The two-role layout of `deploy/postgres/init-app-role.sh` on a throwaway
+/// database: a migrator that owns the schema and a DML-only application role.
+/// Returns the URLs of the migrator, the application role and a role with no
+/// grants at all, and the role names to drop afterwards.
+async fn two_role_layout(url: &str, db_name: &str) -> ([String; 3], [String; 3]) {
+    let suffix = &Uuid::new_v4().simple().to_string()[..8];
+    let names = [
+        format!("mt_migrator_{suffix}"),
+        format!("mt_app_{suffix}"),
+        format!("mt_other_{suffix}"),
+    ];
+    let [migrator, app, other] = &names;
+    let mut admin = PgConnection::connect(url).await.unwrap();
+    for role in &names {
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+            "CREATE ROLE {role} LOGIN PASSWORD '{role}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS"
+        )))
+        .execute(&mut admin)
+        .await
+        .unwrap();
+    }
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "GRANT CONNECT, CREATE, TEMP ON DATABASE {db_name} TO {migrator};
+         GRANT ALL ON SCHEMA public TO {migrator};
+         GRANT CONNECT, TEMP ON DATABASE {db_name} TO {app};
+         GRANT USAGE ON SCHEMA public TO {app};
+         ALTER DEFAULT PRIVILEGES FOR ROLE {migrator} IN SCHEMA public
+             GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {app};
+         ALTER DEFAULT PRIVILEGES FOR ROLE {migrator} IN SCHEMA public
+             GRANT USAGE, SELECT ON SEQUENCES TO {app};
+         ALTER DEFAULT PRIVILEGES FOR ROLE {migrator} IN SCHEMA public
+             GRANT EXECUTE ON FUNCTIONS TO {app};"
+    )))
+    .execute(&mut admin)
+    .await
+    .unwrap();
+    admin.close().await.unwrap();
+    let as_role = |role: &str| {
+        let mut u = url::Url::parse(url).unwrap();
+        u.set_username(role).unwrap();
+        u.set_password(Some(role)).unwrap();
+        u.to_string()
+    };
+    ([as_role(migrator), as_role(app), as_role(other)], names)
+}
+
+async fn drop_roles(names: &[String]) {
+    let infra = common::infra().await;
+    if let Ok(mut admin) = PgConnection::connect(&infra.admin_url).await {
+        for role in names {
+            let _ = sqlx::raw_sql(sqlx::AssertSqlSafe(format!("DROP ROLE IF EXISTS {role}")))
+                .execute(&mut admin)
+                .await;
+        }
+    }
+}
+
+/// Review finding (Phase 10): `audit_ensure_partitions` ran with the caller's
+/// rights, and the DML-only application role cannot create tables, so the
+/// `audit_retention` job failed once the partitions made at migration time
+/// ran out. It is now `SECURITY DEFINER`: the application role creates the
+/// next months' partitions, a role without grants cannot call it, and a month
+/// that already has rows in the default partition is skipped, not fatal.
+/// Also: with every migration applied, the application role sees nothing
+/// pending and `migrate_pending` (what `MIGRATE_ON_START` and `ridm-api
+/// bootstrap` use) is a no-op instead of failing on `_sqlx_migrations`.
+#[tokio::test]
+async fn the_application_role_keeps_audit_partitions_coming() {
+    let Some((url, name)) = fresh_database().await else {
+        eprintln!("skipping: no CREATEDB-capable admin connection");
+        return;
+    };
+    let ([migrator_url, app_url, other_url], roles) = two_role_layout(&url, &name).await;
+    let result = async move {
+        let migrator = sqlx::PgPool::connect(&migrator_url).await.unwrap();
+        ridm_api::db::migrate(&migrator).await.unwrap();
+        migrator.close().await;
+
+        let app = sqlx::PgPool::connect(&app_url).await.unwrap();
+        assert_eq!(ridm_api::db::pending_migrations(&app).await.unwrap(), 0);
+        assert_eq!(ridm_api::db::migrate_pending(&app).await.unwrap(), 0);
+
+        // Months 0..=2 exist from the migration; 3..=5 are the app role's.
+        let created: i32 = sqlx::query_scalar("SELECT audit_ensure_partitions(5)")
+            .fetch_one(&app)
+            .await
+            .unwrap();
+        assert_eq!(created, 3);
+        let third: Option<String> = sqlx::query_scalar(
+            "SELECT to_regclass('audit_events_' || \
+             to_char(date_trunc('month', now()) + interval '3 month', 'YYYYMM'))::text",
+        )
+        .fetch_one(&app)
+        .await
+        .unwrap();
+        assert!(
+            third.is_some(),
+            "the app role created next quarter's partition"
+        );
+
+        // A row that fell into the default partition (partitions were missing
+        // when it was written) does not stop the rest.
+        let admin = sqlx::PgPool::connect(&url).await.unwrap();
+        sqlx::query(
+            "INSERT INTO audit_events (id, chain_id, seq, occurred_at, name, actor_type, payload, hash) \
+             VALUES ($1, $2, 1, date_trunc('month', now()) + interval '7 month', 'x', 'system', '{}', '\\x00')",
+        )
+        .bind(Uuid::now_v7())
+        .bind(Uuid::nil())
+        .execute(&admin)
+        .await
+        .unwrap();
+        admin.close().await;
+        let created: i32 = sqlx::query_scalar("SELECT audit_ensure_partitions(8)")
+            .fetch_one(&app)
+            .await
+            .unwrap();
+        assert_eq!(created, 2, "months 6 and 8; month 7 is skipped");
+        app.close().await;
+
+        // Not callable by everyone.
+        let other = sqlx::PgPool::connect(&other_url).await.unwrap();
+        let err = sqlx::query_scalar::<_, i32>("SELECT audit_ensure_partitions(9)")
+            .fetch_one(&other)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("permission denied"), "{err}");
+        other.close().await;
+    };
+    let outcome = tokio::spawn(result).await;
+    drop_database(&name).await;
+    drop_roles(&roles).await;
+    outcome.unwrap();
+}

@@ -8,6 +8,13 @@ use ridm_api::util::secret::SecretBytes;
 use ridm_core::events::Actor;
 use uuid::Uuid;
 
+/// `master_key::rotate_all` rewrites every encrypted row of the shared
+/// database, whichever tenant it belongs to. Two rotations running at once
+/// would each re-encrypt the other's rows (and one leaves the database under
+/// a generation the other's assertions do not expect), so the tests of this
+/// binary take turns.
+static ROTATION: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// A second "deployment" of the same database with a newer master key.
 async fn state_with_key(
     app: &TestApp,
@@ -30,6 +37,7 @@ async fn state_with_key(
 
 #[tokio::test]
 async fn rotation_reencrypts_every_row_and_is_idempotent() {
+    let _turn = ROTATION.lock().await;
     let app = TestApp::spawn().await; // master key: 0x07.., version 1
     let tid = app.tenant.id;
     let k1 = keys::create(
@@ -156,6 +164,7 @@ async fn rotation_reencrypts_every_row_and_is_idempotent() {
 
 #[tokio::test]
 async fn rows_under_an_unknown_generation_are_reported_not_destroyed() {
+    let _turn = ROTATION.lock().await;
     let app = TestApp::spawn().await;
     let tid = app.tenant.id;
     let k = keys::create(

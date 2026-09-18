@@ -85,6 +85,9 @@ pub fn validate_config(name: &str, config: &Value) -> AppResult<ClaimMapper> {
             "claim must be a non-empty name".into(),
         ));
     }
+    if let Some(reason) = crate::services::claims::mapper_claim_refusal(&mapper) {
+        return Err(AppError::BadRequest(reason));
+    }
     if let MapperKind::Template { template, .. } = &mapper.kind {
         let mut hb = handlebars::Handlebars::new();
         hb.register_template_string("m", template)

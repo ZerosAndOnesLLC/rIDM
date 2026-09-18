@@ -1,6 +1,6 @@
 //! Token revocation (RFC 7009): `POST /t/{slug}/revoke`. Refresh tokens are
-//! revoked with their family; JWT access tokens are denylisted by `jti` until
-//! they expire. Unknown tokens still return 200.
+//! revoked with their family; access tokens are denylisted by `jti` until
+//! they expire (and an opaque one's entry is dropped). Unknown tokens still return 200.
 
 use std::net::{IpAddr, SocketAddr};
 
@@ -16,7 +16,7 @@ use crate::middleware::{TenantCtx, client_ip_addr};
 use crate::oidc::authorize::RawParams;
 use crate::oidc::client_auth;
 use crate::services::tokens::{self, VerifyOptions};
-use crate::services::{denylist, refresh_tokens};
+use crate::services::{denylist, opaque_tokens, refresh_tokens};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -60,8 +60,9 @@ async fn handle(
         refresh_tokens::revoke(state, tenant.id(), &client.client_id, token).await?;
         return Ok(());
     }
-    // Access token: only the client it was issued to may revoke it.
-    if let Ok(claims) = tokens::verify(
+    // Access token: only the client it was issued to may revoke it. An opaque
+    // token's entry is dropped as well as its `jti` denied.
+    if let Ok(claims) = tokens::verify_access(
         state,
         &tenant.tenant,
         token,
@@ -77,6 +78,7 @@ async fn handle(
         && let Some(exp) = DateTime::<Utc>::from_timestamp(exp, 0)
     {
         denylist::deny(state, tenant.id(), jti, exp).await?;
+        opaque_tokens::revoke(state, token).await?;
     }
     Ok(())
 }

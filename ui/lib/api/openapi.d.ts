@@ -374,6 +374,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/tenants/{slug}/dcr/initial-access-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["clients_list_tokens"];
+        put?: never;
+        /**
+         * The token is returned once, in this response. `expires_in_secs` and
+         *     `max_uses` are optional; without them the token neither expires nor runs
+         *     out.
+         */
+        post: operations["clients_issue_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/dcr/initial-access-tokens/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["clients_revoke_token"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/tenants/{slug}/export": {
         parameters: {
             query?: never;
@@ -578,7 +615,8 @@ export interface paths {
         put?: never;
         /**
          * `?dry_run=true` returns the plan (creates, updates with field diffs, and
-         *     with `prune` deletes). Without it the plan is applied; the report lists
+         *     with `prune` deletes), with `errors` listing roles and groups whose grants
+         *     the caller could not make (applying would refuse them the same way). Without it the plan is applied; the report lists
          *     what was applied, any per-item errors, and the secrets of clients and
          *     webhooks the import created (shown once). Applying the same document
          *     again yields an empty plan.
@@ -2776,6 +2814,10 @@ export interface components {
              */
             rsa_bits: number | null;
         };
+        /** @description The token is returned once, here. */
+        CreatedInitialAccessToken: components["schemas"]["InitialAccessToken"] & {
+            token: string;
+        };
         /** @description A freshly minted token: the secret is only ever returned here. */
         CreatedPersonalAccessToken: components["schemas"]["PersonalAccessToken"] & {
             /** @description The bearer token, shown once. */
@@ -3230,6 +3272,36 @@ export interface components {
             /** @default  */
             username: string;
         };
+        /**
+         * @description An initial access token for dynamic client registration (RFC 7591 §1.2):
+         *     what `POST /t/{slug}/register` demands under `dcr.mode =
+         *     initial_access_token`.
+         */
+        InitialAccessToken: {
+            /** Format: date-time */
+            created_at: string;
+            description?: string | null;
+            /** Format: date-time */
+            expires_at?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            last_used_at?: string | null;
+            /**
+             * Format: int32
+             * @description Registrations it allows in all; `null` for no limit.
+             */
+            max_uses?: number | null;
+            /** Format: date-time */
+            revoked_at?: string | null;
+            /** Format: uuid */
+            tenant_id: string;
+            /**
+             * Format: int32
+             * @description Registrations made with it so far.
+             */
+            uses: number;
+        };
         Invitation: {
             /** Format: date-time */
             accepted_at?: string | null;
@@ -3661,6 +3733,25 @@ export interface components {
             trust_email: boolean | null;
             /** @default null */
             userinfo_endpoint: string | null;
+        };
+        NewInitialAccessToken: {
+            /**
+             * @description What the token is for (at most 200 characters).
+             * @default null
+             */
+            description: string | null;
+            /**
+             * Format: int64
+             * @description Seconds until the token expires; absent for a token without expiry.
+             * @default null
+             */
+            expires_in_secs: number | null;
+            /**
+             * Format: int32
+             * @description Registrations it allows; absent for no limit.
+             * @default null
+             */
+            max_uses: number | null;
         };
         NewInvitation: {
             /** @default  */
@@ -4255,12 +4346,11 @@ export interface components {
         };
         RegistrationPolicy: {
             /**
-             * @description Only these email domains may self-register (empty = any).
+             * @description Only these email domains may self-register (empty = any). (A CAPTCHA
+             *     on registration is `captcha.on_registration`.)
              * @default []
              */
             allowed_email_domains: string[];
-            /** @default false */
-            captcha: boolean;
             /** @default false */
             enabled: boolean;
             /** @default null */
@@ -4911,7 +5001,6 @@ export interface components {
             /**
              * @default {
              *       "allowed_email_domains": [],
-             *       "captcha": false,
              *       "enabled": false,
              *       "privacy_url": null,
              *       "require_email_verification": true,
@@ -7112,6 +7201,167 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Problem"];
                 };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    clients_list_tokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitialAccessToken"][];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    clients_issue_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewInitialAccessToken"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedInitialAccessToken"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    clients_revoke_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                /** @description Token id */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Missing or invalid admin token */
             401: {

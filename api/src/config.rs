@@ -69,7 +69,9 @@ pub struct Config {
     /// are derived from it: `{PUBLIC_URL}/t/{tenant_slug}`.
     pub public_url: Url,
     /// Base URL of the static UI (login, consent, ... pages). Defaults to
-    /// `PUBLIC_URL` (embedded mode); set when the UI is hosted elsewhere.
+    /// `PUBLIC_URL`: the UI on the API's origin, served by the same reverse
+    /// proxy (the API does not serve the UI files itself yet, Phase 11.1);
+    /// set when the UI is hosted elsewhere.
     pub ui_url: Url,
     /// 32-byte key that encrypts secrets at rest (current generation).
     pub master_key: SecretBytes,
@@ -159,7 +161,9 @@ pub struct BootstrapConfig {
     pub admin_email: String,
     pub admin_username: String,
     pub admin_password: SecretString,
-    /// Also create a sample public client (applied once clients exist, Phase 3).
+    /// Also make sure `master` has the sample public client `sample-spa`
+    /// (redirect `http://localhost:3000/callback`), see
+    /// [`crate::services::bootstrap::ensure_sample_client`].
     pub sample_client: bool,
 }
 

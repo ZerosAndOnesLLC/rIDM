@@ -11,6 +11,10 @@ end-user account console.
 > until v0.1.0 is tagged. See [`working-plan.md`](working-plan.md) for the roadmap and
 > what is done.
 
+**Documentation:** <https://zerosandonesllc.github.io/rIDM/> — concepts, quickstarts,
+the admin guide, the API reference, deployment and migration from Keycloak or Auth0.
+The source is in [`docs/`](docs/); this README stays the developer's overview.
+
 ## Why rIDM
 
 - **Cloud-agnostic.** Runs anywhere a container, Postgres, and Valkey run: bare metal,
@@ -24,8 +28,10 @@ end-user account console.
   token rotation with reuse detection, device flow, PAR, JAR/JARM, DCR, RP-initiated,
   back-channel and front-channel logout, token exchange, DPoP. No implicit, hybrid, or
   password grants.
-- **Single binary.** The API embeds the built UI, so a deployment is one image plus
-  Postgres and Valkey. The UI can also be hosted on any static host or CDN.
+- **One image, plus a static UI.** A deployment is the API image plus Postgres and
+  Valkey; the UI is a static export for any static host or CDN. Serving the UI
+  from the API binary itself (a single-binary mode) is planned for Phase 11.1 and
+  not built yet.
 - **Config as code.** Every tenant exports to one JSON document and imports
   idempotently, for GitOps and reproducible environments.
 - **Built for scale.** Stateless API nodes, cache-first reads, short-lived JWTs, Valkey
@@ -39,8 +45,9 @@ modes), `/par`, JWT-secured request objects, `/token` (authorization_code,
 refresh_token with rotation and reuse detection, client_credentials with service
 accounts; client_secret_basic/post, private_key_jwt, none), `/userinfo`,
 `/introspect`, `/revoke`, `/end_session` with back-channel and front-channel logout,
-dynamic client registration and management (`settings.dcr`: `mode`, `allowed_grants`,
-and `require_pkce`, on by default, which decides whether a dynamically registered
+dynamic client registration and management (`settings.dcr`: `mode` — including
+`initial_access_token`, which demands a token an administrator issued (see the admin
+API) — `allowed_grants`, and `require_pkce`, on by default, which decides whether a dynamically registered
 confidential client must send a code challenge; public clients always must). Globally:
 WebFinger issuer discovery.
 
@@ -59,6 +66,27 @@ factor) has completed. Sessions are mirrored to Postgres for listing, sign-out
 everywhere and audit. `/authorize` honours `prompt` (`none`, `login`, `consent`,
 `create`, `select_account`), `max_age` and `acr_values`.
 
+The session and trusted-device cookies are named per tenant and always carry
+`Path=/`: `__Host-ridm_session_{slug}` and `__Host-ridm_device_{slug}` when cookies are
+`Secure`, `ridm_session_{slug}` and `ridm_device_{slug}` over plain http (local
+development, `COOKIE_SECURE=false`). Both are `HttpOnly` and `SameSite=Lax`, and
+sessions work the same on a tenant's custom domain. Upgrading from a build that used
+the older path-scoped names signs everyone out once and forgets remembered devices
+once.
+
+A live session is re-checked at `/authorize` (and when a device code is approved)
+against the tenant's MFA policy as it stands now and against a pending forced password
+change: a session that no longer satisfies either is sent back to that stage of the
+flow (`prompt=none` answers `login_required`), and the session of a disabled or
+deleted user gets no code. Ending a session revokes its refresh tokens (offline ones
+included), and a code whose session was signed out before it was exchanged is refused.
+Every way a session ends — the user signing out one or all sessions, an administrator
+revoking one or all, a password change with "sign out other sessions", an admin
+password reset with `revoke_sessions`, a recovery password reset (which signs out
+everywhere), disabling or deleting the user (SCIM included) and eviction by the
+concurrent-session cap — sends back-channel logout to the clients that registered for
+it, and front-channel logout where a browser is present.
+
 Two-step verification (`/flows/{id}/mfa/...`) uses an authenticator app (TOTP, RFC
 6238: SHA-1, six digits, 30-second steps, one step of drift either side, every code
 accepted once). The tenant `mfa` policy decides who is asked: `required` asks
@@ -72,8 +100,9 @@ on a trusted device, and a live session that only lacks that class is sent strai
 the second factor (no password again; `prompt=none` answers `login_required`). Other
 requested classes are voluntary, so the token carries the class the session actually
 holds. Sessions and tokens say how the user signed in: `amr` lists the methods (`pwd`,
-`otp`, `sms`, `hwk`, `user`, plus `mfa` once a second factor passed) and `acr` is set
-only after a second factor, to the class the client asked for or the default. Enrolment
+`otp`, `sms`, `hwk`, `user`, plus `mfa` once a second factor passed) and `acr` is
+`urn:ridm:acr:single` for a single-factor session and, once a second factor passed,
+the `:mfa` class the client asked for or `urn:ridm:acr:mfa`. Enrolment
 returns a set of ten single-use recovery codes, shown once; any of them replaces the
 app for one sign-in and the user is told how many remain. Secrets are encrypted per
 row under the master key, recovery codes are hashed then encrypted, and the session
@@ -93,7 +122,7 @@ verifies with one (`/mfa/passkey/start` then `/finish`). The relying party id is
 UI's host (or the tenant's custom domain); the API's own origin is accepted when it
 shares that host. Each passkey is one encrypted `webauthn` credential row (public key,
 sign counter and backup flags, the counter checked on every assertion), and
-challenges live in Redis for five minutes, bound to the flow and spent by the first
+challenges live in Valkey for five minutes, bound to the flow and spent by the first
 answer.
 
 Codes by email and by text message are second factors too. The tenant's
@@ -107,9 +136,10 @@ change it) and `/mfa/sms/confirm` saves the number verified. Each enrolled chann
 codes. Later sign-ins call `/mfa/{email|sms}/send` (a code to the account's current,
 verified address or number; a repeat within twenty seconds reuses the pending code
 instead of sending twice, and sends are limited to three per ten minutes per user) and
-`/mfa/{email|sms}/verify`. Codes are six digits, hashed in Redis, bound to the flow,
+`/mfa/{email|sms}/verify`. Codes are six digits, hashed in Valkey, bound to the flow,
 single-use, good for ten minutes and five attempts; a passed code records `amr` `otp`
-(plus `sms` for a text message). The role-based policy modes follow in 7.4.
+(plus `sms` for a text message). Removing a user's last second factor, by the user or
+an administrator, also removes their recovery codes.
 
 Locale is negotiated per request: the OIDC `ui_locales` parameter, then the user's
 stored locale, then the tenant default, constrained to the tenant's supported list
@@ -153,9 +183,14 @@ docker compose -f deploy/docker-compose.yml --profile dev up -d
 curl http://localhost:8080/readyz
 ```
 
-The `dev` profile adds [Mailpit](http://localhost:8025) to catch outbound email and
-seeds a `master` tenant, a global admin, and a sample client on first run. Use
-`--profile prod` for a stack without those extras. Ports are overridable with
+The `dev` profile adds [Mailpit](http://localhost:8025) to catch outbound email and, on
+first run, seeds a global administrator in the `master` tenant (`admin@ridm.local` /
+`ChangeMe-Now-1234` unless `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` say
+otherwise; the password must be changed at first sign-in) and the public SPA client
+`sample-spa` in `master` (PKCE, redirect `http://localhost:3000/callback`, post-logout
+`http://localhost:3000/`, CORS origin `http://localhost:3000`). Use `--profile prod`
+for a stack without those extras. With `-f deploy/docker-compose.yml`, compose reads
+its `.env` from `deploy/`; to use the repository's `.env` pass `--env-file .env`. Ports are overridable with
 `RIDM_HTTP_PORT`, `RIDM_PG_PORT`, `RIDM_VALKEY_PORT`, `RIDM_MAILPIT_UI_PORT`.
 
 ## Configuration
@@ -166,7 +201,7 @@ in [`.env.example`](.env.example). The essentials:
 | Variable | Purpose |
 |----------|---------|
 | `DATABASE_URL` | Postgres 16+ connection string; use a **non-superuser, DML-only** role (superusers bypass row level security, owners can disable it) |
-| `REDIS_URL` | Valkey / Redis 8+: `redis://`, `redis+cluster://h1,h2`, or `redis+sentinel://s1,s2/<master>` (see [topologies](#valkey-topologies-and-postgres-read-replicas)) |
+| `REDIS_URL` | Valkey 9+ or Redis 8+: `redis://`, `redis+cluster://h1,h2`, or `redis+sentinel://s1,s2/<master>` (see [topologies](#valkey-topologies-and-postgres-read-replicas)) |
 | `DATABASE_READ_URL` | Optional read replica for listings and statistics |
 | `DB_POOL_MIN`, `DB_POOL_MAX`, `REDIS_POOL_MAX` | Connection pool sizes per node (2, 20, 32) |
 | `PUBLIC_URL` | Externally visible base URL; tenant issuers are `{PUBLIC_URL}/t/{slug}` |
@@ -174,7 +209,7 @@ in [`.env.example`](.env.example). The essentials:
 | `BIND_ADDR` | Listen address, default `0.0.0.0:8080` |
 | `TRUSTED_PROXIES` | CIDRs whose `X-Forwarded-For` / `Forwarded` headers are honoured |
 | `TLS_CERT` / `TLS_KEY` | Native TLS termination; leave unset behind a reverse proxy |
-| `MIGRATE_ON_START` | Apply pending migrations at startup; otherwise run `ridm-api migrate` as the schema-owner role |
+| `MIGRATE_ON_START` | `true`: apply pending migrations at startup (and in `ridm-api bootstrap`) as `DATABASE_URL`'s role, which must then own the schema; an up-to-date database needs nothing. Off (default): startup only warns when migrations are pending; run `ridm-api migrate` as the schema-owner role |
 | `LOG_FORMAT`, `RUST_LOG` | `json` or `pretty`; tracing filter |
 | `DOCS_ENABLED` | Serve Swagger UI at `/docs` (off in production) |
 | `BREACH_CHECK_URL` | Have I Been Pwned compatible range endpoint for the breached-password check (default `https://api.pwnedpasswords.com/range/`; `off` for air-gapped installs) |
@@ -183,10 +218,13 @@ in [`.env.example`](.env.example). The essentials:
 | `HSTS_MAX_AGE` | `Strict-Transport-Security` max-age in seconds, sent when `PUBLIC_URL` is https (default two years; 0 = off) |
 | `RETENTION_DAYS` | Days the hourly cleanup keeps spent rows (expired tokens and sessions, login attempts, sent messages, finished deliveries; default 30) |
 | `METRICS_TOKEN` | Bearer token `GET /metrics` demands; open when unset |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME` | Export traces over OTLP/HTTP to this collector base URL under this service name (`ridm`) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME` | Export traces (one span per request, see [Observability](#observability)) over OTLP/HTTP to this collector base URL under this service name (`ridm`) |
 | `AUDIT_SINK_URL`, `AUDIT_SINK_TOKEN` | Ship every audit row to an HTTP endpoint (JSON batches, optional bearer) or a syslog receiver (`syslog://`, `syslog+tcp://`) |
 
 Health probes: `GET /healthz` (liveness) and `GET /readyz` (database + cache); `GET /metrics` for Prometheus (see [Observability](#observability)).
+`ridm-api --healthcheck` probes `/healthz` itself for images without curl: it dials
+`BIND_ADDR` (an unspecified `0.0.0.0` or `::` becomes loopback) and, when `TLS_CERT` is
+set, speaks HTTPS trusting exactly that certificate.
 `GET /.well-known/security.txt` serves the vulnerability disclosure policy.
 
 ### SCIM provisioning
@@ -195,7 +233,7 @@ Each tenant exposes a SCIM 2.0 server (RFC 7643/7644) at `{PUBLIC_URL}/scim/v2/{
 `ServiceProviderConfig`, `ResourceTypes`, `Schemas`, and `Users` and `Groups` with
 GET (filter, `startIndex`, `count`), POST, PUT, PATCH and DELETE, all as
 `application/scim+json` with SCIM error documents (`scimType`: `invalidFilter`,
-`invalidSyntax`, `invalidValue`, `noTarget`, `uniqueness`, `tooMany`). A provisioning
+`invalidSyntax`, `invalidPath`, `invalidValue`, `noTarget`, `uniqueness`, `tooMany`). A provisioning
 system authenticates with a bearer token minted for the tenant (console: Provisioning;
 API: `/admin/tenants/{slug}/scim/tokens` under `ridm:scim:read`/`write`, which user
 managers hold): `rscim_` tokens are shown once, stored hashed, optionally expiring,
@@ -209,7 +247,12 @@ A SCIM User maps onto a user: `userName` ↔ username, `externalId` ↔ the new
 `given_name`, `family_name` and `display_name` when the profile schema declares them
 (or allows undeclared attributes); `groups` is read-only. A SCIM Group maps onto a
 group: `displayName` ↔ name, `externalId` ↔ `attributes.externalId`, `members` ↔
-memberships (users). Deleting a user through SCIM soft-deletes it like the admin API.
+memberships (users). Deleting a user through SCIM soft-deletes it like the admin API,
+and deactivating or deleting one ends their sessions with back-channel logout. A
+provisioning token cannot grant administration: adding members to a group that carries
+admin (`ridm:*`) permissions is refused with `403`. Provisioning may set profile
+attributes declared `editable_by: none`, as bulk import may; interactive admin edits
+still cannot.
 
 Filters follow the RFC grammar (`eq ne co sw ew gt ge lt le pr`, `and`/`or`/`not`,
 parentheses, dotted and `attr[filter].sub` paths, schema-URN prefixes, case-insensitive
@@ -230,7 +273,8 @@ one path.
 
 **Token exchange (RFC 8693)**, `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`
 at `/token`, lets a client allowed that grant trade an access token of the tenant
-(`subject_token`, type `access_token` or `jwt`) for one aimed at other audiences
+(`subject_token`, type `access_token` — a JWT or an opaque `at_…` token — or `jwt`)
+for one aimed at other audiences
 (`audience` and `resource`, resolved like every other audience request) and optionally
 narrowed in `scope` (never widened, never beyond the client's own scopes). The new token
 keeps the subject, session, `amr` and `acr`, never outlives the subject token, comes
@@ -281,14 +325,52 @@ check) and a release baseline targeting 5,000 token requests per second per node
 An ID token carries the authentication context (`auth_time`, `amr`, and an `acr` that is
 `urn:ridm:acr:single` or `urn:ridm:acr:mfa`, both named in
 `acr_values_supported`) and the tenant's id as `tid`, which a relying party serving
-several tenants of one deployment keys on. The claims the `profile`, `email`, `address`
-and `phone` scopes ask for are read from `/userinfo`, since an access token is always
-issued alongside (OIDC Core §5.4); a client that would rather have them in the ID token
-too sets `id_token_scope_claims`. An ID token minted from a refresh token repeats the
+several tenants of one deployment keys on. What a scope releases is its `claims` list,
+standard scopes included (the `profile`, `email`, `address` and `phone` scopes are
+seeded with the OIDC Core §5.4 claims, and an administrator may change them); the
+released claims are read from `/userinfo`, since an access token is always issued
+alongside, and a client that would rather have them in the ID token too sets
+`id_token_scope_claims`. Profile attributes whose schema entry lists `visible_in`
+(`id_token`, `userinfo`, `access_token`) appear there under the attribute's name; they
+never overwrite a scope-released or protected claim, and a claim mapper may override
+them. An ID token minted from a refresh token repeats the
 original `auth_time`, `amr` and `acr` (OIDC Core §12.2), which the token family stores.
 Replaying an authorization code revokes everything the first exchange produced: the
 refresh family and the access token, which is a JWT and stops through the `jti` denylist
 (RFC 6749 §4.1.2).
+
+A request that names no `scope` gets the tenant's default scopes (`is_default`) that
+the client may hold, at `/authorize`, at device authorization and on
+`client_credentials` (there without `openid` and `offline_access`). A scope bound to a
+resource server (`resource_server_id`) adds that server to the token's audiences; a
+client that may not target the server gets `invalid_scope`, and a bound scope is left
+out of any token that lacks its audience.
+
+**Access token format.** Access tokens are JWTs (`typ` `at+jwt`) unless the client is
+registered with `access_token_format: opaque`: it then receives an `at_…` reference
+whose claims are kept in Valkey until it expires (a Valkey loss ends them early, as it
+ends SSO sessions). Opaque tokens are accepted by `/userinfo`, `/introspect`, `/revoke`,
+token exchange (as type `access_token`), and the account and admin APIs; a resource
+server has to call `/introspect` for them, since `ridm-auth` and any other JWT validator
+cannot read them. The built-in console clients refuse the opaque format, and
+introspection refuses ID tokens.
+
+**Signing algorithm.** A resource server may name the algorithm its tokens are signed
+with (`signing_alg`: `RS256`, `RS384`, `RS512`, `ES256` or `EdDSA`); saving it makes sure
+the tenant holds an active key of that algorithm, the scheduled rotation rotates every
+algorithm in use, and a request for several audiences that disagree on the algorithm is
+`invalid_target` (request them separately). Otherwise the tenant key policy decides.
+
+**Refresh tokens.** Without `offline_access` a refresh token is bound to the SSO session
+it came from: it stops working when that session ends (sign-out, idle or absolute
+timeout), and each refresh counts as activity that extends the idle window. With
+`offline_access` it outlives the session's timeouts, though an explicit sign-out or a
+revoked session still revokes it. `offline_access` is granted only when every resource
+server among the audiences has `allow_offline_access`, and silently dropped otherwise;
+device-flow clients that need long-lived tokens should request it. On a refresh (and on
+code exchange) `resource` may only narrow to audiences of the original grant
+(`invalid_target` otherwise), and a `scope` the grant did not include is
+`invalid_scope`, answered before the refresh token is spent, so it stays usable.
 
 `acr_values` is a preference list: rIDM honours the first class it recognises, so a
 request naming `urn:ridm:acr:mfa` first demands a second factor while one that accepts
@@ -296,7 +378,9 @@ request naming `urn:ridm:acr:mfa` first demands a second factor while one that a
 which discovery states.
 
 Token exchange needs an explicit entitlement. On every other grant an empty
-`allowed_audiences` means "no restriction", because the client acts for a user who
+`allowed_audiences` means "no restriction" (a request with no `resource` then gets the
+client's `allowed_audiences`, plus the servers of any bound scopes, and the client
+itself as audience only when there are none), because the client acts for a user who
 authorized it; a subject token presented for exchange may have been minted for someone
 else, so a client may only exchange for audiences it lists. A subject token carrying
 `cnf.jkt` can only be exchanged by a request that proves the same key, so exchange
@@ -317,8 +401,9 @@ exported logs as an artifact.
 ### Valkey topologies and Postgres read replicas
 
 `REDIS_URL` picks the cache topology: `redis://host:6379` (one server, also
-`rediss://`), `redis+cluster://host1:7000,host2:7001` (a cluster: every command here
-touches one key at a time, so keys need no hash tags), or
+`rediss://`), `redis+cluster://host1:7000,host2:7001` (a cluster: keys need no hash
+tags, because writes and scripts touch one key at a time and the one multi-key read,
+the `MGET` behind a user's session list, is split by slot in the cluster client), or
 `redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster` (Sentinel-managed
 replication; the pool follows the current master and the cache-invalidation subscriber
 re-resolves it on reconnect). Credentials go before an `@` and apply to every host.
@@ -346,14 +431,18 @@ and behind `Authorization: Bearer <METRICS_TOKEN>` when that variable is set:
 | `ridm_audit_events_total`, `ridm_audit_sink_rows_total`, `ridm_audit_sink_failures_total`, `ridm_audit_sink_dropped_total` | | the audit writer and its export sink |
 
 Traces: set `OTEL_EXPORTER_OTLP_ENDPOINT` (the collector's base URL, e.g.
-`http://otel-collector:4318`) and every request span, with the spans inside it, is
-exported over OTLP/HTTP (protobuf) under `OTEL_SERVICE_NAME` (default `ridm`); unset, no
-exporter runs. Logs are JSON (`LOG_FORMAT=json`) with the current span's fields.
+`http://otel-collector:4318`) and every request is exported over OTLP/HTTP (protobuf)
+under `OTEL_SERVICE_NAME` (default `ridm`) as one INFO server span named
+`METHOD /route/{template}` (the matched route, never the concrete path or query, which
+can carry codes and invitation tokens) with `http.request.method`, `http.route` and
+`http.response.status_code`, plus whatever spans inside it `RUST_LOG` enables; unset, no
+exporter runs. Logs are JSON (`LOG_FORMAT=json`) with the current span's fields; at the
+default `info` level log lines do not repeat the request span (it shows from `debug`).
 
 Audit export: set `AUDIT_SINK_URL` and every audit row (as stored, with its chain
 sequence and hash) is also shipped: to `https://…` as JSON arrays of up to 100 rows
 (within a second of the first), with `Authorization: Bearer <AUDIT_SINK_TOKEN>` when
-set, retried three times with backoff; or to `syslog://host:514` (UDP) /
+set, in up to three attempts with backoff; or to `syslog://host:514` (UDP) /
 `syslog+tcp://host:514` as one RFC 5424 message per row (`<134>1 <time> <host> ridm -
 <event name> - <json>`). The sink never slows the writer: a bounded queue drops rows
 when the destination falls behind and counts them.
@@ -370,7 +459,7 @@ skips the pass. Every pass is counted and timed (`ridm_job_runs_total`,
 | Job | Every | What it does |
 |-----|-------|--------------|
 | `key_rotation` | 1 h | rotates and retires signing keys per the tenant key policy |
-| `audit_retention` | 24 h | creates upcoming audit partitions, drops expired chain prefixes |
+| `audit_retention` | 24 h | creates upcoming audit partitions (through `audit_ensure_partitions`, see below), drops expired chain prefixes; a failure to create partitions does not stop the purge |
 | `user_purge` | 24 h | hard-deletes soft-deleted users past the tenant's retention |
 | `webhook_delivery` | 30 s | retries webhook deliveries whose backoff elapsed (prompt delivery happens on the event) |
 | `message_delivery` | 30 s | sends queued and retrying email/SMS |
@@ -390,7 +479,32 @@ prefixed paths keep working and report the same issuer). Requests are matched by
 `Host` header, or `X-Forwarded-Host` from a `TRUSTED_PROXIES` peer; the host is looked up
 through the tenant cache and takes effect the moment the setting changes. Domains are
 validated, lower-cased, unique across tenants and may not be the deployment's own hosts.
-The UI stays where `UI_URL` says until the embedded UI mode serves it on every host.
+The UI stays where `UI_URL` says until the embedded UI mode (Phase 11.1) serves it on
+every host.
+
+A custom domain serves its tenant and nothing else. Only `/healthz`, `/readyz`,
+`/.well-known/webfinger`, `/.well-known/security.txt` and the tenant's own `/t/{slug}/…`
+and `/scim/v2/{slug}/…` paths pass through as they are; every other path is rewritten
+under `/t/{slug}`, so the admin API, `/metrics`, `/docs`, `/openapi.json` and other
+tenants' paths answer `404` there. Session cookies are `Path=/` and named per tenant, so
+sign-in works on the custom domain as on the primary host.
+
+### Outbound requests
+
+URLs that tenant administrators or client registrations choose — webhook targets,
+back-channel logout URIs, client `jwks_uri`s, identity provider endpoints, a tenant's
+HTTP email and SMS gateways, the CAPTCHA `verify_url` and a tenant's SMTP host — are
+reached only on public addresses. Names are resolved through a resolver that drops
+private, loopback, link-local, carrier-grade NAT, unique-local, documentation and
+other reserved addresses (IPv4-mapped and similar IPv6 forms included) and fails when
+none is left, so a name that later resolves inward (DNS rebinding) is refused at
+connection time; IP literals are checked before the request is sent. These clients
+follow no redirects and ignore `HTTP_PROXY`/`HTTPS_PROXY`. For development, loopback
+named as such (`localhost`, `127.0.0.0/8`, `::1`) is allowed. A tenant SMTP host that is
+a private IP literal is refused when saved; a named one is resolved the same way, the
+connection goes to the vetted address (the first allowed one only) and TLS verifies the
+configured host name. URLs the operator sets in the environment (`AUDIT_SINK_URL`,
+`BREACH_CHECK_URL`, the server-wide SMTP settings) are not filtered.
 
 ### Rate limits, browser hardening and cross-origin policy
 
@@ -407,8 +521,11 @@ tenants. Every limited response carries `RateLimit-Limit`, `RateLimit-Remaining`
 `RateLimit-Reset` for the tightest bucket; a refused request is `429` with
 `Retry-After`, as `{"error": "slow_down"}` on OAuth endpoints, `application/problem+json`
 on the flow API, and a plain HTML page on browser navigations (`/authorize`,
-brokering). The client address is the TCP peer, or the first `X-Forwarded-For` /
-`Forwarded` address when the peer is in `TRUSTED_PROXIES`. Valkey being unreachable
+brokering). The client address is the TCP peer, or, when the peer is in
+`TRUSTED_PROXIES`, the forwarded chain read from the right: entries that are themselves
+trusted proxies are skipped and the first one that is not is the client
+(`X-Forwarded-For`, else the `for=` elements of `Forwarded`), so a caller cannot choose
+its own address through an appending proxy. Valkey being unreachable
 fails open with a warning. The admin console edits the policy under Settings → Rate
 limits; the defaults (per minute: 600 token, 1200 per client, 300 authorize, 600 flow,
 no tenant total) are meant for a busy office behind one NAT address.
@@ -457,18 +574,23 @@ Requirements: Rust 1.98+ (pinned in `rust-toolchain.toml`), Node.js 24 LTS, Dock
 
 ```bash
 cp .env.example .env                           # set MASTER_KEY and the URLs
-docker compose -f deploy/docker-compose.yml up -d postgres valkey
+docker compose --env-file .env -f deploy/docker-compose.yml up -d postgres valkey
 DATABASE_URL=postgres://ridm_migrator:ridm_migrator@localhost:5432/ridm \
   sqlx migrate run --source api/migrations     # or: cargo run -p ridm-api -- migrate
 cargo run -p ridm-api                          # runs as the DML-only ridm_app role
 ```
 
+`--env-file .env` is needed because compose otherwise looks for `deploy/.env`, and the
+compose file refuses to start without `MASTER_KEY`.
+
 Two database roles are used on purpose: `ridm_migrator` owns the schema and runs
 migrations; `ridm_app` (what the API uses) has DML privileges only. Postgres superusers
 bypass row level security and table owners can disable it, so neither may be the API's
 role. The compose stack creates both and runs migrations in a one-shot `migrate`
-service; on Kubernetes use a Job. `MIGRATE_ON_START=true` is a simpler single-role mode
-for small installs.
+service; on Kubernetes use a Job. With `MIGRATE_ON_START` off (the default) the API
+only warns at startup when migrations are pending. `MIGRATE_ON_START=true` is a
+simpler single-role mode for small installs: pending migrations are applied at startup
+as `DATABASE_URL`'s role, and an up-to-date database needs no schema rights.
 
 ### Self-service account API
 
@@ -483,12 +605,12 @@ that issued it, and its SSO session must still be alive. The routes:
 |-------|--------------|
 | `GET me` | identity plus the session's `auth_time`, `acr` and `amr` |
 | `GET/PATCH profile` | the profile by the tenant's schema: declared attributes with their values, which of them the user may edit (`editable_by: user`; the rest are kept as they are), the locale (one the tenant supports), pending contact changes |
-| `GET/PUT password` | the password's state and policy; a change needs the current password while one is set and can end every other session (`sign_out_others`) |
+| `GET/PUT password` | the password's state and policy; a change needs the current password while one is set and can end every other session (`sign_out_others`, with back-channel logout) |
 | `POST email/change`, `POST email/confirm`, `DELETE email/change` | a six-digit code goes to the new address and the right code moves the account over, verified; the previous address is told; an address another account uses is a `409` |
 | `POST phone/change`, `POST phone/confirm`, `DELETE phone/change`, `DELETE phone` | the same by text message; the number cannot be removed while it backs an SMS second step |
 | `GET mfa`, `POST mfa/totp/enroll\|confirm`, `mfa/passkey/register[/finish]`, `mfa/{email\|sms}/enroll\|confirm`, `DELETE mfa/credentials/{id}`, `POST mfa/recovery-codes` | second factors and recovery codes (the same services as the login-flow steps, scoped to the SSO session; the recovery codes go with the last factor) |
 | `GET devices`, `DELETE devices[/{id}]` | trusted browsers |
-| `GET sessions`, `DELETE sessions[/{id}]` | live sessions (the current one first) and ending one or all of them, with their refresh tokens; `?keep_current=true` keeps this one |
+| `GET sessions`, `DELETE sessions[/{id}]` | live sessions (the current one first) and ending one or all of them, with their refresh tokens and back-channel logout; `?keep_current=true` keeps this one |
 | `GET apps`, `DELETE apps/{client_id}` | applications the user consented to, and withdrawing that consent along with the application's refresh tokens |
 | `GET identities`, `POST identities/link`, `DELETE identities/{idp_id}` | the upstream accounts linked to this one and the providers still available; linking hands back a one-time URL the browser takes to the broker and returns from with `?linked=1` or `?link_error=<code>`; unlinking |
 | `GET tokens`, `POST tokens`, `DELETE tokens/{token_id}` | personal access tokens: the user's tokens (metadata), the scopes a new one may carry (`account`, plus the admin permissions the user holds), the tenant's maximum lifetime; minting answers with the token once; revoking |
@@ -558,9 +680,10 @@ directory), audience, expiry and nonce; plain OAuth 2.0 providers are read throu
 then resolved: the account linked to that provider and subject signs in (`amr: ["fed"]`);
 otherwise the `link_policy` decides — `verified_email` links an existing account whose
 address both sides verified, `explicit` never links by email (the user signs in the usual
-way and links from the account console), `always_new` always creates an account; an
-address another account holds is refused with `broker_error=email_in_use` on the login
-page. A new account takes its username from the mapped claim, else the email, else
+way and links from the account console), `always_new` always creates an account. When
+the address belongs to another account, `verified_email` (unless both sides verified
+it) and `explicit` refuse with `broker_error=email_in_use` on the login page, while
+`always_new` creates the new account without an email address. A new account takes its username from the mapped claim, else the email, else
 `{alias}-{subject}`; mapped attributes are written on every sign-in, and the login flow
 then continues like any other first factor (second step, profile completion for required
 attributes, terms, consent). Events: `identity_provider.*`, `identity.linked`,
@@ -583,7 +706,9 @@ password through, so an outage never blocks sign-ups or resets. The checker is a
 
 ### Master key rotation
 
-Secrets at rest (signing keys, MFA credentials, IdP secrets) are encrypted with
+Secrets at rest (signing keys, MFA credentials, identity provider client secrets,
+tenant provider settings — SMTP, SMS gateway and CAPTCHA configuration — and webhook
+signing secrets) are encrypted with
 `MASTER_KEY`, and every ciphertext records the key generation that produced it. To
 rotate without downtime:
 
@@ -612,16 +737,23 @@ ridm-api bootstrap --email admin@example.com [--username admin] [--password-stdi
 ```
 
 Bootstrap is idempotent: once any user in `master` holds the `ridm:owner` role it does
-nothing. The password must satisfy the master tenant's policy, and admins created
-from the environment must change it at first login. `ridm bootstrap` takes the same
-flags and runs the same code, for operators who have the CLI rather than the server
-binary at hand.
+nothing. The username defaults to `admin` (`BOOTSTRAP_ADMIN_USERNAME` from the
+environment). The password must satisfy the master tenant's policy, and admins created
+from the environment must change it at first login. With `BOOTSTRAP_SAMPLE_CLIENT=true`
+(and the admin variables set) startup and `ridm-api bootstrap` also make sure `master`
+has the public SPA client `sample-spa` (PKCE, redirect `http://localhost:3000/callback`,
+post-logout `http://localhost:3000/`, CORS `http://localhost:3000`); an existing one is
+left as it is. `ridm-api bootstrap` migrates only when `MIGRATE_ON_START=true`;
+otherwise, with migrations pending, it exits `1` and asks for `ridm-api migrate` first.
+`ridm bootstrap` takes the same flags and runs the same code, for operators who have
+the CLI rather than the server binary at hand.
 
 ### Validating tokens in your own API (`ridm-auth`)
 
-[`crates/ridm-auth`](crates/ridm-auth/README.md) is the relying-party half, published to
-crates.io so a Rust service that accepts rIDM tokens does not have to write JWKS handling
-of its own. It verifies the signature against the tenant's published keys, checks that the
+[`crates/ridm-auth`](crates/ridm-auth/README.md) is the relying-party half, so a Rust
+service that accepts rIDM tokens does not have to write JWKS handling of its own. It is
+packaged for crates.io but will be published at the first release; until then depend on
+it from this repository (`ridm-auth = { git = "https://github.com/ZerosAndOnesLLC/rIDM" }`). It verifies the signature against the tenant's published keys, checks that the
 token was meant for *that* API and not another of the same tenant, and answers the
 permission question.
 
@@ -656,8 +788,9 @@ The key set is cached and refreshed when a token names a key it has not seen, so
 good set keeps answering. `typ` must be `at+jwt`, which is what stops an ID token being
 spent as an access token, and a sender-constrained token (`cnf.jkt`) is refused rather
 than silently downgraded to a bearer one, because this crate verifies no DPoP proof. It
-does not do revocation — rIDM's access tokens are short-lived, and an API that must react
-sooner should call `/introspect` instead. `api/tests/ridm_auth.rs` runs it against tokens
+validates JWTs only: a client registered for opaque access tokens (`at_…`) sends tokens
+that only `/introspect` can read. It does not do revocation — rIDM's access tokens are
+short-lived, and an API that must react sooner should call `/introspect` instead. `api/tests/ridm_auth.rs` runs it against tokens
 this server really issues.
 
 ### Example relying parties
@@ -697,6 +830,7 @@ ridm --tenant acme user create alice --email alice@example.com --temporary-passw
 ridm --tenant acme user reset alice --revoke-sessions
 ridm --tenant acme client create --name "Acme SPA" --type spa \
      --redirect-uri https://acme.example/callback
+ridm --tenant acme client iat create --description "partner onboarding" --max-uses 5
 ridm master-key status
 ```
 
@@ -709,6 +843,7 @@ ridm master-key status
 | `master-key status\|rotate` | the key that encrypts secrets at rest, deployment-wide |
 | `user create\|reset` | create a user; set or reset a password |
 | `client create` | register an OAuth client; its secret is printed once |
+| `client iat create\|list\|revoke` | initial access tokens for dynamic client registration: `create [--description TEXT] [--expires-in SECS] [--max-uses N]` prints the token once, `list` shows metadata, `revoke ID` |
 
 **Authenticating.** An admin token must carry `urn:ridm:admin` in `aud` and belong to
 a user with `ridm:*` permissions (see [Admin API access](#admin-api-access)), so the
@@ -807,15 +942,16 @@ pagination with `?cursor=&limit=`):
 | `DELETE /admin/tenants/{slug}/clients/{client}/secrets/{id}` | `ridm:clients:write` | revoke one secret early; the last secret of a confidential client cannot be revoked, rotate instead |
 | `PUT/DELETE /admin/tenants/{slug}/clients/{client}/service-account` | `ridm:clients:write` | create / remove the user (`svc-<client_id>`) that `client_credentials` tokens are issued for, so the client can hold roles and groups; needs the `client_credentials` grant |
 | `POST /admin/tenants/{slug}/clients/{client}/registration-token` | `ridm:clients:write` | issue (replacing) the RFC 7592 registration access token and `registration_client_uri` |
+| `GET/POST /admin/tenants/{slug}/dcr/initial-access-tokens`, `DELETE .../{token}` | `ridm:clients:read` / `write` | initial access tokens that `POST /t/{slug}/register` demands when `settings.dcr.mode` is `initial_access_token`: `{description?, expires_in_secs?, max_uses?}`, the token returned once and stored in Postgres; revoke by id; events `dcr_token.created`, `dcr_token.revoked` |
 | `GET /admin/tenants/{slug}/users` | `ridm:users:read` | `?search=` (username/email prefix), `status`, `org_id`, `include_deleted` |
-| `POST /admin/tenants/{slug}/users` | `ridm:users:write` | user fields plus `password` (policy-checked) or `temporary_password: true` (returned once, change forced at first login) |
+| `POST /admin/tenants/{slug}/users` | `ridm:users:write` | user fields plus `password` (policy-checked) or `temporary_password: true` (returned once, change forced at first login); `status` may not be `locked` or `deleted` |
 | `GET /admin/tenants/{slug}/users/{id}` | `ridm:users:read` | user plus `password` summary, direct and effective `roles`, `groups` |
 | `PATCH /admin/tenants/{slug}/users/{id}` | `ridm:users:write` | absent = unchanged, `null` clears; `status` is `active` or `disabled` (disabling ends sessions); unknown fields rejected |
-| `DELETE /admin/tenants/{slug}/users/{id}` | `ridm:users:write` | soft delete; sessions and trusted devices end |
-| `PUT /admin/tenants/{slug}/users/{id}/password` | `ridm:users:write` | `{password?, must_change?, skip_policy?, notify?, revoke_sessions?}`; without `password` a temporary one is generated and returned once |
+| `DELETE /admin/tenants/{slug}/users/{id}` | `ridm:users:write` | soft delete; sessions (with back-channel logout) and trusted devices end |
+| `PUT /admin/tenants/{slug}/users/{id}/password` | `ridm:users:write` | `{password?, must_change?, skip_policy?, notify?, revoke_sessions?}`; without `password` a temporary one is generated and returned once; `revoke_sessions` ends every session with back-channel logout |
 | `POST /admin/tenants/{slug}/users/{id}/force-password-change`, `.../unlock` | `ridm:users:write` | flag a change at next login; clear a lockout |
-| `GET/DELETE /admin/tenants/{slug}/users/{id}/sessions[/{id}]` | read / write | live SSO sessions; revoke one or all |
-| `GET /admin/tenants/{slug}/users/{id}/credentials`, `DELETE .../credentials/{id}` | read / write | password summary plus factor rows (type, label, timestamps; never the material); remove a factor |
+| `GET/DELETE /admin/tenants/{slug}/users/{id}/sessions[/{id}]` | read / write | live SSO sessions; revoke one or all, with their refresh tokens (offline ones included) and back-channel logout |
+| `GET /admin/tenants/{slug}/users/{id}/credentials`, `DELETE .../credentials/{id}` | read / write | password summary plus factor rows (type, label, timestamps; never the material); remove a factor (removing the last second factor also removes the recovery codes) |
 | `GET/DELETE /admin/tenants/{slug}/users/{id}/devices[/{id}]` | read / write | trusted devices; revoke one or all |
 | `GET /admin/tenants/{slug}/users/{id}/roles`, `PUT/DELETE .../roles/{id}` | read / write | direct and effective roles; granting is refused when the role (composites included) carries admin permissions the caller lacks |
 | `GET /admin/tenants/{slug}/users/{id}/groups`, `PUT/DELETE .../groups/{id}` | read / write | direct and effective groups; joining is guarded like a role grant against the group's and its ancestors' roles |
@@ -827,21 +963,21 @@ pagination with `?cursor=&limit=`):
 | `GET .../roles/{id}/composites`, `PUT/DELETE .../composites/{child_id}` | read / write | cycles refused; adding a child is guarded by the child's admin permissions |
 | `GET .../roles/{id}/permissions`, `PUT/DELETE .../permissions/{permission_id}` | read / `ridm:resource-servers:write` | admin-catalogue permissions can only be granted by a caller who holds them; built-in roles keep their seeded set; takes effect on the next request |
 | `GET .../roles/{id}/holders` | read | users and groups holding the role directly |
-| `GET/POST /admin/tenants/{slug}/resource-servers`, `GET/PATCH/DELETE .../{id}` | `ridm:resource-servers:read` / `write` | audience identifier (immutable), name, token TTL, signing alg, offline access; `urn:ridm:admin` is read-only |
+| `GET/POST /admin/tenants/{slug}/resource-servers`, `GET/PATCH/DELETE .../{id}` | `ridm:resource-servers:read` / `write` | audience identifier (immutable), name, token TTL, `signing_alg` (`RS256`, `RS384`, `RS512`, `ES256`, `EdDSA`; a key of that algorithm is ensured on save), `allow_offline_access` (whether tokens for it may carry `offline_access`); `urn:ridm:admin` is read-only |
 | `GET/POST .../resource-servers/{id}/permissions`, `DELETE .../permissions/{id}` | read / write | the built-in catalogue cannot be extended or trimmed |
-| `GET/POST /admin/tenants/{slug}/scopes`, `GET/PATCH/DELETE .../scopes/{id}` | `ridm:scopes:read` / `write` | name immutable; description, claims and `is_default` tunable, also for the standard scopes, which cannot be deleted; discovery follows at once |
-| `GET/POST /admin/tenants/{slug}/claim-mappers`, `GET/PATCH/DELETE .../{id}` | `ridm:mappers:read` / `write` | `{name, client_id?, config}` with `config` = `{type, ..., include_in}`; `?client_id=` or `?tenant_wide=true`; templates must compile; tokens reflect changes at once |
+| `GET/POST /admin/tenants/{slug}/scopes`, `GET/PATCH/DELETE .../scopes/{id}` | `ridm:scopes:read` / `write` | name immutable; description, `claims` (what the scope releases at userinfo and, for clients with `id_token_scope_claims`, in the ID token), `is_default` (granted when a request names no scope) and `resource_server_id` (the scope adds that audience) tunable, also for the standard scopes, which cannot be deleted; discovery follows at once |
+| `GET/POST /admin/tenants/{slug}/claim-mappers`, `GET/PATCH/DELETE .../{id}` | `ridm:mappers:read` / `write` | `{name, client_id?, config}` with `config` = `{type, ..., include_in}`; `?client_id=` or `?tenant_wide=true`; templates must compile; protected claims (`iss`, `sub`, `aud`, `exp`, `iat`, `nbf`, `jti`, `azp`, `at_hash`, `c_hash`, `nonce`, `auth_time`, `amr`, `acr`, `sid`, `tid`, `client_id`, `scope`, `typ`, `cnf`, `act`) and `permissions` cannot be targeted, and only a `roles` mapper may write `roles` and only a `groups` mapper `groups` (replacing the built-in claim); a `user_attribute` mapper reads `attributes.<name>`, or a top-level user field, then an attribute of that bare name; a `roles` mapper naming a client emits only that client's roles; tokens reflect changes at once |
 | `GET /admin/tenants/{slug}/keys`, `GET .../keys/{id}` | `ridm:keys:read` | `?status=pending|active|retiring|revoked`; public JWK only, never private material |
 | `POST /admin/tenants/{slug}/keys` | `ridm:keys:write` | `{alg?, rsa_bits?, activate?, not_before?}`; defaults from the tenant key policy; `pending` (published, not signing) unless `activate` |
 | `POST /admin/tenants/{slug}/keys/rotate` | `ridm:keys:write` | new active key with the policy's algorithm; the previous active key retires with the policy's overlap |
 | `POST .../keys/{id}/activate`, `.../retire`, `.../revoke` | `ridm:keys:write` | activate retires other active keys of the same algorithm; retire keeps the key published until the overlap ends; revoke unpublishes at once |
 | `GET /admin/master-key`, `POST /admin/master-key/rotate` | `ridm:keys:read` / `write` (global only) | encrypted rows per master-key generation and how many are pending; re-encrypt them under the current generation |
 | `GET/POST /admin/tenants/{slug}/invitations`, `GET/DELETE .../{id}`, `POST .../{id}/resend` | `ridm:invitations:read` / `write` | `?open_only=`; `{email, roles?, groups?, org_id?, expires_days?}`; the token only travels in the email; resend replaces it; inviting into roles or groups is guarded like a grant |
-| `POST /admin/tenants/{slug}/users/import?dry_run=` | `ridm:users:write` + `ridm:invitations:write` | `application/json` (array or `{"users": [...]}`) or `text/csv` (`attr.<name>` columns become attributes); per row: `password` (policy-checked) or `password_hash` (argon2, bcrypt, pbkdf2, sha, md5; upgraded at first login), `roles`/`groups` by name; rows fail independently and the report lists each failure; 10 000 rows / 32 MiB per request |
+| `POST /admin/tenants/{slug}/users/import?dry_run=` | `ridm:users:write` + `ridm:invitations:write` | `application/json` (array or `{"users": [...]}`) or `text/csv` (`attr.<name>` columns become attributes); per row: `password` (policy-checked) or `password_hash` (argon2id/argon2i/argon2d, bcrypt, pbkdf2, sha, md5; upgraded at first login), `roles`/`groups` by name; attributes declared `editable_by: none` may be set; a row granting a role or group whose admin permissions the importer does not hold fails ("cannot grant permissions you do not hold"), in a dry run too; rows fail independently and the report lists each failure; 10 000 rows / 32 MiB per request |
 | `GET /admin/tenants/{slug}/users/export?format=json|csv` | `ridm:users:read` | every live user streamed page by page, without credentials |
 | `GET/PUT/DELETE /admin/tenants/{slug}/messaging/email`, `POST .../email/test` | `ridm:messaging:read` / `write` | `{type: "smtp", host, port, username?, password?, from, security?}` or `{type: "http", url, auth_header?, from}`; reads report `source` (tenant, server default, none) with `password_set` / `auth_header_set` instead of the secret; an omitted secret keeps the stored one; test sends go straight through the sender and report the backend or its error |
 | `GET/PUT/DELETE /admin/tenants/{slug}/messaging/sms`, `POST .../sms/test` | read / write | HTTP gateway `{url, auth_header?, from?}`, same redaction and test-send rules |
-| `GET .../messaging/templates`, `GET/PUT/DELETE .../templates/{channel}/{event}/{locale}`, `POST .../templates/preview` | read / write / read | events and channels catalogue plus tenant overrides; a `GET` returns the override or the built-in as a starting point; overrides are validated by rendering; preview renders the stored template or an unsaved `draft` with sample `vars` |
+| `GET .../messaging/templates`, `GET/PUT/DELETE .../templates/{channel}/{event}/{locale}`, `POST .../templates/preview` | read / write / read | events and channels catalogue plus tenant overrides; a `GET` returns the override or the built-in as a starting point; overrides are validated by rendering; preview renders the stored template or an unsaved `draft` with sample `vars` named as a real send of that event names them (`inviter`, `user_agent`, `ip`, `when`, …) |
 | `GET .../messaging/log?status=&limit=`, `POST .../log/{id}/redeliver` | read / write | outbound queue entries without bodies (links and codes stay private); dead messages can be requeued |
 | `GET /admin/tenants/{slug}/audit` | `ridm:audit:read` | newest first; `?from=&to=&name=&actor_id=&subject_id=&user_id=&cursor=&limit=`; `name` matches exactly or as a prefix when it ends in `.` or `*` |
 | `GET .../audit/export?format=json|csv`, `GET .../audit/verify` | `ridm:audit:read` | oldest first with `prev_hash`/`hash` for offline checking; verify walks the retained chain and names the first broken position |
@@ -855,9 +991,9 @@ pagination with `?cursor=&limit=`):
 | `GET/POST /admin/tenants/{slug}/identity-providers`, `GET/PATCH/DELETE .../{idp}` (id or alias), `GET .../presets`, `POST .../discover` | `ridm:idps:read` / `write` | upstream OpenID Connect and OAuth 2.0 providers: a `preset` (`google`, `microsoft`, `github`, `apple`, `gitlab`) fills in protocol, endpoints, scopes and mappers; an OIDC provider's endpoints are discovered from its `issuer` when left out; the `client_secret` is stored encrypted and never returned (`client_secret_set`), `null` clears it; `link_policy` (`verified_email`, `explicit`, `always_new`), `trust_email`, `mappers` (`subject`, `username`, `email`, `email_verified` claim names and `attributes` → claim), `hidden`, `sort_order`; every answer carries the `callback_url` to register upstream |
 | `GET /admin/tenants/{slug}/users/{user}/identities`, `DELETE .../identities/{idp_id}` | `ridm:users:read` / `write` | the upstream identities linked to a user, and unlinking one |
 | `GET /admin/tenants/{slug}/users/{user}/pats`, `DELETE .../pats/{token_id}` | `ridm:users:read` / `write` | a user's personal access tokens (metadata) and revoking one |
-| `GET /admin/tenants/{slug}/export` | `ridm:tenants:export` | the tenant's configuration as one deterministic JSON document (`ridm.tenant/1`): settings, profile schema, resource servers and permissions, scopes, clients, roles (composites, permission grants), groups (by path, with roles), claim mappers, message templates, webhooks and IP rules, keyed by natural identifiers; no secrets, users or provider credentials |
+| `GET /admin/tenants/{slug}/export` | `ridm:tenants:export` | the tenant's configuration as one deterministic JSON document (`ridm.tenant/1`): settings, profile schema, resource servers and permissions, scopes, clients, roles (composites, permission grants), groups (by path, with roles), claim mappers, message templates, webhooks, IP rules and identity providers, keyed by natural identifiers; no secrets, users or provider credentials |
 | `GET /openapi.json`, `GET /docs` | none | the admin API's OpenAPI 3 document, derived from the routers; Swagger UI at `/docs` when `DOCS_ENABLED=true` |
-| `POST /admin/tenants/{slug}/import?dry_run=&prune=` | `ridm:tenants:import` | `dry_run` returns the plan (creates, updates with field-level diffs, and with `prune` deletes of unmentioned configuration); otherwise applies it and reports what was applied, per-item errors, and the secrets of clients and webhooks it created (shown once); applying the same document twice is a no-op |
+| `POST /admin/tenants/{slug}/import?dry_run=&prune=` | `ridm:tenants:import` | `dry_run` returns the plan (creates, updates with field-level diffs, and with `prune` deletes of unmentioned configuration); otherwise applies it and reports what was applied, per-item errors, and the secrets of clients and webhooks it created (shown once); an item that would grant admin permissions the importer does not hold is a per-item error (listed under `errors` in the dry-run plan; `ridm tenant diff` fails on it, `ridm tenant import` shows it); applying the same document twice is a no-op |
 
 ### Admin API test coverage
 
@@ -908,8 +1044,9 @@ as delivered; 5xx, 408, 425, 429 and network errors retry with backoff (30 s, 2 
 raises `webhook.delivery_dead` (audited, never itself delivered to a webhook), stays in
 the log with its last status and response snippet, and can be sent again one at a time
 or all at once (`POST .../deliveries/redeliver-dead`, the console's "Redeliver dead").
-Targets must be https (plain http only to loopback, for development) and never a
-private, link-local or unspecified address. Secrets are stored encrypted under the
+Targets must be https (plain http only to loopback, for development) and are reached
+only on public addresses, checked when the connection is made (see
+[Outbound requests](#outbound-requests)). Secrets are stored encrypted under the
 master key and take part in master-key rotation.
 
 Every domain event is appended to `audit_events` (monthly partitions, tenant RLS) by an
@@ -918,11 +1055,19 @@ row changed or removed inside the retained window fails verification. Retention 
 tenant setting (`settings.audit.retention_days`, default 365, `0` keeps forever); a daily
 job creates upcoming partitions and drops each tenant's expired chain prefix, so what
 remains stays contiguous. The global chain follows the master tenant's policy.
+Partitions are created by `audit_ensure_partitions(integer)`, a `SECURITY DEFINER`
+function the migration grants to every role holding `INSERT` on `audit_events`, so the
+DML-only application role can run it; an application role created after that migration
+needs `GRANT EXECUTE ON FUNCTION audit_ensure_partitions(integer) TO <role>`.
 
 Tenant settings cover the password, session, MFA, registration, locale, branding,
 key, discovery, DCR, auth-method, lockout, CAPTCHA, notification, audit-retention and
-account (self-deletion, deletion retention) policies plus a free-form `features` flag map. IP rules and webhooks get their own resources later in
-Phase 5.
+account (self-deletion, deletion retention) policies plus a free-form `features` flag map;
+IP rules, webhooks, identity providers and messaging have their own resources. The
+CAPTCHA policy lives under `settings.captcha` (`on_registration` among it); the former
+`settings.registration.captcha` is gone, and a `PATCH` naming it is a `400` (an import
+ignores it). The MFA policy switches between modes with `{"mfa": {"mode": …}}` alone,
+also away from `required_for_roles`.
 
 ### UI
 
@@ -933,8 +1078,8 @@ npm run lint && npm run typecheck
 npm run build          # static export to ui/out
 ```
 
-`NEXT_PUBLIC_API_URL` is empty by default (same origin, for the embedded single-binary
-mode). Set it at build time when hosting `ui/out` on a separate static host or CDN.
+`NEXT_PUBLIC_API_URL` is empty by default (same origin: `ui/out` served on the API's
+host, behind the same reverse proxy, as the planned embedded mode will also do). Set it at build time when hosting `ui/out` on a separate static host or CDN.
 
 The build's `postbuild` step (`scripts/csp.mjs`, unit-tested with `npm run test:scripts`)
 gives every exported page a `Content-Security-Policy` `<meta>` tag: scripts may come
@@ -943,8 +1088,8 @@ scripts (each allowed by its SHA-256 hash, since a static export has no nonces);
 connections and form posts may go to the page's origin and `NEXT_PUBLIC_API_URL`;
 styles stay inline (React style props and tenant custom CSS); images and fonts may
 come from anywhere over https (tenant logos), and objects are forbidden. A meta tag
-cannot restrict framing, so whoever serves `ui/out` (the embedded server, or your
-static host) should also send `X-Frame-Options: DENY` or
+cannot restrict framing, so whoever serves `ui/out` (your reverse proxy or static
+host) should also send `X-Frame-Options: DENY` or
 `Content-Security-Policy: frame-ancestors 'none'`, and `Strict-Transport-Security`.
 
 `npm run e2e` runs the Playwright suite (the end-user journeys — password, magic link,
@@ -968,6 +1113,10 @@ same-origin (session cookies work without CORS) and point the API back at it:
 UI_URL=http://localhost:3110 cargo run -p ridm-api             # API on :8090
 cd ui && API_PROXY=http://localhost:8090 npx next dev -p 3110   # UI on :3110
 ```
+
+Port 8090 assumes `BIND_ADDR=127.0.0.1:8090` and `PUBLIC_URL=http://localhost:8090` in
+`.env` (the built-in default is 8080), which is what
+[`GETTING-STARTED.md`](GETTING-STARTED.md) sets up and the examples expect.
 
 **Identity providers** (`/console/identity-providers/`): the tenant's upstream providers
 with a create dialog (preset or OpenID Connect issuer, client credentials) and a detail
@@ -1021,7 +1170,10 @@ Pages so far: **Tenants** (`/console/tenants/`: every tenant for global administ
 filter, "New tenant" dialog that lands on the new tenant's settings) and **Settings**
 (`/console/settings/`: every tenant setting on one page, grouped as general, sign-in,
 passwords and lockout, rate limits, sessions and tokens, branding, locale and notices,
-keys, discovery and audit, plus a delete-tenant zone for global owners). Settings save as you go: each
+keys, discovery and audit, plus a delete-tenant zone for global owners; the CAPTCHA
+toggles sit under passwords and lockout, and when dynamic registration is set to
+`initial_access_token` the keys, discovery and audit group lists, issues and revokes the
+initial access tokens). Settings save as you go: each
 change is applied to the page at once and joined into one JSON merge patch that is sent
 `PATCH /admin/tenants/{slug}` once typing pauses (600 ms, at most 2.5 s into continuous
 editing, and with `keepalive` when the tab is hidden or closed); the header shows
@@ -1039,7 +1191,8 @@ authentication → URIs → scopes and audiences, with the API's type-driven def
 preselected) whose result shows the client ID and any secret exactly once, and a detail
 page (`?client=<id>`) saving as you go over `PATCH /admin/tenants/{slug}/clients/{client}`:
 basics, grants and authentication (a switch to a secret-based method reveals the minted
-secret once), URIs, scopes and audiences, token lifetimes, format, ID token encryption and
+secret once), URIs, scopes and audiences, token lifetimes, access token format (JWT or
+opaque; not for the built-in console clients), ID token encryption and
 JWKS, secrets (rotate with a grace period, revoke a retiring one), service account,
 registration access token (RFC 7592, revealed once) and deletion. The **playground**
 (`/console/playground/?tenant=&client=`) runs the client's flow for real: authorization
@@ -1061,7 +1214,8 @@ notify/sign-out-everywhere/skip-policy options, require a change at next sign-in
 enrolled factors with removal), Sessions & devices (revoke one or all), Roles and Groups
 (direct with assign/remove, effective shown), Consents (revoke) and Audit (the user's
 events, expandable). Disable, unlock and delete sit in the header. Personal access
-tokens and linked identities appear with Phases 8.5 and 8.3.
+tokens (revocable) and linked identities (unlinkable) are listed on the Password &
+credentials tab.
 
 **Groups, roles, resource servers, scopes and claim mappers** each get a list-and-detail
 page (`/console/groups/`, `/console/roles/`, `/console/resource-servers/`,
@@ -1071,13 +1225,16 @@ under a descendant), edit attributes as JSON, attach roles, add members through 
 search and remove them. Roles: realm or per-client, composites, permissions granted from
 any resource server (admin-catalogue permissions only by someone who holds them), and who
 holds the role; built-in `ridm:*` roles are read-only. Resource servers: name, token
-lifetime cap, signing algorithm, offline access, and their permissions; `urn:ridm:admin`
-is read-only. Scopes: description, released claims, resource server binding and
-"granted by default"; standard scopes can be tuned but not deleted. Claim mappers:
+lifetime cap, the algorithm their tokens are signed with, whether tokens for them may
+carry `offline_access`, and their permissions; `urn:ridm:admin`
+is read-only. Scopes: description, released claims (what userinfo, and the ID token
+for clients that ask, carries for the scope), resource server binding (requesting the
+scope adds that audience) and "granted by default" (given to a request that names no
+scope); standard scopes can be tuned but not deleted. Claim mappers:
 tenant-wide or per client, of kind user attribute, groups, roles, fixed value, Handlebars
 template (must compile) or audience, with the tokens they are included in. Detail fields
-save as you go; membership-style changes apply at once. Identity providers arrive with
-brokering in Phase 8.3.
+save as you go; membership-style changes apply at once. Identity providers have their
+own page (see above).
 
 **Overview** (`/console/`): the dashboard — sign-ins, failed sign-ins and live sessions
 for the chosen window (7, 30 or 90 days), two-step adoption, a sign-ins-per-day line
@@ -1120,12 +1277,14 @@ docker buildx build --platform linux/amd64,linux/arm64 -f api/Dockerfile -t ridm
 ```
 
 The image is distroless, runs as non-root, has no dynamic OpenSSL dependency, and its
-`HEALTHCHECK` calls `/ridm-api --healthcheck`.
+`HEALTHCHECK` runs `/ridm-api --healthcheck`, which asks `/healthz` on `BIND_ADDR`
+(loopback when bound to all interfaces), over HTTPS trusting exactly `TLS_CERT` when
+native TLS is on.
 
 ### CI
 
 Every pull request runs the `ci` workflow: rustfmt, `cargo check`, clippy with warnings
-denied, `cargo audit`, `cargo deny`, `cargo package` for the published `ridm-auth`,
+denied, `cargo audit`, `cargo deny`, `cargo package` for `ridm-auth` (published at release),
 ESLint, `tsc`, `npm audit`, unit tests, integration
 tests against Postgres and Valkey, coverage, the UI static export, the Playwright e2e
 suite, a k6 smoke with thresholds (`load-smoke`), a minute of fuzzing per target
@@ -1141,6 +1300,15 @@ pushed, uploading the summary for the release notes. The fuzz targets, their see
 how to reproduce a crash are described in [`api/fuzz/README.md`](api/fuzz/README.md);
 the load tests in [`perf/README.md`](perf/README.md).
 
+The `docs` workflow builds the documentation site on every pull request and checks every
+link and anchor inside it offline (lychee), plus the OpenAPI document the API reference
+loads; on `main` it deploys the site to GitHub Pages. To work on the docs locally:
+
+```bash
+cargo install mdbook --version 0.5.4 --locked
+cd docs && mdbook serve --open     # live reload; the API reference page needs ./build.sh
+```
+
 ## Repository layout
 
 | Path | Purpose |
@@ -1148,11 +1316,12 @@ the load tests in [`perf/README.md`](perf/README.md).
 | `api/` | `ridm-api`: the identity server (axum, sqlx, Valkey) |
 | `api/migrations/` | sqlx migrations (forward-only) |
 | `crates/ridm-core/` | shared types, provider traits, event definitions |
-| `crates/ridm-auth/` | `ridm-auth`: published to crates.io; validates rIDM tokens in someone else's Rust API |
+| `crates/ridm-auth/` | `ridm-auth`: validates rIDM tokens in someone else's Rust API (crates.io from the first release) |
 | `crates/ridm-cli/` | `ridm`: command-line administration over the admin API |
 | `ui/` | Next.js 16 static export: admin console, account console, auth pages |
 | `examples/` | three relying parties: an axum resource server, a Next.js SPA, a confidential web app |
-| `deploy/` | docker-compose, Helm chart, reverse-proxy examples |
+| `deploy/` | docker-compose (a Helm chart and reverse-proxy examples come in Phase 11) |
+| `docs/` | the documentation site (mdBook): concepts, quickstarts, admin guide, reference, deployment, migration |
 | `api/fuzz/` | cargo-fuzz targets and their seed corpora |
 | `perf/` | k6 load tests: the PR smoke and the release baseline |
 | `conformance/` | the OpenID Foundation conformance rig |

@@ -1,5 +1,7 @@
 //! Typed domain events. Every state-changing domain action emits exactly one
-//! event; audit, webhooks, notifications and cache invalidation subscribe.
+//! event; the audit log and webhooks subscribe. Security notifications are
+//! sent by the services themselves, and caches are invalidated through the
+//! cache layer's own channel, not through these events.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -113,6 +115,13 @@ pub enum EventKind {
     },
     ClientSecretRotated {
         client_id: Uuid,
+    },
+    /// An initial access token for dynamic client registration was issued.
+    InitialAccessTokenCreated {
+        token_id: Uuid,
+    },
+    InitialAccessTokenRevoked {
+        token_id: Uuid,
     },
     ConsentGranted {
         user_id: Uuid,
@@ -410,13 +419,6 @@ pub enum EventKind {
         user_id: Uuid,
         token_id: Uuid,
     },
-
-    // Generic cache invalidation hint (entity kind + id), used until every
-    // entity has a dedicated event.
-    CacheInvalidate {
-        entity: String,
-        id: String,
-    },
 }
 
 impl EventKind {
@@ -436,6 +438,8 @@ impl EventKind {
             Self::ClientUpdated { .. } => "client.updated",
             Self::ClientDeleted { .. } => "client.deleted",
             Self::ClientSecretRotated { .. } => "client.secret_rotated",
+            Self::InitialAccessTokenCreated { .. } => "dcr_token.created",
+            Self::InitialAccessTokenRevoked { .. } => "dcr_token.revoked",
             Self::ConsentGranted { .. } => "consent.granted",
             Self::ConsentRevoked { .. } => "consent.revoked",
             Self::GroupCreated { .. } => "group.created",
@@ -507,7 +511,6 @@ impl EventKind {
             Self::BrokeredLogin { .. } => "login.brokered",
             Self::PersonalTokenCreated { .. } => "personal_token.created",
             Self::PersonalTokenRevoked { .. } => "personal_token.revoked",
-            Self::CacheInvalidate { .. } => "cache.invalidate",
         }
     }
 }

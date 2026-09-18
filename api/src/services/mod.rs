@@ -34,6 +34,7 @@ pub mod logout;
 pub mod master_key;
 pub mod messaging;
 pub mod notifications;
+pub mod opaque_tokens;
 pub mod otp_factors;
 pub mod passkeys;
 pub mod password;

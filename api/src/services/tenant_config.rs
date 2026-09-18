@@ -24,6 +24,7 @@ use crate::models::{
 use crate::models::{
     IdentityProviderUpdate, IdpAuthMethod, IdpKind, IdpMappers, LinkPolicy, NewIdentityProvider,
 };
+use crate::services::admin_access::{self, Grant};
 use crate::services::messaging::TemplateBody;
 use crate::services::tenants::TenantUpdate;
 use crate::services::{
@@ -902,10 +903,15 @@ fn secrets_empty(s: &Secrets) -> bool {
     s.clients.is_empty() && s.webhooks.is_empty() && s.identity_providers.is_empty()
 }
 
+/// The importer's no-escalation rule
+/// ([`crate::middleware::AdminCtx::require_can_grant`]).
+pub type CanGrant<'a> = &'a (dyn Fn(&[String]) -> AppResult<()> + Sync);
+
 struct Ctx<'a> {
     state: &'a AppState,
     tenant: &'a Tenant,
     actor: Actor,
+    can_grant: CanGrant<'a>,
     report: ApplyReport,
 }
 
@@ -967,6 +973,72 @@ impl Ctx<'_> {
             .ok_or_else(|| AppError::BadRequest(format!("unknown role `{reference}`")))
     }
 
+    /// Refuse, before anything changes, to hand out admin permissions the
+    /// importer does not hold: the same check the admin routes make for a
+    /// composite, a group's role or a built-in permission grant.
+    async fn check_grants(&self, grants: &[Grant], permissions: &[Uuid]) -> AppResult<()> {
+        let mut names = vec![];
+        for g in grants {
+            names.extend(admin_access::permissions_of_grant(self.state, self.tenant.id, *g).await?);
+        }
+        for id in permissions {
+            let p = resource_servers::get_permission(self.state, self.tenant.id, *id).await?;
+            let rs =
+                resource_servers::get(self.state, self.tenant.id, p.resource_server_id).await?;
+            if rs.built_in {
+                names.push(p.name);
+            }
+        }
+        (self.can_grant)(&names)
+    }
+
+    /// Admin permissions a role reference carries once the document is
+    /// imported: a role the document defines by its own permissions and
+    /// composites (followed through the document), any other by what it
+    /// holds now.
+    async fn admin_permissions_of_role(
+        &self,
+        doc: &TenantConfig,
+        built_in: &BTreeSet<String>,
+        reference: &str,
+    ) -> AppResult<BTreeSet<String>> {
+        let mut out = BTreeSet::new();
+        let mut seen = BTreeSet::new();
+        let mut todo = vec![reference.to_string()];
+        while let Some(r) = todo.pop() {
+            if !seen.insert(r.clone()) {
+                continue;
+            }
+            match doc
+                .roles
+                .iter()
+                .find(|d| role_ref(&d.name, d.client.as_deref()) == r)
+            {
+                Some(def) => {
+                    out.extend(
+                        def.permissions
+                            .iter()
+                            .filter_map(|p| built_in_permission(built_in, p)),
+                    );
+                    todo.extend(def.composites.iter().cloned());
+                }
+                None => {
+                    if let Ok(id) = self.role_id_of(&r).await {
+                        out.extend(
+                            admin_access::permissions_of_grant(
+                                self.state,
+                                self.tenant.id,
+                                Grant::Role(id),
+                            )
+                            .await?,
+                        );
+                    }
+                }
+            }
+        }
+        Ok(out)
+    }
+
     async fn permission_id_of(&self, reference: &str) -> AppResult<Uuid> {
         let (rs, name) = reference.split_once('#').ok_or_else(|| {
             AppError::BadRequest(format!(
@@ -987,15 +1059,162 @@ impl Ctx<'_> {
     }
 }
 
+/// The plan, plus what [`apply`] would refuse under the importer's
+/// no-escalation rule, found without changing anything: every role or group
+/// the plan creates or updates whose new composites, permissions or roles
+/// would hand out admin permissions `can_grant` refuses is listed in
+/// `errors`, as `apply` would list it. A role the same document defines
+/// counts with the permissions it will have once imported.
+pub async fn dry_run(
+    state: &AppState,
+    tenant: &Tenant,
+    actor: Actor,
+    desired: TenantConfig,
+    prune: bool,
+    can_grant: CanGrant<'_>,
+) -> AppResult<ApplyReport> {
+    let desired = normalize(tenant.id, desired)?;
+    let plan = plan(state, tenant, desired.clone(), prune).await?;
+    let mut ctx = Ctx {
+        state,
+        tenant,
+        actor,
+        can_grant,
+        report: ApplyReport {
+            dry_run: true,
+            plan,
+            applied: 0,
+            errors: vec![],
+            secrets: Secrets::default(),
+        },
+    };
+    let built_in: BTreeSet<String> = resource_servers::list(state, tenant.id)
+        .await?
+        .into_iter()
+        .filter(|rs| rs.built_in)
+        .map(|rs| rs.identifier)
+        .collect();
+    let mut refused = vec![];
+    for role in &desired.roles {
+        let key = role_ref(&role.name, role.client.as_deref());
+        if !ctx.wants("role", &key, Op::Create) && !ctx.wants("role", &key, Op::Update) {
+            continue;
+        }
+        let existing = ctx.role_id_of(&key).await.ok();
+        let (current_comp, current_perm): (BTreeSet<Uuid>, BTreeSet<Uuid>) = match existing {
+            Some(id) => (
+                roles::composites_of(state, tenant.id, id)
+                    .await?
+                    .into_iter()
+                    .map(|r| r.id)
+                    .collect(),
+                resource_servers::permissions_of_role(state, tenant.id, id)
+                    .await?
+                    .into_iter()
+                    .map(|p| p.id)
+                    .collect(),
+            ),
+            None => Default::default(),
+        };
+        let mut names = BTreeSet::new();
+        for c in &role.composites {
+            let held = match ctx.role_id_of(c).await {
+                Ok(id) => current_comp.contains(&id),
+                Err(_) => false,
+            };
+            if !held {
+                names.extend(
+                    ctx.admin_permissions_of_role(&desired, &built_in, c)
+                        .await?,
+                );
+            }
+        }
+        for p in &role.permissions {
+            let held = match ctx.permission_id_of(p).await {
+                Ok(id) => current_perm.contains(&id),
+                Err(_) => false,
+            };
+            if !held && let Some(name) = built_in_permission(&built_in, p) {
+                names.insert(name);
+            }
+        }
+        if let Err(e) = (ctx.can_grant)(&names.into_iter().collect::<Vec<_>>()) {
+            refused.push(("role", key, e));
+        }
+    }
+    let all_groups = groups::list(state, tenant.id).await?;
+    for g in &desired.groups {
+        let key = g.path.join("/");
+        if !ctx.wants("group", &key, Op::Create) && !ctx.wants("group", &key, Op::Update) {
+            continue;
+        }
+        let mut parent: Option<Uuid> = None;
+        let mut existing = None;
+        for name in &g.path {
+            existing = all_groups
+                .iter()
+                .find(|x| x.parent_id == parent && &x.name == name)
+                .map(|x| x.id);
+            parent = existing;
+            if parent.is_none() {
+                break;
+            }
+        }
+        let current: BTreeSet<Uuid> = match existing {
+            Some(id) => roles::assignments_of(state, tenant.id, Principal::Group { id })
+                .await?
+                .into_iter()
+                .map(|a| a.role_id)
+                .collect(),
+            None => BTreeSet::new(),
+        };
+        let mut names = BTreeSet::new();
+        for r in &g.roles {
+            let held = match ctx.role_id_of(r).await {
+                Ok(id) => current.contains(&id),
+                Err(_) => false,
+            };
+            if !held {
+                names.extend(
+                    ctx.admin_permissions_of_role(&desired, &built_in, r)
+                        .await?,
+                );
+            }
+        }
+        if let Err(e) = (ctx.can_grant)(&names.into_iter().collect::<Vec<_>>()) {
+            refused.push(("group", key, e));
+        }
+    }
+    for (resource, key, e) in refused {
+        ctx.report.errors.push(ApplyError {
+            resource,
+            key,
+            error: e.to_string(),
+        });
+    }
+    Ok(ctx.report)
+}
+
+/// The permission name of a `resource-server#permission` reference when the
+/// resource server is built in (an admin permission), else `None`.
+fn built_in_permission(built_in: &BTreeSet<String>, reference: &str) -> Option<String> {
+    let (rs, name) = reference.split_once('#')?;
+    built_in.contains(rs).then(|| name.to_string())
+}
+
 /// Apply the plan. Changes are applied in dependency order and deletions
 /// (with `prune`) in reverse; each change is independent, so one failure
-/// does not stop the rest. Running the same document twice is a no-op.
+/// does not stop the rest. Running the same document twice is a no-op. A role
+/// or group whose new composites, permissions or roles would grant admin
+/// permissions the importer lacks (`can_grant` refuses them) is reported as an
+/// error and left unchanged.
 pub async fn apply(
     state: &AppState,
     tenant: &Tenant,
     actor: Actor,
     desired: TenantConfig,
     prune: bool,
+    can_grant: CanGrant<'_>,
 ) -> AppResult<ApplyReport> {
     let desired = normalize(tenant.id, desired)?;
     let plan = plan(state, tenant, desired.clone(), prune).await?;
@@ -1004,6 +1223,7 @@ pub async fn apply(
         state,
         tenant,
         actor,
+        can_grant,
         report: ApplyReport {
             dry_run: false,
             plan,
@@ -1301,12 +1521,6 @@ pub async fn apply(
             for c in &role.composites {
                 desired_comp.insert(ctx.role_id_of(c).await?);
             }
-            for add in desired_comp.difference(&current_comp) {
-                roles::add_composite(state, tid, ctx.actor.clone(), id, *add).await?;
-            }
-            for rm in current_comp.difference(&desired_comp) {
-                roles::remove_composite(state, tid, ctx.actor.clone(), id, *rm).await?;
-            }
             let current_perm: BTreeSet<Uuid> =
                 resource_servers::permissions_of_role(state, tid, id)
                     .await?
@@ -1316,6 +1530,18 @@ pub async fn apply(
             let mut desired_perm = BTreeSet::new();
             for p in &role.permissions {
                 desired_perm.insert(ctx.permission_id_of(p).await?);
+            }
+            let new_comp: Vec<Grant> = desired_comp
+                .difference(&current_comp)
+                .map(|id| Grant::Role(*id))
+                .collect();
+            let new_perm: Vec<Uuid> = desired_perm.difference(&current_perm).copied().collect();
+            ctx.check_grants(&new_comp, &new_perm).await?;
+            for add in desired_comp.difference(&current_comp) {
+                roles::add_composite(state, tid, ctx.actor.clone(), id, *add).await?;
+            }
+            for rm in current_comp.difference(&desired_comp) {
+                roles::remove_composite(state, tid, ctx.actor.clone(), id, *rm).await?;
             }
             for add in desired_perm.difference(&current_perm) {
                 resource_servers::grant(state, tid, ctx.actor.clone(), id, *add).await?;
@@ -1405,6 +1631,11 @@ pub async fn apply(
             for r in &g.roles {
                 wanted.insert(ctx.role_id_of(r).await?);
             }
+            let new_roles: Vec<Grant> = wanted
+                .difference(&current)
+                .map(|id| Grant::Role(*id))
+                .collect();
+            ctx.check_grants(&new_roles, &[]).await?;
             for add in wanted.difference(&current) {
                 roles::assign(state, tid, ctx.actor.clone(), *add, Principal::Group { id }).await?;
             }

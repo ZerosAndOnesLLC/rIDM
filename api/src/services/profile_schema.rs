@@ -27,7 +27,9 @@ const MAX_VALUE_BYTES: usize = 64 * 1024;
 pub enum Editor {
     User,
     Admin,
-    /// Imports and mappers: may write `editable_by: none` attributes too.
+    /// Imports (bulk user import, SCIM provisioning; see
+    /// [`crate::services::users::create_as`]) and mappers: may write
+    /// `editable_by: none` attributes too.
     System,
 }
 

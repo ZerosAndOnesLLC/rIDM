@@ -8,8 +8,11 @@ export const config = {
   /** The resource server identifier to ask the token for (RFC 8707). */
   apiAudience: process.env.NEXT_PUBLIC_API_AUDIENCE ?? "",
   /**
-   * `offline_access` is what asks for a refresh token. rIDM rotates it on
-   * every use, so a public client may hold one.
+   * `offline_access` asks for a refresh token that survives the rIDM sign-in
+   * session timing out (without it, the refresh token ends with that
+   * session); a sign-out or a revoked session still ends it. rIDM grants it
+   * only when every audience allows offline access, and rotates it on every
+   * use, so a public client may hold one.
    */
   scopes: "openid profile email offline_access orders:read orders:write",
 } as const;

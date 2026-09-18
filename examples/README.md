@@ -14,13 +14,22 @@ Both clients call the same API, so you can watch one token travel: minted for
 
 ## Setting the demo tenant up
 
-You need a running rIDM (see [Development](../README.md#development)) and the
-`ridm` CLI, which is in this repository:
+You need a running rIDM (see [Development](../README.md#development)), the
+`ridm` CLI, which is in this repository, and an admin token in `RIDM_TOKEN`:
 
 ```bash
 cargo build -p ridm-cli                       # target/debug/ridm
-ridm login --url http://localhost:8090        # paste a personal access token
+export RIDM_URL=http://localhost:8090
+export RIDM_TOKEN=rpat_...                    # a personal access token
 ```
+
+`setup.sh` exits unless `RIDM_TOKEN` is exported: it passes it to `ridm` and
+also calls the admin API directly with `curl`, which cannot read a token that
+`ridm login` stored in its profile. Mint the token in the account console as a
+global administrator (see [GETTING-STARTED.md](../GETTING-STARTED.md#getting-an-admin-token-for-the-cli)
+for doing it without a browser); it needs `ridm:tenants:*`, `ridm:users:*` and
+`ridm:roles:*`, and creating the tenant needs `ridm:tenants:create`, which only
+`ridm:owner` holds.
 
 Then, from the repository root:
 
@@ -43,8 +52,8 @@ point whether the tenant still matches it.
 Four terminals, or one with `&`:
 
 ```bash
-# 1. rIDM itself
-cargo run -p ridm-api
+# 1. rIDM itself, on :8090 (BIND_ADDR and PUBLIC_URL in .env, see GETTING-STARTED.md)
+UI_URL=http://localhost:3110 cargo run -p ridm-api
 
 # 2. the orders API
 RIDM_ISSUER=http://localhost:8090/t/demo \
@@ -64,7 +73,8 @@ cargo run -p ridm-example-confidential-client
 ```
 
 The end-user pages (sign-in, consent, MFA) are rIDM's own UI, which in
-development runs separately — `cd ui && API_PROXY=http://localhost:8090 npm run dev`.
+development runs separately — `cd ui && API_PROXY=http://localhost:8090 npx next dev -p 3110`,
+matching the `UI_URL` above.
 
 Sign in at <http://localhost:3100/> or <http://localhost:3200/> as `dana`
 (`orders-manager`: may place orders) or `sam` (`orders-reader`: may only see

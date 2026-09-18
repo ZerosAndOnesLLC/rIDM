@@ -5,6 +5,7 @@ pub mod cache;
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod healthcheck;
 pub mod jobs;
 pub mod messaging;
 pub mod middleware;
@@ -20,7 +21,6 @@ pub mod util;
 
 use axum::Router;
 use axum::middleware::from_fn_with_state;
-use tower_http::trace::TraceLayer;
 
 use crate::middleware::guard::{Guard, Style, guard};
 use crate::middleware::{cors, security_headers};
@@ -38,12 +38,11 @@ pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
     // The metrics recorder must exist before the first counter is touched.
     let _ = telemetry::prometheus();
     let routed = routed_router(state.clone(), extra);
-    // Requests on a tenant's custom domain carry no `/t/{slug}` prefix: the
-    // fallback maps the host to the tenant and re-dispatches (see `host`).
-    let for_hosts = routed.clone();
-    routed.fallback(move |req: axum::extract::Request| {
+    // Every request is looked at by host first: one on a tenant's custom
+    // domain is mapped onto that tenant's routes and nothing else (see `host`).
+    Router::new().fallback(move |req: axum::extract::Request| {
         let state = state.clone();
-        let routed = for_hosts.clone();
+        let routed = routed.clone();
         async move { middleware::host::dispatch(state, routed, req).await }
     })
 }
@@ -122,6 +121,6 @@ fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
         .layer(axum::middleware::from_fn(
             middleware::http_metrics::http_metrics,
         ))
-        .layer(TraceLayer::new_for_http())
+        .layer(telemetry::http_trace_layer())
         .with_state(state)
 }

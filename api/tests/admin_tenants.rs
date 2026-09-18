@@ -451,3 +451,53 @@ async fn profile_schema_is_read_and_replaced_through_the_admin_api() {
     let (status, _, _) = call(&app, Method::PUT, &path, Some(&viewer), Some(&schema)).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 }
+
+/// Switching `settings.mfa` to another mode with a merge patch that names the
+/// mode alone drops the old mode's fields instead of refusing them as
+/// unknown; and `registration.captcha` (never read by the server) is gone,
+/// the setting being `captcha.on_registration`.
+#[tokio::test]
+async fn settings_patches_switch_mfa_mode_and_know_the_captcha_setting() {
+    let app = TestApp::spawn().await;
+    let slug = app.tenant.slug.clone();
+    let path = format!("/admin/tenants/{slug}");
+    let t = admin_token(&app, app.tenant.id, ADMIN_ROLE).await;
+    let patch = |settings: Value| {
+        let (app, path, t) = (&app, &path, &t);
+        async move {
+            let (status, body, _) = call(
+                app,
+                Method::PATCH,
+                path,
+                Some(t),
+                Some(&json!({ "settings": settings })),
+            )
+            .await;
+            (status, body)
+        }
+    };
+
+    let (status, body) =
+        patch(json!({"mfa": {"mode": "required_for_roles", "roles": ["finance"]}})).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["settings"]["mfa"]["roles"], json!(["finance"]));
+    let (status, body) = patch(json!({"mfa": {"mode": "optional"}})).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["settings"]["mfa"], json!({"mode": "optional"}));
+    // What the console sends: the mode, and the role list cleared.
+    let (status, _) = patch(json!({"mfa": {"mode": "required_for_roles", "roles": ["a"]}})).await;
+    assert_eq!(status, 200);
+    let (status, body) = patch(json!({"mfa": {"mode": "required", "roles": null}})).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["settings"]["mfa"], json!({"mode": "required"}));
+    // A stray field on the same mode is still a typo.
+    let (status, body) = patch(json!({"mfa": {"roles": ["x"]}})).await;
+    assert_eq!(status, 400, "{body}");
+
+    let (status, body) = patch(json!({"registration": {"captcha": true}})).await;
+    assert_eq!(status, 400, "{body}");
+    let (status, body) = patch(json!({"captcha": {"on_registration": false}})).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["settings"]["captcha"]["on_registration"], false);
+    assert!(body["settings"]["registration"].get("captcha").is_none());
+}

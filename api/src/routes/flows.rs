@@ -184,7 +184,7 @@ async fn password(
         user_agent: ua,
         existing_session: existing,
         captcha_token: body.captcha_token,
-        device_secret: trusted_devices::secret_from_headers(&state, &headers),
+        device_secret: trusted_devices::secret_from_headers(&state, &tenant.tenant, &headers),
         remember_device: body.remember_device,
     };
     match flows::password_step(&state, &tenant, flow, attempt).await {
@@ -554,7 +554,7 @@ async fn passkey_finish(
             .await
             .ok()
             .flatten(),
-        device_secret: trusted_devices::secret_from_headers(&state, &headers),
+        device_secret: trusted_devices::secret_from_headers(&state, &tenant.tenant, &headers),
         remember_device: body.remember_device,
     };
     match flows::passkey_finish(&state, &tenant, flow, &body.credential, ctx).await {
@@ -1006,7 +1006,7 @@ async fn verify_passwordless(
             .await
             .ok()
             .flatten(),
-        device_secret: trusted_devices::secret_from_headers(&state, &headers),
+        device_secret: trusted_devices::secret_from_headers(&state, &tenant.tenant, &headers),
         remember_device: body.remember_device,
     };
     match flows::passwordless_verify_step(&state, &tenant, flow, method, &body.code, ctx).await {

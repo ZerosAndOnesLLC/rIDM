@@ -154,7 +154,7 @@ async fn finish(
             .await
             .ok()
             .flatten(),
-        device_secret: trusted_devices::secret_from_headers(&state, &headers),
+        device_secret: trusted_devices::secret_from_headers(&state, &tenant.tenant, &headers),
         remember_device: false,
     };
     match broker::callback(&state, &tenant, &idp, params, ctx).await {

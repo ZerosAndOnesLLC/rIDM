@@ -124,7 +124,7 @@ async fn send_email(
             event: "invitation",
             recipient: &inv.email,
             locale: None,
-            vars: serde_json::json!({"inviter": inviter, "link": link, "expires_days": days}),
+            vars: messaging::vars::invitation(&inviter, &link, days),
         },
     )
     .await?;

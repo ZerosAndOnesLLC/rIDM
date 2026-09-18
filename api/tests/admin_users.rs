@@ -13,7 +13,7 @@ use ridm_api::services::admin_access::{
     ADMIN_ROLE, CLIENT_MANAGER_ROLE, OWNER_ROLE, USER_MANAGER_ROLE, VIEWER_ROLE,
 };
 use ridm_api::services::sessions::{self, NewSession};
-use ridm_api::services::{clients, consents, groups, roles, tenants, trusted_devices, users};
+use ridm_api::services::{clients, consents, groups, roles, tenants, totp, trusted_devices, users};
 use ridm_core::events::Actor;
 use serde_json::json;
 use uuid::Uuid;
@@ -51,6 +51,9 @@ async fn user_manager_runs_the_user_lifecycle() {
             "either",
         ),
         (json!({"username": "x", "email": "not-an-email"}), "email"),
+        // System states are not a starting point (as in PATCH and imports).
+        (json!({"username": "x", "status": "locked"}), "status"),
+        (json!({"username": "x", "status": "deleted"}), "status"),
     ] {
         let (status, err, _) = call(&app, Method::POST, &base, Some(&t), Some(&body)).await;
         assert_eq!(status, 400, "{body} -> {err}");
@@ -59,6 +62,17 @@ async fn user_manager_runs_the_user_lifecycle() {
             "{err} should mention {needle}"
         );
     }
+
+    let (status, pending, _) = call(
+        &app,
+        Method::POST,
+        &base,
+        Some(&t),
+        Some(&json!({"username": "pend", "status": "pending"})),
+    )
+    .await;
+    assert_eq!(status, 201, "{pending}");
+    assert_eq!(pending["status"], "pending");
 
     // Create with a temporary password: returned once, must change at login.
     let (status, created, _) = call(
@@ -416,6 +430,18 @@ async fn sessions_devices_credentials_and_consents_are_listed_and_revoked() {
     assert_eq!(creds["credentials"][0]["kind"], "totp");
     assert_eq!(creds["credentials"][0]["label"], "Authenticator");
     assert!(creds["credentials"][0].get("data_enc").is_none());
+    // Removing the last second factor takes the recovery codes with it, as
+    // it does in the account console.
+    totp::regenerate_recovery_codes(&app.state, tenant.id, uid)
+        .await
+        .unwrap();
+    assert!(
+        totp::factors_of(&app.state, tenant.id, uid)
+            .await
+            .unwrap()
+            .recovery_codes
+            > 0
+    );
     let (status, _, _) = call(
         &app,
         Method::DELETE,
@@ -435,7 +461,17 @@ async fn sessions_devices_credentials_and_consents_are_listed_and_revoked() {
     .await;
     assert_eq!(status, 404);
     let (_, creds, _) = get_json(&app, &format!("{path}/credentials"), Some(&t)).await;
-    assert!(creds["credentials"].as_array().unwrap().is_empty());
+    assert!(
+        creds["credentials"].as_array().unwrap().is_empty(),
+        "{creds}"
+    );
+    assert_eq!(
+        totp::factors_of(&app.state, tenant.id, uid)
+            .await
+            .unwrap()
+            .recovery_codes,
+        0
+    );
 
     // Consents.
     let client = clients::create(

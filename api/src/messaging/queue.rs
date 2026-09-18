@@ -46,7 +46,7 @@ pub async fn send(
     if !vars.is_object() {
         vars = Value::Object(Default::default());
     }
-    vars["tenant"] = serde_json::json!({"display_name": tenant.display_name, "slug": tenant.slug});
+    vars["tenant"] = super::vars::tenant(tenant);
     let locale = out.locale.unwrap_or(&tenant.settings.locale.default);
     let template = templates::resolve(
         state,

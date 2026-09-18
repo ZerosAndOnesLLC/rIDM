@@ -160,10 +160,10 @@ function ScopeView({ tenant, id }: { tenant: string; id: string }) {
         <Field label="Description" hint="Shown on the consent page." wide>
           {(fid, by) => <TextInput id={fid} aria-describedby={by} value={draft.description ?? ""} disabled={!editable} onChange={(e) => update({ description: e.target.value || null })} />}
         </Field>
-        <Field label="Claims" hint="Claims this scope releases in the ID token and userinfo. Enter adds one." wide>
+        <Field label="Claims" hint="Claims this scope releases at userinfo (and in the ID token for clients that ask for scope claims there): user fields such as email or profile attributes, by name. Enter adds one." wide>
           {(fid, by) => <TagsInput id={fid} describedBy={by} value={draft.claims} onChange={(v) => update({ claims: v })} placeholder="name, given_name" />}
         </Field>
-        <Field label="Resource server" hint="Requesting this scope also targets that audience.">
+        <Field label="Resource server" hint="Requesting this scope also targets that audience; tokens without that audience do not carry the scope.">
           {(fid, by) => (
             <SelectInput id={fid} aria-describedby={by} value={draft.resource_server_id ?? ""} disabled={!editable} onChange={(e) => update({ resource_server_id: e.target.value || null })}>
               <option value="">None</option>
@@ -179,7 +179,7 @@ function ScopeView({ tenant, id }: { tenant: string; id: string }) {
         </Field>
         <div className="flex items-end">
           <div className="w-full">
-            <Toggle label="Granted by default" hint="Included when a client asks for no scope." checked={draft.is_default} disabled={!editable} onChange={(v) => update({ is_default: v })} />
+            <Toggle label="Granted by default" hint="Included when a client that may hold it asks for no scope." checked={draft.is_default} disabled={!editable} onChange={(v) => update({ is_default: v })} />
           </div>
         </div>
       </Section>

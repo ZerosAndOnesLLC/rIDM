@@ -264,7 +264,9 @@ pub fn build(
         backchannel_logout_session_supported: caps.backchannel_logout,
         frontchannel_logout_supported: caps.frontchannel_logout,
         frontchannel_logout_session_supported: caps.frontchannel_logout,
-        dpop_signing_alg_values_supported: caps.dpop.then(signing_algs),
+        // The proof verifier's own list, so discovery never promises less (or
+        // more) than `/token` accepts.
+        dpop_signing_alg_values_supported: caps.dpop.then(|| crate::oidc::dpop::ALGS.to_vec()),
         op_policy_uri: tenant.settings.registration.privacy_url.clone(),
         op_tos_uri: tenant.settings.registration.terms_url.clone(),
         service_documentation: branding.support_url.clone(),

@@ -186,13 +186,17 @@ pub async fn send(
                     ("magic", &token),
                 ],
             );
-            messaging::send(state, tenant, Outgoing {
-                channel: MessageChannel::Email,
-                event: "magic_link",
-                recipient: user.email.as_deref().unwrap_or_default(),
-                locale: locale.as_deref(),
-                vars: serde_json::json!({"user": {"username": user.username}, "link": link, "expires_minutes": MAGIC_LINK_TTL_SECS / 60}),
-            })
+            messaging::send(
+                state,
+                tenant,
+                Outgoing {
+                    channel: MessageChannel::Email,
+                    event: "magic_link",
+                    recipient: user.email.as_deref().unwrap_or_default(),
+                    locale: locale.as_deref(),
+                    vars: messaging::vars::link(&user.username, &link, MAGIC_LINK_TTL_SECS / 60),
+                },
+            )
             .await?;
         }
         Method::EmailOtp | Method::SmsOtp => {
@@ -209,13 +213,17 @@ pub async fn send(
                 ),
                 _ => (MessageChannel::Sms, user.phone.clone().unwrap_or_default()),
             };
-            messaging::send(state, tenant, Outgoing {
-                channel,
-                event: "otp",
-                recipient: &recipient,
-                locale: locale.as_deref(),
-                vars: serde_json::json!({"user": {"username": user.username}, "code": code, "expires_minutes": OTP_TTL_SECS / 60}),
-            })
+            messaging::send(
+                state,
+                tenant,
+                Outgoing {
+                    channel,
+                    event: "otp",
+                    recipient: &recipient,
+                    locale: locale.as_deref(),
+                    vars: messaging::vars::code(&user.username, &code, OTP_TTL_SECS / 60),
+                },
+            )
             .await?;
         }
     }

@@ -266,6 +266,16 @@ async fn a_client_registered_for_binding_must_present_a_proof() {
 
 /// A bound user token minted the way the token endpoint would.
 async fn bound_user_token(app: &TestApp, jkt: &str, audience: &str, client_id: &str) -> String {
+    bound_user_token_as(app, jkt, audience, TokenClient::public(client_id)).await
+}
+
+/// [`bound_user_token`] for a given client (and so a given token format).
+async fn bound_user_token_as(
+    app: &TestApp,
+    jkt: &str,
+    audience: &str,
+    client: TokenClient,
+) -> String {
     let tenant = tenants::get(&app.state, app.tenant.id).await.unwrap();
     let user = users::create(
         &app.state,
@@ -282,7 +292,7 @@ async fn bound_user_token(app: &TestApp, jkt: &str, audience: &str, client_id: &
         &app.state,
         AccessTokenRequest {
             tenant: &tenant,
-            client: &TokenClient::public(client_id),
+            client: &client,
             user: Some(&user),
             scopes: &["openid".into(), "profile".into()],
             audiences: &[audience.to_string()],
@@ -399,6 +409,67 @@ async fn resources_demand_the_proof_for_bound_tokens() {
     .token;
     let res = get(format!("Bearer {plain}"), None).await.unwrap();
     assert_eq!(res.status(), 200);
+}
+
+/// An opaque access token carries its binding in its stored claims: the
+/// resource demands the DPoP scheme and a proof naming that very string.
+#[tokio::test]
+async fn an_opaque_token_keeps_its_binding() {
+    let app = TestApp::spawn().await;
+    clients::create(
+        &app.state,
+        app.tenant.id,
+        Actor::System,
+        NewClient {
+            client_id: Some("spa".into()),
+            name: "spa".into(),
+            client_type: Some(ClientType::Spa),
+            redirect_uris: vec!["https://app.example/cb".into()],
+            access_token_format: Some(ridm_api::models::AccessTokenFormat::Opaque),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let k = key();
+    let client = TokenClient {
+        access_token_format: ridm_api::models::AccessTokenFormat::Opaque,
+        ..TokenClient::public("spa")
+    };
+    let at = bound_user_token_as(&app, &k.pair.kid, "spa", client).await;
+    assert!(at.starts_with("at_"), "{at}");
+    let url = app.tenant_url("/userinfo");
+    let res = app.http.get(&url).bearer_auth(&at).send().await.unwrap();
+    assert_eq!(res.status(), 401);
+    assert!(
+        res.headers()["www-authenticate"]
+            .to_str()
+            .unwrap()
+            .starts_with("DPoP ")
+    );
+    let mut o = ProofOpts::new("GET", &url);
+    o.access_token = Some(&at);
+    let res = app
+        .http
+        .get(&url)
+        .header("authorization", format!("DPoP {at}"))
+        .header("dpop", proof(&k, o))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "{}", res.text().await.unwrap());
+    // The proof of another key does not do.
+    let mut o = ProofOpts::new("GET", &url);
+    o.access_token = Some(&at);
+    let res = app
+        .http
+        .get(&url)
+        .header("authorization", format!("DPoP {at}"))
+        .header("dpop", proof(&key(), o))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 401);
 }
 
 #[tokio::test]
@@ -540,8 +611,15 @@ async fn discovery_lists_the_proof_algorithms() {
         .json()
         .await
         .unwrap();
-    let algs = doc["dpop_signing_alg_values_supported"].as_array().unwrap();
-    assert!(algs.iter().any(|a| a == "ES256"));
+    let algs: Vec<&str> = doc["dpop_signing_alg_values_supported"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a.as_str().unwrap())
+        .collect();
+    // One list: discovery advertises exactly what the proof verifier accepts.
+    assert_eq!(algs, ridm_api::oidc::dpop::ALGS.to_vec());
+    assert!(algs.contains(&"ES384") && algs.contains(&"PS256"));
 }
 
 /// Phase 9.12 review finding. Token exchange verified the subject token

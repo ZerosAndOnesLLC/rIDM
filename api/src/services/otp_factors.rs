@@ -180,13 +180,17 @@ async fn deliver(
     code: &str,
 ) -> AppResult<()> {
     let locale = locale::negotiate(ui_locales, user.locale.as_deref(), &tenant.settings.locale);
-    messaging::send(state, tenant, Outgoing {
-        channel: channel.message_channel(),
-        event: "otp",
-        recipient: destination,
-        locale: Some(&locale),
-        vars: serde_json::json!({"user": {"username": user.username}, "code": code, "expires_minutes": OTP_TTL_SECS / 60}),
-    })
+    messaging::send(
+        state,
+        tenant,
+        Outgoing {
+            channel: channel.message_channel(),
+            event: "otp",
+            recipient: destination,
+            locale: Some(&locale),
+            vars: messaging::vars::code(&user.username, code, OTP_TTL_SECS / 60),
+        },
+    )
     .await?;
     Ok(())
 }

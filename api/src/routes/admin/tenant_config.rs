@@ -54,7 +54,8 @@ struct ImportQuery {
 }
 
 /// `?dry_run=true` returns the plan (creates, updates with field diffs, and
-/// with `prune` deletes). Without it the plan is applied; the report lists
+/// with `prune` deletes), with `errors` listing roles and groups whose grants
+/// the caller could not make (applying would refuse them the same way). Without it the plan is applied; the report lists
 /// what was applied, any per-item errors, and the secrets of clients and
 /// webhooks the import created (shown once). Applying the same document
 /// again yields an empty plan.
@@ -68,15 +69,27 @@ async fn import(
 ) -> AppResult<Response> {
     admin.require(tenant.id, "ridm:tenants:import")?;
     let report = if q.dry_run {
-        ApplyReport {
-            dry_run: true,
-            plan: tenant_config::plan(&state, &tenant, doc, q.prune).await?,
-            applied: 0,
-            errors: vec![],
-            secrets: Default::default(),
-        }
+        // The plan, with the grants this administrator could not make
+        // flagged in `errors` exactly as applying would report them.
+        tenant_config::dry_run(
+            &state,
+            &tenant,
+            admin.actor(),
+            doc,
+            q.prune,
+            &|perms: &[String]| admin.require_can_grant(perms.iter().map(String::as_str)),
+        )
+        .await?
     } else {
-        tenant_config::apply(&state, &tenant, admin.actor(), doc, q.prune).await?
+        tenant_config::apply(
+            &state,
+            &tenant,
+            admin.actor(),
+            doc,
+            q.prune,
+            &|perms: &[String]| admin.require_can_grant(perms.iter().map(String::as_str)),
+        )
+        .await?
     };
     let mut res = axum::Json(report).into_response();
     if let Ok(v) = "no-store".parse() {

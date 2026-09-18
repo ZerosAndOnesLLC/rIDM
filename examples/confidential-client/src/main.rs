@@ -301,8 +301,9 @@ struct LogoutToken {
 }
 
 /// rIDM calls this when the session ends somewhere else — another app's sign-
-/// out, an administrator revoking the session, a password reset. There is no
-/// browser involved, so the answer is a status code and nothing else.
+/// out, an administrator revoking the session or disabling the user, a
+/// password reset. There is no browser involved, so the answer is a status
+/// code and nothing else.
 async fn backchannel_logout(
     State(state): State<AppState>,
     Form(form): Form<LogoutToken>,

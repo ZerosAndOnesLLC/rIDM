@@ -73,7 +73,11 @@ async fn login(fx: &Fx) -> String {
     )
     .await
     .unwrap();
-    format!("{}={}", sessions::cookie_name(&fx.app.state), session.id)
+    format!(
+        "{}={}",
+        sessions::cookie_name(&fx.app.state, &fx.app.tenant.slug),
+        session.id
+    )
 }
 
 fn params(fx: &Fx, extra: &[(&str, &str)]) -> Vec<(String, String)> {
@@ -383,7 +387,8 @@ async fn other_problems_are_reported_to_the_client_with_state_and_iss() {
         err(params(&fx, &[("response_type", "")])).await.0,
         "invalid_request"
     );
-    assert_eq!(err(params(&fx, &[("scope", "")])).await.0, "invalid_scope");
+    // An empty scope is given the default scopes (`openid` here); see
+    // `a_request_without_scope_gets_the_default_scopes`.
     assert_eq!(
         err(params(&fx, &[("scope", "openid nope")])).await.0,
         "invalid_scope"

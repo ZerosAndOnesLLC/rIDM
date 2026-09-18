@@ -13,8 +13,9 @@ use zeroize::Zeroizing;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{NewUser, Principal, Tenant, User, UserFilter, UserStatus};
+use crate::services::admin_access::{self, Grant};
 use crate::services::password::{self, SetPasswordOptions};
-use crate::services::{groups, roles, users};
+use crate::services::{groups, profile_schema, roles, users};
 use crate::state::AppState;
 use crate::util::cursor::MAX_PAGE_SIZE;
 
@@ -283,10 +284,13 @@ async fn import_one(
     lookups: &Lookups,
     row: ImportRow,
 ) -> AppResult<User> {
-    let user = users::create(
+    // An import may set attributes nobody edits through the API
+    // (`editable_by: none`); it is still recorded as the importing admin.
+    let user = users::create_as(
         state,
         tenant.id,
         actor.clone(),
+        profile_schema::Editor::System,
         NewUser {
             username: row.username,
             email: row.email,
@@ -350,17 +354,82 @@ async fn import_one(
     Ok(user)
 }
 
+/// Admin permissions each referenced role and group carries (composites and
+/// group ancestry expanded), looked up once per name for the whole batch.
+struct Granted {
+    roles: HashMap<String, Vec<String>>,
+    groups: HashMap<String, Vec<String>>,
+}
+
+async fn granted(
+    state: &AppState,
+    tenant_id: Uuid,
+    lookups: &Lookups,
+    rows: &[ImportRow],
+) -> AppResult<Granted> {
+    let mut out = Granted {
+        roles: HashMap::new(),
+        groups: HashMap::new(),
+    };
+    for row in rows {
+        for r in &row.roles {
+            if let Some(id) = lookups.roles.get(r)
+                && !out.roles.contains_key(r)
+            {
+                let perms =
+                    admin_access::permissions_of_grant(state, tenant_id, Grant::Role(*id)).await?;
+                out.roles.insert(r.clone(), perms);
+            }
+        }
+        for g in &row.groups {
+            if let Some(id) = lookups.groups.get(g)
+                && !out.groups.contains_key(g)
+            {
+                let perms =
+                    admin_access::permissions_of_grant(state, tenant_id, Grant::Group(*id)).await?;
+                out.groups.insert(g.clone(), perms);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The no-escalation rule of the single-assignment routes, per row: every
+/// admin permission the row's roles and groups would give must be one the
+/// importing administrator holds (`can_grant` is
+/// [`crate::middleware::AdminCtx::require_can_grant`]).
+fn check_grants(
+    row: &ImportRow,
+    granted: &Granted,
+    can_grant: &(dyn Fn(&[String]) -> AppResult<()> + Sync),
+) -> AppResult<()> {
+    let perms: Vec<String> = row
+        .roles
+        .iter()
+        .filter_map(|r| granted.roles.get(r))
+        .chain(row.groups.iter().filter_map(|g| granted.groups.get(g)))
+        .flatten()
+        .cloned()
+        .collect();
+    can_grant(&perms)
+}
+
 /// Import rows one at a time; failures are reported per row and never stop
 /// the rest. With `dry_run` nothing is written and only validation runs
 /// (uniqueness is then checked against existing users, not within the batch).
+/// A row whose roles or groups carry admin permissions the importer does not
+/// hold (`can_grant` refuses them) is reported and skipped like any other
+/// invalid row, dry run included.
 pub async fn import(
     state: &AppState,
     tenant: &Tenant,
     actor: Actor,
     rows: Vec<ImportRow>,
     dry_run: bool,
+    can_grant: &(dyn Fn(&[String]) -> AppResult<()> + Sync),
 ) -> AppResult<ImportReport> {
     let lookups = lookups(state, tenant.id).await?;
+    let granted = granted(state, tenant.id, &lookups, &rows).await?;
     let mut report = ImportReport {
         dry_run,
         total: rows.len(),
@@ -368,7 +437,9 @@ pub async fn import(
     };
     for (i, row) in rows.into_iter().enumerate() {
         let username = Some(row.username.clone()).filter(|u| !u.is_empty());
-        let outcome = match validate(&row, tenant, &lookups) {
+        let checked =
+            validate(&row, tenant, &lookups).and_then(|()| check_grants(&row, &granted, can_grant));
+        let outcome = match checked {
             Err(e) => Err(e),
             Ok(()) if dry_run => {
                 let taken = users::find_by_identifier(state, tenant.id, &row.username)
@@ -400,7 +471,9 @@ pub async fn import(
                     row: i + 1,
                     username,
                     error: match e {
-                        AppError::BadRequest(d) | AppError::Conflict(d) => d,
+                        AppError::BadRequest(d)
+                        | AppError::Conflict(d)
+                        | AppError::Forbidden(d) => d,
                         AppError::Validation(fields) => fields
                             .iter()
                             .map(|f| format!("{}: {}", f.field, f.message))

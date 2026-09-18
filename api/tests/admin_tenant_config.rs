@@ -5,7 +5,12 @@ mod common;
 use common::admin::{admin_token, call, get_json};
 use common::{TestApp, create_tenant};
 use reqwest::Method;
-use ridm_api::services::admin_access::{ADMIN_ROLE, OWNER_ROLE, VIEWER_ROLE};
+use ridm_api::models::NewRole;
+use ridm_api::services::admin_access::{
+    self, ADMIN_AUDIENCE, ADMIN_ROLE, Grant, OWNER_ROLE, VIEWER_ROLE,
+};
+use ridm_api::services::{resource_servers, roles};
+use ridm_core::events::Actor;
 use serde_json::{Value, json};
 
 async fn export(app: &TestApp, slug: &str, bearer: &str) -> (u16, String) {
@@ -605,4 +610,154 @@ async fn export_and_import_follow_the_permission_model() {
     let other = create_tenant(&app.state.db).await;
     let (status, _) = export(&app, &other.slug, &owner).await;
     assert_eq!(status, 403);
+}
+
+/// An importer who holds `ridm:tenants:import` but not the permissions a
+/// document would hand out cannot use the import to grant them: new admin
+/// composites, built-in permission grants and group roles are refused per
+/// item, the way the single-assignment routes refuse them.
+#[tokio::test]
+async fn import_cannot_grant_admin_permissions_the_importer_lacks() {
+    let app = TestApp::spawn().await;
+    let tid = app.tenant.id;
+    let slug = app.tenant.slug.clone();
+    let importer = roles::create(
+        &app.state,
+        tid,
+        Actor::System,
+        NewRole {
+            name: "importer".into(),
+            client_id: None,
+            description: None,
+        },
+    )
+    .await
+    .unwrap();
+    let admin_rs = resource_servers::list(&app.state, tid)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|rs| rs.identifier == ADMIN_AUDIENCE)
+        .unwrap();
+    for p in resource_servers::list_permissions(&app.state, tid, admin_rs.id)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|p| p.name.starts_with("ridm:tenants:"))
+    {
+        resource_servers::grant(&app.state, tid, Actor::System, importer.id, p.id)
+            .await
+            .unwrap();
+    }
+    let bearer = admin_token(&app, tid, "importer").await;
+    let owner = admin_token(&app, tid, OWNER_ROLE).await;
+
+    let (_, doc_text) = export(&app, &slug, &owner).await;
+    let mut doc: Value = serde_json::from_str(&doc_text).unwrap();
+    let roles_doc = doc["roles"].as_array_mut().unwrap();
+    roles_doc.push(json!({ "name": "sneaky-composite", "composites": [OWNER_ROLE] }));
+    roles_doc.push(json!({
+        "name": "sneaky-permission",
+        "permissions": [format!("{ADMIN_AUDIENCE}#ridm:users:write")]
+    }));
+    roles_doc.push(json!({ "name": "harmless" }));
+    doc["groups"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({ "path": ["sneaky-group"], "roles": [OWNER_ROLE] }));
+
+    let path = format!("/admin/tenants/{slug}/import");
+
+    // The dry run already names what applying would refuse, and changes
+    // nothing; the owner's dry run of the same document flags nothing.
+    let (status, plan, _) = call(
+        &app,
+        Method::POST,
+        &format!("{path}?dry_run=true"),
+        Some(&bearer),
+        Some(&doc),
+    )
+    .await;
+    assert_eq!(status, 200, "{plan}");
+    assert_eq!(plan["dry_run"], true);
+    let flagged: Vec<(&str, &str)> = plan["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| (e["resource"].as_str().unwrap(), e["key"].as_str().unwrap()))
+        .collect();
+    for want in [
+        ("role", "sneaky-composite"),
+        ("role", "sneaky-permission"),
+        ("group", "sneaky-group"),
+    ] {
+        assert!(flagged.contains(&want), "{want:?} not flagged: {plan}");
+    }
+    assert!(!flagged.contains(&("role", "harmless")), "{plan}");
+    assert!(
+        plan["errors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["error"].as_str().unwrap().contains("cannot grant")),
+        "{plan}"
+    );
+    {
+        let mut tx = ridm_api::db::tenant_tx(&app.state.db, tid).await.unwrap();
+        let none = ridm_api::repos::roles::find_by_name(&mut *tx, tid, None, "sneaky-composite")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        assert!(none.is_none(), "a dry run creates nothing");
+    }
+    let (status, plan, _) = call(
+        &app,
+        Method::POST,
+        &format!("{path}?dry_run=true"),
+        Some(&owner),
+        Some(&doc),
+    )
+    .await;
+    assert_eq!(status, 200, "{plan}");
+    assert_eq!(plan["errors"], json!([]), "{plan}");
+
+    let (status, report, _) = call(&app, Method::POST, &path, Some(&bearer), Some(&doc)).await;
+    assert_eq!(status, 200, "{report}");
+    let refused: Vec<(&str, &str)> = report["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| (e["resource"].as_str().unwrap(), e["key"].as_str().unwrap()))
+        .collect();
+    for want in [
+        ("role", "sneaky-composite"),
+        ("role", "sneaky-permission"),
+        ("group", "sneaky-group"),
+    ] {
+        assert!(refused.contains(&want), "{want:?} not refused: {report}");
+    }
+    assert!(
+        report["errors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["error"].as_str().unwrap().contains("cannot grant")),
+        "{report}"
+    );
+    // Nothing was linked: the refused role holds no admin permission.
+    let sneaky = common::admin::role_id(&app, tid, "sneaky-permission").await;
+    let granted = admin_access::permissions_of_grant(&app.state, tid, Grant::Role(sneaky))
+        .await
+        .unwrap();
+    assert!(granted.is_empty(), "{granted:?}");
+    let sneaky = common::admin::role_id(&app, tid, "sneaky-composite").await;
+    let granted = admin_access::permissions_of_grant(&app.state, tid, Grant::Role(sneaky))
+        .await
+        .unwrap();
+    assert!(granted.is_empty(), "{granted:?}");
+
+    // The owner may import the same document.
+    let (status, report, _) = call(&app, Method::POST, &path, Some(&owner), Some(&doc)).await;
+    assert_eq!(status, 200, "{report}");
+    assert_eq!(report["errors"], json!([]), "{report}");
 }

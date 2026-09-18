@@ -54,7 +54,9 @@ pub fn authorization_url(config: &Config, state: &str, nonce: &str, verifier: &s
         ("code_challenge", &code_challenge(verifier)),
         ("code_challenge_method", "S256"),
         // RFC 8707: which API the access token should be good for. Without it
-        // the token is audienced to this client and the orders API refuses it.
+        // rIDM falls back to the client's registered audiences plus those of
+        // any resource-bound scope requested, and to this client itself only
+        // when there are none, in which case the orders API refuses the token.
         ("resource", &config.api_audience),
     ];
     format!(

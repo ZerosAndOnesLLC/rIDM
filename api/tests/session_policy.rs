@@ -108,7 +108,7 @@ async fn max_concurrent_sessions_revokes_the_oldest() {
     assert_eq!(ip.as_deref(), Some("10.0.0.1"));
     // Sign out everywhere.
     assert_eq!(
-        sessions::revoke_all_for_user(&app.state, tenant.id, uid)
+        ridm_api::services::logout::end_sessions_for_user(&app.state, &tenant, uid, None)
             .await
             .unwrap(),
         2
@@ -219,7 +219,9 @@ async fn trusted_devices_round_trip() {
     assert!(device.is_live(chrono::Utc::now()));
     assert!((device.expires_at - chrono::Utc::now()).num_days() >= 29);
     let cookie = trusted_devices::set_cookie_header(&app.state, &tenant, &secret, 30);
-    assert!(cookie.starts_with("ridm_device=") && cookie.contains("HttpOnly"));
+    assert!(
+        cookie.starts_with(&format!("ridm_device_{}=", tenant.slug)) && cookie.contains("HttpOnly")
+    );
 
     let mut headers = axum::http::HeaderMap::new();
     headers.insert("cookie", cookie.split(';').next().unwrap().parse().unwrap());
@@ -237,7 +239,10 @@ async fn trusted_devices_round_trip() {
         "bound to the user"
     );
     let mut bogus = axum::http::HeaderMap::new();
-    bogus.insert("cookie", "ridm_device=nope".parse().unwrap());
+    bogus.insert(
+        "cookie",
+        format!("ridm_device_{}=nope", tenant.slug).parse().unwrap(),
+    );
     assert!(
         trusted_devices::is_trusted(&app.state, &tenant, uid, &bogus, None)
             .await

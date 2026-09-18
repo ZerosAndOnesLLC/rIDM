@@ -380,35 +380,18 @@ pub async fn validate(
         // Allowed by spec; nothing to do. Kept explicit for future policy hooks.
     }
 
-    // scope
-    let requested = scopes::parse_scope_param(one("scope")?.unwrap_or_default());
-    if requested.is_empty() {
-        return Err(Failure::Redirect(OAuthError::new(
-            OAuthErrorCode::InvalidScope,
-            "scope is required",
-        )));
-    }
-    let (known, unknown) = scopes::resolve(state, tenant.id(), &requested).await?;
-    if !unknown.is_empty() {
-        return Err(Failure::Redirect(OAuthError::new(
-            OAuthErrorCode::InvalidScope,
-            format!("unknown scope(s): {}", unknown.join(" ")),
-        )));
-    }
-    let disallowed: Vec<&str> = known
-        .iter()
-        .map(|s| s.name.as_str())
-        .filter(|n| !client.allowed_scopes.iter().any(|a| a == n))
-        .collect();
-    if !disallowed.is_empty() {
-        return Err(Failure::Redirect(OAuthError::new(
-            OAuthErrorCode::InvalidScope,
-            format!(
-                "scope(s) not allowed for this client: {}",
-                disallowed.join(" ")
-            ),
-        )));
-    }
+    // scope: the client's default scopes when the request names none.
+    let checked = scopes::validate_request(
+        state,
+        tenant.id(),
+        client,
+        scopes::parse_scope_param(one("scope")?.unwrap_or_default()),
+        &[],
+        true,
+    )
+    .await
+    .map_err(Failure::Redirect)?;
+    let requested = checked.scopes;
     let is_oidc = requested.iter().any(|s| s == "openid");
 
     // PKCE
@@ -554,6 +537,12 @@ pub async fn validate(
             audiences.push(r.to_string());
         }
     }
+    // A scope bound to a resource server targets it too.
+    let audiences = scopes::with_bound_audiences(
+        audiences,
+        &client.allowed_audiences,
+        checked.bound_audiences,
+    );
 
     Ok(Validated {
         request: AuthRequest {
@@ -613,11 +602,35 @@ async fn decide(
                 .is_some_and(|acr| req.acr_values.iter().any(|v| v == acr))
     };
 
-    let needs_auth = create || force_login || session.as_ref().is_none_or(|s| !fresh_enough(s));
+    let mut needs_auth = create || force_login || session.as_ref().is_none_or(|s| !fresh_enough(s));
+
+    // A session whose sign-in flow was abandoned part way (after the first
+    // factor, before the second factor or a forced password change) owes that
+    // step before any code is issued on it. The tenant policy decides, as it
+    // stands now, not what the client asked for.
+    let owed = match session.as_ref() {
+        Some(s) if !needs_auth => {
+            flows::unfinished_stage(state, &tenant.tenant, s, headers).await?
+        }
+        _ => None,
+    };
+    if owed == Some(FlowStage::Authenticate) {
+        needs_auth = true;
+    }
 
     // Step-up: a fresh session that only lacks the requested MFA class goes
-    // straight to the second factor, no password again.
-    if !needs_auth && let Some(s) = session.as_ref().filter(|s| !acr_ok(s)) {
+    // straight to the second factor, no password again. An owed step goes
+    // the same way, to its own stage.
+    let resume = owed.filter(|s| *s != FlowStage::Authenticate).or_else(|| {
+        session
+            .as_ref()
+            .filter(|s| !acr_ok(s))
+            .map(|_| FlowStage::Mfa)
+    });
+    if !needs_auth
+        && let Some(stage) = resume
+        && let Some(s) = session.as_ref()
+    {
         if prompt_none {
             return Err(Failure::Redirect(OAuthError::code(
                 OAuthErrorCode::LoginRequired,
@@ -629,7 +642,7 @@ async fn decide(
                 id: Uuid::now_v7(),
                 tenant_id: tenant.id(),
                 request: req.clone(),
-                stage: FlowStage::Mfa,
+                stage,
                 session_id: Some(s.id),
                 user_id: Some(s.user_id),
                 pending_scopes: vec![],
@@ -644,7 +657,8 @@ async fn decide(
             },
         )
         .await?;
-        return Ok(redirect_to_ui(state, tenant, "mfa", flow.id));
+        let page = crate::services::broker::page_for(stage);
+        return Ok(redirect_to_ui(state, tenant, page, flow.id));
     }
 
     if needs_auth {

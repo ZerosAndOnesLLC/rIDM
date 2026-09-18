@@ -13,12 +13,33 @@ Requirements: Rust 1.98+ (pinned in `rust-toolchain.toml`), Node.js 24, Docker,
 `sqlx-cli`.
 
 ```bash
-cp .env.example .env                           # set MASTER_KEY and the URLs
-docker compose -f deploy/docker-compose.yml up -d postgres valkey
+cp .env.example .env                           # set MASTER_KEY, then the lines below
+docker compose --env-file .env -f deploy/docker-compose.yml up -d postgres valkey mailpit
 DATABASE_URL=postgres://ridm_migrator:ridm_migrator@localhost:5432/ridm \
   sqlx migrate run --source api/migrations
 
 UI_URL=http://localhost:3110 cargo run -p ridm-api
+```
+
+`--env-file .env` matters: given `-f deploy/docker-compose.yml`, compose looks
+for its `.env` in `deploy/`, not in the repository root, and the compose file
+refuses to start anything without `MASTER_KEY`. Naming `mailpit` starts it even
+though it belongs to the `dev` profile.
+
+This guide runs the API on **port 8090**, not the built-in default of 8080, so
+it can sit next to the compose stack's own API container (which publishes 8080)
+and so the URLs match the defaults the example applications and `API_PROXY`
+use. Put these in `.env` (the API reads it at startup):
+
+```bash
+BIND_ADDR=127.0.0.1:8090
+PUBLIC_URL=http://localhost:8090
+SMTP_HOST=localhost                            # Mailpit
+SMTP_PORT=1025
+SMTP_FROM="rIDM <no-reply@ridm.local>"
+SMTP_SECURITY=none
+BOOTSTRAP_ADMIN_EMAIL=admin@ridm.local
+BOOTSTRAP_ADMIN_PASSWORD=ChangeMe-Now-1234
 ```
 
 `UI_URL` is the one flag worth setting deliberately: in development the pages
@@ -26,9 +47,15 @@ are served by `next dev` rather than by the API, and it is where rIDM sends a
 browser to sign in. The built-in console clients register their redirect URIs
 from it, so changing it later re-registers them on the next start.
 
-Set `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` in `.env` before the
-first start and rIDM creates the first global administrator — user `root` in
-the `master` tenant — and asks it to change the password at first sign-in.
+With `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` set before the
+first start, rIDM creates the first global administrator — user `admin` in
+the `master` tenant (`BOOTSTRAP_ADMIN_USERNAME` to choose another name) — and
+asks it to change the password at first sign-in.
+
+The migrations above run as the schema owner, `ridm_migrator`; the API itself
+connects as the DML-only `ridm_app` and with `MIGRATE_ON_START=false` (the
+default) only warns at startup when migrations are pending. After pulling new
+code, run the `sqlx migrate run` line again.
 
 ## 2. The UI
 
@@ -46,7 +73,7 @@ session cookies work without CORS.
 | Admin console | <http://localhost:3110/console/> | tenants, users, roles, clients, keys, sessions, audit |
 | Account console | <http://localhost:3110/account/> | what an end user sees: profile, password, MFA, sessions, consents, tokens |
 | Sign-in pages | <http://localhost:3110/login/> | reached through an application, not visited directly |
-| Mailpit | <http://localhost:8026> | every mail rIDM sends locally |
+| Mailpit | <http://localhost:8025> | every mail rIDM sends locally |
 | OpenAPI | <http://localhost:8090/docs/> | Swagger UI over the admin API, when `DOCS_ENABLED=true` |
 
 ### Signing in to the admin console
@@ -62,14 +89,17 @@ around a while — reset it with the CLI:
 cargo build -p ridm-cli
 export RIDM_URL=http://localhost:8090 RIDM_TOKEN=rpat_...   # see below
 printf 'a-password-of-your-own' |
-  ./target/debug/ridm --tenant master user reset root --password-stdin --no-must-change
+  ./target/debug/ridm --tenant master user reset admin --password-stdin --no-must-change
 ```
 
 ### Getting an admin token for the CLI
 
-`ridm login` mints one interactively. Without a browser, mint a personal access
-token in the account console, or insert one directly for a user who already
-holds the permissions:
+The CLI does not mint a token itself: `ridm login` asks you to paste one (or
+runs the device grant for a client you registered for it; see the
+[README](README.md#command-line-administration-ridm)). Sign in to the account
+console at <http://localhost:3110/account/?tenant=master> and mint a personal
+access token under Security, or, without a browser, insert one directly for a
+user who already holds the permissions:
 
 ```bash
 TOKEN="rpat_$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=')"
@@ -81,7 +111,7 @@ psql "$DATABASE_URL" -c "SET app.bypass_rls='on';
                'ridm:tenants:import','ridm:users:read','ridm:users:write',
                'ridm:roles:read','ridm:roles:write','ridm:clients:read','ridm:clients:write'],
          now() + interval '30 days'
-  FROM tenants t JOIN users u ON u.tenant_id = t.id AND u.username = 'root'
+  FROM tenants t JOIN users u ON u.tenant_id = t.id AND u.username = 'admin'
   WHERE t.slug = 'master';"
 echo "$TOKEN"
 ```
@@ -169,8 +199,11 @@ point of the document — so make the change there if you want it to stick.
   session, so the silent attempt now fails and the sign-in button comes back.
 - Give `sam` the `orders-manager` role in the console, sign in again, and the
   "Place order" form appears — the next access token carries `orders:write`.
-- Revoke `dana`'s session from the console's user page and watch the app fall
-  back to signed-out on its next call.
+- Revoke `dana`'s session from the console's user page. rIDM revokes the
+  session's refresh tokens and sends a back-channel logout to the web app on
+  :3200, which is signed out on its next page load; the SPA keeps its access
+  token until it expires, then its refresh is refused and it falls back to
+  signed-out.
 - `ridm --tenant demo tenant diff -f examples/demo-tenant.json` after changing
   something in the console, to see the configuration document as a diff.
 
@@ -180,13 +213,15 @@ point of the document — so make the change there if you want it to stick.
 |------|------|
 | 5432 | Postgres |
 | 6379 | Valkey |
-| 8090 | rIDM API (`PUBLIC_URL`) |
+| 8090 | rIDM API run from source (`BIND_ADDR`, `PUBLIC_URL`; the built-in default is 8080) |
+| 8080 | rIDM API container, when the compose `dev` or `prod` profile runs it |
 | 3110 | rIDM UI in development (`UI_URL`) |
-| 8026 | Mailpit |
+| 8025 | Mailpit web UI (1025 is its SMTP port) |
 | 8081 | example orders API |
 | 3100 | example SPA |
 | 3200 | example web app |
 
 The compose file in `deploy/` reads `RIDM_PG_PORT`, `RIDM_VALKEY_PORT`,
-`RIDM_HTTP_PORT` and `RIDM_MAILPIT_UI_PORT` from `.env` if you need to move
-anything.
+`RIDM_HTTP_PORT`, `RIDM_MAILPIT_UI_PORT` and `RIDM_MAILPIT_SMTP_PORT` from the
+file `--env-file` names if you need to move anything; change the URLs above to
+match.

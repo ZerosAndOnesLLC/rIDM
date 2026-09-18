@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::db;
 use crate::error::{AppError, AppResult};
-use crate::models::{NewUser, User, UserFilter, UserUpdate};
+use crate::models::{NewUser, User, UserFilter, UserStatus, UserUpdate};
 use crate::repos;
 use crate::services::profile_schema;
 use crate::state::AppState;
@@ -54,13 +54,28 @@ pub async fn create(
     state: &AppState,
     tenant_id: Uuid,
     actor: Actor,
+    input: NewUser,
+) -> AppResult<User> {
+    let editor = profile_schema::Editor::from(&actor);
+    create_as(state, tenant_id, actor, editor, input).await
+}
+
+/// [`create`] with the attributes written as `editor` instead of what the
+/// actor implies: imports (bulk import, SCIM provisioning) are recorded as
+/// the administrator or client that ran them but write as
+/// [`profile_schema::Editor::System`], which may set `editable_by: none`
+/// attributes.
+pub async fn create_as(
+    state: &AppState,
+    tenant_id: Uuid,
+    actor: Actor,
+    editor: profile_schema::Editor,
     mut input: NewUser,
 ) -> AppResult<User> {
     input.username = normalize_username(&input.username)?;
     input.email = input.email.as_deref().map(normalize_email).transpose()?;
     input.phone = input.phone.as_deref().map(normalize_phone).transpose()?;
     let schema = profile_schema::get(state, tenant_id).await?;
-    let editor = profile_schema::Editor::from(&actor);
     let incoming = input
         .attributes
         .take()
@@ -115,6 +130,19 @@ pub async fn update(
     tenant_id: Uuid,
     actor: Actor,
     id: Uuid,
+    patch: UserUpdate,
+) -> AppResult<User> {
+    let editor = profile_schema::Editor::from(&actor);
+    update_as(state, tenant_id, actor, editor, id, patch).await
+}
+
+/// [`update`] with the attributes written as `editor` (see [`create_as`]).
+pub async fn update_as(
+    state: &AppState,
+    tenant_id: Uuid,
+    actor: Actor,
+    editor: profile_schema::Editor,
+    id: Uuid,
     mut patch: UserUpdate,
 ) -> AppResult<User> {
     if patch.is_empty() {
@@ -139,7 +167,6 @@ pub async fn update(
         .ok_or(AppError::NotFound("user"))?;
     if let Some(incoming) = patch.attributes.take() {
         let schema = profile_schema::get(state, tenant_id).await?;
-        let editor = profile_schema::Editor::from(&actor);
         patch.attributes = Some(profile_schema::validate_attributes(
             &schema,
             &incoming,
@@ -180,6 +207,12 @@ pub async fn update(
         )
         .await;
     }
+    // Disabled by any path (admin API, SCIM, import): signed out everywhere
+    // at once, and the relying parties are told.
+    if user.status == UserStatus::Disabled && before.status != UserStatus::Disabled {
+        let tenant = crate::services::tenants::get(state, tenant_id).await?;
+        crate::services::logout::end_sessions_for_user(state, &tenant, id, None).await?;
+    }
     Ok(user)
 }
 
@@ -200,6 +233,10 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
         actor,
         EventKind::UserDeleted { user_id: id },
     ));
+    // Deleted by any path (admin API, SCIM, self-service): signed out
+    // everywhere, and the relying parties are told.
+    let tenant = crate::services::tenants::get(state, tenant_id).await?;
+    crate::services::logout::end_sessions_for_user(state, &tenant, id, None).await?;
     Ok(())
 }
 

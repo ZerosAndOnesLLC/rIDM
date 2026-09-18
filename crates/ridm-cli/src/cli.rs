@@ -303,42 +303,75 @@ pub enum UserCommand {
 #[derive(Debug, Subcommand)]
 pub enum ClientCommand {
     /// Register an OAuth client; a confidential one prints its secret once.
+    Create(Box<ClientCreate>),
+    /// Initial access tokens for dynamic client registration, which
+    /// `/register` demands when the tenant's `dcr.mode` is
+    /// `initial_access_token`.
+    Iat {
+        #[command(subcommand)]
+        command: IatCommand,
+    },
+}
+
+#[derive(Debug, Args)]
+pub struct ClientCreate {
+    /// Display name, shown on the consent screen.
+    #[arg(long, value_name = "NAME")]
+    pub name: String,
+    /// Public identifier (generated when absent).
+    #[arg(long, value_name = "ID")]
+    pub client_id: Option<String>,
+    /// `spa`, `web`, `native`, `machine` or `device`.
+    #[arg(long = "type", value_name = "TYPE")]
+    pub client_type: Option<String>,
+    #[arg(long = "redirect-uri", value_name = "URI")]
+    pub redirect_uris: Vec<String>,
+    #[arg(long = "post-logout-redirect-uri", value_name = "URI")]
+    pub post_logout_redirect_uris: Vec<String>,
+    /// Grant type the client may use; repeat for several.
+    #[arg(long = "grant", value_name = "GRANT")]
+    pub grants: Vec<String>,
+    /// Scope the client may ask for; repeat for several.
+    #[arg(long = "scope", value_name = "SCOPE")]
+    pub scopes: Vec<String>,
+    /// Resource server the client may get tokens for; repeat for several.
+    #[arg(long = "audience", value_name = "AUDIENCE")]
+    pub audiences: Vec<String>,
+    /// Browser origin allowed to call the API; repeat for several.
+    #[arg(long = "cors-origin", value_name = "ORIGIN")]
+    pub cors_origins: Vec<String>,
+    /// `none`, `client_secret_basic`, `client_secret_post`, `private_key_jwt`.
+    #[arg(long, value_name = "METHOD")]
+    pub auth_method: Option<String>,
+    #[arg(long, value_name = "TEXT")]
+    pub description: Option<String>,
+    /// Do not require PKCE (confidential clients only).
+    #[arg(long)]
+    pub no_pkce: bool,
+    /// Skip the consent screen (first-party applications).
+    #[arg(long)]
+    pub no_consent: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum IatCommand {
+    /// Issue a token; it is printed once.
     Create {
-        /// Display name, shown on the consent screen.
-        #[arg(long, value_name = "NAME")]
-        name: String,
-        /// Public identifier (generated when absent).
-        #[arg(long, value_name = "ID")]
-        client_id: Option<String>,
-        /// `spa`, `web`, `native`, `machine` or `device`.
-        #[arg(long = "type", value_name = "TYPE")]
-        client_type: Option<String>,
-        #[arg(long = "redirect-uri", value_name = "URI")]
-        redirect_uris: Vec<String>,
-        #[arg(long = "post-logout-redirect-uri", value_name = "URI")]
-        post_logout_redirect_uris: Vec<String>,
-        /// Grant type the client may use; repeat for several.
-        #[arg(long = "grant", value_name = "GRANT")]
-        grants: Vec<String>,
-        /// Scope the client may ask for; repeat for several.
-        #[arg(long = "scope", value_name = "SCOPE")]
-        scopes: Vec<String>,
-        /// Resource server the client may get tokens for; repeat for several.
-        #[arg(long = "audience", value_name = "AUDIENCE")]
-        audiences: Vec<String>,
-        /// Browser origin allowed to call the API; repeat for several.
-        #[arg(long = "cors-origin", value_name = "ORIGIN")]
-        cors_origins: Vec<String>,
-        /// `none`, `client_secret_basic`, `client_secret_post`, `private_key_jwt`.
-        #[arg(long, value_name = "METHOD")]
-        auth_method: Option<String>,
+        /// What the token is for.
         #[arg(long, value_name = "TEXT")]
         description: Option<String>,
-        /// Do not require PKCE (confidential clients only).
-        #[arg(long)]
-        no_pkce: bool,
-        /// Skip the consent screen (first-party applications).
-        #[arg(long)]
-        no_consent: bool,
+        /// Seconds until it expires (default: never).
+        #[arg(long, value_name = "SECS")]
+        expires_in: Option<u64>,
+        /// Registrations it allows (default: no limit).
+        #[arg(long, value_name = "N")]
+        max_uses: Option<u32>,
+    },
+    /// List the tenant's tokens (never their secrets).
+    List,
+    /// Revoke a token by its id.
+    Revoke {
+        #[arg(value_name = "ID")]
+        id: String,
     },
 }

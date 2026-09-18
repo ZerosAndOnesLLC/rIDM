@@ -1,11 +1,28 @@
 mod common;
 
 use common::TestApp;
-use ridm_api::models::{DcrMode, DcrPolicy, TenantSettings};
+use ridm_api::models::{DcrMode, DcrPolicy, NewInitialAccessToken, TenantSettings};
 use ridm_api::services::dcr;
 use ridm_api::services::tenants::{self, TenantUpdate};
 use ridm_core::events::Actor;
 use serde_json::{Value, json};
+
+/// Issue an initial access token through the service; returns its id and secret.
+async fn issue_iat(app: &TestApp, ttl_secs: u64, uses: u32) -> (uuid::Uuid, String) {
+    let created = dcr::issue(
+        &app.state,
+        app.tenant.id,
+        Actor::System,
+        NewInitialAccessToken {
+            description: Some("test".into()),
+            expires_in_secs: Some(ttl_secs),
+            max_uses: Some(uses),
+        },
+    )
+    .await
+    .unwrap();
+    (created.record.id, created.token)
+}
 
 async fn set_mode(app: &TestApp, mode: DcrMode, allowed: Vec<&str>) {
     set_policy(app, mode, allowed, true).await;
@@ -314,14 +331,12 @@ async fn initial_access_tokens_gate_registration_with_a_use_budget() {
         .unwrap();
     assert_eq!(res.status(), 401);
 
-    let iat = dcr::issue_initial_access_token(&app.state, app.tenant.id, 600, 2)
-        .await
-        .unwrap();
+    let (_, iat) = issue_iat(&app, 600, 2).await;
     for _ in 0..2 {
         let res = app
             .http
             .post(app.tenant_url("/register"))
-            .bearer_auth(&*iat)
+            .bearer_auth(&iat)
             .json(&body)
             .send()
             .await
@@ -331,7 +346,7 @@ async fn initial_access_tokens_gate_registration_with_a_use_budget() {
     let res = app
         .http
         .post(app.tenant_url("/register"))
-        .bearer_auth(&*iat)
+        .bearer_auth(&iat)
         .json(&body)
         .send()
         .await
@@ -339,13 +354,11 @@ async fn initial_access_tokens_gate_registration_with_a_use_budget() {
     assert_eq!(res.status(), 401, "budget exhausted");
 
     // Policy restricts grant types; a disallowed one costs a use but fails.
-    let iat = dcr::issue_initial_access_token(&app.state, app.tenant.id, 600, 1)
-        .await
-        .unwrap();
+    let (_, iat) = issue_iat(&app, 600, 1).await;
     let res = app
         .http
         .post(app.tenant_url("/register"))
-        .bearer_auth(&*iat)
+        .bearer_auth(&iat)
         .json(&json!({"grant_types": ["client_credentials"]}))
         .send()
         .await
@@ -360,9 +373,7 @@ async fn initial_access_tokens_gate_registration_with_a_use_budget() {
 
     // Tokens are per tenant.
     let other = common::create_tenant(&app.state.db).await;
-    let iat = dcr::issue_initial_access_token(&app.state, app.tenant.id, 600, 1)
-        .await
-        .unwrap();
+    let (_, iat) = issue_iat(&app, 600, 1).await;
     assert!(
         !dcr::consume_initial_access_token(&app.state, other.id, &iat)
             .await
@@ -374,10 +385,8 @@ async fn initial_access_tokens_gate_registration_with_a_use_budget() {
             .unwrap()
     );
     // Revoked tokens stop working.
-    let iat = dcr::issue_initial_access_token(&app.state, app.tenant.id, 600, 5)
-        .await
-        .unwrap();
-    dcr::revoke_initial_access_token(&app.state, app.tenant.id, &iat)
+    let (id, iat) = issue_iat(&app, 600, 5).await;
+    dcr::revoke(&app.state, app.tenant.id, Actor::System, id)
         .await
         .unwrap();
     assert!(
@@ -457,4 +466,103 @@ async fn pkce_requirement_for_registered_clients_follows_the_policy() {
             && location.contains("error=invalid_request"),
         "{location}"
     );
+}
+
+/// The admin API issues, lists and revokes initial access tokens, so
+/// `dcr.mode = initial_access_token` is usable without touching the service
+/// layer: the secret is shown once, the list never shows it, an expiry and a
+/// use budget are honoured, and a revoked token stops registering at once.
+#[tokio::test]
+async fn admins_issue_list_and_revoke_initial_access_tokens() {
+    use common::admin::{admin_token, call};
+    use reqwest::Method;
+    use ridm_api::services::admin_access::{CLIENT_MANAGER_ROLE, VIEWER_ROLE};
+
+    let app = TestApp::spawn().await;
+    set_mode(
+        &app,
+        DcrMode::InitialAccessToken,
+        vec!["authorization_code", "refresh_token"],
+    )
+    .await;
+    let manager = admin_token(&app, app.tenant.id, CLIENT_MANAGER_ROLE).await;
+    let viewer = admin_token(&app, app.tenant.id, VIEWER_ROLE).await;
+    let path = format!(
+        "/admin/tenants/{}/dcr/initial-access-tokens",
+        app.tenant.slug
+    );
+
+    // Issue: the token comes back once, with its limits.
+    let (status, created, _) = call(
+        &app,
+        Method::POST,
+        &path,
+        Some(&manager),
+        Some(&json!({"description": "ci", "expires_in_secs": 3600, "max_uses": 1})),
+    )
+    .await;
+    assert_eq!(status, 201, "{created}");
+    let token = created["token"].as_str().unwrap().to_string();
+    assert!(token.starts_with("iat_"));
+    assert_eq!(created["max_uses"], 1);
+    assert_eq!(created["uses"], 0);
+    assert!(created["expires_at"].is_string());
+    let id = created["id"].as_str().unwrap().to_string();
+
+    // A viewer may not issue one; bad limits are refused.
+    let (status, _, _) = call(&app, Method::POST, &path, Some(&viewer), Some(&json!({}))).await;
+    assert_eq!(status, 403);
+    for bad in [json!({"max_uses": 0}), json!({"expires_in_secs": 0})] {
+        let (status, _, _) = call(&app, Method::POST, &path, Some(&manager), Some(&bad)).await;
+        assert_eq!(status, 400, "{bad}");
+    }
+
+    // It registers a client, once.
+    let body =
+        json!({"redirect_uris": ["https://a.example/cb"], "token_endpoint_auth_method": "none"});
+    let register = |bearer: String| {
+        let app = &app;
+        let body = body.clone();
+        async move {
+            app.http
+                .post(app.tenant_url("/register"))
+                .bearer_auth(bearer)
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+                .status()
+        }
+    };
+    assert_eq!(register(token.clone()).await, 201);
+    assert_eq!(register(token.clone()).await, 401, "one use only");
+
+    // The list shows the use and never the secret; a viewer may read it.
+    let (status, list, _) = call(&app, Method::GET, &path, Some(&viewer), None).await;
+    assert_eq!(status, 200);
+    let row = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["id"] == id.as_str())
+        .unwrap();
+    assert_eq!(row["uses"], 1);
+    assert_eq!(row["description"], "ci");
+    assert!(row.get("token").is_none() && row.get("token_hash").is_none());
+    assert!(!list.to_string().contains(&token));
+
+    // No limits: registers until revoked; revoking is immediate.
+    let (_, open, _) = call(&app, Method::POST, &path, Some(&manager), Some(&json!({}))).await;
+    assert!(open["expires_at"].is_null() && open["max_uses"].is_null());
+    let open_token = open["token"].as_str().unwrap().to_string();
+    assert_eq!(register(open_token.clone()).await, 201);
+    assert_eq!(register(open_token.clone()).await, 201);
+    let revoke = format!("{path}/{}", open["id"].as_str().unwrap());
+    let (status, _, _) = call(&app, Method::DELETE, &revoke, Some(&viewer), None).await;
+    assert_eq!(status, 403);
+    let (status, _, _) = call(&app, Method::DELETE, &revoke, Some(&manager), None).await;
+    assert_eq!(status, 204);
+    assert_eq!(register(open_token).await, 401);
+    let (status, _, _) = call(&app, Method::DELETE, &revoke, Some(&manager), None).await;
+    assert_eq!(status, 404, "already revoked");
 }

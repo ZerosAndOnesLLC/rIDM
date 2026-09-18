@@ -9,7 +9,10 @@
 //! undeclared one is dropped unless the schema allows undeclared attributes).
 //! `groups` is read-only. A SCIM `Group` maps onto a group: `displayName` ↔
 //! `name`, `externalId` ↔ `attributes.externalId`, `members` ↔ memberships
-//! (users only).
+//! (users only). A SCIM token carries no administrator whose permissions could
+//! bound what it hands out, so it may not add members to a group whose roles
+//! (with its ancestors' and composites) grant any admin-catalogue permission:
+//! that is refused with 403 before anything changes.
 //!
 //! Filters follow RFC 7644 §3.4.2.2 (`eq ne co sw ew pr gt ge lt le`,
 //! `and`/`or`/`not`, parentheses, dotted paths). A filter that is one
@@ -34,6 +37,7 @@ use crate::error::AppError;
 use crate::models::{
     Group, NewGroup, NewUser, ProfileSchema, Tenant, User, UserFilter, UserStatus, UserUpdate,
 };
+use crate::services::admin_access::{self, Grant};
 use crate::services::{groups, profile_schema, users};
 use crate::state::AppState;
 
@@ -904,10 +908,12 @@ pub async fn create_user(
             .filter(|(_, v)| !v.is_null())
             .collect(),
     );
-    let user = users::create(
+    // Provisioning is an import: it may set `editable_by: none` attributes.
+    let user = users::create_as(
         state,
         tenant.id,
         actor,
+        profile_schema::Editor::System,
         NewUser {
             username: f.username,
             email: f.email,
@@ -959,10 +965,11 @@ pub async fn replace_user(
         (false, UserStatus::Active) | (false, UserStatus::Pending) => Some(UserStatus::Disabled),
         _ => None,
     };
-    let user = users::update(
+    let user = users::update_as(
         state,
         tenant.id,
         actor,
+        profile_schema::Editor::System,
         id,
         UserUpdate {
             username: Some(f.username),
@@ -1068,6 +1075,41 @@ fn group_from_scim(doc: &Value) -> ScimResult<(String, Option<String>, Vec<Uuid>
     Ok((name, external_id, members))
 }
 
+async fn member_ids(state: &AppState, tenant_id: Uuid, group_id: Uuid) -> ScimResult<Vec<Uuid>> {
+    Ok(groups::members(state, tenant_id, group_id)
+        .await?
+        .iter()
+        .map(|u| u.id)
+        .collect())
+}
+
+/// Refuse to add anyone to a group that confers admin permissions. RFC 7644
+/// §3.12 answers an operation the credentials do not permit with 403 (and
+/// defines no `scimType` for it); the grant is refused whatever the admin who
+/// minted the token holds, because nothing on the request says who that was.
+async fn refuse_admin_membership(
+    state: &AppState,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    current: &[Uuid],
+    wanted: &[Uuid],
+) -> ScimResult<()> {
+    if wanted.iter().all(|id| current.contains(id)) {
+        return Ok(());
+    }
+    let granted =
+        admin_access::permissions_of_grant(state, tenant_id, Grant::Group(group_id)).await?;
+    if granted.is_empty() {
+        Ok(())
+    } else {
+        Err(ScimError::new(
+            StatusCode::FORBIDDEN,
+            None,
+            "this group grants admin permissions; its members cannot be added over SCIM",
+        ))
+    }
+}
+
 async fn set_members(
     state: &AppState,
     tenant_id: Uuid,
@@ -1075,11 +1117,8 @@ async fn set_members(
     group: &Group,
     wanted: &[Uuid],
 ) -> ScimResult<()> {
-    let current: Vec<Uuid> = groups::members(state, tenant_id, group.id)
-        .await?
-        .iter()
-        .map(|u| u.id)
-        .collect();
+    let current = member_ids(state, tenant_id, group.id).await?;
+    refuse_admin_membership(state, tenant_id, group.id, &current, wanted).await?;
     for id in wanted.iter().filter(|id| !current.contains(id)) {
         groups::add_member(state, tenant_id, actor.clone(), group.id, *id)
             .await
@@ -1135,6 +1174,9 @@ pub async fn replace_group(
 ) -> ScimResult<Value> {
     let before = groups::get(state, tenant.id, id).await?;
     let (name, external_id, members) = group_from_scim(doc)?;
+    // Checked before the rename too, so a refused request changes nothing.
+    let current = member_ids(state, tenant.id, id).await?;
+    refuse_admin_membership(state, tenant.id, id, &current, &members).await?;
     let mut attributes = before.attributes.as_object().cloned().unwrap_or_default();
     match external_id {
         Some(x) => {

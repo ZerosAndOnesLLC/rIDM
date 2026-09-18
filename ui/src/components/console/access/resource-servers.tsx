@@ -163,7 +163,7 @@ function ResourceServerView({ tenant, id }: { tenant: string; id: string }) {
         <Field label="Token lifetime" hint="Caps the access token lifetime for this audience; empty = client or tenant default.">
           {(fid, by) => <NumberInput id={fid} describedBy={by} value={draft.token_ttl_secs ?? null} min={30} nullable onValue={(v) => update({ token_ttl_secs: v })} unit="s" />}
         </Field>
-        <Field label="Signing algorithm" hint="Empty = the tenant's active key.">
+        <Field label="Signing algorithm" hint="Access tokens for this audience are signed with the tenant's active key of this algorithm (created if there is none). Empty = the tenant's default algorithm.">
           {(fid, by) => (
             <SelectInput id={fid} aria-describedby={by} value={draft.signing_alg ?? ""} disabled={!editable} onChange={(e) => update({ signing_alg: e.target.value || null })}>
               <option value="">Tenant default</option>
@@ -176,7 +176,7 @@ function ResourceServerView({ tenant, id }: { tenant: string; id: string }) {
           )}
         </Field>
         <div className="sm:col-span-2">
-          <Toggle label="Allow offline access" hint="Refresh tokens may be issued for this audience." checked={draft.allow_offline_access} disabled={!editable} onChange={(v) => update({ allow_offline_access: v })} />
+          <Toggle label="Allow offline access" hint="Tokens for this audience may carry offline_access: refresh tokens that outlive the sign-in session. Off, refresh tokens end with the session." checked={draft.allow_offline_access} disabled={!editable} onChange={(v) => update({ allow_offline_access: v })} />
         </div>
       </Section>
       <Permissions tenant={tenant} rs={draft} editable={can("ridm:resource-servers:write") && !draft.built_in} onChanged={() => void qc.invalidateQueries({ queryKey: ["resource-server", tenant, id] }).then(() => setResetCount((n) => n + 1))} />

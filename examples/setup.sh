@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Set up the `demo` tenant the examples expect.
 #
-# Needs a running rIDM and a `ridm` login with `ridm:tenants:*`, `ridm:users:*`
-# and `ridm:roles:*` — see examples/README.md. Safe to re-run: the import is a
+# Needs a running rIDM and RIDM_TOKEN exported: an admin token (a personal
+# access token) with `ridm:tenants:*`, `ridm:users:*` and `ridm:roles:*` — see
+# examples/README.md. Safe to re-run: the import is a
 # reconciliation, and the users are created only once (their password is reset
 # to $DEMO_PASSWORD on every run).
 set -euo pipefail
@@ -28,8 +29,8 @@ if [ -z "${RIDM_TOKEN:-}" ]; then
   cat >&2 <<'EOF'
 RIDM_TOKEN is not set.
 
-Mint a personal access token in the account console (or with `ridm login`,
-which stores one) and export it:
+Mint a personal access token in the account console (`ridm login` stores
+one in its profile, but the `curl` below cannot read that) and export it:
 
   export RIDM_TOKEN=rpat_...
 
@@ -46,7 +47,7 @@ api() {
 
 # The id of the user `$1`, or nothing if there is no such user.
 user_id_of() {
-  api GET "/users?q=$1" | python3 -c "
+  api GET "/users?search=$1" | python3 -c "
 import json, sys
 body = json.load(sys.stdin)
 rows = body if isinstance(body, list) else body['items']

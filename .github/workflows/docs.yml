@@ -1,0 +1,65 @@
+# The documentation site (docs/, mdBook). Every PR builds it and checks every
+# link inside it, so a renamed page or a moved anchor fails here rather than
+# on the published site; `main` deploys it to GitHub Pages.
+name: docs
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook@0.5.4
+      - name: build
+        run: docs/build.sh
+      - name: no placeholder pages
+        # `create-missing = false` catches a page missing from disk; this
+        # catches one that exists but was never written.
+        run: "! grep -rlx '# placeholder' docs/src"
+      - name: links
+        # Offline: every link between pages, every anchor, and the OpenAPI
+        # document the API reference loads. External links are not checked
+        # here, so a flaky third-party site cannot fail a PR. `404.html` is
+        # skipped: its links are absolute under `site-url` (`/rIDM/`), which
+        # only resolves once deployed.
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --offline --include-fragments --no-progress
+            --root-dir ${{ github.workspace }}/docs/book
+            --exclude-path docs/book/404.html
+            'docs/book/**/*.html'
+          fail: true
+      - uses: actions/upload-pages-artifact@v5
+        if: github.event_name == 'push'
+        with:
+          path: docs/book
+
+  deploy:
+    name: deploy
+    if: github.event_name == 'push'
+    needs: docs
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

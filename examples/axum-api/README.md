@@ -42,7 +42,10 @@ cargo run -p ridm-example-axum-api
 | `GET /orders` | `orders:read` |
 | `POST /orders` | `orders:write` |
 
-Try it with a token from a machine client:
+Try it with a token from a machine client. `demo-tenant.json` does not define
+one; the [machine-to-machine quickstart](../../docs/src/quickstarts/machine-to-machine.md)
+creates `orders-job` in the `demo` tenant and gives it a service account that
+holds the permissions.
 
 ```bash
 TOKEN=$(curl -s -u orders-job:<secret> \

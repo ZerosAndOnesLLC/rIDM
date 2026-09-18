@@ -8,6 +8,7 @@ pub mod device_codes;
 pub mod federated_identities;
 pub mod groups;
 pub mod identity_providers;
+pub mod initial_access_tokens;
 pub mod invitations;
 pub mod ip_rules;
 pub mod login_attempts;

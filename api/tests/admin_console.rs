@@ -198,7 +198,11 @@ async fn console_login_yields_admin_tokens() {
     )
     .await
     .unwrap();
-    let cookie = format!("{}={}", sessions::cookie_name(&app.state), session.id);
+    let cookie = format!(
+        "{}={}",
+        sessions::cookie_name(&app.state, &app.tenant.slug),
+        session.id
+    );
     let callback = admin_console::callback_uri(&app.state.config);
 
     // The console never asks for a resource: the client's audience applies.

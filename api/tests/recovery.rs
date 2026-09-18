@@ -231,7 +231,7 @@ async fn password_reset_by_email_token() {
         VerifyOutcome::Invalid
     );
     assert!(
-        refresh_tokens::rotate(&app.state, tid, "spa", &rt.token, None)
+        refresh_tokens::rotate(&app.state, tid, "spa", &rt.token, None, &[], None)
             .await
             .is_err(),
         "refresh tokens revoked by the reset"

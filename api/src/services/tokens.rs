@@ -4,6 +4,9 @@
 //! * ID tokens: OIDC Core §2, with `at_hash`/`c_hash`, optional JWE per client.
 //! * Verification: by `kid` against the tenant's published keys (revoked keys
 //!   are not published, so their tokens fail immediately).
+//! * Opaque access tokens: a client with `access_token_format: opaque` gets
+//!   `at_<random>` standing for the same claims ([`super::opaque_tokens`]);
+//!   [`verify_access`] accepts either form.
 //!
 //! Parsed private keys are cached in the in-process L1 only, never in Redis.
 
@@ -20,9 +23,12 @@ use uuid::Uuid;
 
 use crate::cache::keys as cache_keys;
 use crate::error::{AppError, AppResult};
-use crate::models::{ClaimMapper, Group, Role, SigningAlg, SigningKey, Tenant, TokenKind, User};
-use crate::services::claims::{ClaimContext, apply_mappers, standard_claims};
-use crate::services::{jwe, keys};
+use crate::models::{
+    AccessTokenFormat, ClaimMapper, Exposure, Group, Role, SigningAlg, SigningKey, Tenant,
+    TokenKind, User,
+};
+use crate::services::claims::{ClaimContext, apply_mappers, profile_claims, scope_claims};
+use crate::services::{jwe, keys, opaque_tokens, profile_schema, scopes};
 use crate::state::AppState;
 
 const MATERIAL_L1_TTL: Duration = Duration::from_secs(300);
@@ -42,6 +48,14 @@ pub struct TokenClient {
     /// Repeat the scope-derived standard claims in the ID token (opt-in;
     /// OIDC Core §5.4 puts them at the userinfo endpoint).
     pub id_token_scope_claims: bool,
+    /// JWT, or an opaque reference only introspection resolves.
+    pub access_token_format: AccessTokenFormat,
+    /// Sign access tokens with this algorithm instead of the tenant's
+    /// default (the audience's resource server asks for it).
+    pub access_token_alg: Option<SigningAlg>,
+    /// `permissions` claim of the access token: what the subject's roles
+    /// hold on the requested resource servers (empty: no claim).
+    pub permissions: Vec<String>,
 }
 
 impl TokenClient {
@@ -91,6 +105,9 @@ impl TokenClient {
             },
             sector_identifier,
             id_token_scope_claims: client.id_token_scope_claims,
+            access_token_format: client.access_token_format,
+            access_token_alg: None,
+            permissions: vec![],
             id_token_encryption,
             access_token_ttl: Duration::from_secs(
                 client
@@ -118,6 +135,9 @@ impl TokenClient {
             id_token_ttl: Duration::from_secs(300),
             mappers: vec![],
             id_token_scope_claims: false,
+            access_token_format: AccessTokenFormat::Jwt,
+            access_token_alg: None,
+            permissions: vec![],
         }
     }
 }
@@ -282,11 +302,16 @@ pub async fn issue_access_token(
     state: &AppState,
     req: AccessTokenRequest<'_>,
 ) -> AppResult<IssuedToken> {
-    let key = keys::ensure_active(state, req.tenant.id, &req.tenant.settings.keys).await?;
     let now = Utc::now();
     let exp = now + chrono::Duration::from_std(req.client.access_token_ttl).unwrap_or_default();
 
+    // Profile attributes exposed to access tokens first, then the mappers,
+    // which may override them.
     let mut claims = Map::new();
+    if let Some(user) = req.user {
+        let schema = profile_schema::get(state, req.tenant.id).await?;
+        profile_claims(user, &schema, Exposure::AccessToken, &mut claims);
+    }
     let ctx = ClaimContext {
         tenant: req.tenant,
         user: req.user,
@@ -327,10 +352,20 @@ pub async fn issue_access_token(
     claims.insert("tid".into(), json!(req.tenant.id));
     claims.insert("scope".into(), json!(req.scopes.join(" ")));
     if req.user.is_some() {
-        let roles: Vec<&str> = req.roles.iter().map(|r| r.name.as_str()).collect();
-        claims.insert("roles".into(), json!(roles));
-        let groups: Vec<&str> = req.groups.iter().map(|g| g.name.as_str()).collect();
-        claims.insert("groups".into(), json!(groups));
+        // A `roles` or `groups` mapper reshapes these (a client's roles only,
+        // group paths); its output stands. Mappers of any other kind cannot
+        // write them (`claims::mapper_claim_refusal`).
+        if !claims.contains_key("roles") {
+            let roles: Vec<&str> = req.roles.iter().map(|r| r.name.as_str()).collect();
+            claims.insert("roles".into(), json!(roles));
+        }
+        if !claims.contains_key("groups") {
+            let groups: Vec<&str> = req.groups.iter().map(|g| g.name.as_str()).collect();
+            claims.insert("groups".into(), json!(groups));
+        }
+    }
+    if !req.client.permissions.is_empty() {
+        claims.insert("permissions".into(), json!(req.client.permissions));
     }
     if let Some(sid) = req.session_id {
         claims.insert("sid".into(), json!(sid));
@@ -351,6 +386,21 @@ pub async fn issue_access_token(
         claims.insert("act".into(), act);
     }
 
+    if req.client.access_token_format == AccessTokenFormat::Opaque {
+        let token = opaque_tokens::issue(state, &claims, exp).await?;
+        return Ok(IssuedToken {
+            token,
+            claims,
+            kid: String::new(),
+            expires_at: exp,
+        });
+    }
+    let key = match req.client.access_token_alg {
+        Some(alg) => {
+            keys::ensure_active_alg(state, req.tenant.id, &req.tenant.settings.keys, alg).await?
+        }
+        None => keys::ensure_active(state, req.tenant.id, &req.tenant.settings.keys).await?,
+    };
     let token = sign(state, &key, "at+jwt", &claims).await?;
     Ok(IssuedToken {
         token,
@@ -368,10 +418,13 @@ pub async fn issue_id_token(state: &AppState, req: IdTokenRequest<'_>) -> AppRes
     // With an access token issued, the scope-derived claims are read from the
     // userinfo endpoint (OIDC Core §5.4); a client may ask for them here too.
     let mut claims = if req.client.id_token_scope_claims {
-        standard_claims(req.user, req.scopes)
+        let defs = scopes::list(state, req.tenant.id).await?;
+        scope_claims(req.user, req.scopes, &defs)
     } else {
         Map::new()
     };
+    let schema = profile_schema::get(state, req.tenant.id).await?;
+    profile_claims(req.user, &schema, Exposure::IdToken, &mut claims);
     let ctx = ClaimContext {
         tenant: req.tenant,
         user: Some(req.user),
@@ -534,6 +587,79 @@ pub async fn verify(
         return Err(AppError::Unauthorized);
     }
     Ok(data.claims)
+}
+
+/// Verify an access token of `tenant`, whichever form it was issued in: a
+/// JWT (`typ: at+jwt`, against the tenant's keys) or an opaque `at_` token
+/// (its claims from Valkey). `opts.typ` is implied; `audience`,
+/// `allow_expired` and `check_denylist` apply to both forms, so a revoked
+/// `jti` refuses an opaque token exactly as it does a JWT.
+pub async fn verify_access(
+    state: &AppState,
+    tenant: &Tenant,
+    token: &str,
+    opts: &VerifyOptions,
+) -> AppResult<Map<String, Value>> {
+    if !opaque_tokens::looks_like(token) {
+        let opts = VerifyOptions {
+            typ: Some("at+jwt".into()),
+            ..opts.clone()
+        };
+        return verify(state, tenant, token, &opts).await;
+    }
+    let (tenant_id, claims) = opaque_tokens::lookup(state, token)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+    if tenant_id != tenant.id {
+        return Err(AppError::Unauthorized);
+    }
+    // The entry expires with the token; the clock is checked too, so a
+    // lagging expiry never stretches a token's life.
+    let exp = claims
+        .get("exp")
+        .and_then(Value::as_i64)
+        .unwrap_or_default();
+    if !opts.allow_expired && exp + opts.leeway_secs as i64 <= Utc::now().timestamp() {
+        return Err(AppError::Unauthorized);
+    }
+    if let Some(expected) = &opts.audience {
+        let matches = match claims.get("aud") {
+            Some(Value::String(a)) => a == expected,
+            Some(Value::Array(list)) => list.iter().any(|a| a == expected),
+            _ => false,
+        };
+        if !matches {
+            return Err(AppError::Unauthorized);
+        }
+    }
+    if opts.check_denylist
+        && let Some(jti) = claims.get("jti").and_then(Value::as_str)
+        && crate::services::denylist::is_denied(state, tenant.id, jti).await?
+    {
+        return Err(AppError::Unauthorized);
+    }
+    Ok(claims)
+}
+
+/// The tenant an access token claims to belong to, read without verifying
+/// it, to pick the key set (or opaque entry) that [`verify_access`] then
+/// checks against: the `tid` claim of a JWT, or the tenant an opaque token
+/// was issued in.
+pub async fn access_token_tenant_hint(state: &AppState, token: &str) -> AppResult<Option<Uuid>> {
+    if opaque_tokens::looks_like(token) {
+        return Ok(opaque_tokens::lookup(state, token).await?.map(|(t, _)| t));
+    }
+    Ok(unverified_tenant_id(token))
+}
+
+/// The `tid` claim of a JWT read without verification, only to pick the key
+/// set to verify with. [`verify`] then binds the token to that tenant's
+/// issuer and keys, so a forged `tid` cannot pass.
+pub(crate) fn unverified_tenant_id(token: &str) -> Option<Uuid> {
+    let payload = token.split('.').nth(1)?;
+    let bytes = URL_SAFE_NO_PAD.decode(payload).ok()?;
+    let claims: Value = serde_json::from_slice(&bytes).ok()?;
+    claims.get("tid")?.as_str()?.parse().ok()
 }
 
 #[cfg(test)]

@@ -181,7 +181,8 @@ async fn password_login_consent_and_finish() {
     assert!(
         cookie.contains("HttpOnly")
             && cookie.contains("SameSite=Lax")
-            && cookie.contains(&format!("Path=/t/{}", fx.app.tenant.slug)),
+            && cookie.starts_with(&format!("ridm_session_{}=", fx.app.tenant.slug))
+            && cookie.contains("Path=/;"),
         "{cookie}"
     );
     let body: Value = res.json().await.unwrap();
@@ -680,7 +681,7 @@ async fn remember_device_is_registered_at_finish_and_recognised_next_login() {
         .get_all("set-cookie")
         .iter()
         .filter_map(|v| v.to_str().ok())
-        .find(|c| c.starts_with("ridm_device="))
+        .find(|c| c.starts_with(&format!("ridm_device_{}=", fx.app.tenant.slug)))
         .expect("device cookie set at finish")
         .to_string();
     assert!(device_cookie.contains("HttpOnly") && device_cookie.contains("Max-Age=2592000"));
@@ -730,7 +731,7 @@ async fn remember_device_is_registered_at_finish_and_recognised_next_login() {
         !res.headers()
             .get_all("set-cookie")
             .iter()
-            .any(|v| v.to_str().unwrap_or("").starts_with("ridm_device=")),
+            .any(|v| v.to_str().unwrap_or("").starts_with("ridm_device_")),
         "no second device cookie"
     );
     assert_eq!(

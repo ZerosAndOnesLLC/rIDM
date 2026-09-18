@@ -59,41 +59,15 @@ async fn handle(
             "client may not use the device authorization grant",
         ));
     }
-    let requested: Vec<String> = one("scope")?
-        .map(|v| {
-            v.split(' ')
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default();
-    if requested.is_empty() {
-        return Err(OAuthError::new(
-            OAuthErrorCode::InvalidScope,
-            "scope is required",
-        ));
-    }
-    let (known, unknown) = scopes::resolve(state, tenant.id(), &requested).await?;
-    if !unknown.is_empty() {
-        return Err(OAuthError::new(
-            OAuthErrorCode::InvalidScope,
-            format!("unknown scope(s): {}", unknown.join(" ")),
-        ));
-    }
-    let disallowed: Vec<&str> = known
-        .iter()
-        .map(|s| s.name.as_str())
-        .filter(|n| !client.allowed_scopes.iter().any(|a| a == n))
-        .collect();
-    if !disallowed.is_empty() {
-        return Err(OAuthError::new(
-            OAuthErrorCode::InvalidScope,
-            format!(
-                "scope(s) not allowed for this client: {}",
-                disallowed.join(" ")
-            ),
-        ));
-    }
+    let checked = scopes::validate_request(
+        state,
+        tenant.id(),
+        &client,
+        scopes::parse_scope_param(one("scope")?.unwrap_or_default()),
+        &[],
+        true,
+    )
+    .await?;
     let mut audiences: Vec<String> = vec![];
     for r in params.many("resource") {
         let r = r.trim();
@@ -128,5 +102,11 @@ async fn handle(
             audiences.push(r.to_string());
         }
     }
-    Ok(device_codes::issue(state, tenant, &client, requested, audiences).await?)
+    // A scope bound to a resource server targets it too.
+    let audiences = scopes::with_bound_audiences(
+        audiences,
+        &client.allowed_audiences,
+        checked.bound_audiences,
+    );
+    Ok(device_codes::issue(state, tenant, &client, checked.scopes, audiences).await?)
 }

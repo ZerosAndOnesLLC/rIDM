@@ -48,49 +48,66 @@ impl SsoSession {
     }
 }
 
-/// Cookie name. `__Host-` requires `Secure`, which plain-http dev cannot set.
-pub fn cookie_name(state: &AppState) -> &'static str {
-    if state.config.cookie_secure {
-        "__Host-ridm_session"
+/// Cookie name, one per tenant so tenants on one host never share a cookie.
+///
+/// With `COOKIE_SECURE` the name carries the `__Host-` prefix, which browsers
+/// accept only with `Secure`, `Path=/` and no `Domain`: the cookie is pinned
+/// to the exact host that set it. The path cannot separate tenants (a
+/// `__Host-` cookie must have `Path=/`, and a custom domain serves the tenant
+/// without the `/t/{slug}` prefix), so the slug is in the name instead; slugs
+/// are `[a-z0-9-]`, all valid cookie-name characters. Plain-http development
+/// cannot set `Secure`, so it drops the prefix.
+pub fn cookie_name(state: &AppState, slug: &str) -> String {
+    tenant_cookie_name(state.config.cookie_secure, "ridm_session", slug)
+}
+
+/// `{base}_{slug}`, with the `__Host-` prefix when `secure`.
+pub(crate) fn tenant_cookie_name(secure: bool, base: &str, slug: &str) -> String {
+    if secure {
+        format!("__Host-{base}_{slug}")
     } else {
-        "ridm_session"
+        format!("{base}_{slug}")
     }
 }
 
-/// Session cookies are scoped to the tenant path so tenants never share one.
-pub fn cookie_path(tenant: &Tenant) -> String {
-    format!("/t/{}", tenant.slug)
+/// A `Set-Cookie` value for a host-only, whole-host (`Path=/`), HttpOnly,
+/// `SameSite=Lax` cookie; `Secure` when `secure`. Never a `Domain`, which a
+/// `__Host-` cookie must not carry.
+pub(crate) fn cookie_header(secure: bool, name: &str, value: &str, max_age: i64) -> String {
+    let mut v = format!("{name}={value}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}");
+    if secure {
+        v.push_str("; Secure");
+    }
+    v
 }
 
 pub fn set_cookie_header(state: &AppState, tenant: &Tenant, session: &SsoSession) -> String {
     let max_age = (session.expires_at - Utc::now()).num_seconds().max(0);
-    let mut v = format!(
-        "{}={}; Path={}; HttpOnly; SameSite=Lax; Max-Age={max_age}",
-        cookie_name(state),
-        session.id,
-        cookie_path(tenant)
-    );
-    if state.config.cookie_secure {
-        v.push_str("; Secure");
-    }
-    v
+    cookie_header(
+        state.config.cookie_secure,
+        &cookie_name(state, &tenant.slug),
+        &session.id.to_string(),
+        max_age,
+    )
 }
 
 pub fn clear_cookie_header(state: &AppState, tenant: &Tenant) -> String {
-    let mut v = format!(
-        "{}=; Path={}; HttpOnly; SameSite=Lax; Max-Age=0",
-        cookie_name(state),
-        cookie_path(tenant)
-    );
-    if state.config.cookie_secure {
-        v.push_str("; Secure");
-    }
-    v
+    cookie_header(
+        state.config.cookie_secure,
+        &cookie_name(state, &tenant.slug),
+        "",
+        0,
+    )
 }
 
-/// Session id from the request's `Cookie` header, if present and well formed.
-pub fn session_id_from_headers(state: &AppState, headers: &HeaderMap) -> Option<Uuid> {
-    let name = cookie_name(state);
+/// The tenant's session id from the request's `Cookie` header, if present
+/// and well formed.
+pub fn session_id_from_headers(
+    state: &AppState,
+    tenant: &Tenant,
+    headers: &HeaderMap,
+) -> Option<Uuid> {
+    let name = cookie_name(state, &tenant.slug);
     headers
         .get_all(axum::http::header::COOKIE)
         .iter()
@@ -111,7 +128,9 @@ pub struct NewSession<'a> {
 }
 
 /// Open a session. When the tenant caps concurrent sessions, the user's
-/// oldest live sessions are revoked first so the cap holds after this one.
+/// oldest live sessions are ended first so the cap holds after this one;
+/// they end through [`crate::services::logout::end_session`], so their
+/// refresh tokens go and their relying parties hear of it (back-channel).
 pub async fn create(
     state: &AppState,
     tenant_id: Uuid,
@@ -121,8 +140,11 @@ pub async fn create(
     if max > 0 {
         let live = list_live_for_user(state, tenant_id, req.user_id).await?;
         let excess = (live.len() + 1).saturating_sub(max);
-        for old in live.iter().take(excess) {
-            revoke(state, tenant_id, old.id).await?;
+        if excess > 0 {
+            let tenant = crate::services::tenants::get(state, tenant_id).await?;
+            for old in live.iter().take(excess) {
+                crate::services::logout::end_session(state, &tenant, old.id).await?;
+            }
         }
     }
 
@@ -247,7 +269,7 @@ pub async fn from_request(
     tenant: &Tenant,
     headers: &HeaderMap,
 ) -> AppResult<Option<SsoSession>> {
-    let Some(id) = session_id_from_headers(state, headers) else {
+    let Some(id) = session_id_from_headers(state, tenant, headers) else {
         return Ok(None);
     };
     get(state, tenant.id, id, &tenant.settings.session).await
@@ -288,7 +310,11 @@ pub async fn bind_device(
     Ok(())
 }
 
-/// End one session. Returns whether it was live.
+/// End one session and the refresh tokens issued in it (offline ones
+/// included: they belong to the sign-in that was just ended). Returns whether
+/// the session was live. Relying parties are told by
+/// [`crate::services::logout::end_session`], which callers outside this
+/// module use.
 pub async fn revoke(state: &AppState, tenant_id: Uuid, session_id: Uuid) -> AppResult<bool> {
     let mut conn = state.redis.get().await?;
     let raw: Option<String> = conn.get(keys::sso_session(tenant_id, session_id)).await?;
@@ -297,19 +323,22 @@ pub async fn revoke(state: &AppState, tenant_id: Uuid, session_id: Uuid) -> AppR
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     repos::sessions::mark_revoked(&mut *tx, tenant_id, session_id).await?;
     tx.commit().await?;
-    if let Some(raw) = raw
-        && let Ok(s) = serde_json::from_str::<SsoSession>(&raw)
-    {
-        untrack(state, tenant_id, s.user_id, session_id).await?;
+    let owner = raw
+        .and_then(|raw| serde_json::from_str::<SsoSession>(&raw).ok())
+        .map(|s| s.user_id);
+    if let Some(user_id) = owner {
+        untrack(state, tenant_id, user_id, session_id).await?;
         state.events.publish(Event::new(
             Some(tenant_id),
-            Actor::User { id: s.user_id },
+            Actor::User { id: user_id },
             EventKind::SessionRevoked {
                 session_id,
-                user_id: s.user_id,
+                user_id,
             },
         ));
     }
+    let actor = owner.map_or(Actor::System, |id| Actor::User { id });
+    refresh_tokens::revoke_for_session(state, tenant_id, actor, session_id).await?;
     Ok(removed > 0)
 }
 
@@ -350,24 +379,6 @@ pub async fn list_live_for_user(
     Ok(live)
 }
 
-/// Sign out everywhere: every live session and its refresh tokens.
-pub async fn revoke_all_for_user(
-    state: &AppState,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> AppResult<u64> {
-    let live = list_live_for_user(state, tenant_id, user_id).await?;
-    let mut n = 0u64;
-    for s in live {
-        if revoke(state, tenant_id, s.id).await? {
-            n += 1;
-        }
-        refresh_tokens::revoke_for_session(state, tenant_id, Actor::User { id: user_id }, s.id)
-            .await?;
-    }
-    Ok(n)
-}
-
 /// Redis TTL helper for callers that need the remaining lifetime.
 pub fn remaining(session: &SsoSession) -> Duration {
     let secs = (session.expires_at.min(session.idle_expires_at) - Utc::now())
@@ -395,4 +406,43 @@ pub async fn clients_of(
     Ok(conn
         .smembers(keys::session_clients(tenant_id, session_id))
         .await?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn secure_cookies_meet_the_host_prefix_rules() {
+        let name = tenant_cookie_name(true, "ridm_session", "acme");
+        assert_eq!(name, "__Host-ridm_session_acme");
+        let v = cookie_header(true, &name, "abc", 3600);
+        assert!(v.starts_with("__Host-ridm_session_acme=abc;"), "{v}");
+        // Browsers drop a `__Host-` cookie unless it is Secure, has Path=/
+        // and carries no Domain.
+        let attrs: Vec<&str> = v.split(';').map(str::trim).skip(1).collect();
+        assert!(attrs.contains(&"Path=/"), "{v}");
+        assert!(attrs.contains(&"Secure"), "{v}");
+        assert!(attrs.contains(&"HttpOnly"), "{v}");
+        assert!(
+            !attrs
+                .iter()
+                .any(|a| a.to_ascii_lowercase().starts_with("domain")),
+            "{v}"
+        );
+        assert_eq!(attrs.iter().filter(|a| a.starts_with("Path=")).count(), 1);
+    }
+
+    #[test]
+    fn plain_http_cookies_drop_the_prefix_but_stay_per_tenant() {
+        let a = tenant_cookie_name(false, "ridm_device", "acme");
+        let b = tenant_cookie_name(false, "ridm_device", "globex");
+        assert_eq!(a, "ridm_device_acme");
+        assert_ne!(a, b);
+        let v = cookie_header(false, &a, "", 0);
+        assert_eq!(
+            v,
+            "ridm_device_acme=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
+        );
+    }
 }

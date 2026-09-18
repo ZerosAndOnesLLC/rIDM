@@ -71,4 +71,9 @@ ENV BIND_ADDR=0.0.0.0:8080
 EXPOSE 8080
 USER nonroot:nonroot
 
+# The binary probes its own /healthz (distroless has no curl): the bind
+# address, over TLS when TLS_CERT/TLS_KEY are set.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=3 \
+    CMD ["/ridm-api", "--healthcheck"]
+
 ENTRYPOINT ["/ridm-api"]

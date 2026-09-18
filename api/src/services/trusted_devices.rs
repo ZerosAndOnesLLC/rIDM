@@ -13,49 +13,43 @@ use crate::db;
 use crate::error::AppResult;
 use crate::models::{Tenant, TrustedDevice};
 use crate::repos;
+use crate::services::sessions;
 use crate::state::AppState;
-
-pub const COOKIE_NAME: &str = "ridm_device";
 
 fn hash(secret: &str) -> Vec<u8> {
     Sha256::digest(secret.as_bytes()).to_vec()
 }
 
-pub fn cookie_name(state: &AppState) -> &'static str {
-    if state.config.cookie_secure {
-        "__Host-ridm_device"
-    } else {
-        COOKIE_NAME
-    }
+/// Cookie name, one per tenant, `__Host-`-prefixed when cookies are secure:
+/// the same rules as [`crate::services::sessions::cookie_name`].
+pub fn cookie_name(state: &AppState, slug: &str) -> String {
+    sessions::tenant_cookie_name(state.config.cookie_secure, "ridm_device", slug)
 }
 
 pub fn set_cookie_header(state: &AppState, tenant: &Tenant, secret: &str, days: u32) -> String {
-    let mut v = format!(
-        "{}={secret}; Path=/t/{}; HttpOnly; SameSite=Lax; Max-Age={}",
-        cookie_name(state),
-        tenant.slug,
-        u64::from(days) * 86_400
-    );
-    if state.config.cookie_secure {
-        v.push_str("; Secure");
-    }
-    v
+    sessions::cookie_header(
+        state.config.cookie_secure,
+        &cookie_name(state, &tenant.slug),
+        secret,
+        i64::from(days) * 86_400,
+    )
 }
 
 pub fn clear_cookie_header(state: &AppState, tenant: &Tenant) -> String {
-    let mut v = format!(
-        "{}=; Path=/t/{}; HttpOnly; SameSite=Lax; Max-Age=0",
-        cookie_name(state),
-        tenant.slug
-    );
-    if state.config.cookie_secure {
-        v.push_str("; Secure");
-    }
-    v
+    sessions::cookie_header(
+        state.config.cookie_secure,
+        &cookie_name(state, &tenant.slug),
+        "",
+        0,
+    )
 }
 
-pub fn secret_from_headers(state: &AppState, headers: &HeaderMap) -> Option<String> {
-    let name = cookie_name(state);
+pub fn secret_from_headers(
+    state: &AppState,
+    tenant: &Tenant,
+    headers: &HeaderMap,
+) -> Option<String> {
+    let name = cookie_name(state, &tenant.slug);
     headers
         .get_all(axum::http::header::COOKIE)
         .iter()
@@ -113,7 +107,7 @@ pub async fn is_trusted(
     headers: &HeaderMap,
     ip: Option<&str>,
 ) -> AppResult<Option<TrustedDevice>> {
-    let Some(secret) = secret_from_headers(state, headers) else {
+    let Some(secret) = secret_from_headers(state, tenant, headers) else {
         return Ok(None);
     };
     verify_secret(state, tenant, user_id, &secret, ip).await
