@@ -266,7 +266,10 @@ import is a reconciliation, and each run resets the two users' passwords.
 | `dana` | `Demo-Passw0rd!2026` | `orders-manager` | read and place orders |
 | `sam` | `Demo-Passw0rd!2026` | `orders-reader` | read orders only |
 
-`DEMO_PASSWORD=… examples/setup.sh` chooses another password.
+`DEMO_PASSWORD=… examples/setup.sh` chooses another password, and
+`SPA_URL=http://localhost:3101` or `WEB_URL=…` registers the clients for another
+origin when port 3100 or 3200 is taken (the script substitutes it into the
+document as it imports it).
 
 Confirm the tenant matches its document:
 

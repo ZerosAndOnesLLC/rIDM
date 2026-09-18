@@ -14,6 +14,11 @@ TENANT="${TENANT:-demo}"
 DEMO_PASSWORD="${DEMO_PASSWORD:-Demo-Passw0rd!2026}"
 RIDM="${RIDM:-ridm}"
 URL="${RIDM_URL:-http://localhost:8090}"
+# Where the two browser-facing examples run. The document registers
+# http://localhost:3100 and :3200; other origins are substituted on the way in,
+# so the document stays the one source of truth whatever the ports.
+SPA_URL="${SPA_URL:-http://localhost:3100}"
+WEB_URL="${WEB_URL:-http://localhost:3200}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if ! command -v "$RIDM" >/dev/null 2>&1; then
@@ -68,7 +73,9 @@ echo "==> tenant $TENANT"
   "$RIDM" --url "$URL" tenant create "$TENANT" --name "Example Orders Co."
 
 echo "==> configuration (resource server, scopes, roles, clients)"
-"$RIDM" --url "$URL" --tenant "$TENANT" tenant import -f "$HERE/demo-tenant.json" --yes
+sed -e "s#http://localhost:3100#${SPA_URL%/}#g" -e "s#http://localhost:3200#${WEB_URL%/}#g" \
+  "$HERE/demo-tenant.json" |
+  "$RIDM" --url "$URL" --tenant "$TENANT" tenant import -f - --yes
 
 echo "==> users"
 for pair in "dana:orders-manager" "sam:orders-reader"; do

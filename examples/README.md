@@ -44,6 +44,10 @@ the orders resource server and its two permissions, the scopes, the
 two users and gives them one role each. It prints the confidential client's
 secret at the end; that secret is shown exactly once.
 
+The clients are registered for `http://localhost:3100` and `:3200`. To run
+either somewhere else, give the script its origin — `SPA_URL=http://localhost:3101`,
+`WEB_URL=…` — and it substitutes that into the document as it imports it.
+
 `demo-tenant.json` is an ordinary tenant configuration document, so
 `ridm --tenant demo tenant diff -f examples/demo-tenant.json` tells you at any
 point whether the tenant still matches it.
@@ -83,6 +87,33 @@ them, and the API answers `403 insufficient_scope` for the rest).
 
 `RIDM_ALLOW_HTTP=true` is what lets an `http://` issuer be trusted at all; it
 belongs in development and nowhere else.
+
+## Smoke test
+
+`smoke/run.sh` runs all of this unattended, and CI runs it on every pull request
+(the `examples-smoke` job): it starts `deploy/docker-compose.yml` from a built
+image, bootstraps the first administrator and a token with
+`ridm bootstrap --issue-token`, runs `setup.sh` (twice — the second run must
+change nothing), starts the three examples and rIDM's sign-in pages, and then
+drives headless Chromium through `smoke/smoke.mjs`:
+
+- the orders API refuses an anonymous call with a `Bearer` challenge;
+- `dana` signs in to the web app with her password and places an order;
+- the SPA, in the same browser, signs her in silently (no login form) and sees
+  and places orders against the same API;
+- signing out of the SPA ends the rIDM session, and back-channel logout ends
+  the web app's session with it;
+- `sam` sees the orders in both apps, and the API refuses his order with `403`.
+
+```bash
+docker build -f api/Dockerfile -t ridm:smoke .
+(cd ui && npm ci && npx playwright install chromium)
+RIDM_IMAGE=ridm:smoke examples/smoke/run.sh
+```
+
+Every port moves with an environment variable (the script's header lists
+them), so it can run beside a development stack; logs and failure screenshots
+land in `target/smoke/`.
 
 ## What each example is for
 

@@ -222,19 +222,18 @@ Sign in as:
 Both are set by `setup.sh` (`DEMO_PASSWORD=… examples/setup.sh` to choose your
 own). They exist to be signed in as on a laptop and nowhere else.
 
-**If port 3100 is taken**, run the SPA anywhere — it derives its redirect URI
-from the address it is served on — and tell the client about the new one:
+**If port 3100 or 3200 is taken**, run the app anywhere — the SPA derives its
+redirect URI from the address it is served on, the web app from `BASE_URL` —
+and set the tenant up for that address instead:
 
 ```bash
-curl -s -X PATCH "$RIDM_URL/admin/tenants/demo/clients/<id>" \
-  -H "Authorization: Bearer $RIDM_TOKEN" -H 'content-type: application/json' \
-  -d '{"redirect_uris":["http://localhost:3101/callback/"],
-       "post_logout_redirect_uris":["http://localhost:3101/"],
-       "cors_origins":["http://localhost:3101"]}'
+SPA_URL=http://localhost:3101 examples/setup.sh     # WEB_URL=… for the web app
 ```
 
-The next `setup.sh` puts it back to what `demo-tenant.json` says, which is the
-point of the document — so make the change there if you want it to stick.
+`setup.sh` substitutes the origins into `demo-tenant.json` on the way in, so the
+document stays the source of truth and every later run keeps the new port. The
+orders API allows the two origins in `CORS_ORIGINS`
+(`http://localhost:3100,http://localhost:3200` by default); give it the new one too.
 
 ## 4. Things worth doing once it is all up
 
