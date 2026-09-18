@@ -448,6 +448,10 @@ that is neither the UI's, the API's nor registered on that very client is refuse
 
 ## Development
 
+[`GETTING-STARTED.md`](GETTING-STARTED.md) is the short path from nothing to a running
+server, an admin console, a demo tenant and the three example applications, with every
+local URL and credential in one place. What follows is the reference.
+
 Requirements: Rust 1.98+ (pinned in `rust-toolchain.toml`), Node.js 24 LTS, Docker,
 `sqlx-cli`.
 

@@ -3,10 +3,14 @@
 #
 # Needs a running rIDM and a `ridm` login with `ridm:tenants:*`, `ridm:users:*`
 # and `ridm:roles:*` — see examples/README.md. Safe to re-run: the import is a
-# reconciliation, and the users are skipped if they already exist.
+# reconciliation, and the users are created only once (their password is reset
+# to $DEMO_PASSWORD on every run).
 set -euo pipefail
 
 TENANT="${TENANT:-demo}"
+# A fixed password so the getting-started guide can name it. This tenant is for
+# local development; nothing here belongs on a server anyone else can reach.
+DEMO_PASSWORD="${DEMO_PASSWORD:-Demo-Passw0rd!2026}"
 RIDM="${RIDM:-ridm}"
 URL="${RIDM_URL:-http://localhost:8090}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -73,11 +77,15 @@ for pair in "dana:orders-manager" "sam:orders-reader"; do
   user_id="$(user_id_of "$username")"
   if [ -z "$user_id" ]; then
     "$RIDM" --url "$URL" --tenant "$TENANT" user create "$username" \
-      --email "$username@example.com" --email-verified --temporary-password
+      --email "$username@example.com" --email-verified >/dev/null
     user_id="$(user_id_of "$username")"
-  else
-    echo "    $username already exists"
   fi
+  # Set on every run, so a re-run is also "put the demo back how it was".
+  # `--skip-policy` because the password history refuses the same password
+  # twice, which would make the second run fail for no useful reason.
+  printf '%s' "$DEMO_PASSWORD" |
+    "$RIDM" --url "$URL" --tenant "$TENANT" user reset "$username" \
+      --password-stdin --no-must-change --skip-policy >/dev/null
 
   # `ridm` has no role-assignment command yet, so this one step goes straight
   # to the admin API. Assigning a role twice is not an error.
@@ -92,9 +100,9 @@ Done. The examples expect:
   RIDM_ISSUER=$URL/t/$TENANT
   RIDM_AUDIENCE=https://orders.example
 
-Sign in as dana (may place orders) or sam (may only see them). If the import
-printed a secret for \`orders-web\`, that is the confidential client's — it is
-shown once. To mint a new one:
+Sign in as dana (may place orders) or sam (may only see them), both with the
+password $DEMO_PASSWORD. If the import printed a secret for \`orders-web\`,
+that is the confidential client's — it is shown once. To mint a new one:
 
   $RIDM --url $URL --tenant $TENANT client create --help
 EOF
