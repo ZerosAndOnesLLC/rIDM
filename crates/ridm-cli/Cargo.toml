@@ -1,6 +1,8 @@
 [package]
 name = "ridm-cli"
 description = "rIDM — command-line administration for the rIDM identity server"
+keywords = ["oidc", "identity", "cli", "oauth2", "administration"]
+categories = ["command-line-utilities", "authentication"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true

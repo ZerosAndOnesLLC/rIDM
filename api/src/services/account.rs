@@ -176,10 +176,10 @@ pub async fn delete_own(state: &AppState, tenant: &Tenant, user: &User) -> AppRe
         ));
     }
     let actor = Actor::User { id: user.id };
-    sessions::revoke_all_for_user(state, tenant.id, user.id).await?;
     refresh_tokens::revoke_for_user(state, tenant.id, actor.clone(), user.id, None).await?;
     trusted_devices::revoke_all(state, tenant.id, user.id).await?;
     crate::services::personal_access_tokens::revoke_all_for_user(state, tenant.id, user.id).await?;
+    // Ends every session too, telling the relying parties.
     crate::services::users::delete(state, tenant.id, actor, user.id).await
 }
 

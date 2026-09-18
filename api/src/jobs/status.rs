@@ -1,5 +1,8 @@
-//! The last run of every job, kept in Valkey for operators (`/readyz`
-//! details and the admin stats) so a stuck scheduler is visible.
+//! The last run of every job, kept in Valkey (the `ridm:jobs:last_run` hash,
+//! one field per job) so a stuck scheduler is visible to an operator:
+//! `valkey-cli HGETALL ridm:jobs:last_run`. The API does not serve it; the
+//! jobs are deployment-wide and neither `/readyz` (unauthenticated) nor the
+//! per-tenant admin stats are the place for them.
 
 use chrono::{DateTime, Utc};
 use redis::AsyncCommands as _;

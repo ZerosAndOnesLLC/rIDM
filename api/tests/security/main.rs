@@ -4,6 +4,17 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod bulk_import;
+mod custom_domains;
+mod mfa_policy;
+mod outbound;
+mod resource_indicators;
+mod scim_membership;
+mod session_cookies;
+mod session_revocation;
+mod support;
+mod token_claims;
+
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use common::TestApp;
@@ -65,7 +76,11 @@ async fn fixture() -> Fx {
     )
     .await
     .unwrap();
-    let cookie = format!("{}={}", sessions::cookie_name(&app.state), s.id);
+    let cookie = format!(
+        "{}={}",
+        sessions::cookie_name(&app.state, &app.tenant.slug),
+        s.id
+    );
     Fx { app, cookie }
 }
 

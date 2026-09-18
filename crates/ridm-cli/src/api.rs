@@ -89,6 +89,10 @@ impl Api {
     pub async fn put(&self, path: &str, body: &Value) -> Result<Value> {
         self.send(Method::PUT, path, &[], Some(body)).await
     }
+
+    pub async fn delete(&self, path: &str) -> Result<Value> {
+        self.send(Method::DELETE, path, &[], None).await
+    }
 }
 
 /// Turn a refusal into an [`ApiError`], reading the RFC 9457 document when the

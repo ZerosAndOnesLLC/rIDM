@@ -246,7 +246,7 @@ function TokensSection({ c, editable, update }: { c: ClientView; editable: boole
       <Field label="Refresh token lifetime" hint="Empty = tenant default.">
         {(fid, by) => <NumberInput id={fid} describedBy={by} value={c.refresh_token_ttl_secs ?? null} min={60} nullable onValue={(v) => update({ refresh_token_ttl_secs: v })} unit="s" />}
       </Field>
-      <Field label="Access token format" hint="Opaque tokens are only useful through introspection.">
+      <Field label="Access token format" hint="Opaque tokens carry no readable claims: APIs learn what they stand for from the introspection endpoint.">
         {(fid, by) => (
           <SelectInput id={fid} aria-describedby={by} value={c.access_token_format} disabled={!editable} onChange={(e) => update({ access_token_format: e.target.value as "jwt" | "opaque" })}>
             <option value="jwt">JWT</option>

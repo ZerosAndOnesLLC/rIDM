@@ -48,6 +48,37 @@ pub async fn migrate(db: &Db) -> Result<(), sqlx::migrate::MigrateError> {
     MIGRATOR.run(db).await
 }
 
+/// How many embedded migrations the database has not applied yet. Only reads
+/// `_sqlx_migrations` (a missing table means none is applied), so the
+/// DML-only application role can ask.
+pub async fn pending_migrations(db: &Db) -> Result<usize, sqlx::Error> {
+    let applied: Vec<i64> =
+        match sqlx::query_scalar("SELECT version FROM _sqlx_migrations WHERE success")
+            .fetch_all(db)
+            .await
+        {
+            Ok(v) => v,
+            Err(sqlx::Error::Database(e)) if e.code().as_deref() == Some("42P01") => vec![],
+            Err(e) => return Err(e),
+        };
+    Ok(MIGRATOR
+        .iter()
+        .filter(|m| m.migration_type.is_up_migration() && !applied.contains(&m.version))
+        .count())
+}
+
+/// [`migrate`], but only when something is pending. Applying migrations
+/// needs the schema owner (`CREATE` on the schema, for `_sqlx_migrations`
+/// itself); skipping an up-to-date database lets the DML-only application
+/// role start with `MIGRATE_ON_START=true` once `ridm-api migrate` has run.
+pub async fn migrate_pending(db: &Db) -> Result<usize, sqlx::migrate::MigrateError> {
+    let pending = pending_migrations(db).await?;
+    if pending > 0 {
+        migrate(db).await?;
+    }
+    Ok(pending)
+}
+
 /// Cheap liveness probe used by `/readyz`.
 pub async fn ping(db: &Db) -> Result<(), sqlx::Error> {
     sqlx::query_scalar::<_, i32>("SELECT 1")

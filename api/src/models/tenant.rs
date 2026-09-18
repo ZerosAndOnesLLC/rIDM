@@ -271,7 +271,11 @@ impl Default for DcrPolicy {
 pub enum DcrMode {
     #[default]
     Disabled,
-    /// Anyone may register (rate limited; public clients only by default).
+    /// Anyone may register, rate limited per address like `/authorize`. The
+    /// metadata decides the client type: a confidential web client with a
+    /// generated secret by default, a public one with
+    /// `token_endpoint_auth_method: none`; `allowed_grants` limits the grant
+    /// types either may ask for.
     Open,
     /// Registration requires an admin-issued initial access token.
     InitialAccessToken,
@@ -368,9 +372,9 @@ pub struct RegistrationPolicy {
     pub require_terms: bool,
     pub terms_url: Option<String>,
     pub privacy_url: Option<String>,
-    /// Only these email domains may self-register (empty = any).
+    /// Only these email domains may self-register (empty = any). (A CAPTCHA
+    /// on registration is `captcha.on_registration`.)
     pub allowed_email_domains: Vec<String>,
-    pub captcha: bool,
 }
 
 impl Default for RegistrationPolicy {
@@ -382,7 +386,6 @@ impl Default for RegistrationPolicy {
             terms_url: None,
             privacy_url: None,
             allowed_email_domains: vec![],
-            captcha: false,
         }
     }
 }

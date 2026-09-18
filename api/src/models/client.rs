@@ -184,6 +184,15 @@ impl Client {
         self.allowed_grants.iter().any(|g| g == grant)
     }
 
+    /// Whether tokens of this client may name `identifier` as an audience.
+    /// An empty `allowed_audiences` means no restriction, except for built-in
+    /// resource servers (the admin and account APIs), which a client must be
+    /// allowed explicitly so a third-party client cannot mint tokens for them.
+    pub fn may_target(&self, identifier: &str, built_in: bool) -> bool {
+        self.allowed_audiences.iter().any(|a| a == identifier)
+            || (!built_in && self.allowed_audiences.is_empty())
+    }
+
     /// Secrets that can still authenticate the client right now.
     pub fn active_secrets(&self) -> Vec<&ClientSecretHash> {
         let now = Utc::now();

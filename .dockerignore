@@ -9,4 +9,6 @@ ui/out
 deploy
 docs
 perf
-examples
+# The Rust examples are workspace members, so cargo loads their manifests even
+# when only `ridm-api` is built; the Node one is never needed.
+examples/nextjs-spa

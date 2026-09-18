@@ -25,7 +25,7 @@ use uuid::Uuid;
 use crate::cache::keys as cache_keys;
 use crate::error::{AppError, OAuthError, OAuthErrorCode};
 use crate::middleware::{TenantCtx, client_ip_addr};
-use crate::models::{ClaimMapper, Client, Group, Role, Tenant, User, grants};
+use crate::models::{ClaimMapper, Client, Group, Role, SigningAlg, Tenant, User, grants};
 use crate::oidc::authorize::RawParams;
 use crate::oidc::dpop;
 use crate::oidc::{client_auth, pkce};
@@ -241,8 +241,7 @@ async fn effective_mappers(
                 let rows =
                     crate::repos::claim_mappers::list_effective(&mut *tx, tenant_id, client_id)
                         .await?;
-                tx.commit().await?;
-                let mappers: Vec<ClaimMapper> = rows
+                let mut mappers: Vec<ClaimMapper> = rows
                     .into_iter()
                     .filter_map(|r| {
                         let mut cfg = r.config;
@@ -250,6 +249,23 @@ async fn effective_mappers(
                         serde_json::from_value::<ClaimMapper>(cfg).ok()
                     })
                     .collect();
+                // A `roles` mapper names its client by public id; roles carry
+                // the client's row id. Resolve once here, so the cached
+                // mapper already holds the id it is matched against (a public
+                // id no client has resolves to nothing, and matches no role).
+                for m in &mut mappers {
+                    if let crate::models::MapperKind::Roles {
+                        client_id: Some(public),
+                        ..
+                    } = &mut m.kind
+                    {
+                        let found =
+                            crate::repos::clients::find_by_client_id(&mut *tx, tenant_id, public)
+                                .await?;
+                        *public = found.map_or_else(String::new, |c| c.id.to_string());
+                    }
+                }
+                tx.commit().await?;
                 Ok(Some(mappers))
             },
         )
@@ -262,6 +278,46 @@ struct Audience {
     audiences: Vec<String>,
     ttl_override: Option<u64>,
     permissions: Vec<String>,
+    /// The resource servers behind `audiences`, for scopes bound to one.
+    resource_server_ids: Vec<Uuid>,
+    /// Every audience allows `offline_access` (vacuously true without any).
+    offline_allowed: bool,
+    /// The algorithm the audience asks access tokens to be signed with.
+    signing_alg: Option<SigningAlg>,
+}
+
+/// The one signing algorithm a set of resource servers asks for.
+///
+/// A token has one signature, so its audiences must agree: resource servers
+/// that name no algorithm accept the tenant's default and so agree with any
+/// other; two that name different algorithms cannot share a token, and the
+/// request is refused rather than one of them handed a token it may reject.
+fn agreed_signing_alg<'a>(
+    wanted: impl IntoIterator<Item = (&'a str, Option<&'a str>)>,
+) -> Result<Option<SigningAlg>, OAuthError> {
+    let mut agreed: Option<(SigningAlg, &str)> = None;
+    for (identifier, alg) in wanted {
+        let Some(alg) = alg else { continue };
+        let alg: SigningAlg = alg.parse().map_err(|_| {
+            OAuthError::new(
+                OAuthErrorCode::ServerError,
+                format!("resource `{identifier}` has an unsupported signing algorithm"),
+            )
+        })?;
+        match agreed {
+            Some((a, first)) if a != alg => {
+                return Err(OAuthError::new(
+                    OAuthErrorCode::InvalidTarget,
+                    format!(
+                        "resources `{first}` ({a}) and `{identifier}` ({alg}) need tokens signed with different algorithms; request them separately"
+                    ),
+                ));
+            }
+            Some(_) => {}
+            None => agreed = Some((alg, identifier)),
+        }
+    }
+    Ok(agreed.map(|(a, _)| a))
 }
 
 async fn resolve_audience(
@@ -279,11 +335,17 @@ async fn resolve_audience(
     let mut audiences = vec![];
     let mut ttl_override: Option<u64> = None;
     let mut permissions = vec![];
+    let mut resource_server_ids = vec![];
+    let mut offline_allowed = true;
+    let mut algs: Vec<(String, Option<String>)> = vec![];
     if wanted.is_empty() {
         return Ok(Audience {
             audiences,
             ttl_override,
             permissions,
+            resource_server_ids,
+            offline_allowed,
+            signing_alg: None,
         });
     }
     for identifier in &wanted {
@@ -300,18 +362,16 @@ async fn resolve_audience(
         // Built-in resource servers (the admin API) are never implied: a client
         // has to be allowed the audience explicitly, even when it is otherwise
         // unrestricted, so that a third-party client cannot mint admin tokens.
-        let allowed = if rs.built_in {
-            client.allowed_audiences.contains(identifier)
-        } else {
-            client.allowed_audiences.is_empty() || client.allowed_audiences.contains(identifier)
-        };
-        if !allowed {
+        if !client.may_target(identifier, rs.built_in) {
             return Err(OAuthError::new(
                 OAuthErrorCode::InvalidTarget,
                 format!("resource `{identifier}` is not allowed for this client"),
             ));
         }
         audiences.push(rs.identifier.clone());
+        resource_server_ids.push(rs.id);
+        offline_allowed &= rs.allow_offline_access;
+        algs.push((rs.identifier.clone(), rs.signing_alg.clone()));
         if let Some(ttl) = rs.token_ttl_secs {
             let ttl = ttl.max(1) as u64;
             ttl_override = Some(ttl_override.map_or(ttl, |t| t.min(ttl)));
@@ -328,10 +388,14 @@ async fn resolve_audience(
             }
         }
     }
+    let signing_alg = agreed_signing_alg(algs.iter().map(|(i, a)| (i.as_str(), a.as_deref())))?;
     Ok(Audience {
         audiences,
         ttl_override,
         permissions,
+        resource_server_ids,
+        offline_allowed,
+        signing_alg,
     })
 }
 
@@ -381,6 +445,20 @@ struct Issue<'a> {
 async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, OAuthError> {
     let mappers = effective_mappers(state, i.tenant.id, i.client).await?;
     let mut tc = TokenClient::from_client(i.client, i.tenant, mappers);
+    tc.access_token_alg = i.audience.signing_alg;
+    // What the grant asked for, less what this audience does not carry.
+    let granted = scopes::granted_for_audience(
+        state,
+        i.tenant.id,
+        i.scopes,
+        &i.audience.resource_server_ids,
+        i.audience.offline_allowed,
+    )
+    .await?;
+    let i = Issue {
+        scopes: &granted,
+        ..i
+    };
     if let Some(ttl) = i.audience.ttl_override {
         tc.access_token_ttl = std::time::Duration::from_secs(ttl);
     }
@@ -389,17 +467,8 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
             .access_token_ttl
             .min(max.max(std::time::Duration::from_secs(1)));
     }
-    // Permissions ride along as a hardcoded mapper so the pipeline stays single.
-    if !i.audience.permissions.is_empty() {
-        tc.mappers.push(ClaimMapper {
-            name: "permissions".into(),
-            kind: crate::models::MapperKind::Hardcoded {
-                claim: "permissions".into(),
-                value: serde_json::json!(i.audience.permissions),
-            },
-            include_in: vec![crate::models::TokenKind::Access],
-        });
-    }
+    // The token service sets `permissions` itself; no mapper may.
+    tc.permissions = i.audience.permissions.clone();
     let empty_roles: Vec<Role> = vec![];
     let empty_groups: Vec<Group> = vec![];
     let (user, roles_v, groups_v) = match i.subject {
@@ -490,7 +559,7 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
 
     // Remember what this authorization code produced, so replaying it can undo
     // all of it (RFC 6749 §4.1.2): the refresh family and the access token,
-    // which is a JWT and stops only through the `jti` denylist.
+    // which stops through the `jti` denylist (JWT and opaque alike).
     if let Some(code_hash) = &i.code_for_hash {
         let grant = CodeGrant {
             family_id: refresh.as_ref().map(|r| r.record.family_id),
@@ -616,10 +685,32 @@ async fn authorization_code(
             "authorization code expired",
         ));
     }
+    // A code whose session was signed out before the exchange would mint
+    // tokens for a session that no longer exists.
+    let mut tx = crate::db::tenant_tx(&state.db, tenant.id).await?;
+    let session_ended =
+        crate::repos::sessions::is_revoked(&mut *tx, tenant.id, record.session_id).await?;
+    tx.commit().await?;
+    if session_ended {
+        return Err(OAuthError::new(
+            OAuthErrorCode::InvalidGrant,
+            "the session this code was issued in has ended",
+        ));
+    }
 
     let subject = load_subject(state, tenant.id, record.user_id).await?;
     let role_ids: Vec<Uuid> = subject.roles.iter().map(|r| r.id).collect();
     let extra = parse_resources(params)?;
+    // RFC 8707 §2.2: resources named at /authorize bound the grant; the token
+    // request may pick among them but not add others.
+    if !record.audiences.is_empty()
+        && let Some(r) = extra.iter().find(|r| !record.audiences.contains(r))
+    {
+        return Err(OAuthError::new(
+            OAuthErrorCode::InvalidTarget,
+            format!("resource `{r}` was not part of the authorization request"),
+        ));
+    }
     let requested_aud: Vec<String> = if extra.is_empty() {
         record.audiences.clone()
     } else {
@@ -722,23 +813,22 @@ async fn refresh_token(
     let presented = one("refresh_token")?
         .ok_or_else(|| OAuthError::invalid_request("refresh_token is required"))?;
     // A bound refresh token is only good with a proof from the same key.
-    let rotated =
-        refresh_tokens::rotate(state, tenant.id, &client.client_id, presented, dpop_jkt).await?;
-    let granted = &rotated.record.scopes;
-    // Scope may only be narrowed (RFC 6749 §6).
-    let scopes: Vec<String> = match one("scope")? {
-        Some(raw) => {
-            let requested = scopes::parse_scope_param(raw);
-            if let Some(extra) = requested.iter().find(|s| !granted.contains(s)) {
-                return Err(OAuthError::new(
-                    OAuthErrorCode::InvalidScope,
-                    format!("scope `{extra}` was not granted"),
-                ));
-            }
-            requested
-        }
-        None => granted.clone(),
-    };
+    // RFC 8707 §2.2: `resource` may only narrow the original grant's audiences,
+    // and RFC 6749 §6: `scope` may only narrow its scopes. Both are checked
+    // before the token is spent, so a refused request leaves it usable.
+    let extra = parse_resources(params)?;
+    let requested_scopes = one("scope")?.map(scopes::parse_scope_param);
+    let rotated = refresh_tokens::rotate(
+        state,
+        tenant.id,
+        &client.client_id,
+        presented,
+        dpop_jkt,
+        &extra,
+        requested_scopes.as_deref(),
+    )
+    .await?;
+    let scopes: Vec<String> = requested_scopes.unwrap_or_else(|| rotated.record.scopes.clone());
     let subject = match rotated.record.user_id {
         Some(uid) => Some(load_subject(state, tenant.id, uid).await?),
         None => None,
@@ -747,7 +837,6 @@ async fn refresh_token(
         .as_ref()
         .map(|s| s.roles.iter().map(|r| r.id).collect())
         .unwrap_or_default();
-    let extra = parse_resources(params)?;
     let requested_aud: Vec<String> = if extra.is_empty() {
         rotated.record.audiences.clone()
     } else {
@@ -808,22 +897,17 @@ async fn client_credentials(
             "openid/offline_access are not valid for client_credentials",
         ));
     }
-    let (known, unknown) = scopes::resolve(state, tenant.id, &requested).await?;
-    if !unknown.is_empty() {
-        return Err(OAuthError::new(
-            OAuthErrorCode::InvalidScope,
-            format!("unknown scope(s): {}", unknown.join(" ")),
-        ));
-    }
-    if let Some(bad) = known
-        .iter()
-        .find(|s| !client.allowed_scopes.contains(&s.name))
-    {
-        return Err(OAuthError::new(
-            OAuthErrorCode::InvalidScope,
-            format!("scope `{}` is not allowed for this client", bad.name),
-        ));
-    }
+    // No scope named: the client's default scopes, less the user-only ones.
+    let checked = scopes::validate_request(
+        state,
+        tenant.id,
+        client,
+        requested,
+        &["openid", "offline_access"],
+        false,
+    )
+    .await?;
+    let requested = checked.scopes;
     let subject = match client.service_account_user_id {
         Some(uid) => Some(load_subject(state, tenant.id, uid).await?),
         None => None,
@@ -832,14 +916,13 @@ async fn client_credentials(
         .as_ref()
         .map(|s| s.roles.iter().map(|r| r.id).collect())
         .unwrap_or_default();
-    let audience = resolve_audience(
-        state,
-        tenant.id,
-        client,
-        &parse_resources(params)?,
-        &role_ids,
-    )
-    .await?;
+    // A scope bound to a resource server targets it too.
+    let wanted = scopes::with_bound_audiences(
+        parse_resources(params)?,
+        &client.allowed_audiences,
+        checked.bound_audiences,
+    );
+    let audience = resolve_audience(state, tenant.id, client, &wanted, &role_ids).await?;
     issue_tokens(
         state,
         Issue {
@@ -887,19 +970,36 @@ async fn token_exchange(
             "subject_token_type must be an access token or jwt type",
         ));
     }
-    if let Some(requested) = one("requested_token_type")?
-        && !is_access(requested)
-    {
+    if let Some(requested) = one("requested_token_type")? {
+        if !is_access(requested) {
+            return Err(OAuthError::invalid_request(
+                "requested_token_type must be an access token or jwt type",
+            ));
+        }
+        // The issued token takes this client's format; a JWT cannot be
+        // promised to a client registered for opaque tokens.
+        if requested == token_types::JWT
+            && client.access_token_format == crate::models::AccessTokenFormat::Opaque
+        {
+            return Err(OAuthError::invalid_request(
+                "this client receives opaque access tokens; request urn:ietf:params:oauth:token-type:access_token",
+            ));
+        }
+    }
+    // An opaque access token is an access token, not a JWT (RFC 8693 §3).
+    let typed_right = |token: &str, kind: &str| {
+        kind == token_types::ACCESS_TOKEN || !crate::services::opaque_tokens::looks_like(token)
+    };
+    if !typed_right(subject_token, subject_type) {
         return Err(OAuthError::invalid_request(
-            "requested_token_type must be an access token or jwt type",
+            "subject_token is not a JWT; use urn:ietf:params:oauth:token-type:access_token",
         ));
     }
     let verify = VerifyOptions {
-        typ: Some("at+jwt".into()),
         check_denylist: true,
         ..Default::default()
     };
-    let subject_map = tokens::verify(state, tenant, subject_token, &verify)
+    let subject_map = tokens::verify_access(state, tenant, subject_token, &verify)
         .await
         .map_err(|_| {
             OAuthError::new(
@@ -928,7 +1028,12 @@ async fn token_exchange(
                     "actor_token_type must be an access token or jwt type",
                 ));
             }
-            let claims = tokens::verify(state, tenant, token, &verify)
+            if !typed_right(token, kind) {
+                return Err(OAuthError::invalid_request(
+                    "actor_token is not a JWT; use urn:ietf:params:oauth:token-type:access_token",
+                ));
+            }
+            let claims = tokens::verify_access(state, tenant, token, &verify)
                 .await
                 .map_err(|_| {
                     OAuthError::new(
@@ -1057,4 +1162,26 @@ async fn token_exchange(
     .await?;
     response.issued_token_type = Some(token_types::ACCESS_TOKEN);
     Ok(response)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audiences_must_agree_on_one_signing_algorithm() {
+        // Nobody asks: the tenant default.
+        assert_eq!(
+            agreed_signing_alg([("a", None), ("b", None)]).unwrap(),
+            None
+        );
+        // One asks, the others take whatever is chosen.
+        assert_eq!(
+            agreed_signing_alg([("a", None), ("b", Some("ES256")), ("c", Some("ES256"))]).unwrap(),
+            Some(SigningAlg::ES256)
+        );
+        // Two ask for different ones: one token cannot satisfy both.
+        let err = agreed_signing_alg([("a", Some("ES256")), ("b", Some("EdDSA"))]).unwrap_err();
+        assert_eq!(err.error, OAuthErrorCode::InvalidTarget);
+    }
 }

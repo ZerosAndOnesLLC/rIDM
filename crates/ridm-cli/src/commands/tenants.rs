@@ -138,6 +138,8 @@ async fn import(
     if !yes {
         let plan = api.post(&path, &plan_query, &doc).await?;
         render_plan(&plan);
+        // Shown before the question; applying would report them again.
+        print_errors(&plan);
         if empty(&plan) {
             println!("Nothing to apply.");
             return Ok(());
@@ -178,6 +180,7 @@ async fn diff(
         output::json(&plan)?;
     } else {
         render_plan(&plan);
+        render_refusals(&plan)?;
     }
     if exit_code && !empty(&plan) {
         return Err(CliError::Changes);
@@ -273,16 +276,13 @@ fn short(value: Option<&Value>) -> String {
     format!("{head}…")
 }
 
-/// Per-item failures; an import that reports any is a failed command.
-fn render_errors(report: &Value) -> Result<()> {
+/// Print a report's per-item errors; returns how many there were.
+fn print_errors(report: &Value) -> usize {
     let errors = report
         .get("errors")
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    if errors.is_empty() {
-        return Ok(());
-    }
     for e in &errors {
         eprintln!(
             "  ! {} {}: {}",
@@ -291,10 +291,28 @@ fn render_errors(report: &Value) -> Result<()> {
             output::field(e, "error")
         );
     }
-    Err(CliError::failed(format!(
-        "{} item(s) could not be applied",
-        errors.len()
-    )))
+    errors.len()
+}
+
+/// Per-item failures; an import that reports any is a failed command.
+fn render_errors(report: &Value) -> Result<()> {
+    match print_errors(report) {
+        0 => Ok(()),
+        n => Err(CliError::failed(format!(
+            "{n} item(s) could not be applied"
+        ))),
+    }
+}
+
+/// A dry run's refusals (grants the caller could not make): the import
+/// would fail on these items, so the diff does too.
+fn render_refusals(plan: &Value) -> Result<()> {
+    match print_errors(plan) {
+        0 => Ok(()),
+        n => Err(CliError::failed(format!(
+            "{n} item(s) would be refused on import"
+        ))),
+    }
 }
 
 /// Secrets the server minted for what the import created, shown once.
@@ -376,5 +394,16 @@ mod tests {
         });
         assert!(render_errors(&report).is_err());
         assert!(render_errors(&json!({"applied": 2, "errors": []})).is_ok());
+    }
+
+    #[test]
+    fn a_dry_run_that_flags_refused_grants_is_a_failed_diff() {
+        let plan = json!({
+            "dry_run": true,
+            "changes": [{"resource": "role", "key": "ops", "op": "create"}],
+            "errors": [{"resource": "role", "key": "ops", "error": "you cannot grant ridm:tenants:write"}]
+        });
+        assert!(render_refusals(&plan).is_err());
+        assert!(render_refusals(&json!({"changes": [], "errors": []})).is_ok());
     }
 }

@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::error::{AppError, AppResult};
 use crate::middleware::{AccountCtx, Json};
 use crate::services::sessions::SsoSession;
-use crate::services::{refresh_tokens, sessions};
+use crate::services::{logout, sessions};
 use crate::state::AppState;
 
 pub fn sessions_router() -> OpenApiRouter<AppState> {
@@ -86,8 +86,7 @@ async fn revoke_session(
     if !live.iter().any(|s| s.id == session_id) {
         return Err(AppError::NotFound("session"));
     }
-    sessions::revoke(&state, ctx.tenant.id, session_id).await?;
-    refresh_tokens::revoke_for_session(&state, ctx.tenant.id, ctx.actor(), session_id).await?;
+    logout::end_session(&state, &ctx.tenant, session_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -111,15 +110,7 @@ async fn revoke_all_sessions(
     Query(q): Query<RevokeAllQuery>,
 ) -> AppResult<Json<Revoked>> {
     ctx.require_recent(&state).await?;
-    let mut revoked = 0;
-    for s in sessions::list_live_for_user(&state, ctx.tenant.id, ctx.user.id).await? {
-        if q.keep_current && Some(s.id) == ctx.session_id {
-            continue;
-        }
-        if sessions::revoke(&state, ctx.tenant.id, s.id).await? {
-            revoked += 1;
-        }
-        refresh_tokens::revoke_for_session(&state, ctx.tenant.id, ctx.actor(), s.id).await?;
-    }
+    let keep = if q.keep_current { ctx.session_id } else { None };
+    let revoked = logout::end_sessions_for_user(&state, &ctx.tenant, ctx.user.id, keep).await?;
     Ok(Json(Revoked { revoked }))
 }

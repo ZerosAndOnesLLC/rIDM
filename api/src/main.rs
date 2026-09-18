@@ -15,7 +15,7 @@ async fn main() {
     // images have no curl, so the binary probes itself.
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--healthcheck") {
-        std::process::exit(healthcheck().await);
+        std::process::exit(ridm_api::healthcheck::run().await);
     }
     if args.first().map(String::as_str) == Some("bootstrap") {
         std::process::exit(bootstrap_command(&args[1..]).await);
@@ -63,8 +63,18 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
 
     let db = db::connect(&config).await?;
     if config.migrate_on_start {
-        tracing::info!("applying pending migrations");
-        db::migrate(&db).await?;
+        let applied = db::migrate_pending(&db).await?;
+        if applied > 0 {
+            tracing::info!(applied, "pending migrations applied");
+        }
+    } else {
+        let pending = db::pending_migrations(&db).await?;
+        if pending > 0 {
+            tracing::warn!(
+                pending,
+                "database migrations are pending; run `ridm-api migrate` as the schema owner"
+            );
+        }
     }
     let cache = cache::connect(&config)?;
     cache::ping(&cache).await?;
@@ -86,6 +96,12 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         .await?;
         if outcome == bootstrap::BootstrapOutcome::AlreadyBootstrapped {
             tracing::debug!("bootstrap: already done, skipping");
+        }
+        if b.sample_client && !bootstrap::ensure_sample_client(&state).await? {
+            tracing::debug!(
+                client_id = bootstrap::SAMPLE_CLIENT_ID,
+                "bootstrap: sample client exists"
+            );
         }
     }
     // Every tenant carries the console's client; its redirect URIs follow UI_URL.
@@ -141,23 +157,6 @@ async fn shutdown_signal(handle: Handle<SocketAddr>) {
     }
     tracing::info!("shutdown signal received, draining connections");
     handle.graceful_shutdown(Some(std::time::Duration::from_secs(20)));
-}
-
-async fn healthcheck() -> i32 {
-    let bind = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".into());
-    let port = bind.rsplit(':').next().unwrap_or("8080");
-    let url = format!("http://127.0.0.1:{port}/healthz");
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(2))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => return 1,
-    };
-    match client.get(&url).send().await {
-        Ok(resp) if resp.status().is_success() => 0,
-        _ => 1,
-    }
 }
 
 /// `ridm-api bootstrap [--email E] [--username U] [--password-stdin] [--no-must-change]`
@@ -240,9 +239,30 @@ async fn bootstrap_command(args: &[String]) -> i32 {
             return 1;
         }
     };
-    if let Err(err) = db::migrate(&db).await {
-        eprintln!("migrate: {err}");
-        return 1;
+    // Migrations follow `MIGRATE_ON_START`, as at startup: this command runs
+    // as `DATABASE_URL`'s role, usually the DML-only application role, which
+    // cannot apply them (`ridm-api migrate` runs as the schema owner).
+    let pending = if config.migrate_on_start {
+        db::migrate_pending(&db)
+            .await
+            .map(|_| 0)
+            .map_err(|e| e.to_string())
+    } else {
+        db::pending_migrations(&db).await.map_err(|e| e.to_string())
+    };
+    match pending {
+        Ok(0) => {}
+        Ok(n) => {
+            eprintln!(
+                "{n} database migration(s) pending: run `ridm-api migrate` as the schema \
+                 owner first (or set MIGRATE_ON_START=true for a role that owns the schema)"
+            );
+            return 1;
+        }
+        Err(err) => {
+            eprintln!("migrate: {err}");
+            return 1;
+        }
     }
     let cache = match cache::connect(&config) {
         Ok(c) => c,
@@ -251,7 +271,21 @@ async fn bootstrap_command(args: &[String]) -> i32 {
             return 1;
         }
     };
+    let sample_client = env_bootstrap.as_ref().is_some_and(|b| b.sample_client);
     let state = AppState::new(config, db, cache);
+    if sample_client {
+        match bootstrap::ensure_sample_client(&state).await {
+            Ok(true) => println!(
+                "sample client `{}` created in master",
+                bootstrap::SAMPLE_CLIENT_ID
+            ),
+            Ok(false) => {}
+            Err(err) => {
+                eprintln!("sample client: {err}");
+                return 1;
+            }
+        }
+    }
     match bootstrap::run(
         &state,
         bootstrap::BootstrapRequest {

@@ -342,6 +342,7 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
         docs_enabled: true,
         cookie_secure: false,
         trusted_proxies: vec![],
+        outbound_allow_networks: vec![],
         // Off by default so parallel tests from one address never trip a
         // ceiling; the rate-limit suite switches it on through `spawn_configured`.
         rate_limits: ridm_api::config::RateLimitConfig {

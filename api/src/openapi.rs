@@ -87,6 +87,7 @@ pub fn admin_router() -> OpenApiRouter<AppState> {
         .merge(admin::audit_router())
         .merge(admin::webhooks_router())
         .merge(admin::scim_router())
+        .merge(admin::dcr_router())
         .merge(admin::ip_rules_router())
         .merge(admin::identity_providers_router())
         .merge(account::me_router())

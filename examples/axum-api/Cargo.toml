@@ -1,0 +1,23 @@
+[package]
+name = "ridm-example-axum-api"
+description = "Example: a Rust resource server that accepts rIDM access tokens through ridm-auth"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# Copied out of this repository, this line becomes `ridm-auth = "0.1"`.
+ridm-auth = { path = "../../crates/ridm-auth", version = "0.1.0-dev" }
+
+axum = { workspace = true }
+tokio = { workspace = true }
+tower-http = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

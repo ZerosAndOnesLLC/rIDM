@@ -12,10 +12,13 @@ use serde_json::{Map, json};
 use uuid::Uuid;
 
 use crate::cache::keys;
-use crate::error::AppResult;
-use crate::models::{Client, Tenant};
-use crate::services::{clients, keys as signing_keys, refresh_tokens, sessions, tokens};
+use crate::db;
+use crate::error::{AppError, AppResult};
+use crate::models::{Client, Tenant, User};
+use crate::repos;
+use crate::services::{clients, keys as signing_keys, sessions, tokens};
 use crate::state::AppState;
+use crate::util::outbound;
 
 pub const LOGOUT_FLOW_TTL_SECS: u64 = 10 * 60;
 
@@ -77,9 +80,18 @@ pub struct LogoutOutcome {
     /// Front-channel logout URLs (with `iss` and `sid`) for the UI to load.
     pub frontchannel_logout_uris: Vec<String>,
     pub backchannel_notified: usize,
+    /// The session was live until now.
+    #[serde(skip)]
+    pub ended: bool,
 }
 
-/// Terminate a session everywhere it is known.
+/// Terminate a session everywhere it is known: the SSO session, the refresh
+/// tokens issued in it, and the relying parties that took part (back-channel
+/// logout tokens are sent in the background; front-channel URLs are returned
+/// for a browser to load). Every way a session ends on purpose — RP-initiated
+/// logout, sign-out in the account console, an administrator's revocation,
+/// a password change or reset, disabling or deleting the user — goes through
+/// here so relying parties hear of it.
 pub async fn end_session(
     state: &AppState,
     tenant: &Tenant,
@@ -87,20 +99,16 @@ pub async fn end_session(
 ) -> AppResult<LogoutOutcome> {
     let participants = sessions::clients_of(state, tenant.id, session_id).await?;
     let session = sessions::get(state, tenant.id, session_id, &tenant.settings.session).await?;
-    sessions::revoke(state, tenant.id, session_id).await?;
-    refresh_tokens::revoke_for_session(
-        state,
-        tenant.id,
-        ridm_core::events::Actor::System,
-        session_id,
-    )
-    .await?;
+    let ended = sessions::revoke(state, tenant.id, session_id).await?;
 
     let issuer = match &tenant.settings.custom_domain {
         Some(host) => format!("https://{host}"),
         None => state.config.issuer_for(&tenant.slug),
     };
-    let mut outcome = LogoutOutcome::default();
+    let mut outcome = LogoutOutcome {
+        ended,
+        ..Default::default()
+    };
     let Some(session) = session else {
         return Ok(outcome);
     };
@@ -124,13 +132,19 @@ pub async fn end_session(
     }
     outcome.backchannel_notified = backchannel.len();
     if !backchannel.is_empty() {
+        // The subject is read now, soft-deleted or not: the caller may be
+        // deleting the user while the tokens are on their way.
+        let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
+        let user = repos::users::find_by_id(&mut *tx, tenant.id, session.user_id).await?;
+        tx.commit().await?;
+        let Some(user) = user else {
+            return Ok(outcome);
+        };
         let st = state.clone();
         let tenant = tenant.clone();
-        let user_id = session.user_id;
         tokio::spawn(async move {
             for client in backchannel {
-                if let Err(err) = send_backchannel(&st, &tenant, &client, user_id, session_id).await
-                {
+                if let Err(err) = send_backchannel(&st, &tenant, &client, &user, session_id).await {
                     tracing::warn!(client = %client.client_id, error = %err, "back-channel logout failed");
                 }
             }
@@ -139,19 +153,41 @@ pub async fn end_session(
     Ok(outcome)
 }
 
+/// Sign a user out of every live session ("sign out everywhere"), or of all
+/// but `keep`, each through [`end_session`]. Returns how many were live.
+pub async fn end_sessions_for_user(
+    state: &AppState,
+    tenant: &Tenant,
+    user_id: Uuid,
+    keep: Option<Uuid>,
+) -> AppResult<u64> {
+    let mut ended = 0;
+    for s in sessions::list_live_for_user(state, tenant.id, user_id).await? {
+        if Some(s.id) == keep {
+            continue;
+        }
+        if end_session(state, tenant, s.id).await?.ended {
+            ended += 1;
+        }
+    }
+    Ok(ended)
+}
+
 /// Build and POST a logout token (OIDC Back-Channel Logout 1.0 §2.4).
 async fn send_backchannel(
     state: &AppState,
     tenant: &Tenant,
     client: &Client,
-    user_id: Uuid,
+    user: &User,
     session_id: Uuid,
 ) -> AppResult<()> {
     let uri = client
         .backchannel_logout_uri
         .clone()
-        .ok_or_else(|| crate::error::AppError::Internal("no backchannel uri".into()))?;
-    let user = crate::services::users::get(state, tenant.id, user_id).await?;
+        .ok_or_else(|| AppError::Internal("no backchannel uri".into()))?;
+    // A client registration (possibly a dynamic one) chose this URL: public
+    // addresses only (SSRF).
+    outbound::check_url(&uri).map_err(AppError::Unavailable)?;
     let tc = tokens::TokenClient::from_client(client, tenant, vec![]);
     let key = signing_keys::ensure_active(state, tenant.id, &tenant.settings.keys).await?;
     let mut claims: Map<String, serde_json::Value> = Map::new();
@@ -160,7 +196,7 @@ async fn send_backchannel(
         None => state.config.issuer_for(&tenant.slug),
     };
     claims.insert("iss".into(), json!(issuer));
-    claims.insert("sub".into(), json!(tokens::subject_for(tenant, &tc, &user)));
+    claims.insert("sub".into(), json!(tokens::subject_for(tenant, &tc, user)));
     claims.insert("aud".into(), json!(client.client_id));
     claims.insert("iat".into(), json!(Utc::now().timestamp()));
     claims.insert("exp".into(), json!(Utc::now().timestamp() + 120));
@@ -172,19 +208,18 @@ async fn send_backchannel(
     );
     let logout_token = tokens::sign(state, &key, "logout+jwt", &claims).await?;
 
-    let http = reqwest::Client::builder()
+    let http = outbound::client_builder()
         .timeout(Duration::from_secs(5))
-        .redirect(reqwest::redirect::Policy::none())
         .build()
-        .map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
+        .map_err(|e| AppError::Internal(e.to_string()))?;
     let res = http
         .post(&uri)
         .form(&[("logout_token", logout_token)])
         .send()
         .await
-        .map_err(|e| crate::error::AppError::Unavailable(e.to_string()))?;
+        .map_err(|e| AppError::Unavailable(outbound::describe(&e)))?;
     if !res.status().is_success() {
-        return Err(crate::error::AppError::Unavailable(format!(
+        return Err(AppError::Unavailable(format!(
             "{} answered {}",
             uri,
             res.status()

@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    NewPermission, NewResourceServer, Permission, ResourceServer, ResourceServerUpdate,
+    NewPermission, NewResourceServer, Permission, ResourceServer, ResourceServerUpdate, SigningAlg,
 };
 use crate::repos;
 use crate::services::roles;
@@ -37,13 +37,30 @@ fn validate_name(s: &str) -> AppResult<String> {
     Ok(n)
 }
 
-fn validate_signing_alg(alg: &str) -> AppResult<()> {
-    match alg {
-        "EdDSA" | "ES256" | "RS256" => Ok(()),
-        other => Err(AppError::BadRequest(format!(
-            "unsupported signing_alg `{other}` (EdDSA, ES256 or RS256)"
-        ))),
-    }
+/// Any algorithm rIDM signs with, in its canonical spelling.
+fn validate_signing_alg(alg: &str) -> AppResult<SigningAlg> {
+    SigningAlg::ALL
+        .into_iter()
+        .find(|a| a.as_str() == alg)
+        .ok_or_else(|| {
+            let known: Vec<&str> = SigningAlg::ALL.iter().map(|a| a.as_str()).collect();
+            AppError::BadRequest(format!(
+                "unsupported signing_alg `{alg}` ({})",
+                known.join(", ")
+            ))
+        })
+}
+
+/// Access tokens for a server with a `signing_alg` are signed with the
+/// tenant's active key of that algorithm. Make sure one exists when the
+/// setting is saved, so the first token request does not pay for (RSA) key
+/// generation and a key problem surfaces here rather than at `/token`.
+async fn ensure_signing_key(state: &AppState, tenant_id: Uuid, alg: SigningAlg) -> AppResult<()> {
+    let tenant = crate::services::tenants::get_cached(state, tenant_id)
+        .await?
+        .ok_or(AppError::NotFound("tenant"))?;
+    crate::services::keys::ensure_active_alg(state, tenant_id, &tenant.settings.keys, alg).await?;
+    Ok(())
 }
 
 fn validate_ttl(ttl: Option<i32>) -> AppResult<()> {
@@ -142,10 +159,15 @@ pub async fn create(
 ) -> AppResult<ResourceServer> {
     let identifier = validate_identifier(&input.identifier)?;
     let name = validate_name(&input.name)?;
-    if let Some(alg) = &input.signing_alg {
-        validate_signing_alg(alg)?;
-    }
+    let alg = input
+        .signing_alg
+        .as_deref()
+        .map(validate_signing_alg)
+        .transpose()?;
     validate_ttl(input.token_ttl_secs)?;
+    if let Some(alg) = alg {
+        ensure_signing_key(state, tenant_id, alg).await?;
+    }
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let rs = repos::resource_servers::insert(
         &mut *tx,
@@ -193,9 +215,10 @@ pub async fn update(
     if let Some(n) = &patch.name {
         patch.name = Some(validate_name(n)?);
     }
-    if let Some(Some(alg)) = &patch.signing_alg {
-        validate_signing_alg(alg)?;
-    }
+    let new_alg = match &patch.signing_alg {
+        Some(Some(alg)) => Some(validate_signing_alg(alg)?),
+        _ => None,
+    };
     if let Some(t) = patch.token_ttl_secs {
         validate_ttl(t)?;
     }
@@ -212,6 +235,9 @@ pub async fn update(
         .await?
         .ok_or(AppError::NotFound("resource server"))?;
     tx.commit().await?;
+    if let Some(alg) = new_alg {
+        ensure_signing_key(state, tenant_id, alg).await?;
+    }
     state.events.publish(Event::new(
         Some(tenant_id),
         actor,

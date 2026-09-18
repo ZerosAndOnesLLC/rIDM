@@ -17,9 +17,7 @@ use ridm_core::events::Actor;
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
-use crate::middleware::admin::{
-    AdminRejection, bearer_with_scheme, require_binding, unverified_tenant_id,
-};
+use crate::middleware::admin::{AdminRejection, bearer_with_scheme, require_binding};
 use crate::middleware::tenant::TenantCtx;
 use crate::models::{PAT_SCOPE_ACCOUNT, Tenant, User, UserStatus};
 use crate::services::account_console::ACCOUNT_AUDIENCE;
@@ -117,19 +115,20 @@ impl FromRequestParts<AppState> for AccountCtx {
                 client_id: "pat".into(),
             });
         }
-        let tenant_id = unverified_tenant_id(&token).ok_or_else(AdminRejection::invalid)?;
+        let tenant_id = tokens::access_token_tenant_hint(state, &token)
+            .await?
+            .ok_or_else(AdminRejection::invalid)?;
         let tenant = tenants::get_cached(state, tenant_id)
             .await?
             .ok_or_else(AdminRejection::invalid)?;
         if !tenant.is_active() {
             return Err(AppError::Forbidden("tenant is disabled".into()).into());
         }
-        let claims = tokens::verify(
+        let claims = tokens::verify_access(
             state,
             &tenant,
             &token,
             &VerifyOptions {
-                typ: Some("at+jwt".into()),
                 audience: Some(ACCOUNT_AUDIENCE.into()),
                 ..Default::default()
             },

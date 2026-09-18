@@ -83,6 +83,23 @@ pub async fn mark_revoked<'e>(
     Ok(())
 }
 
+/// Was this session revoked (signed out, as opposed to merely expired)? A
+/// row already purged counts as not revoked.
+pub async fn is_revoked<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let revoked: Option<bool> = sqlx::query_scalar(
+        "SELECT revoked_at IS NOT NULL FROM sso_sessions WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .fetch_optional(exec)
+    .await?;
+    Ok(revoked.unwrap_or(false))
+}
+
 /// Live sessions of a user, oldest first.
 pub async fn list_live_for_user<'e>(
     exec: impl PgExecutor<'e>,

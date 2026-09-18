@@ -33,6 +33,27 @@ pub fn merge_patch(target: &mut serde_json::Value, patch: &serde_json::Value) {
     }
 }
 
+/// Prepare `target` for a merge patch that may switch `target[member]`, an
+/// internally tagged enum (`#[serde(tag = "...")]`), to another variant. A
+/// plain merge keeps the old variant's fields next to the new tag, where the
+/// new variant does not know them. When `patch` names a different `tag`, the
+/// old member is dropped first, so the patch's fields alone make the new one.
+pub fn drop_on_variant_change(
+    target: &mut serde_json::Value,
+    patch: &serde_json::Value,
+    member: &str,
+    tag: &str,
+) {
+    let Some(new_tag) = patch.get(member).and_then(|m| m.get(tag)) else {
+        return;
+    };
+    if let Some(obj) = target.as_object_mut()
+        && obj.get(member).and_then(|m| m.get(tag)) != Some(new_tag)
+    {
+        obj.remove(member);
+    }
+}
+
 /// JSON pointer paths at which `a` and `b` differ (objects compared member by
 /// member, numbers by value so `14` equals `14.0`). Used to detect fields a
 /// patch named that the typed settings do not know: they vanish on the
@@ -82,6 +103,30 @@ mod tests {
         d.sort();
         assert_eq!(d, ["/extra", "/s", "/x/z"]);
         assert!(diff_paths(&a, &a).is_empty());
+    }
+
+    #[test]
+    fn a_new_variant_drops_the_old_variants_fields() {
+        use serde_json::json;
+        let current = json!({"mfa": {"mode": "required_for_roles", "roles": ["a"]}, "x": 1});
+        let mut doc = current.clone();
+        let patch = json!({"mfa": {"mode": "optional"}});
+        drop_on_variant_change(&mut doc, &patch, "mfa", "mode");
+        merge_patch(&mut doc, &patch);
+        assert_eq!(doc, json!({"mfa": {"mode": "optional"}, "x": 1}));
+        // Same variant: an ordinary merge.
+        let mut doc = current.clone();
+        let patch = json!({"mfa": {"mode": "required_for_roles", "roles": ["b"]}});
+        drop_on_variant_change(&mut doc, &patch, "mfa", "mode");
+        merge_patch(&mut doc, &patch);
+        assert_eq!(
+            doc["mfa"],
+            json!({"mode": "required_for_roles", "roles": ["b"]})
+        );
+        // No tag in the patch: nothing to decide.
+        let mut doc = current.clone();
+        drop_on_variant_change(&mut doc, &json!({"mfa": {"roles": []}}), "mfa", "mode");
+        assert_eq!(doc, current);
     }
 
     #[test]

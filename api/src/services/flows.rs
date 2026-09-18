@@ -872,6 +872,18 @@ pub async fn mfa_required(
     if flow.trusted_device {
         return Ok(false);
     }
+    policy_requires_mfa(state, tenant, user).await
+}
+
+/// The tenant's MFA policy alone, for `user`: `required` asks everyone,
+/// `required_for_roles` / `required_for_admins` ask the users they name and
+/// treat everyone else as `optional`, which asks users who enrolled a factor.
+/// Trusted devices and client step-ups are the caller's business.
+pub async fn policy_requires_mfa(
+    state: &AppState,
+    tenant: &Tenant,
+    user: &User,
+) -> AppResult<bool> {
     let required = match &tenant.settings.mfa {
         MfaPolicy::Off => return Ok(false),
         MfaPolicy::Required => true,
@@ -887,6 +899,44 @@ pub async fn mfa_required(
         }
     };
     Ok(required || totp::has_second_factor(state, tenant.id, user.id).await?)
+}
+
+/// The step a live SSO session still owes before anything may be issued on
+/// it, or `None` when it is complete.
+///
+/// A flow opens the session as soon as the first factor passes and then
+/// walks the remaining steps, so a browser that abandons the flow holds a
+/// session that never passed them. Every place that turns a session into a
+/// grant asks this first, from the policy as it stands now (so a policy
+/// tightened after sign-in, or a role granted since, counts too): a password
+/// the user must change, then the second factor the tenant's policy demands.
+/// A trusted device (the browser's device cookie, exactly as the flow reads
+/// it) waives policy MFA the same way it does in the flow. A user who is
+/// gone or no longer active owes a fresh sign-in (`Authenticate`).
+pub async fn unfinished_stage(
+    state: &AppState,
+    tenant: &Tenant,
+    session: &SsoSession,
+    headers: &axum::http::HeaderMap,
+) -> AppResult<Option<FlowStage>> {
+    let user = match users::get(state, tenant.id, session.user_id).await {
+        Ok(u) if matches!(u.status, UserStatus::Active | UserStatus::Pending) => u,
+        Ok(_) | Err(AppError::NotFound(_)) => return Ok(Some(FlowStage::Authenticate)),
+        Err(e) => return Err(e),
+    };
+    if user.must_change_password && tenant.settings.auth.password {
+        return Ok(Some(FlowStage::PasswordChange));
+    }
+    if session.amr.iter().any(|m| m == "mfa") || !policy_requires_mfa(state, tenant, &user).await? {
+        return Ok(None);
+    }
+    if trusted_devices::is_trusted(state, tenant, user.id, headers, None)
+        .await?
+        .is_some()
+    {
+        return Ok(None);
+    }
+    Ok(Some(FlowStage::Mfa))
 }
 
 /// Outcome of a second-factor step.

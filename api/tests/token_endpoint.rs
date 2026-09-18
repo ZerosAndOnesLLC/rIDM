@@ -100,7 +100,11 @@ async fn cookie(fx: &Fx) -> String {
     )
     .await
     .unwrap();
-    format!("{}={}", sessions::cookie_name(&fx.app.state), s.id)
+    format!(
+        "{}={}",
+        sessions::cookie_name(&fx.app.state, &fx.app.tenant.slug),
+        s.id
+    )
 }
 
 /// Run /authorize with a session and return the code.
@@ -301,7 +305,22 @@ async fn authorization_code_pkce_round_trip_then_refresh_rotation() {
         body["error"], "invalid_scope",
         "scope cannot exceed the original grant"
     );
-    // rt1 was consumed → reuse detection revokes the family; rt2 dies with it.
+    // The refused request did not spend rt2: the client still holds a
+    // working token (the scope is checked before rotation).
+    let (status, body) = post_token(
+        &fx,
+        &[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", &rt2),
+            ("client_id", &client_id),
+        ],
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["scope"], "openid profile email");
+    let rt3 = body["refresh_token"].as_str().unwrap().to_string();
+    // rt1 was consumed → reuse detection revokes the family; rt3 dies with it.
     let (_, body) = post_token(
         &fx,
         &[
@@ -317,7 +336,7 @@ async fn authorization_code_pkce_round_trip_then_refresh_rotation() {
         &fx,
         &[
             ("grant_type", "refresh_token"),
-            ("refresh_token", &rt2),
+            ("refresh_token", &rt3),
             ("client_id", &client_id),
         ],
         None,

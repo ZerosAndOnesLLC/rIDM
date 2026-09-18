@@ -10,7 +10,9 @@ export function SignInSection() {
   const { draft, editable, update } = useSettingsEditor();
   const { auth, mfa, mfa_methods, registration } = draft.settings;
   const mfaRoles = mfa.mode === "required_for_roles" ? mfa.roles : [];
-  const setMfa = (mode: MfaMode, roles = mfaRoles) => update({ mfa: mode === "required_for_roles" ? { mode, roles } : { mode } });
+  // Another mode drops the role list outright (`null`), so a coalesced batch
+  // of edits never carries a stale list next to a mode that has none.
+  const setMfa = (mode: MfaMode, roles = mfaRoles) => update({ mfa: mode === "required_for_roles" ? { mode, roles } : { mode, roles: null } });
   const urlError = (v: string | null | undefined) => (v && !isHttpUrl(v) ? "Enter an http(s) URL." : null);
 
   return (
@@ -53,7 +55,6 @@ export function SignInSection() {
         <Toggle label="Allow people to create accounts" checked={registration.enabled} disabled={!editable} onChange={(v) => update({ registration: { enabled: v } })} />
         <Toggle label="Require email verification" checked={registration.require_email_verification} disabled={!editable} onChange={(v) => update({ registration: { require_email_verification: v } })} />
         <Toggle label="Require accepting the terms" checked={registration.require_terms} disabled={!editable} onChange={(v) => update({ registration: { require_terms: v } })} />
-        <Toggle label="CAPTCHA on registration" checked={registration.captcha} disabled={!editable} onChange={(v) => update({ registration: { captcha: v } })} />
       </div>
       <Field label="Terms of service URL" error={urlError(registration.terms_url)}>
         {(id, by) => (

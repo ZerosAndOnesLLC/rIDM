@@ -62,6 +62,12 @@ pub fn jti_denied(tenant_id: Uuid, jti: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:jti:{jti}")
 }
 
+/// Claims of an opaque access token, by the SHA-256 of the token. Not
+/// tenant-scoped: the admin and account APIs learn the tenant from the entry.
+pub fn opaque_access_token(token_hash: &str) -> String {
+    format!("{PREFIX}:at:{token_hash}")
+}
+
 pub fn client_by_client_id(tenant_id: Uuid, client_id: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:client:{client_id}")
 }
@@ -125,10 +131,6 @@ pub fn logout_flow(tenant_id: Uuid, flow_id: Uuid) -> String {
 
 pub fn par_request(tenant_id: Uuid, id: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:par:{id}")
-}
-
-pub fn dcr_initial_token(tenant_id: Uuid, token_hash: &str) -> String {
-    format!("{PREFIX}:t:{tenant_id}:dcr:iat:{token_hash}")
 }
 
 /// Decrypted provider configuration (L1 only; never stored in Redis).

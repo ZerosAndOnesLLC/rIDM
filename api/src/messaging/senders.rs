@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use lettre::AsyncTransport as _;
 use lettre::message::{Mailbox, MultiPart, SinglePart, header};
 use lettre::transport::smtp::authentication::Credentials;
+use lettre::transport::smtp::client::{Tls, TlsParameters};
 use lettre::{AsyncSmtpTransport, Tokio1Executor};
 use ridm_core::providers::{EmailMessage, EmailSender, ProviderError, SmsMessage, SmsSender};
 use uuid::Uuid;
@@ -42,7 +43,7 @@ impl SenderFactory for DefaultSenderFactory {
                 .await?
         {
             return Ok(Some(match &*cfg {
-                EmailProviderConfig::Smtp(smtp) => Arc::new(SmtpEmailSender::new(smtp)?),
+                EmailProviderConfig::Smtp(smtp) => Arc::new(SmtpEmailSender::for_tenant(smtp)?),
                 EmailProviderConfig::Http {
                     url,
                     auth_header,
@@ -83,32 +84,68 @@ impl SenderFactory for DefaultSenderFactory {
 // ---------------------------------------------------------------------------
 
 pub struct SmtpEmailSender {
-    transport: AsyncSmtpTransport<Tokio1Executor>,
+    cfg: SmtpConfig,
     from: Mailbox,
+    /// The host was chosen by a tenant administrator, not the operator: it is
+    /// resolved under the outbound policy before every connection
+    /// ([`crate::util::outbound::resolve_public`]).
+    public_only: bool,
 }
 
 impl SmtpEmailSender {
+    /// The deployment's own SMTP server (`SMTP_*`): the operator chose it, so
+    /// any address is fine (a private relay is the usual case).
     pub fn new(cfg: &SmtpConfig) -> AppResult<Self> {
+        Self::build(cfg, false)
+    }
+
+    /// A tenant's SMTP server: public addresses only (SSRF), with the same
+    /// loopback allowance as the other outbound targets (`localhost` and
+    /// loopback literals, for development).
+    pub fn for_tenant(cfg: &SmtpConfig) -> AppResult<Self> {
+        crate::util::outbound::check_host(&cfg.host)
+            .map_err(|e| crate::error::AppError::BadRequest(format!("smtp host: {e}")))?;
+        Self::build(cfg, true)
+    }
+
+    fn build(cfg: &SmtpConfig, public_only: bool) -> AppResult<Self> {
         let from: Mailbox = cfg
             .from
             .parse()
             .map_err(|e| crate::error::AppError::BadRequest(format!("smtp from: {e}")))?;
-        let mut builder = match cfg.security.as_str() {
-            "tls" => AsyncSmtpTransport::<Tokio1Executor>::relay(&cfg.host)
-                .map_err(|e| crate::error::AppError::BadRequest(format!("smtp: {e}")))?,
-            "none" => AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&cfg.host),
-            _ => AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&cfg.host)
-                .map_err(|e| crate::error::AppError::BadRequest(format!("smtp: {e}")))?,
-        }
-        .port(cfg.port)
-        .timeout(Some(Duration::from_secs(15)));
+        let sender = Self {
+            cfg: cfg.clone(),
+            from,
+            public_only,
+        };
+        // Validates the TLS parameters up front.
+        sender
+            .transport(&cfg.host)
+            .map_err(|e| crate::error::AppError::BadRequest(format!("smtp: {e}")))?;
+        Ok(sender)
+    }
+
+    /// A transport that connects to `address` (the configured host, or the
+    /// address vetted for it) while TLS verifies the certificate against the
+    /// configured host name.
+    fn transport(
+        &self,
+        address: &str,
+    ) -> Result<AsyncSmtpTransport<Tokio1Executor>, lettre::transport::smtp::Error> {
+        let cfg = &self.cfg;
+        let tls = match cfg.security.as_str() {
+            "tls" => Tls::Wrapper(TlsParameters::new(cfg.host.clone())?),
+            "none" => Tls::None,
+            _ => Tls::Required(TlsParameters::new(cfg.host.clone())?),
+        };
+        let mut builder = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(address)
+            .port(cfg.port)
+            .tls(tls)
+            .timeout(Some(Duration::from_secs(15)));
         if let (Some(u), Some(p)) = (&cfg.username, &cfg.password) {
             builder = builder.credentials(Credentials::new(u.clone(), p.clone()));
         }
-        Ok(Self {
-            transport: builder.build(),
-            from,
-        })
+        Ok(builder.build())
     }
 }
 
@@ -152,7 +189,21 @@ impl EmailSender for SmtpEmailSender {
             ),
         }
         .map_err(|e| ProviderError::Rejected(format!("build: {e}")))?;
-        self.transport.send(email).await.map(|_| ()).map_err(|e| {
+        // A tenant's host is resolved here, right before the connection, and
+        // the connection goes to the address that passed, not to the name.
+        let address = if self.public_only {
+            crate::util::outbound::resolve_public(&self.cfg.host, self.cfg.port)
+                .await
+                .map_err(ProviderError::Rejected)?
+                .ip()
+                .to_string()
+        } else {
+            self.cfg.host.clone()
+        };
+        let transport = self
+            .transport(&address)
+            .map_err(|e| ProviderError::Rejected(format!("smtp: {e}")))?;
+        transport.send(email).await.map(|_| ()).map_err(|e| {
             if e.is_permanent() {
                 ProviderError::Rejected(e.to_string())
             } else {
@@ -179,7 +230,8 @@ impl HttpEmailSender {
             url: url.to_string(),
             auth_header,
             from: from.to_string(),
-            http: reqwest::Client::builder()
+            // A tenant chose this URL: public addresses only (SSRF).
+            http: crate::util::outbound::client_builder()
                 .timeout(Duration::from_secs(15))
                 .build()
                 .expect("reqwest"),
@@ -203,6 +255,7 @@ impl EmailSender for HttpEmailSender {
             "reply_to": message.reply_to.as_ref().map(|a| a.email.clone()),
             "headers": message.headers,
         });
+        crate::util::outbound::check_url(&self.url).map_err(ProviderError::Rejected)?;
         let mut req = self.http.post(&self.url).json(&body);
         if let Some(h) = &self.auth_header {
             req = req.header("authorization", h);
@@ -235,7 +288,8 @@ impl WebhookSmsSender {
             url: cfg.url.clone(),
             auth_header: cfg.auth_header.clone(),
             from: cfg.from.clone(),
-            http: reqwest::Client::builder()
+            // A tenant chose this URL: public addresses only (SSRF).
+            http: crate::util::outbound::client_builder()
                 .timeout(Duration::from_secs(15))
                 .build()
                 .expect("reqwest"),
@@ -251,6 +305,7 @@ impl SmsSender for WebhookSmsSender {
 
     async fn send(&self, message: &SmsMessage) -> Result<(), ProviderError> {
         let body = serde_json::json!({"to": message.to, "body": message.body, "from": self.from});
+        crate::util::outbound::check_url(&self.url).map_err(ProviderError::Rejected)?;
         let mut req = self.http.post(&self.url).json(&body);
         if let Some(h) = &self.auth_header {
             req = req.header("authorization", h);

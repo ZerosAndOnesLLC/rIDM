@@ -52,7 +52,11 @@ async fn fixture() -> Fx {
     )
     .await
     .unwrap();
-    let cookie = format!("{}={}", sessions::cookie_name(&app.state), s.id);
+    let cookie = format!(
+        "{}={}",
+        sessions::cookie_name(&app.state, &app.tenant.slug),
+        s.id
+    );
     Fx {
         app,
         user_id: user.id,

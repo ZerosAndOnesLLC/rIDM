@@ -1,6 +1,7 @@
 mod audit;
 mod auth;
 mod clients;
+mod dcr;
 mod groups;
 mod identity_providers;
 mod invitations;
@@ -22,6 +23,7 @@ pub use audit::audit_router;
 pub use audit::{AuditFilterQuery, ListQuery};
 pub use auth::auth_router;
 pub use clients::clients_router;
+pub use dcr::dcr_router;
 pub use groups::groups_router;
 pub use identity_providers::identity_providers_router;
 pub use invitations::invitations_router;

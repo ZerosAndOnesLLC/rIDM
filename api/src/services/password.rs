@@ -8,7 +8,7 @@
 //!
 //! | Format | Example |
 //! |--------|---------|
-//! | argon2id PHC | `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>` |
+//! | argon2id PHC | `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>` (also `$argon2i$`, `$argon2d$`, upgraded) |
 //! | bcrypt | `$2b$12$...` (also `$2a$`, `$2y$`) |
 //! | PBKDF2 PHC (passlib) | `$pbkdf2-sha256$29000$<salt b64>$<hash b64>` (`-sha512` too) |
 //! | PBKDF2 Django | `pbkdf2_sha256$600000$<salt>$<hash b64>` |
@@ -128,8 +128,12 @@ pub mod legacy {
 
     /// Identifier for `users.password_algo` derived from a stored hash.
     pub fn algorithm_of(stored: &str) -> &'static str {
-        if stored.starts_with("$argon2") {
+        if stored.starts_with("$argon2id$") {
             ALGO_ARGON2ID
+        } else if stored.starts_with("$argon2i$") {
+            "argon2i"
+        } else if stored.starts_with("$argon2d$") {
+            "argon2d"
         } else if stored.starts_with("$2a$")
             || stored.starts_with("$2b$")
             || stored.starts_with("$2y$")
@@ -718,6 +722,18 @@ mod tests {
             Err(ProviderError::Rejected(_))
         ));
         assert_eq!(legacy::algorithm_of("plaintext"), "unknown");
+    }
+
+    #[test]
+    fn argon2_variants_are_labelled_by_their_own_name() {
+        let tail = "v=19$m=8192,t=1,p=1$c2FsdHNhbHRzYWx0$aGFzaA";
+        assert_eq!(
+            legacy::algorithm_of(&format!("$argon2id${tail}")),
+            "argon2id"
+        );
+        assert_eq!(legacy::algorithm_of(&format!("$argon2i${tail}")), "argon2i");
+        assert_eq!(legacy::algorithm_of(&format!("$argon2d${tail}")), "argon2d");
+        assert_eq!(legacy::algorithm_of(&format!("$argon2x${tail}")), "unknown");
     }
 
     #[test]

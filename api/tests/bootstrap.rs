@@ -88,3 +88,24 @@ async fn bootstrap_is_idempotent_and_creates_a_global_owner() {
         .unwrap();
     assert_eq!(admin2.password_hash, admin.password_hash);
 }
+
+/// `BOOTSTRAP_SAMPLE_CLIENT=true` seeds a public SPA client in `master`, once.
+#[tokio::test]
+async fn the_sample_client_is_seeded_idempotently() {
+    use ridm_api::models::ClientType;
+    use ridm_api::services::clients;
+    let app = TestApp::spawn().await;
+    // The shared master tenant may have it from an earlier run already.
+    bootstrap::ensure_sample_client(&app.state).await.unwrap();
+    assert!(
+        !bootstrap::ensure_sample_client(&app.state).await.unwrap(),
+        "a second run creates nothing"
+    );
+    let client = clients::find_by_client_id(&app.state, MASTER_TENANT_ID, "sample-spa")
+        .await
+        .unwrap()
+        .expect("sample client");
+    assert_eq!(client.client_type, ClientType::Spa);
+    assert_eq!(client.redirect_uris, ["http://localhost:3000/callback"]);
+    assert!(client.require_pkce);
+}

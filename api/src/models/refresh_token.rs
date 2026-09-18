@@ -30,6 +30,13 @@ pub struct RefreshToken {
 }
 
 impl RefreshToken {
+    /// Granted `offline_access`: the family may outlive the SSO session it
+    /// was issued in (OIDC Core §11). Without it the family ends with the
+    /// session.
+    pub fn is_offline(&self) -> bool {
+        self.scopes.iter().any(|s| s == "offline_access")
+    }
+
     pub fn is_usable(&self, now: DateTime<Utc>) -> bool {
         self.consumed_at.is_none() && self.revoked_at.is_none() && self.expires_at > now
     }

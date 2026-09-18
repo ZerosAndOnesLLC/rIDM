@@ -1,0 +1,25 @@
+[book]
+title = "rIDM"
+description = "Self-hosted, multi-tenant OpenID Connect provider and identity management server"
+authors = ["rIDM contributors"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+git-repository-url = "https://github.com/ZerosAndOnesLLC/rIDM"
+edit-url-template = "https://github.com/ZerosAndOnesLLC/rIDM/edit/main/docs/{path}"
+site-url = "/rIDM/"
+default-theme = "light"
+preferred-dark-theme = "navy"
+no-section-label = false
+
+[output.html.search]
+limit-results = 30
+
+[output.html.fold]
+enable = true
+level = 1

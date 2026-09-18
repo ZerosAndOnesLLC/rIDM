@@ -32,7 +32,7 @@ use crate::services::admin_access::{self, Grant};
 use crate::services::bulk_users::{self, ExportFormat, ImportReport};
 use crate::services::password::{self, SetPasswordOptions};
 use crate::services::sessions::{self, SsoSession};
-use crate::services::{broker, consents, groups, roles, trusted_devices, users};
+use crate::services::{broker, consents, groups, logout, roles, trusted_devices, users};
 use crate::state::AppState;
 use crate::util::cursor::Page;
 
@@ -189,6 +189,13 @@ async fn create(
     }
     let input: NewUser = serde_json::from_value(body)
         .map_err(|e| AppError::BadRequest(format!("invalid user: {e}")))?;
+    // As in an import: `locked` and `deleted` are states the system reaches,
+    // not ones a new account starts in.
+    if matches!(input.status, Some(UserStatus::Locked | UserStatus::Deleted)) {
+        return Err(AppError::BadRequest(
+            "status must be active, disabled or pending".into(),
+        ));
+    }
     let user = users::create(&state, tenant.id, admin.actor(), input).await?;
     let mut temporary = None;
     if let Some(p) = pw.password {
@@ -317,12 +324,8 @@ async fn update(
         ));
     }
     load(&state, tenant.id, user).await?;
-    let before = users::get(&state, tenant.id, user).await?;
+    // Disabling ends every session at once (in `users::update`).
     let updated = users::update(&state, tenant.id, admin.actor(), user, body).await?;
-    // Disabling ends every session at once.
-    if before.status != updated.status && updated.status == crate::models::UserStatus::Disabled {
-        sessions::revoke_all_for_user(&state, tenant.id, user).await?;
-    }
     Ok(Json(updated))
 }
 
@@ -336,8 +339,8 @@ async fn delete(
 ) -> AppResult<StatusCode> {
     admin.require(tenant.id, P_WRITE)?;
     load(&state, tenant.id, user).await?;
+    // Ends every session too (in `users::delete`).
     users::delete(&state, tenant.id, admin.actor(), user).await?;
-    sessions::revoke_all_for_user(&state, tenant.id, user).await?;
     trusted_devices::revoke_all(&state, tenant.id, user).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -410,7 +413,7 @@ async fn set_password(
         }
     };
     if body.revoke_sessions {
-        sessions::revoke_all_for_user(&state, tenant.id, user).await?;
+        logout::end_sessions_for_user(&state, &tenant, user, None).await?;
     }
     Ok(res)
 }
@@ -483,7 +486,7 @@ async fn revoke_sessions(
 ) -> AppResult<Json<Revoked>> {
     admin.require(tenant.id, P_WRITE)?;
     load(&state, tenant.id, user).await?;
-    let revoked = sessions::revoke_all_for_user(&state, tenant.id, user).await?;
+    let revoked = logout::end_sessions_for_user(&state, &tenant, user, None).await?;
     Ok(Json(Revoked { revoked }))
 }
 
@@ -505,7 +508,7 @@ async fn revoke_session(
     if !live.iter().any(|s| s.id == session_id) {
         return Err(AppError::NotFound("session"));
     }
-    sessions::revoke(&state, tenant.id, session_id).await?;
+    logout::end_session(&state, &tenant, session_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -556,12 +559,11 @@ async fn delete_credential(
 ) -> AppResult<StatusCode> {
     admin.require(tenant.id, P_WRITE)?;
     load(&state, tenant.id, user).await?;
-    let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
-    let ok = repos::credentials::delete(&mut *tx, tenant.id, user, credential_id).await?;
-    tx.commit().await?;
-    if !ok {
-        return Err(AppError::NotFound("credential"));
-    }
+    // The recovery codes go with the last second factor, as in the account
+    // console.
+    crate::services::totp::remove_credential(&state, tenant.id, user, credential_id, false)
+        .await?
+        .ok_or(AppError::NotFound("credential"))?;
     crate::services::notifications::mfa_changed(&state, tenant.id, user, "removed").await;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -913,7 +915,15 @@ async fn import(
         ));
     };
     Ok(Json(
-        bulk_users::import(&state, &tenant, admin.actor(), rows, q.dry_run).await?,
+        bulk_users::import(
+            &state,
+            &tenant,
+            admin.actor(),
+            rows,
+            q.dry_run,
+            &|perms: &[String]| admin.require_can_grant(perms.iter().map(String::as_str)),
+        )
+        .await?,
     ))
 }
 

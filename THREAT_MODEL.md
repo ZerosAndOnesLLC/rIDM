@@ -71,8 +71,9 @@ Both are game over by construction, and the mitigation is operational.
 | Weak or reused passwords | Per-tenant password policy; the breach check refuses known-leaked passwords at set time |
 | Phishing of a second factor | Passkeys are origin-bound by WebAuthn; TOTP and one-time codes are not, and the tenant chooses which to offer |
 | Second factor skipped | `flows::mfa_required` decides from tenant policy, the user's roles, and the `acr_values` the client asked for; a trusted device never skips a client-requested step-up |
+| A session that predates a stricter policy | `/authorize` and device approval re-check a live session against the tenant's MFA policy as it stands now and against a pending forced password change, and send an unfinished session back to that stage (`prompt=none` answers `login_required`); sessions of disabled or deleted users get no code |
 | Session fixation | A session identifier is issued only after the whole flow completes, including any second factor |
-| Stolen session cookie | `HttpOnly`, `SameSite`, `Secure` when the public URL is https, and path-scoped per tenant so tenants never share one; idle and absolute timeouts; a cap on concurrent sessions |
+| Stolen session cookie | `HttpOnly`, `SameSite=Lax`, and with `COOKIE_SECURE` the `__Host-` prefix (so `Secure`, `Path=/`, no `Domain`); named per tenant (`__Host-ridm_session_{slug}`) so tenants never share one; idle and absolute timeouts; a cap on concurrent sessions |
 | Cross-site request forgery on the flow API | Every flow carries a CSRF token checked on each step (`flows::check_csrf`) |
 | Enumerating which accounts exist | Password reset and passwordless start answer identically for known and unknown identifiers |
 
@@ -87,7 +88,8 @@ Both are game over by construction, and the mitigation is operational.
 | Replayed ID token | `nonce` is bound to the authorization request and checked on return |
 | Refresh token theft | Rotation with reuse detection: replaying a consumed token revokes the whole family; public clients' tokens are DPoP-bound |
 | Bearer token theft in transit or at rest | Optional DPoP sender-constraining (RFC 9449), per-client enforcement, with a `jti` replay guard |
-| Token lifetime abuse after logout or revoke | Access tokens are JWTs, so a `jti` denylist in Valkey stops them before expiry |
+| Token lifetime abuse after logout or revoke | A `jti` denylist in Valkey stops JWT access tokens before expiry; opaque access tokens live in Valkey and are deleted on revocation. Ending a session revokes its refresh tokens (offline ones included), refresh tokens without `offline_access` die with their session, a code whose session was signed out is refused, and every sign-out path sends back-channel logout |
+| Widening a grant on refresh | `resource` may only narrow to the original grant's audiences (`invalid_target`); an ungranted `scope` is `invalid_scope`, answered before the refresh token is spent |
 | A client widening its own reach | Scopes, audiences and grant types are checked against registration; token exchange may only narrow, and only into audiences the client explicitly lists |
 | Trading a sender-constrained token for a looser one | Exchanging a subject token that carries `cnf.jkt` requires a proof of the same key |
 | Forged request objects | Request objects must be signed; `none` is not offered |
@@ -99,7 +101,10 @@ Both are game over by construction, and the mitigation is operational.
 |---|---|
 | Reading another tenant's data | Row-level security in Postgres plus a tenant-bound transaction per request; cross-tenant confinement has a test in every admin suite |
 | Privilege escalation by an administrator | `AdminCtx::require_can_grant`; built-in roles, resource servers and permissions are immutable |
+| Escalation through bulk paths | The same no-escalation rule holds where grants arrive in bulk: a user-import row, or a tenant-import item, that grants roles or groups carrying admin permissions the importer lacks fails on its own (dry runs report it too); a SCIM provisioning token cannot add members to a group that grants admin (`ridm:*`) permissions (`403`) |
 | Host header confusion between tenants | Custom domains resolve through a unique index, and only trusted proxies' forwarded headers are honoured |
+| A custom domain reaching beyond its tenant | `middleware::host` passes through only the health probes, host-wide well-known documents and the tenant's own `/t/{slug}/…` and `/scim/v2/{slug}/…` paths, and rewrites everything else under `/t/{slug}`: the admin API, `/metrics`, `/docs`, `/openapi.json` and other tenants answer `404` there |
+| Claim mappers forging token semantics | Mappers cannot target protected claims (including `cnf` and `act`) or `permissions`; only a `roles` or `groups` mapper writes those claims |
 | A tenant reaching the deployment's own clients | The admin and account console clients are built in and rejected for modification |
 | Guard and handler disagreeing about which tenant a request is for | The request guard refuses any `/t/{slug}` path whose raw segment is not already a valid slug, so an escaped slug cannot route past the tenant's IP rules |
 
@@ -110,7 +115,7 @@ Both are game over by construction, and the mitigation is operational.
 | SQL injection | Every query is parameterised through sqlx; the only interpolated identifiers are compile-time constants |
 | Cross-site scripting in the hosted pages | React escaping; a hash-based CSP on every exported page; server-rendered pages escape and carry their own policy |
 | Clickjacking | `X-Frame-Options: DENY` and `frame-ancestors 'none'` |
-| SSRF through webhooks, provider discovery or the audit sink | Webhook targets refuse private addresses; upstream endpoints must be https except on loopback |
+| SSRF through URLs tenant administrators or client registrations choose | Webhooks, back-channel logout URIs, client `jwks_uri`s, identity provider endpoints, tenant HTTP email/SMS gateways, the CAPTCHA `verify_url` and a tenant SMTP host go through `util::outbound`: a resolver that keeps only public addresses (private, loopback, link-local, CGNAT, unique-local, documentation and mapped forms refused) at connection time, so DNS rebinding does not help; IP literals checked before sending; no redirects; no environment proxy. Loopback named as such stays allowed for development. The tenant SMTP connection goes to the vetted address with TLS verifying the configured name. Operator-set URLs (audit sink, breach check) are not filtered |
 | Header injection through forwarded headers | The forwarded chain is read from the right past `TRUSTED_PROXIES`, so an appending proxy cannot let a caller choose its own address |
 
 ### Availability
@@ -129,7 +134,7 @@ but an edge proxy or WAF is what absorbs a flood.
 
 | Threat | Mitigation |
 |---|---|
-| Database copy yields keys and secrets | Envelope encryption with per-row AAD for signing keys, credentials, provider settings and messaging configuration |
+| Database copy yields keys and secrets | Envelope encryption with per-row AAD for signing keys, credentials, identity provider secrets, provider settings (SMTP, SMS, CAPTCHA) and webhook secrets |
 | Master key compromise | Versioned keys with an online rotation path that re-encrypts every table |
 | Secrets leaking through exports or APIs | Tenant export omits secrets and says so in its report; secrets are reveal-once and never re-readable |
 | Secrets in logs | Secret-bearing fields are excluded from serialisation; tokens are never logged |
@@ -170,8 +175,10 @@ but an edge proxy or WAF is what absorbs a flood.
 These are assumptions, not oversights. A deployment that breaks one of them loses the
 guarantees above.
 
-1. **TLS terminates in front of rIDM.** It sets HSTS when its public URL is https and
-   marks cookies `Secure`, but it does not terminate TLS itself.
+1. **TLS is terminated, by rIDM or in front of it.** rIDM terminates TLS itself when
+   `TLS_CERT` and `TLS_KEY` are set; otherwise a reverse proxy must. It sets HSTS when
+   its public URL is https and marks cookies `Secure` with `COOKIE_SECURE`, but it
+   cannot tell whether the path between a proxy and itself is protected.
 2. **`MASTER_KEY` is supplied by the environment and kept out of the repository.** Its
    confidentiality is the whole basis of encryption at rest. Rotate it with the
    documented procedure.

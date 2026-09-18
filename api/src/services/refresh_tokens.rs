@@ -109,12 +109,32 @@ pub async fn issue(state: &AppState, tenant_id: Uuid, req: IssueRequest<'_>) -> 
 ///   too, forcing a fresh login).
 /// * bound to a DPoP key (`dpop_jkt`) and the request's proof key differs →
 ///   `invalid_grant`, and the token stays unspent (RFC 9449 §5).
+/// * issued under an SSO session that was since revoked (signed out) → the
+///   family is revoked and `invalid_grant` is returned. Revoking a session
+///   revokes its tokens already; this closes the window of a code exchanged
+///   after its session ended.
+/// * issued without `offline_access` under an SSO session that has since
+///   ended in any way — signed out, or idle or absolute timeout — → the
+///   family is revoked and `invalid_grant` is returned: such a token lives
+///   only as long as the sign-in (OIDC Core §11 reserves outliving it for
+///   `offline_access`). A refresh counts as activity and slides the
+///   session's idle window. An `offline_access` family outlives an expired
+///   session, though not an explicit sign-out.
+/// * `resources` (RFC 8707 `resource` on the refresh request) names an
+///   audience the original grant did not carry → `invalid_target`, and the
+///   token stays unspent: a refresh may narrow the audience, never widen it
+///   (RFC 8707 §2.2).
+/// * `scopes` (the refresh request's `scope`, when sent) names a scope the
+///   original grant did not carry → `invalid_scope`, and the token stays
+///   unspent: a refresh may narrow the scope, never widen it (RFC 6749 §6).
 pub async fn rotate(
     state: &AppState,
     tenant_id: Uuid,
     client_id: &str,
     presented: &str,
     dpop_jkt: Option<&str>,
+    resources: &[String],
+    scopes: Option<&[String]>,
 ) -> Result<Issued, OAuthError> {
     if !presented.starts_with(PREFIX) || presented.len() > 256 {
         return Err(OAuthError::new(
@@ -179,6 +199,46 @@ pub async fn rotate(
             OAuthErrorCode::InvalidGrant,
             "refresh token is bound to another DPoP key",
         ));
+    }
+    if let Some(extra) = resources
+        .iter()
+        .find(|r| !current.audiences.iter().any(|a| a == *r))
+    {
+        return Err(OAuthError::new(
+            OAuthErrorCode::InvalidTarget,
+            format!("resource `{extra}` was not part of the original grant"),
+        ));
+    }
+    if let Some(extra) = scopes
+        .unwrap_or_default()
+        .iter()
+        .find(|s| !current.scopes.contains(s))
+    {
+        return Err(OAuthError::new(
+            OAuthErrorCode::InvalidScope,
+            format!("scope `{extra}` was not granted"),
+        ));
+    }
+    if let Some(sid) = current.session_id {
+        let ended = if current.is_offline() {
+            repos::sessions::is_revoked(&mut *tx, tenant_id, sid).await?
+        } else {
+            let policy = crate::services::tenants::get_cached(state, tenant_id)
+                .await?
+                .map(|t| t.settings.session.clone())
+                .unwrap_or_default();
+            crate::services::sessions::get(state, tenant_id, sid, &policy)
+                .await?
+                .is_none()
+        };
+        if ended {
+            repos::refresh_tokens::revoke_family(&mut *tx, tenant_id, current.family_id).await?;
+            tx.commit().await?;
+            return Err(OAuthError::new(
+                OAuthErrorCode::InvalidGrant,
+                "the session this token was issued in has ended",
+            ));
+        }
     }
 
     repos::refresh_tokens::mark_consumed(&mut *tx, tenant_id, current.id).await?;

@@ -66,7 +66,11 @@ async fn relying_party_journey() {
     )
     .await
     .unwrap();
-    let cookie = format!("{}={}", sessions::cookie_name(&app.state), session.id);
+    let cookie = format!(
+        "{}={}",
+        sessions::cookie_name(&app.state, &app.tenant.slug),
+        session.id
+    );
 
     // 1. Discovery.
     let disco: Value = app

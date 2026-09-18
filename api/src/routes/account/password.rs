@@ -13,8 +13,8 @@ use zeroize::Zeroizing;
 use crate::error::{AppError, AppResult, FieldError};
 use crate::middleware::{AccountCtx, Json};
 use crate::models::PasswordPolicy;
+use crate::services::logout;
 use crate::services::password::{self, SetPasswordOptions, VerifyOutcome};
-use crate::services::{refresh_tokens, sessions};
 use crate::state::AppState;
 
 pub fn password_router() -> OpenApiRouter<AppState> {
@@ -112,15 +112,8 @@ async fn change_password(
     .await?;
     let mut signed_out = 0;
     if body.sign_out_others {
-        for s in sessions::list_live_for_user(&state, ctx.tenant.id, ctx.user.id).await? {
-            if Some(s.id) == ctx.session_id {
-                continue;
-            }
-            if sessions::revoke(&state, ctx.tenant.id, s.id).await? {
-                signed_out += 1;
-            }
-            refresh_tokens::revoke_for_session(&state, ctx.tenant.id, ctx.actor(), s.id).await?;
-        }
+        signed_out =
+            logout::end_sessions_for_user(&state, &ctx.tenant, ctx.user.id, ctx.session_id).await?;
     }
     let user = crate::services::users::get(&state, ctx.tenant.id, ctx.user.id).await?;
     let refreshed = AccountCtx { user, ..ctx };

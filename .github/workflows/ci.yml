@@ -41,6 +41,11 @@ jobs:
           tool: cargo-audit
       - name: cargo audit
         run: cargo audit
+      - name: cargo package
+        # `ridm-auth` is published to crates.io, so it has to stand up outside
+        # the workspace: its own version requirements, its README, and a build
+        # from the packaged archive alone.
+        run: cargo package -p ridm-auth --locked
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check

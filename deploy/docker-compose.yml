@@ -3,8 +3,9 @@
 #   Production-ish (no mail catcher, no seeding):
 #     docker compose -f deploy/docker-compose.yml --profile prod up -d
 #
-#   Development (Mailpit catches all email; first run seeds the master tenant,
-#   a global admin, and a sample public client from the BOOTSTRAP_* variables):
+#   Development (Mailpit catches all email; the BOOTSTRAP_* variables seed a
+#   global admin in the `master` tenant and the sample public client
+#   `sample-spa`, redirect http://localhost:3000/callback):
 #     docker compose -f deploy/docker-compose.yml --profile dev up -d
 #
 # Every port is overridable so the stack can coexist with other local services:
@@ -143,8 +144,9 @@ services:
       SMTP_PORT: "1025"
       SMTP_FROM: "rIDM <no-reply@ridm.local>"
       SMTP_SECURITY: none
-      # First-run bootstrap (Phase 1.6): creates the `master` tenant, a global
-      # admin, and a sample SPA client. Ignored once the master tenant exists.
+      # First-run bootstrap: a global admin in the `master` tenant (a no-op once
+      # a master user holds `ridm:owner`) and the sample SPA client
+      # `sample-spa` (redirect http://localhost:3000/callback; kept if present).
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@ridm.local}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-ChangeMe-Now-1234}
       BOOTSTRAP_SAMPLE_CLIENT: "true"

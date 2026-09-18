@@ -204,13 +204,17 @@ pub async fn send_verification(
     }
     let refs: Vec<(&str, &str)> = params.iter().map(|(k, v)| (*k, v.as_str())).collect();
     let link = state.config.ui_page("verify", &refs);
-    messaging::send(state, tenant, Outgoing {
-        channel: MessageChannel::Email,
-        event: "verify_email",
-        recipient: email,
-        locale: user.locale.as_deref(),
-        vars: serde_json::json!({"user": {"username": user.username}, "link": link, "expires_minutes": VERIFICATION_TTL_SECS / 60}),
-    })
+    messaging::send(
+        state,
+        tenant,
+        Outgoing {
+            channel: MessageChannel::Email,
+            event: "verify_email",
+            recipient: email,
+            locale: user.locale.as_deref(),
+            vars: messaging::vars::link(&user.username, &link, VERIFICATION_TTL_SECS / 60),
+        },
+    )
     .await?;
     Ok(())
 }

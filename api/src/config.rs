@@ -69,7 +69,9 @@ pub struct Config {
     /// are derived from it: `{PUBLIC_URL}/t/{tenant_slug}`.
     pub public_url: Url,
     /// Base URL of the static UI (login, consent, ... pages). Defaults to
-    /// `PUBLIC_URL` (embedded mode); set when the UI is hosted elsewhere.
+    /// `PUBLIC_URL`: the UI on the API's origin, served by the same reverse
+    /// proxy (the API does not serve the UI files itself yet, Phase 11.1);
+    /// set when the UI is hosted elsewhere.
     pub ui_url: Url,
     /// 32-byte key that encrypts secrets at rest (current generation).
     pub master_key: SecretBytes,
@@ -87,6 +89,10 @@ pub struct Config {
     pub cookie_secure: bool,
     /// Peers whose `X-Forwarded-For` / `Forwarded` headers are trusted.
     pub trusted_proxies: Vec<IpNet>,
+    /// Private networks that outbound requests to tenant-chosen URLs may
+    /// reach anyway (an internal application's back-channel logout endpoint,
+    /// an internal webhook receiver). Empty: public addresses only.
+    pub outbound_allow_networks: Vec<IpNet>,
     /// Deployment-wide request ceilings (per-tenant policy is in tenant settings).
     pub rate_limits: RateLimitConfig,
     /// `Strict-Transport-Security` max-age in seconds, sent when `PUBLIC_URL`
@@ -159,7 +165,9 @@ pub struct BootstrapConfig {
     pub admin_email: String,
     pub admin_username: String,
     pub admin_password: SecretString,
-    /// Also create a sample public client (applied once clients exist, Phase 3).
+    /// Also make sure `master` has the sample public client `sample-spa`
+    /// (redirect `http://localhost:3000/callback`), see
+    /// [`crate::services::bootstrap::ensure_sample_client`].
     pub sample_client: bool,
 }
 
@@ -250,19 +258,12 @@ impl Config {
         let trusted_proxies = parse(
             "TRUSTED_PROXIES",
             optional("TRUSTED_PROXIES").unwrap_or_default(),
-            |v| {
-                v.split(',')
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(|s| {
-                        s.parse::<IpNet>().or_else(|_| {
-                            s.parse::<std::net::IpAddr>()
-                                .map(IpNet::from)
-                                .map_err(|e| format!("`{s}`: {e}"))
-                        })
-                    })
-                    .collect::<Result<Vec<_>, _>>()
-            },
+            parse_networks,
+        )?;
+        let outbound_allow_networks = parse(
+            "OUTBOUND_ALLOW_NETWORKS",
+            optional("OUTBOUND_ALLOW_NETWORKS").unwrap_or_default(),
+            parse_networks,
         )?;
         let rate_limits = RateLimitConfig {
             enabled: parse_bool("RATE_LIMITS", RateLimitConfig::default().enabled)?,
@@ -405,6 +406,7 @@ impl Config {
             docs_enabled,
             cookie_secure,
             trusted_proxies,
+            outbound_allow_networks,
             rate_limits,
             hsts_max_age,
             retention_days,
@@ -494,6 +496,21 @@ fn parse<T, E: ToString>(
         name,
         reason: e.to_string(),
     })
+}
+
+/// A comma-separated list of networks (`10.0.0.0/8`) or single addresses.
+fn parse_networks(v: String) -> Result<Vec<IpNet>, String> {
+    v.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            s.parse::<IpNet>().or_else(|_| {
+                s.parse::<std::net::IpAddr>()
+                    .map(IpNet::from)
+                    .map_err(|e| format!("`{s}`: {e}"))
+            })
+        })
+        .collect()
 }
 
 fn parse_bool(name: &'static str, default: bool) -> Result<bool, ConfigError> {

@@ -8,10 +8,10 @@ use axum::routing::get;
 use serde_json::{Map, Value, json};
 
 use crate::middleware::TenantCtx;
-use crate::models::TokenKind;
+use crate::models::{Exposure, TokenKind};
 use crate::oidc::authorize::RawParams;
 use crate::oidc::{bearer, dpop};
-use crate::services::claims::{ClaimContext, apply_mappers, standard_claims};
+use crate::services::claims::{ClaimContext, apply_mappers, profile_claims, scope_claims};
 use crate::services::tokens::{self, TokenClient, VerifyOptions};
 use crate::services::{clients, groups, roles, users};
 use crate::state::AppState;
@@ -108,17 +108,9 @@ struct Built {
 }
 
 async fn build(state: &AppState, tenant: &TenantCtx, token: &str) -> Result<Built, Reject> {
-    let claims = tokens::verify(
-        state,
-        &tenant.tenant,
-        token,
-        &VerifyOptions {
-            typ: Some("at+jwt".into()),
-            ..Default::default()
-        },
-    )
-    .await
-    .map_err(|_| Reject::Token("access token is invalid or expired"))?;
+    let claims = tokens::verify_access(state, &tenant.tenant, token, &VerifyOptions::default())
+        .await
+        .map_err(|_| Reject::Token("access token is invalid or expired"))?;
     let scopes: Vec<String> = claims["scope"]
         .as_str()
         .unwrap_or_default()
@@ -144,7 +136,12 @@ async fn build(state: &AppState, tenant: &TenantCtx, token: &str) -> Result<Buil
 
     let mappers = crate::oidc::token::effective_mappers_for(state, tenant.id(), &client).await?;
     let tc = TokenClient::from_client(&client, &tenant.tenant, mappers);
-    let mut out = standard_claims(&user, &scopes);
+    // Scope-released claims (each granted scope's `claims`), then profile
+    // attributes exposed to userinfo, then the mappers.
+    let defs = crate::services::scopes::list(state, tenant.id()).await?;
+    let mut out = scope_claims(&user, &scopes, &defs);
+    let schema = crate::services::profile_schema::get(state, tenant.id()).await?;
+    profile_claims(&user, &schema, Exposure::Userinfo, &mut out);
     let ctx = ClaimContext {
         tenant: &tenant.tenant,
         user: Some(&user),

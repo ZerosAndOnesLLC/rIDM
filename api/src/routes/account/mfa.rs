@@ -338,24 +338,10 @@ async fn delete_credential(
 ) -> AppResult<StatusCode> {
     ctx.require_recent(&state).await?;
     let tid = ctx.tenant.id;
-    let mut tx = db::tenant_tx(&state.db, tid).await?;
-    let rows = repos::credentials::list_for_user(&mut *tx, tid, ctx.user.id).await?;
-    let Some(row) = rows.iter().find(|c| c.id == credential_id) else {
-        return Err(AppError::NotFound("credential"));
-    };
-    if !totp::SECOND_FACTOR_KINDS.contains(&row.kind.as_str()) {
-        return Err(AppError::NotFound("credential"));
-    }
-    repos::credentials::delete(&mut *tx, tid, ctx.user.id, credential_id).await?;
-    let others = rows
-        .iter()
-        .filter(|c| c.id != credential_id && totp::SECOND_FACTOR_KINDS.contains(&c.kind.as_str()))
-        .count();
-    if others == 0 {
-        repos::credentials::delete_of_type(&mut *tx, tid, ctx.user.id, totp::KIND_RECOVERY).await?;
-    }
-    tx.commit().await?;
-    let what = match row.kind.as_str() {
+    let kind = totp::remove_credential(&state, tid, ctx.user.id, credential_id, true)
+        .await?
+        .ok_or(AppError::NotFound("credential"))?;
+    let what = match kind.as_str() {
         totp::KIND_TOTP => "An authenticator app was removed",
         passkeys::KIND => "A passkey was removed",
         otp_factors::KIND_EMAIL => "Codes by email were removed as a second step",

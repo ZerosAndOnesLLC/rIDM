@@ -313,11 +313,23 @@ pub async fn rotate(
     policy: &KeyPolicy,
     actor: Actor,
 ) -> AppResult<SigningKey> {
+    rotate_alg(state, tenant_id, policy, actor, policy.default_alg).await
+}
+
+/// [`rotate`] for one algorithm: a tenant signs with one active key per
+/// algorithm (the default one, plus any a resource server asks for).
+pub async fn rotate_alg(
+    state: &AppState,
+    tenant_id: Uuid,
+    policy: &KeyPolicy,
+    actor: Actor,
+    alg: SigningAlg,
+) -> AppResult<SigningKey> {
     let fresh = create(
         state,
         tenant_id,
         actor.clone(),
-        policy.default_alg,
+        alg,
         policy.rsa_bits,
         KeyStatus::Pending,
         None,
@@ -374,23 +386,34 @@ pub async fn ensure_active(
     tenant_id: Uuid,
     policy: &KeyPolicy,
 ) -> AppResult<SigningKey> {
-    if let Some(k) = active(state, tenant_id, policy.default_alg).await? {
+    ensure_active_alg(state, tenant_id, policy, policy.default_alg).await
+}
+
+/// [`ensure_active`] for a given algorithm: the active key signing with
+/// `alg`, created on first use (a resource server's `signing_alg`).
+pub async fn ensure_active_alg(
+    state: &AppState,
+    tenant_id: Uuid,
+    policy: &KeyPolicy,
+    alg: SigningAlg,
+) -> AppResult<SigningKey> {
+    if let Some(k) = active(state, tenant_id, alg).await? {
         return Ok(k);
     }
-    let lock_name = format!("keys:{tenant_id}:{}", policy.default_alg.as_str());
+    let lock_name = format!("keys:{tenant_id}:{}", alg.as_str());
     let deadline = std::time::Instant::now() + CREATE_WAIT;
     loop {
         if let Some(lock) = leader::try_acquire(&state.redis, &lock_name, CREATE_LOCK_TTL).await? {
             // Ours to make, unless another holder finished between the two checks.
-            let made = match active(state, tenant_id, policy.default_alg).await? {
+            let made = match active(state, tenant_id, alg).await? {
                 Some(k) => Ok(k),
-                None => first_key(state, tenant_id, policy).await,
+                None => first_key(state, tenant_id, policy, alg).await,
             };
             lock.release().await?;
             return made;
         }
         // Someone else is generating it. Wait for the key, not for the lock.
-        if let Some(k) = active(state, tenant_id, policy.default_alg).await? {
+        if let Some(k) = active(state, tenant_id, alg).await? {
             return Ok(k);
         }
         if std::time::Instant::now() >= deadline {
@@ -401,17 +424,22 @@ pub async fn ensure_active(
     // The holder died or is slower than the wait. Make one; the unique index
     // over (tenant, alg) for active keys keeps whichever lands first.
     tracing::warn!(%tenant_id, "waited out another node's first signing key; making one");
-    first_key(state, tenant_id, policy).await
+    first_key(state, tenant_id, policy, alg).await
 }
 
-/// Create the tenant's first active key, adopting another node's if it landed
-/// first (the partial unique index turns that into a conflict).
-async fn first_key(state: &AppState, tenant_id: Uuid, policy: &KeyPolicy) -> AppResult<SigningKey> {
+/// Create the tenant's first active key for `alg`, adopting another node's if
+/// it landed first (the partial unique index turns that into a conflict).
+async fn first_key(
+    state: &AppState,
+    tenant_id: Uuid,
+    policy: &KeyPolicy,
+    alg: SigningAlg,
+) -> AppResult<SigningKey> {
     match create(
         state,
         tenant_id,
         Actor::System,
-        policy.default_alg,
+        alg,
         policy.rsa_bits,
         KeyStatus::Active,
         None,
@@ -420,7 +448,7 @@ async fn first_key(state: &AppState, tenant_id: Uuid, policy: &KeyPolicy) -> App
     {
         Ok(k) => Ok(k),
         // Lost a race with another node: use what it created.
-        Err(AppError::Conflict(_)) => active(state, tenant_id, policy.default_alg)
+        Err(AppError::Conflict(_)) => active(state, tenant_id, alg)
             .await?
             .ok_or(AppError::Internal("no active key after creation".into())),
         Err(e) => Err(e),
@@ -428,8 +456,8 @@ async fn first_key(state: &AppState, tenant_id: Uuid, policy: &KeyPolicy) -> App
 }
 
 /// Housekeeping for one tenant: revoke retiring keys past their overlap and
-/// rotate the active key when it is older than the rotation interval.
-/// Returns `(revoked, rotated)`.
+/// rotate each active key (one per algorithm) when it is older than the
+/// rotation interval. Returns `(revoked, rotated)`.
 pub async fn maintain(
     state: &AppState,
     tenant_id: Uuid,
@@ -444,13 +472,14 @@ pub async fn maintain(
         }
     }
     let mut rotated = false;
-    if policy.rotation_interval_days > 0
-        && let Some(current) = active(state, tenant_id, policy.default_alg).await?
-        && current.not_before + chrono::Duration::days(i64::from(policy.rotation_interval_days))
-            <= now
-    {
-        rotate(state, tenant_id, policy, Actor::System).await?;
-        rotated = true;
+    if policy.rotation_interval_days > 0 {
+        let due = chrono::Duration::days(i64::from(policy.rotation_interval_days));
+        for current in list(state, tenant_id, Some(KeyStatus::Active)).await? {
+            if current.not_before + due <= now {
+                rotate_alg(state, tenant_id, policy, Actor::System, current.alg).await?;
+                rotated = true;
+            }
+        }
     }
     Ok((revoked, rotated))
 }

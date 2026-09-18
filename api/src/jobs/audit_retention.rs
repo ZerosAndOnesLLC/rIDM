@@ -24,9 +24,12 @@ pub async fn run_once(state: &AppState) -> AppResult<Option<u64>> {
 }
 
 async fn process_all(state: &AppState) -> AppResult<u64> {
-    let created = audit::ensure_partitions(state).await?;
-    if created > 0 {
-        tracing::info!(created, "audit: partitions created");
+    // A failure here must not cost the purge: rows then land in the default
+    // partition, where the purge still reaches them.
+    match audit::ensure_partitions(state).await {
+        Ok(0) => {}
+        Ok(created) => tracing::info!(created, "audit: partitions created"),
+        Err(err) => tracing::error!(error = %err, "audit: creating partitions failed"),
     }
     let mut purged = 0;
     let mut cursor = None;

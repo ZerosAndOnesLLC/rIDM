@@ -29,7 +29,8 @@ pub enum EditableBy {
     User,
     /// Admins and the admin API only.
     Admin,
-    /// Nobody through the API; set by imports or mappers.
+    /// Nobody interactively (account console, admin user create and PATCH);
+    /// set by imports (bulk user import, SCIM provisioning) or mappers.
     None,
 }
 

@@ -12,11 +12,18 @@ Docker with Compose, and `sqlx-cli` (`cargo install sqlx-cli --no-default-featur
 
 ```bash
 cp .env.example .env            # set MASTER_KEY=$(openssl rand -hex 32)
-docker compose -f deploy/docker-compose.yml up -d postgres valkey
-sqlx migrate run --source api/migrations
+docker compose --env-file .env -f deploy/docker-compose.yml up -d postgres valkey
+DATABASE_URL=postgres://ridm_migrator:ridm_migrator@localhost:5432/ridm \
+  sqlx migrate run --source api/migrations
 cargo run -p ridm-api           # http://localhost:8080/readyz
 cd ui && npm install && npm run dev
 ```
+
+Compose reads `deploy/.env` unless told otherwise, hence `--env-file .env`. Migrations
+run as the schema owner (`ridm_migrator`); the API connects as the DML-only `ridm_app`
+from `.env`, and with `MIGRATE_ON_START=false` it only warns at startup when migrations
+are pending. [`GETTING-STARTED.md`](GETTING-STARTED.md) has the fuller local setup (the
+API on port 8090, Mailpit, the bootstrap administrator, the examples).
 
 Ports are overridable through `RIDM_PG_PORT`, `RIDM_VALKEY_PORT`, `RIDM_HTTP_PORT` and
 `RIDM_MAILPIT_UI_PORT` if the defaults collide with something on your machine.

@@ -2836,6 +2836,229 @@
         ]
       }
     },
+    "/admin/tenants/{slug}/dcr/initial-access-tokens": {
+      "get": {
+        "tags": [
+          "clients"
+        ],
+        "operationId": "clients_list_tokens",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InitialAccessToken"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "clients"
+        ],
+        "summary": "The token is returned once, in this response. `expires_in_secs` and\n`max_uses` are optional; without them the token neither expires nor runs\nout.",
+        "operationId": "clients_issue_token",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewInitialAccessToken"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedInitialAccessToken"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/dcr/initial-access-tokens/{token}": {
+      "delete": {
+        "tags": [
+          "clients"
+        ],
+        "operationId": "clients_revoke_token",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "path",
+            "description": "Token id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/admin/tenants/{slug}/export": {
       "get": {
         "tags": [
@@ -4424,7 +4647,7 @@
         "tags": [
           "tenant_config"
         ],
-        "summary": "`?dry_run=true` returns the plan (creates, updates with field diffs, and\nwith `prune` deletes). Without it the plan is applied; the report lists\nwhat was applied, any per-item errors, and the secrets of clients and\nwebhooks the import created (shown once). Applying the same document\nagain yields an empty plan.",
+        "summary": "`?dry_run=true` returns the plan (creates, updates with field diffs, and\nwith `prune` deletes), with `errors` listing roles and groups whose grants\nthe caller could not make (applying would refuse them the same way). Without it the plan is applied; the report lists\nwhat was applied, any per-item errors, and the secrets of clients and\nwebhooks the import created (shown once). Applying the same document\nagain yields an empty plan.",
         "operationId": "tenant_config_import",
         "parameters": [
           {
@@ -17532,6 +17755,25 @@
         },
         "additionalProperties": false
       },
+      "CreatedInitialAccessToken": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/InitialAccessToken"
+          },
+          {
+            "type": "object",
+            "required": [
+              "token"
+            ],
+            "properties": {
+              "token": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "The token is returned once, here."
+      },
       "CreatedPersonalAccessToken": {
         "allOf": [
           {
@@ -18884,6 +19126,70 @@
         },
         "additionalProperties": false
       },
+      "InitialAccessToken": {
+        "type": "object",
+        "description": "An initial access token for dynamic client registration (RFC 7591 §1.2):\nwhat `POST /t/{slug}/register` demands under `dcr.mode =\ninitial_access_token`.",
+        "required": [
+          "id",
+          "tenant_id",
+          "uses",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "max_uses": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Registrations it allows in all; `null` for no limit."
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "uses": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Registrations made with it so far."
+          }
+        }
+      },
       "Invitation": {
         "type": "object",
         "required": [
@@ -20097,6 +20403,40 @@
               "null"
             ],
             "default": null
+          }
+        },
+        "additionalProperties": false
+      },
+      "NewInitialAccessToken": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the token is for (at most 200 characters).",
+            "default": null
+          },
+          "expires_in_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Seconds until the token expires; absent for a token without expiry.",
+            "default": null,
+            "minimum": 0
+          },
+          "max_uses": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Registrations it allows; absent for no limit.",
+            "default": null,
+            "minimum": 0
           }
         },
         "additionalProperties": false
@@ -21675,12 +22015,8 @@
             "items": {
               "type": "string"
             },
-            "description": "Only these email domains may self-register (empty = any).",
+            "description": "Only these email domains may self-register (empty = any). (A CAPTCHA\non registration is `captcha.on_registration`.)",
             "default": []
-          },
-          "captcha": {
-            "type": "boolean",
-            "default": false
           },
           "enabled": {
             "type": "boolean",
@@ -23376,7 +23712,6 @@
             ],
             "default": {
               "allowed_email_domains": [],
-              "captcha": false,
               "enabled": false,
               "privacy_url": null,
               "require_email_verification": true,

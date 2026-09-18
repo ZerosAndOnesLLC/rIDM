@@ -1,0 +1,116 @@
+:root {
+  color-scheme: light dark;
+  --fg: #14161a;
+  --bg: #fbfbfc;
+  --muted: #5b6270;
+  --line: #e2e5ea;
+  --accent: #2f5bd7;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e8eaee;
+    --bg: #14161a;
+    --muted: #9aa2b1;
+    --line: #2a2e36;
+    --accent: #7ea2ff;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font: 16px/1.55 system-ui, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  margin: 0;
+  padding: 3rem 1rem;
+}
+
+main {
+  max-width: 42rem;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 1.5rem;
+  margin: 0 0 1.5rem;
+}
+
+h2 {
+  font-size: 1.1rem;
+  margin: 2rem 0 0.5rem;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.notice {
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  margin: 1rem 0;
+}
+
+.notice.error {
+  border-color: #d64545;
+}
+
+code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.875em;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--fg);
+  border-color: var(--line);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.5rem 0 1rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+
+form {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 1rem 0;
+}
+
+input {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}

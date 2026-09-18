@@ -3930,6 +3930,7 @@ dependencies = [
  "redis",
  "regex",
  "reqwest",
+ "ridm-auth",
  "ridm-core",
  "rpassword",
  "rsa",
@@ -3961,6 +3962,22 @@ dependencies = [
  "webauthn-rs",
  "webauthn-rs-proto",
  "zeroize",
+]
+
+[[package]]
+name = "ridm-auth"
+version = "0.1.0-dev"
+dependencies = [
+ "axum",
+ "http",
+ "jsonwebtoken",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tower",
+ "tracing",
 ]
 
 [[package]]
@@ -3997,6 +4014,41 @@ dependencies = [
  "tracing",
  "uuid",
  "zeroize",
+]
+
+[[package]]
+name = "ridm-example-axum-api"
+version = "0.1.0-dev"
+dependencies = [
+ "axum",
+ "chrono",
+ "ridm-auth",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower-http 0.7.1",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "ridm-example-confidential-client"
+version = "0.1.0-dev"
+dependencies = [
+ "axum",
+ "base64 0.23.1",
+ "chrono",
+ "rand 0.10.2",
+ "reqwest",
+ "ridm-auth",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

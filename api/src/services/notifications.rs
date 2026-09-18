@@ -54,9 +54,7 @@ async fn deliver(
             }
         },
     };
-    let mut vars = vars;
-    vars["user"] = json!({"username": user.username});
-    vars["when"] = json!(when());
+    let vars = messaging::vars::notification(&user.username, &when(), vars);
     let outgoing = Outgoing {
         channel,
         event,
@@ -85,7 +83,10 @@ pub async fn new_device_login(
         user,
         "new_device",
         None,
-        json!({"ip": ip.unwrap_or("unknown"), "user_agent": user_agent.unwrap_or("unknown device")}),
+        messaging::vars::new_device(
+            ip.unwrap_or("unknown"),
+            user_agent.unwrap_or("unknown device"),
+        ),
     )
     .await;
 }
@@ -119,7 +120,7 @@ pub async fn email_changed(
         before,
         "email_changed",
         Some(old),
-        json!({"new_email": new_email.unwrap_or("(removed)")}),
+        messaging::vars::email_changed(new_email.unwrap_or("(removed)")),
     )
     .await;
 }
@@ -137,7 +138,7 @@ pub async fn mfa_changed(state: &AppState, tenant_id: Uuid, user_id: Uuid, chang
         &user,
         "mfa_changed",
         None,
-        json!({"change": change}),
+        messaging::vars::mfa_changed(change),
     )
     .await;
 }

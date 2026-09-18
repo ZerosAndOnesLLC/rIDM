@@ -39,7 +39,8 @@ impl SiteverifyCaptcha {
                 .verify_url
                 .clone()
                 .unwrap_or_else(|| default_url.to_string()),
-            http: reqwest::Client::builder()
+            // `verify_url` is a tenant's choice: public addresses only (SSRF).
+            http: crate::util::outbound::client_builder()
                 .timeout(Duration::from_secs(5))
                 .build()
                 .expect("reqwest client"),
@@ -75,6 +76,7 @@ impl Captcha for SiteverifyCaptcha {
         if let Some(ip) = remote_ip {
             form.push(("remoteip", ip.to_string()));
         }
+        crate::util::outbound::check_url(&self.verify_url).map_err(ProviderError::Rejected)?;
         let res = self
             .http
             .post(&self.verify_url)

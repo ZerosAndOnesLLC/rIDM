@@ -7,7 +7,8 @@ use serde_json::{Map, Value, json};
 
 use crate::error::AppResult;
 use crate::models::{
-    ClaimMapper, Group, JsonType, MapperKind, PROTECTED_CLAIMS, Role, Tenant, TokenKind, User,
+    ClaimMapper, Exposure, Group, JsonType, MapperKind, PROTECTED_CLAIMS, ProfileSchema, Role,
+    Scope, Tenant, TokenKind, User,
 };
 
 /// Everything a mapper may draw on.
@@ -21,52 +22,145 @@ pub struct ClaimContext<'a> {
     pub groups: &'a [Group],
 }
 
-/// Standard claims (OIDC Core §5.4) selected by the granted scopes.
-pub fn standard_claims(user: &User, scopes: &[String]) -> Map<String, Value> {
-    let has = |s: &str| scopes.iter().any(|x| x == s);
+/// Claims the standard scopes release (OIDC Core §5.4), used when a tenant's
+/// scope rows are not at hand. They match what migration 0008 seeds as each
+/// standard scope's `claims`, so a tenant that never tuned them sees no
+/// difference between the two.
+fn standard_scope_claims(scope: &str) -> &'static [&'static str] {
+    match scope {
+        "profile" => &[
+            "name",
+            "family_name",
+            "given_name",
+            "middle_name",
+            "nickname",
+            "preferred_username",
+            "profile",
+            "picture",
+            "website",
+            "gender",
+            "birthdate",
+            "zoneinfo",
+            "locale",
+            "updated_at",
+        ],
+        "email" => &["email", "email_verified"],
+        "phone" => &["phone_number", "phone_number_verified"],
+        "address" => &["address"],
+        _ => &[],
+    }
+}
+
+/// Claims the token service sets itself in access tokens. A mapper of the
+/// matching kind may reshape `roles` and `groups` (its output replaces the
+/// built-in value); nothing else may write them, and nothing may write
+/// `permissions`, which is computed from the audience's grants.
+pub const BUILDER_CLAIMS: &[&str] = &["roles", "groups", "permissions"];
+
+/// Whether `name` may be released from user data (scope claims, profile
+/// attributes): never a claim the token service owns.
+fn releasable(name: &str) -> bool {
+    !PROTECTED_CLAIMS.contains(&name) && !BUILDER_CLAIMS.contains(&name)
+}
+
+/// The value of one released claim for `user`, by claim name: the OIDC
+/// standard names map onto the user record (`preferred_username` is the
+/// username, `phone_number` the phone, ...), `attributes.<name>` and any
+/// other name are a top-level user field (see [`user_field`]) or else the
+/// profile attribute of that name.
+pub fn release_claim(user: &User, name: &str) -> Option<Value> {
+    if !releasable(name) {
+        return None;
+    }
+    match name {
+        "preferred_username" => Some(json!(user.username)),
+        "email" => user.email.as_ref().map(|e| json!(e)),
+        "email_verified" => user.email.as_ref().map(|_| json!(user.email_verified)),
+        "phone_number" => user.phone.as_ref().map(|p| json!(p)),
+        "phone_number_verified" => user.phone.as_ref().map(|_| json!(user.phone_verified)),
+        "locale" => user.locale.as_ref().map(|l| json!(l)),
+        "updated_at" => Some(json!(user.updated_at.timestamp())),
+        // OIDC Core §5.1.1: a JSON object, or nothing.
+        "address" => user
+            .attributes
+            .get("address")
+            .filter(|v| v.is_object())
+            .cloned(),
+        other => user_attribute(user, other),
+    }
+}
+
+/// Claims selected by the granted scopes (OIDC Core §5.4): each granted
+/// scope releases the claims its `claims` list names (see
+/// [`release_claim`]). `defs` are the tenant's scope rows; a standard scope
+/// missing from them falls back to its standard claim set.
+pub fn scope_claims(user: &User, scopes: &[String], defs: &[Scope]) -> Map<String, Value> {
     let mut out = Map::new();
-    if has("profile") {
-        out.insert("preferred_username".into(), json!(user.username));
-        for (attr, claim) in [
-            ("name", "name"),
-            ("given_name", "given_name"),
-            ("family_name", "family_name"),
-            ("middle_name", "middle_name"),
-            ("nickname", "nickname"),
-            ("profile", "profile"),
-            ("picture", "picture"),
-            ("website", "website"),
-            ("gender", "gender"),
-            ("birthdate", "birthdate"),
-            ("zoneinfo", "zoneinfo"),
-        ] {
-            if let Some(v) = user.attributes.get(attr).filter(|v| !v.is_null()) {
-                out.insert(claim.into(), v.clone());
+    for granted in scopes {
+        let names: Vec<&str> = match defs.iter().find(|d| &d.name == granted) {
+            Some(def) => def.claims.iter().map(String::as_str).collect(),
+            None => standard_scope_claims(granted).to_vec(),
+        };
+        for name in names {
+            if out.contains_key(name) {
+                continue;
+            }
+            if let Some(v) = release_claim(user, name) {
+                out.insert(name.to_string(), v);
             }
         }
-        if let Some(l) = &user.locale {
-            out.insert("locale".into(), json!(l));
-        }
-        out.insert("updated_at".into(), json!(user.updated_at.timestamp()));
-    }
-    if has("email")
-        && let Some(e) = &user.email
-    {
-        out.insert("email".into(), json!(e));
-        out.insert("email_verified".into(), json!(user.email_verified));
-    }
-    if has("phone")
-        && let Some(p) = &user.phone
-    {
-        out.insert("phone_number".into(), json!(p));
-        out.insert("phone_number_verified".into(), json!(user.phone_verified));
-    }
-    if has("address")
-        && let Some(a) = user.attributes.get("address").filter(|v| v.is_object())
-    {
-        out.insert("address".into(), a.clone());
     }
     out
+}
+
+/// Standard claims (OIDC Core §5.4) selected by the granted scopes, without
+/// the tenant's scope definitions: the seeded standard claim sets.
+pub fn standard_claims(user: &User, scopes: &[String]) -> Map<String, Value> {
+    scope_claims(user, scopes, &[])
+}
+
+/// Profile attributes whose schema entry lists `exposure` in `visible_in`,
+/// each as a claim of the attribute's name. A claim already present (a scope
+/// released it) is left alone, and names the token service owns are never
+/// written. Mappers run afterwards and may override.
+pub fn profile_claims(
+    user: &User,
+    schema: &ProfileSchema,
+    exposure: Exposure,
+    claims: &mut Map<String, Value>,
+) {
+    for def in schema
+        .attributes
+        .iter()
+        .filter(|a| a.visible_in.contains(&exposure))
+    {
+        if !releasable(&def.name) || claims.contains_key(&def.name) {
+            continue;
+        }
+        if let Some(v) = user.attributes.get(&def.name).filter(|v| !v.is_null()) {
+            claims.insert(def.name.clone(), v.clone());
+        }
+    }
+}
+
+/// Why a mapper may not write its claim, if it may not: protected claims
+/// never, builder-owned claims only by the mapper kind that produces them.
+pub fn mapper_claim_refusal(mapper: &ClaimMapper) -> Option<String> {
+    let name = mapper.claim_name()?;
+    if PROTECTED_CLAIMS.contains(&name) {
+        return Some(format!("claim `{name}` is set by the token service"));
+    }
+    let owned_by_kind = matches!(
+        (&mapper.kind, name),
+        (MapperKind::Roles { .. }, "roles") | (MapperKind::Groups { .. }, "groups")
+    );
+    if BUILDER_CLAIMS.contains(&name) && !owned_by_kind {
+        return Some(match name {
+            "permissions" => "claim `permissions` is computed from the audience's grants".into(),
+            _ => format!("claim `{name}` may only be written by a `{name}` mapper"),
+        });
+    }
+    None
 }
 
 /// Apply mappers for `kind` on top of `claims`. Returns extra audiences.
@@ -78,10 +172,9 @@ pub fn apply_mappers(
 ) -> AppResult<Vec<String>> {
     let mut audiences = vec![];
     for m in mappers.iter().filter(|m| m.applies_to(kind)) {
-        if let Some(name) = m.claim_name()
-            && PROTECTED_CLAIMS.contains(&name)
-        {
-            tracing::warn!(mapper = %m.name, claim = name, "mapper targets a protected claim; ignored");
+        // Refused at save time; rows written before that rule are skipped.
+        if let Some(reason) = mapper_claim_refusal(m) {
+            tracing::warn!(mapper = %m.name, %reason, "mapper targets a reserved claim; ignored");
             continue;
         }
         match &m.kind {
@@ -92,7 +185,7 @@ pub fn apply_mappers(
             } => {
                 if let Some(user) = ctx.user
                     && let Some(v) = user_attribute(user, attribute)
-                    && let Some(v) = coerce(v, *json_type)
+                    && let Some(v) = coerce(&v, *json_type)
                 {
                     claims.insert(claim.clone(), v);
                 }
@@ -119,8 +212,10 @@ pub fn apply_mappers(
                     .iter()
                     .filter(|r| match client_id {
                         None => r.client_id.is_none(),
-                        // Client-scoped roles are matched by the client's id in Phase 3.
-                        Some(_) => r.client_id.is_some(),
+                        // The mapper names the client by its public id; the
+                        // pipeline resolves that to the client's row id when
+                        // it loads mappers (`oidc::token::effective_mappers`).
+                        Some(c) => r.client_id.is_some_and(|id| id.to_string() == *c),
                     })
                     .map(|r| r.name.as_str())
                     .collect();
@@ -161,11 +256,15 @@ pub fn apply_mappers(
     Ok(audiences)
 }
 
-fn user_attribute<'a>(user: &'a User, attribute: &str) -> Option<&'a Value> {
-    if let Some(rest) = attribute.strip_prefix("attributes.") {
-        return user.attributes.get(rest);
+/// A user value by name: `attributes.<name>` is that profile attribute; any
+/// other name is a top-level user field ([`user_field`]: `username`,
+/// `email`, ...) or, failing that, the profile attribute of that name.
+fn user_attribute(user: &User, attribute: &str) -> Option<Value> {
+    let attr = |name: &str| user.attributes.get(name).filter(|v| !v.is_null()).cloned();
+    match attribute.strip_prefix("attributes.") {
+        Some(rest) => attr(rest),
+        None => user_field(user, attribute).or_else(|| attr(attribute)),
     }
-    None
 }
 
 /// Top-level user fields are exposed through a JSON view so mappers can use
@@ -421,5 +520,202 @@ mod tests {
             1,
             "only mappers included in id tokens: {id_claims:?}"
         );
+    }
+
+    fn scope_def(name: &str, claims: &[&str]) -> Scope {
+        Scope {
+            id: Uuid::now_v7(),
+            tenant_id: Uuid::nil(),
+            name: name.into(),
+            description: None,
+            claims: claims.iter().map(|c| c.to_string()).collect(),
+            resource_server_id: None,
+            is_default: false,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn a_scope_releases_the_claims_it_lists() {
+        let u = user();
+        let defs = vec![
+            scope_def(
+                "hr",
+                &["department", "username", "attributes.level", "sub", "roles"],
+            ),
+            // A tuned standard scope releases what it lists now.
+            scope_def("email", &["email"]),
+        ];
+        let c = scope_claims(&u, &["hr".into(), "email".into()], &defs);
+        assert_eq!(c["department"], "eng", "a profile attribute by name");
+        assert_eq!(c["username"], "alice", "a top-level user field");
+        assert_eq!(c["attributes.level"], "7");
+        assert_eq!(c["email"], "alice@acme.example");
+        assert!(c.get("email_verified").is_none(), "no longer listed");
+        assert!(
+            c.get("sub").is_none() && c.get("roles").is_none(),
+            "owned claims never"
+        );
+        // A standard scope without its row falls back to the standard set.
+        let c = scope_claims(&u, &["profile".into()], &[]);
+        assert_eq!(c["preferred_username"], "alice");
+        assert_eq!(c["name"], "Alice A");
+        assert_eq!(c["locale"], "en");
+    }
+
+    #[test]
+    fn profile_attributes_reach_the_artefacts_they_are_visible_in() {
+        use crate::models::{AttributeDef, Exposure, ProfileSchema};
+        let u = user();
+        let schema = ProfileSchema {
+            attributes: vec![
+                AttributeDef {
+                    name: "department".into(),
+                    visible_in: vec![Exposure::IdToken, Exposure::AccessToken],
+                    ..Default::default()
+                },
+                AttributeDef {
+                    name: "level".into(),
+                    visible_in: vec![Exposure::Userinfo],
+                    ..Default::default()
+                },
+                AttributeDef {
+                    name: "name".into(),
+                    visible_in: vec![Exposure::Userinfo],
+                    ..Default::default()
+                },
+                AttributeDef {
+                    name: "missing".into(),
+                    visible_in: vec![Exposure::Userinfo],
+                    ..Default::default()
+                },
+            ],
+            allow_undeclared: false,
+        };
+        let mut id = Map::new();
+        profile_claims(&u, &schema, Exposure::IdToken, &mut id);
+        assert_eq!(
+            id,
+            json!({"department": "eng"}).as_object().unwrap().clone()
+        );
+        let mut ui = Map::new();
+        ui.insert("name".into(), json!("from a scope"));
+        profile_claims(&u, &schema, Exposure::Userinfo, &mut ui);
+        assert_eq!(ui["level"], "7");
+        assert_eq!(
+            ui["name"], "from a scope",
+            "a released claim is not replaced"
+        );
+        assert!(ui.get("missing").is_none());
+        assert!(ui.get("department").is_none());
+    }
+
+    #[test]
+    fn user_attribute_mappers_read_top_level_fields_too() {
+        let t = tenant();
+        let u = user();
+        let ctx = ClaimContext {
+            tenant: &t,
+            user: Some(&u),
+            client_id: "app",
+            scopes: &[],
+            roles: &[],
+            groups: &[],
+        };
+        let m = |attribute: &str, claim: &str| ClaimMapper {
+            name: claim.into(),
+            kind: MapperKind::UserAttribute {
+                attribute: attribute.into(),
+                claim: claim.into(),
+                json_type: JsonType::Json,
+            },
+            include_in: vec![TokenKind::Access],
+        };
+        let mut c = Map::new();
+        apply_mappers(
+            &[
+                m("username", "user"),
+                m("email_verified", "ev"),
+                m("department", "dept"),
+            ],
+            &ctx,
+            TokenKind::Access,
+            &mut c,
+        )
+        .unwrap();
+        assert_eq!(c["user"], "alice");
+        assert_eq!(c["ev"], true);
+        assert_eq!(
+            c["dept"], "eng",
+            "a bare name that is no field is an attribute"
+        );
+    }
+
+    #[test]
+    fn a_client_roles_mapper_emits_only_that_clients_roles() {
+        let t = tenant();
+        let u = user();
+        let mine = role("editor", true);
+        let theirs = role("auditor", true);
+        let realm = role("admin", false);
+        let roles = vec![mine.clone(), theirs, realm];
+        let ctx = ClaimContext {
+            tenant: &t,
+            user: Some(&u),
+            client_id: "app",
+            scopes: &[],
+            roles: &roles,
+            groups: &[],
+        };
+        // The pipeline has resolved the mapper's public client id to the row id.
+        let mapper = ClaimMapper {
+            name: "app-roles".into(),
+            kind: MapperKind::Roles {
+                claim: "app_roles".into(),
+                client_id: Some(mine.client_id.unwrap().to_string()),
+            },
+            include_in: vec![TokenKind::Access],
+        };
+        let mut c = Map::new();
+        apply_mappers(&[mapper], &ctx, TokenKind::Access, &mut c).unwrap();
+        assert_eq!(c["app_roles"], json!(["editor"]));
+    }
+
+    #[test]
+    fn mappers_may_not_write_claims_the_builder_owns() {
+        let hard = |claim: &str| ClaimMapper {
+            name: "m".into(),
+            kind: MapperKind::Hardcoded {
+                claim: claim.into(),
+                value: json!(1),
+            },
+            include_in: vec![TokenKind::Access],
+        };
+        for claim in ["sub", "cnf", "act", "roles", "groups", "permissions"] {
+            assert!(mapper_claim_refusal(&hard(claim)).is_some(), "{claim}");
+        }
+        assert!(mapper_claim_refusal(&hard("tier")).is_none());
+        let roles = ClaimMapper {
+            name: "r".into(),
+            kind: MapperKind::Roles {
+                claim: "roles".into(),
+                client_id: None,
+            },
+            include_in: vec![TokenKind::Access],
+        };
+        assert!(
+            mapper_claim_refusal(&roles).is_none(),
+            "its own kind reshapes it"
+        );
+        let groups_as_roles = ClaimMapper {
+            name: "g".into(),
+            kind: MapperKind::Groups {
+                claim: "roles".into(),
+                full_path: false,
+            },
+            include_in: vec![TokenKind::Access],
+        };
+        assert!(mapper_claim_refusal(&groups_as_roles).is_some());
     }
 }

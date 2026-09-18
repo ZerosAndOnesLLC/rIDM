@@ -189,10 +189,14 @@ pub fn validate_endpoint(field: &str, raw: &str) -> AppResult<String> {
     Ok(u.to_string().trim_end_matches('/').to_string())
 }
 
-fn client() -> AppResult<reqwest::Client> {
-    reqwest::Client::builder()
+/// A client for one upstream request. Upstream endpoints are a tenant
+/// admin's (or a discovery document's) choice: an IP-literal `url` must be
+/// public, and names resolve to public addresses only (SSRF).
+fn client_for(what: &str, url: &str) -> AppResult<reqwest::Client> {
+    crate::util::outbound::check_url(url)
+        .map_err(|e| AppError::Unavailable(format!("{what}: {e}")))?;
+    crate::util::outbound::client_builder()
         .timeout(HTTP_TIMEOUT)
-        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| AppError::Internal(e.to_string()))
 }
@@ -230,17 +234,16 @@ async fn read_json(what: &str, res: reqwest::Response) -> AppResult<Value> {
 
 /// `GET` a JSON document (a discovery document, JWK set or userinfo).
 pub async fn get_json(what: &str, url: &str, bearer: Option<&str>) -> AppResult<Value> {
-    let mut req = client()?
+    let mut req = client_for(what, url)?
         .get(url)
         .header("accept", "application/json")
         .header("user-agent", "rIDM");
     if let Some(t) = bearer {
         req = req.bearer_auth(t);
     }
-    let res = req
-        .send()
-        .await
-        .map_err(|e| AppError::Unavailable(format!("{what}: {e}")))?;
+    let res = req.send().await.map_err(|e| {
+        AppError::Unavailable(format!("{what}: {}", crate::util::outbound::describe(&e)))
+    })?;
     read_json(what, res).await
 }
 
@@ -251,7 +254,7 @@ pub async fn post_form(
     form: &[(&str, &str)],
     basic: Option<(&str, &str)>,
 ) -> AppResult<Value> {
-    let mut req = client()?
+    let mut req = client_for(what, url)?
         .post(url)
         .header("accept", "application/json")
         .header("user-agent", "rIDM")
@@ -259,10 +262,9 @@ pub async fn post_form(
     if let Some((user, pass)) = basic {
         req = req.basic_auth(user, Some(pass));
     }
-    let res = req
-        .send()
-        .await
-        .map_err(|e| AppError::Unavailable(format!("{what}: {e}")))?;
+    let res = req.send().await.map_err(|e| {
+        AppError::Unavailable(format!("{what}: {}", crate::util::outbound::describe(&e)))
+    })?;
     read_json(what, res).await
 }
 

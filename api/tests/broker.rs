@@ -503,7 +503,7 @@ async fn a_first_sign_in_creates_and_links_the_user_and_later_ones_reuse_it() {
         res.headers()
             .get_all("set-cookie")
             .iter()
-            .any(|c| c.to_str().unwrap().contains("ridm_session=")),
+            .any(|c| c.to_str().unwrap().contains("ridm_session_")),
         "the session cookie is set on the callback"
     );
 

@@ -29,6 +29,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::{DeliveryStatus, NewWebhook, Webhook, WebhookDelivery, WebhookUpdate};
 use crate::repos;
 use crate::state::AppState;
+use crate::util::outbound;
 
 const LIST_CACHE_TTL: StdDuration = StdDuration::from_secs(60);
 const SECRET_PREFIX: &str = "whsec_";
@@ -42,11 +43,11 @@ const PROMPT_BATCH: i64 = 50;
 /// Lock that keeps one prompt pass per tenant in flight at a time.
 const PROMPT_LOCK_SECS: u64 = 15;
 
-/// One connection pool for every delivery.
+/// One connection pool for every delivery. Names resolve to public
+/// addresses only, checked at connect time (see [`outbound`]).
 static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
-    reqwest::Client::builder()
+    outbound::client_builder()
         .timeout(REQUEST_TIMEOUT)
-        .redirect(reqwest::redirect::Policy::none())
         .user_agent("rIDM-Webhooks/1")
         .build()
         .expect("reqwest client")
@@ -88,27 +89,11 @@ async fn decrypt_secret(state: &AppState, w: &Webhook) -> AppResult<Zeroizing<St
 
 /// Literal addresses that must never be a webhook target: this server's
 /// own network (SSRF). Loopback stays allowed for plain-http development.
+/// Names are checked when a delivery resolves them ([`outbound`]).
 fn is_private_literal(host: &str) -> bool {
     let bare = host.trim_start_matches('[').trim_end_matches(']');
-    match bare.parse::<std::net::IpAddr>() {
-        Ok(std::net::IpAddr::V4(ip)) => {
-            ip.is_private()
-                || ip.is_link_local()
-                || ip.is_unspecified()
-                || ip.is_broadcast()
-                || (ip.octets()[0] == 100 && (64..128).contains(&ip.octets()[1]))
-                || ip.octets()[0] == 0
-        }
-        Ok(std::net::IpAddr::V6(ip)) => {
-            ip.is_unspecified()
-                || (ip.segments()[0] & 0xfe00) == 0xfc00
-                || (ip.segments()[0] & 0xffc0) == 0xfe80
-                || ip
-                    .to_ipv4_mapped()
-                    .is_some_and(|v4| v4.is_private() || v4.is_link_local() || v4.is_loopback())
-        }
-        Err(_) => false,
-    }
+    bare.parse::<std::net::IpAddr>()
+        .is_ok_and(|ip| !(outbound::is_permitted(ip) || ip.is_loopback()))
 }
 
 fn validate_url(raw: &str) -> AppResult<()> {
@@ -541,6 +526,16 @@ async fn attempt(state: &AppState, w: &Webhook, delivery: &WebhookDelivery) -> A
         "attempt": delivery.attempts + 1,
         "event": delivery.payload,
     }))?;
+    // The URL was checked when saved; a literal is checked again here since
+    // no resolver sees it, and a name is checked as it resolves.
+    if let Err(e) = outbound::check_url(&w.url) {
+        return Ok(Attempt {
+            status: None,
+            snippet: None,
+            error: Some(format!("request refused: {e}")),
+            retryable: false,
+        });
+    }
     let ts = Utc::now().timestamp();
     let mut req = HTTP
         .post(&w.url)
@@ -563,7 +558,7 @@ async fn attempt(state: &AppState, w: &Webhook, delivery: &WebhookDelivery) -> A
             return Ok(Attempt {
                 status: None,
                 snippet: None,
-                error: Some(format!("request failed: {e}")),
+                error: Some(format!("request failed: {}", outbound::describe(&e))),
                 retryable: true,
             });
         }

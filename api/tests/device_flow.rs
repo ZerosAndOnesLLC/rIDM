@@ -9,7 +9,7 @@ mod common;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use common::TestApp;
-use ridm_api::models::{ClientType, NewClient, NewUser};
+use ridm_api::models::{ClientType, NewClient, NewUser, UserUpdate};
 use ridm_api::services::password::{self, SetPasswordOptions};
 use ridm_api::services::{clients, tenants, users};
 use ridm_core::events::Actor;
@@ -446,9 +446,9 @@ async fn denial_expiry_and_refusals() {
     let (status, body) = device_authorization(&fx, "nope", "openid").await;
     assert_eq!(status, 401, "{body}");
     assert_eq!(body["error"], "invalid_client");
+    // No scope: the client's default scopes (`openid` is one), not a refusal.
     let (status, body) = device_authorization(&fx, "tv", "").await;
-    assert_eq!(status, 400, "{body}");
-    assert_eq!(body["error"], "invalid_scope");
+    assert_eq!(status, 200, "{body}");
     let (_, body) = device_authorization(&fx, "tv", "openid admin:everything").await;
     assert_eq!(body["error"], "invalid_scope");
 
@@ -586,4 +586,79 @@ async fn discovery_advertises_the_grant() {
             .iter()
             .any(|g| g == "urn:ietf:params:oauth:grant-type:device_code")
     );
+}
+
+/// A browser whose session still owes a forced password change cannot
+/// approve a device with it: the verify step sends it to the password change
+/// first, exactly as `/authorize` does, and the device keeps waiting.
+#[tokio::test]
+async fn a_pending_password_change_comes_before_device_approval() {
+    let fx = fixture().await;
+    let http = browser();
+    let res = http
+        .get(fx.app.tenant_url("/authorize"))
+        .query(&[
+            ("response_type", "code"),
+            ("client_id", "spa"),
+            ("redirect_uri", "https://app.example/cb"),
+            ("scope", "openid"),
+            ("state", "st"),
+            (
+                "code_challenge",
+                "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+            ),
+            ("code_challenge_method", "S256"),
+        ])
+        .send()
+        .await
+        .unwrap();
+    let loc = url::Url::parse(res.headers()["location"].to_str().unwrap()).unwrap();
+    let flow: Uuid = loc
+        .query_pairs()
+        .find(|(k, _)| k == "flow")
+        .unwrap()
+        .1
+        .parse()
+        .unwrap();
+    let state = get_flow(&http, &fx, flow).await;
+    let csrf = state["csrf"].as_str().unwrap().to_string();
+    let state = step(
+        &http,
+        &fx,
+        flow,
+        "password",
+        json!({"identifier": "alice", "password": PASSWORD}),
+        &csrf,
+    )
+    .await;
+    assert_eq!(state["stage"], "done");
+
+    // An administrator forces a password change after the sign-in.
+    users::update(
+        &fx.app.state,
+        fx.app.tenant.id,
+        Actor::System,
+        fx.user_id,
+        UserUpdate {
+            must_change_password: Some(true),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    // The first-party kiosk would otherwise be approved at once.
+    let (_, auth) = device_authorization(&fx, "kiosk", "openid").await;
+    let (status, body) = verify(&http, &fx, auth["user_code"].as_str().unwrap()).await;
+    assert_eq!(status, 200, "{body}");
+    let (_, flow) = flow_of(&body["redirect_to"]);
+    let state = get_flow(&http, &fx, flow).await;
+    assert_eq!(state["stage"], "password_change", "{state}");
+    assert!(
+        state.get("finish_url").is_none_or(Value::is_null),
+        "{state}"
+    );
+    let (status, pending) = poll(&fx, "kiosk", auth["device_code"].as_str().unwrap()).await;
+    assert_eq!(status, 400, "{pending}");
+    assert_eq!(pending["error"], "authorization_pending");
 }

@@ -162,8 +162,9 @@ pub async fn set_email(
             {
                 s.password = prev.password.clone();
             }
-            // The sender constructor validates `security` and the address.
-            messaging::SmtpEmailSender::new(&SmtpConfig {
+            // The sender constructor validates `security`, the address and
+            // the host (no private IP literal; names are vetted at send time).
+            messaging::SmtpEmailSender::for_tenant(&SmtpConfig {
                 password: None,
                 ..s.clone()
             })?;
@@ -516,23 +517,6 @@ pub struct Preview {
     pub vars: Value,
 }
 
-/// Sample variables that cover every event's placeholders.
-fn sample_vars(tenant: &Tenant) -> Value {
-    serde_json::json!({
-        "tenant": {"display_name": tenant.display_name, "slug": tenant.slug},
-        "user": {"username": "sample", "email": "sample@example.com"},
-        "link": "https://example.com/verify?token=sample",
-        "code": "123456",
-        "expires_minutes": 15,
-        "expires_days": 7,
-        "invited_by": "admin",
-        "device": {"user_agent": "Sample Browser", "ip": "203.0.113.7"},
-        "change": "added",
-        "old_email": "old@example.com",
-        "new_email": "new@example.com",
-    })
-}
-
 pub async fn preview(state: &AppState, tenant: &Tenant, req: PreviewRequest) -> AppResult<Preview> {
     validate_event(&req.event)?;
     let channel = req.channel.unwrap_or(MessageChannel::Email);
@@ -554,7 +538,9 @@ pub async fn preview(state: &AppState, tenant: &Tenant, req: PreviewRequest) -> 
             .await?
         }
     };
-    let mut vars = sample_vars(tenant);
+    // The event's real variables (`messaging::vars`), with sample values.
+    let mut vars = messaging::vars::sample(&req.event, tenant)
+        .ok_or_else(|| AppError::BadRequest(format!("unknown event `{}`", req.event)))?;
     if let Some(extra) = req.vars {
         if !extra.is_object() {
             return Err(AppError::BadRequest("vars must be an object".into()));

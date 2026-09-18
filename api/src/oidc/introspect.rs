@@ -1,6 +1,8 @@
 //! Token introspection (RFC 7662): `POST /t/{slug}/introspect`.
 //! Requires an authenticated (confidential) client. Inactive, unknown, or
-//! foreign tokens all yield `{"active": false}`.
+//! foreign tokens all yield `{"active": false}`. Access tokens may be JWTs
+//! or opaque `at_` tokens; for the latter this is the only way a resource
+//! server learns what they stand for.
 
 use std::net::{IpAddr, SocketAddr};
 
@@ -115,8 +117,9 @@ async fn handle(
         return Ok(out);
     }
 
-    // JWT access token: signature must verify; expiry decides `active`.
-    let claims = match tokens::verify(
+    // Access token, JWT or opaque: a JWT's signature must verify, an opaque
+    // token must still have its entry; expiry decides `active`.
+    let claims = match tokens::verify_access(
         state,
         &tenant.tenant,
         token,
@@ -152,8 +155,11 @@ async fn handle(
     let mut out = json!({
         "active": true,
         "token_type": if claims.get("cnf").is_some() { "DPoP" } else { "Bearer" },
-        "typ": "at+jwt",
     });
+    // RFC 9068 names JWT access tokens; an opaque one has no JOSE type.
+    if !crate::services::opaque_tokens::looks_like(token) {
+        out["typ"] = json!("at+jwt");
+    }
     for k in [
         "scope",
         "client_id",

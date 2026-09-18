@@ -286,3 +286,68 @@ async fn import_and_export_follow_the_permission_model() {
         assert_eq!(status, export, "{role} export");
     }
 }
+
+/// An `editable_by: none` attribute is "set by imports or mappers": a bulk
+/// import may set it, the interactive admin API (create and PATCH) may not.
+#[tokio::test]
+async fn an_import_sets_attributes_nobody_edits_interactively() {
+    use ridm_api::models::{AttributeDef, EditableBy, ProfileSchema};
+    use ridm_api::services::profile_schema;
+
+    let app = TestApp::spawn().await;
+    let tid = app.tenant.id;
+    profile_schema::set(
+        &app.state,
+        tid,
+        Actor::System,
+        ProfileSchema {
+            attributes: vec![AttributeDef {
+                name: "employee_id".into(),
+                editable_by: EditableBy::None,
+                ..Default::default()
+            }],
+            allow_undeclared: false,
+        },
+    )
+    .await
+    .unwrap();
+    let base = format!("/admin/tenants/{}/users", app.tenant.slug);
+    let t = admin_token(&app, tid, USER_MANAGER_ROLE).await;
+
+    let rows = json!([{"username": "imported", "attributes": {"employee_id": "E-1"}}]);
+    let (status, report) = post_raw(
+        &app,
+        &format!("{base}/import"),
+        &t,
+        "application/json",
+        rows.to_string(),
+    )
+    .await;
+    assert_eq!(status, 200, "{report}");
+    assert_eq!(report["errors"], json!([]), "{report}");
+    let user = users::find_by_identifier(&app.state, tid, "imported")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(user.attributes["employee_id"], "E-1");
+
+    // The admin API itself still cannot set or change it.
+    let (status, body) = post_raw(
+        &app,
+        &base,
+        &t,
+        "application/json",
+        json!({"username": "direct", "attributes": {"employee_id": "E-2"}}).to_string(),
+    )
+    .await;
+    assert_eq!(status, 400, "{body}");
+    let res = app
+        .http
+        .patch(app.url(&format!("{base}/{}", user.id)))
+        .bearer_auth(&t)
+        .json(&json!({"attributes": {"employee_id": "E-3"}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+}

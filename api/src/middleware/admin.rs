@@ -18,8 +18,6 @@ use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use base64::Engine as _;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ridm_core::events::Actor;
 use serde::Serialize;
 use uuid::Uuid;
@@ -235,16 +233,6 @@ pub(crate) async fn require_binding(
     })
 }
 
-/// The `tid` claim read without verification, only to pick the key set to
-/// verify with. [`tokens::verify`] then binds the token to that tenant's
-/// issuer and keys, so a forged `tid` cannot pass.
-pub(crate) fn unverified_tenant_id(token: &str) -> Option<Uuid> {
-    let payload = token.split('.').nth(1)?;
-    let bytes = URL_SAFE_NO_PAD.decode(payload).ok()?;
-    let claims: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
-    claims.get("tid")?.as_str()?.parse().ok()
-}
-
 impl FromRequestParts<AppState> for AdminCtx {
     type Rejection = AdminRejection;
 
@@ -257,19 +245,21 @@ impl FromRequestParts<AppState> for AdminCtx {
         if pats::looks_like_pat(&token) {
             return Self::from_personal_token(state, &token).await;
         }
-        let tenant_id = unverified_tenant_id(&token).ok_or_else(AdminRejection::invalid)?;
+        // A JWT names its tenant in `tid`; an opaque token's entry knows it.
+        let tenant_id = tokens::access_token_tenant_hint(state, &token)
+            .await?
+            .ok_or_else(AdminRejection::invalid)?;
         let tenant = tenants::get_cached(state, tenant_id)
             .await?
             .ok_or_else(AdminRejection::invalid)?;
         if !tenant.is_active() {
             return Err(AppError::Forbidden("tenant is disabled".into()).into());
         }
-        let claims = tokens::verify(
+        let claims = tokens::verify_access(
             state,
             &tenant,
             &token,
             &VerifyOptions {
-                typ: Some("at+jwt".into()),
                 audience: Some(ADMIN_AUDIENCE.into()),
                 ..Default::default()
             },
@@ -426,9 +416,12 @@ mod tests {
 
     #[test]
     fn tenant_id_is_read_from_the_payload() {
+        use base64::Engine as _;
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
         let payload =
             URL_SAFE_NO_PAD.encode(br#"{"tid":"00000000-0000-7000-8000-000000000001","sub":"x"}"#);
         let token = format!("eyJhbGciOiJSUzI1NiJ9.{payload}.sig");
+        use crate::services::tokens::unverified_tenant_id;
         assert_eq!(unverified_tenant_id(&token), Some(MASTER_TENANT_ID));
         assert_eq!(unverified_tenant_id("not.a"), None);
         assert_eq!(unverified_tenant_id("a.!!!.c"), None);
