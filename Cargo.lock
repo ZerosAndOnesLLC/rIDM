@@ -3984,6 +3984,7 @@ dependencies = [
 name = "ridm-cli"
 version = "0.1.0-dev"
 dependencies = [
+ "axum",
  "chrono",
  "clap",
  "dotenvy",
@@ -3994,6 +3995,9 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
+ "sqlx",
+ "testcontainers",
+ "testcontainers-modules",
  "thiserror 2.0.20",
  "tokio",
  "url",

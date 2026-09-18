@@ -39,3 +39,16 @@ thiserror = { workspace = true }
 dotenvy = { workspace = true }
 rpassword = { workspace = true }
 zeroize = { workspace = true }
+
+[dev-dependencies]
+# `tests/cli.rs` runs the built `ridm` binary against the server's own
+# integration harness (`api/tests/common`, included by path), so it needs what
+# that harness needs.
+ridm-api = { path = "../../api", version = "0.1.0-dev" }
+ridm-core = { workspace = true }
+axum = { workspace = true }
+sqlx = { workspace = true }
+rustls = { workspace = true }
+reqwest = { workspace = true, features = ["cookies", "query"] }
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
