@@ -368,3 +368,45 @@ async fn every_built_in_role_reads_the_audit_log_of_its_own_tenant() {
     .await;
     assert_eq!(status, 200);
 }
+
+/// A one-shot command (`ridm bootstrap`, `ridm-api rotate-master-key`) runs no
+/// background writer: what it publishes is recorded only because it flushes a
+/// `CommandRecorder` before exiting.
+#[tokio::test]
+async fn a_command_records_what_it_published_before_it_exits() {
+    let app = TestApp::spawn().await;
+    // The state a command builds: a bus nothing else listens to.
+    let mut state = app.state.clone();
+    state.events = ridm_core::events::EventBus::default();
+
+    let recorder = audit::CommandRecorder::start(&state);
+    let token_id = Uuid::now_v7();
+    state.events.publish(Event::new(
+        Some(app.tenant.id),
+        Actor::System,
+        EventKind::PersonalTokenCreated {
+            user_id: Uuid::now_v7(),
+            token_id,
+            scopes: vec!["ridm:users:read".into()],
+        },
+    ));
+    let recorded = || async {
+        let mut tx = db::bypass_tx(&state.db).await.unwrap();
+        let n: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM audit_events \
+             WHERE tenant_id = $1 AND name = 'personal_token.created' \
+               AND payload->>'token_id' = $2",
+        )
+        .bind(app.tenant.id)
+        .bind(token_id.to_string())
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        n
+    };
+    assert_eq!(recorded().await, 0, "nothing writes before the flush");
+
+    assert_eq!(recorder.flush(&state).await, 0);
+    assert_eq!(recorded().await, 1);
+}

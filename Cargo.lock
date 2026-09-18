@@ -3989,6 +3989,7 @@ dependencies = [
  "dotenvy",
  "reqwest",
  "ridm-api",
+ "ridm-core",
  "rpassword",
  "rustls",
  "serde",

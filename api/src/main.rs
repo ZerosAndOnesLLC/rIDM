@@ -273,8 +273,30 @@ async fn bootstrap_command(args: &[String]) -> i32 {
     };
     let sample_client = env_bootstrap.as_ref().is_some_and(|b| b.sample_client);
     let state = AppState::new(config, db, cache);
+    let audit = ridm_api::services::audit::CommandRecorder::start(&state);
+    let code = run_bootstrap(
+        &state,
+        sample_client,
+        email,
+        username,
+        password,
+        must_change,
+    )
+    .await;
+    audit.flush(&state).await;
+    code
+}
+
+async fn run_bootstrap(
+    state: &AppState,
+    sample_client: bool,
+    email: String,
+    username: String,
+    password: zeroize::Zeroizing<String>,
+    must_change: bool,
+) -> i32 {
     if sample_client {
-        match bootstrap::ensure_sample_client(&state).await {
+        match bootstrap::ensure_sample_client(state).await {
             Ok(true) => println!(
                 "sample client `{}` created in master",
                 bootstrap::SAMPLE_CLIENT_ID
@@ -287,7 +309,7 @@ async fn bootstrap_command(args: &[String]) -> i32 {
         }
     }
     match bootstrap::run(
-        &state,
+        state,
         bootstrap::BootstrapRequest {
             admin_email: email,
             admin_username: username,
@@ -397,8 +419,15 @@ async fn rotate_master_key_command(args: &[String]) -> i32 {
         }
     };
     let state = AppState::new(config, db, cache);
+    let audit = ridm_api::services::audit::CommandRecorder::start(&state);
+    let code = run_master_key_rotation(&state, status_only).await;
+    audit.flush(&state).await;
+    code
+}
+
+async fn run_master_key_rotation(state: &AppState, status_only: bool) -> i32 {
     use ridm_api::services::master_key;
-    let status = match master_key::status(&state).await {
+    let status = match master_key::status(state).await {
         Ok(s) => s,
         Err(err) => {
             eprintln!("status failed: {err}");
@@ -419,7 +448,7 @@ async fn rotate_master_key_command(args: &[String]) -> i32 {
         );
         return 0;
     }
-    match master_key::rotate_all(&state).await {
+    match master_key::rotate_all(state).await {
         Ok(report) => {
             println!(
                 "{}",

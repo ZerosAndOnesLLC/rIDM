@@ -1,0 +1,172 @@
+{
+  "format": "ridm.tenant/1",
+  "tenant": {
+    "slug": "acme",
+    "display_name": "Acme Corporation",
+    "settings": {
+      "mfa": { "mode": "optional" },
+      "mfa_methods": { "totp": true, "email_otp": true, "sms_otp": false },
+      "auth": {
+        "password": true,
+        "magic_link": true,
+        "email_otp": false,
+        "sms_otp": false,
+        "passkey": true
+      },
+      "registration": {
+        "enabled": true,
+        "require_email_verification": true,
+        "allowed_email_domains": ["acme.test"]
+      },
+      "locale": { "default": "en", "supported": ["en", "de", "fr"] },
+      "branding": {
+        "primary_color": "#b4451f",
+        "support_url": "https://support.acme.test",
+        "links": [{ "label": "Status", "url": "https://status.acme.test" }]
+      }
+    }
+  },
+  "profile_schema": {
+    "allow_undeclared": false,
+    "attributes": [
+      {
+        "name": "department",
+        "type": "enum",
+        "label": "Department",
+        "editable_by": "admin",
+        "visible_in": ["id_token", "userinfo"],
+        "validation": {
+          "values": ["engineering", "sales", "support", "finance", "operations"]
+        },
+        "order": 1
+      },
+      {
+        "name": "employee_id",
+        "type": "string",
+        "label": "Employee ID",
+        "editable_by": "admin",
+        "validation": { "pattern": "E[0-9]{5}" },
+        "order": 2
+      },
+      {
+        "name": "start_date",
+        "type": "date",
+        "label": "Start date",
+        "editable_by": "admin",
+        "order": 3
+      },
+      {
+        "name": "nickname",
+        "type": "string",
+        "label": "What should we call you?",
+        "validation": { "max_length": 40 },
+        "order": 4
+      }
+    ]
+  },
+  "resource_servers": [
+    {
+      "identifier": "https://api.acme.test",
+      "name": "Acme Platform API",
+      "permissions": [
+        { "name": "projects:read", "description": "See projects" },
+        { "name": "projects:write", "description": "Create and change projects" },
+        { "name": "billing:read", "description": "See invoices" },
+        { "name": "billing:write", "description": "Change payment details" }
+      ]
+    }
+  ],
+  "scopes": [
+    {
+      "name": "projects:read",
+      "description": "See your projects",
+      "resource_server": "https://api.acme.test"
+    },
+    {
+      "name": "projects:write",
+      "description": "Change your projects",
+      "resource_server": "https://api.acme.test"
+    },
+    {
+      "name": "billing:read",
+      "description": "See your invoices",
+      "resource_server": "https://api.acme.test"
+    }
+  ],
+  "roles": [
+    {
+      "name": "viewer",
+      "description": "Read-only access to projects",
+      "permissions": ["https://api.acme.test#projects:read"]
+    },
+    {
+      "name": "editor",
+      "description": "Creates and changes projects",
+      "composites": ["viewer"],
+      "permissions": ["https://api.acme.test#projects:write"]
+    },
+    {
+      "name": "billing-admin",
+      "description": "Sees invoices and changes payment details",
+      "composites": ["viewer"],
+      "permissions": [
+        "https://api.acme.test#billing:read",
+        "https://api.acme.test#billing:write"
+      ]
+    }
+  ],
+  "groups": [
+    { "path": ["staff"], "description": "Everyone employed by Acme" },
+    { "path": ["staff", "engineering"], "roles": ["editor"] },
+    { "path": ["staff", "engineering", "platform"], "description": "The platform team" },
+    { "path": ["staff", "engineering", "mobile"], "description": "The mobile team" },
+    { "path": ["staff", "sales"], "roles": ["viewer"] },
+    { "path": ["staff", "support"], "roles": ["viewer"] },
+    { "path": ["staff", "finance"], "roles": ["billing-admin"] },
+    { "path": ["staff", "operations"], "roles": ["viewer"] },
+    { "path": ["contractors"], "description": "External contributors, no standing access" }
+  ],
+  "clients": [
+    {
+      "client_id": "acme-portal",
+      "name": "Acme customer portal",
+      "client_type": "web",
+      "description": "Server-side web app",
+      "token_endpoint_auth_method": "client_secret_basic",
+      "redirect_uris": ["http://localhost:4000/callback"],
+      "post_logout_redirect_uris": ["http://localhost:4000/"],
+      "allowed_grants": ["authorization_code", "refresh_token"],
+      "allowed_scopes": ["openid", "profile", "email", "offline_access", "projects:read", "billing:read"],
+      "allowed_audiences": ["https://api.acme.test"],
+      "require_consent": true
+    },
+    {
+      "client_id": "acme-mobile",
+      "name": "Acme for iOS and Android",
+      "client_type": "native",
+      "redirect_uris": ["com.acme.app:/callback", "http://127.0.0.1/callback"],
+      "allowed_grants": ["authorization_code", "refresh_token"],
+      "allowed_scopes": ["openid", "profile", "email", "offline_access", "projects:read", "projects:write"],
+      "allowed_audiences": ["https://api.acme.test"],
+      "require_pkce": true
+    },
+    {
+      "client_id": "acme-tv",
+      "name": "Acme dashboard for TVs",
+      "client_type": "device",
+      "allowed_grants": ["urn:ietf:params:oauth:grant-type:device_code", "refresh_token"],
+      "allowed_scopes": ["openid", "profile", "projects:read"],
+      "allowed_audiences": ["https://api.acme.test"]
+    },
+    {
+      "client_id": "acme-reporting",
+      "name": "Nightly reporting job",
+      "client_type": "machine",
+      "service_account": true,
+      "token_endpoint_auth_method": "client_secret_basic",
+      "allowed_grants": ["client_credentials"],
+      "allowed_scopes": ["projects:read", "billing:read"],
+      "allowed_audiences": ["https://api.acme.test"]
+    }
+  ]
+}

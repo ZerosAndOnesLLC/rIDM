@@ -7,6 +7,44 @@ these credentials belongs on a machine anyone else can reach.
 The [README](README.md#development) covers what each piece is. This file is the
 short path to having it all on screen at once.
 
+## The short way: `make`
+
+With `.env` set up as in step 1 below, the `Makefile` does most of this page:
+
+```bash
+make setup     # Postgres, Valkey, Mailpit; migrations; first admin; target/dev/token
+make api       # terminal 1: the API on 8090   (make watch: restart on every change)
+make ui        # terminal 2: the UI on 3110, hot reload
+make seed      # the demo tenant for the examples, plus `acme` for console work
+```
+
+`make` alone lists every target. `make token` mints a fresh admin token for the CLI
+(`export RIDM_URL=http://localhost:8090 RIDM_TOKEN=$(cat target/dev/token)`); if the
+owner of your database is not called `admin`, say who: `make token ADMIN=root`. The
+sections below are what those targets run, for when you want the pieces one at a time.
+
+`make seed` loads two tenants. **`demo`** is what section 3 describes. **`acme`**
+([`dev/acme-tenant.json`](dev/acme-tenant.json)) is for working on the consoles: a
+profile schema (department, employee ID, start date), a group tree under `staff` whose
+groups carry roles, one client of each type, and 120 users with profile attributes and
+group memberships, a few disabled or unverified. `ada.lovelace`, `alan.hopper`,
+`barbara.hamilton`, `claude.turing` and `donald.lamarr` have the password
+`Demo-Passw0rd!2026`; the rest sign in by magic link, into Mailpit.
+
+### Hot reload
+
+- **UI**: `next dev` reloads a page as you save it; nothing to restart.
+- **API**: `make watch` (needs [`watchexec`](https://github.com/watchexec/watchexec):
+  `cargo binstall watchexec-cli`) rebuilds and restarts the server when Rust, SQL or
+  TOML under `api/` or `crates/` changes. A restart does not apply a new migration —
+  `make migrate` does, as the schema owner — and signed-in browser sessions survive it:
+  the server keeps none of its state in memory alone.
+- **Slow spots**: a debug build is fast at the two costly things rIDM does, RSA key
+  generation and argon2 hashing, because `Cargo.toml` compiles just those crates
+  optimised. The API's start-up time grows with the number of tenants (each gets its
+  console clients checked); a database that test runs have filled with hundreds of
+  tenants takes tens of seconds to start, and `make reset` empties it.
+
 ## 1. Infrastructure and the server
 
 Requirements: Rust 1.98+ (pinned in `rust-toolchain.toml`), Node.js 24, Docker,
@@ -94,12 +132,20 @@ printf 'a-password-of-your-own' |
 
 ### Getting an admin token for the CLI
 
-The CLI does not mint a token itself: `ridm login` asks you to paste one (or
-runs the device grant for a client you registered for it; see the
-[README](README.md#command-line-administration-ridm)). Sign in to the account
-console at <http://localhost:3110/account/?tenant=master> and mint a personal
-access token under Security, or, without a browser, insert one directly for a
-user who already holds the permissions:
+`make token` is the quick way: it runs `ridm bootstrap --issue-token`, which mints a
+personal access token for the owner straight through the database and writes it to
+`target/dev/token`:
+
+```bash
+make token ADMIN=admin
+export RIDM_URL=http://localhost:8090 RIDM_TOKEN=$(cat target/dev/token)
+```
+
+Otherwise `ridm login` asks you to paste one (or runs the device grant for a client
+you registered for it; see the [README](README.md#command-line-administration-ridm)).
+Sign in to the account console at <http://localhost:3110/account/?tenant=master> and
+mint a personal access token under Security, or insert one directly for a user who
+already holds the permissions:
 
 ```bash
 TOKEN="rpat_$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=')"

@@ -19,7 +19,9 @@ cargo run -p ridm-api           # http://localhost:8080/readyz
 cd ui && npm install && npm run dev
 ```
 
-Compose reads `deploy/.env` unless told otherwise, hence `--env-file .env`. Migrations
+The `Makefile` wraps these (`make setup`, `make api`, `make ui`, `make seed`, `make lint`,
+`make test`; `make` lists them all), including seeded tenants to develop against and an
+admin token without a browser. Compose reads `deploy/.env` unless told otherwise, hence `--env-file .env`. Migrations
 run as the schema owner (`ridm_migrator`); the API connects as the DML-only `ridm_app`
 from `.env`, and with `MIGRATE_ON_START=false` it only warns at startup when migrations
 are pending. [`GETTING-STARTED.md`](GETTING-STARTED.md) has the fuller local setup (the

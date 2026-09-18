@@ -282,3 +282,22 @@ printf '%s' 'a-long-passphrase' | ridm bootstrap --email admin@example.com --pas
 
 Then sign in to the admin console through `master`, mint a personal access token in
 the account console, and run `ridm login --url <server URL>`.
+
+### A token without a browser
+
+`--issue-token NAME` also mints a personal access token for the administrator named by
+`--username` (default `admin`, or `BOOTSTRAP_ADMIN_USERNAME`), carrying every admin
+permission that user holds and expiring after `--token-days` (30 by default, and at most
+the `master` tenant's `personal_token_max_days`). The token is printed alone on stdout,
+everything else goes to stderr, so a script can capture it:
+
+```bash
+RIDM_TOKEN=$(ridm bootstrap --no-migrate --issue-token ci-setup --token-days 1)
+```
+
+It works on an already-bootstrapped database too — then it creates nothing and needs no
+password, only the user to mint for. It is meant for development stacks and automated
+setup: anyone who holds `DATABASE_URL` and `MASTER_KEY` already controls every tenant,
+so it grants nothing new, but the token is as powerful as the administrator. It is
+recorded in the audit log as a token created by the system, and appears in the
+administrator's account console where it can be revoked.

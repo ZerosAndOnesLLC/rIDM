@@ -162,6 +162,15 @@ pub struct BootstrapArgs {
     /// Assume the schema is current; do not apply migrations first.
     #[arg(long)]
     pub no_migrate: bool,
+    /// Also mint a personal access token named NAME for the administrator
+    /// (`--username`, default `admin`) with every admin permission it holds,
+    /// and print it alone on stdout. For development stacks and scripts.
+    #[arg(long, value_name = "NAME")]
+    pub issue_token: Option<String>,
+    /// Days until the issued token expires (at most the master tenant's cap).
+    #[arg(long, value_name = "DAYS", default_value_t = 30, requires = "issue_token",
+          value_parser = clap::value_parser!(u32).range(1..))]
+    pub token_days: u32,
 }
 
 #[derive(Debug, Subcommand)]
