@@ -80,7 +80,11 @@ jobs:
           RATE_LIMITS: "false"
           BOOTSTRAP_ADMIN_EMAIL: admin@ridm.local
           BOOTSTRAP_ADMIN_PASSWORD: ChangeMe-Now-1234-e2e
+        # The suite's back-channel logout endpoint is on this host's private
+        # address (certs.sh writes it to conformance/.env); outbound requests
+        # reach only public addresses unless the operator opens a network.
         run: |
+          export OUTBOUND_ALLOW_NETWORKS="$(. conformance/.env && echo "$SUITE_HOST")"
           nohup target/debug/ridm-api > api.log 2>&1 &
           for i in $(seq 1 60); do curl -sf localhost:8090/readyz && break; sleep 2; done
           curl -sf localhost:8090/readyz

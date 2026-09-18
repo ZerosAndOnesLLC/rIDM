@@ -135,7 +135,8 @@ URLs a tenant administrator or a client registration chooses (webhook receivers,
 back-channel logout URIs, client `jwks_uri`, identity-provider endpoints, a tenant's HTTP
 email or SMS gateway, a CAPTCHA `verify_url`, a tenant's SMTP host) are only ever
 connected to at public addresses: private, loopback, link-local and similar ranges are
-refused, redirects are not followed, and `HTTP(S)_PROXY` is ignored. The URLs the
+refused unless `OUTBOUND_ALLOW_NETWORKS` opens that network for internal applications,
+redirects are not followed, and `HTTP(S)_PROXY` is ignored. The URLs the
 operator sets in the environment (`AUDIT_SINK_URL`, `BREACH_CHECK_URL`, the collector,
 the deployment's `SMTP_HOST`) are not filtered. See
 [Rate limits, IP rules and CAPTCHA](../admin/security-controls.md).

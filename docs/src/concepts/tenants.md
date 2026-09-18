@@ -177,7 +177,9 @@ itself and connects only to public addresses:
   target, and `HTTP_PROXY`/`HTTPS_PROXY` are ignored, since a proxy would
   resolve the name out of the check's sight;
 - for development, loopback stays allowed when it is named as such: the host
-  `localhost` or a loopback IP literal.
+  `localhost` or a loopback IP literal;
+- the operator can open private networks where internal applications live
+  with `OUTBOUND_ALLOW_NETWORKS`; addresses inside them count as public.
 
 A tenant SMTP host that is a private IP literal is refused when it is saved.
 When sending, rIDM connects to the address it vetted (the first allowed one)

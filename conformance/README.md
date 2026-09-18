@@ -13,6 +13,7 @@ moving to a newer release).
 conformance/certs.sh   # also writes conformance/.env with this host's address
 PUBLIC_URL=https://ridm.local UI_URL=https://ridm.local BIND_ADDR=0.0.0.0:8090 \
   RATE_LIMITS=false COOKIE_SECURE=false \
+  OUTBOUND_ALLOW_NETWORKS=$(. conformance/.env && echo "$SUITE_HOST") \
   SSL_CERT_FILE=$PWD/conformance/certs/bundle.crt cargo run -p ridm-api &
 (cd ui && npm run build && npx -y serve@latest -l 3110 out) &
 docker compose -f conformance/docker-compose.yml up -d        # suite API on :18443
@@ -27,6 +28,8 @@ Back-channel logout has the OP call the suite, so the suite publishes itself at 
 host's own address (`SUITE_HOST`, written by `certs.sh`), which its browser and the OP
 both reach, with a certificate from the same private CA. `SSL_CERT_FILE` is the system
 roots plus that CA; without it the OP refuses the call and the back-channel plan hangs.
+That address is private, and rIDM sends back-channel logout only to public addresses
+unless the operator opens a network, hence `OUTBOUND_ALLOW_NETWORKS=$SUITE_HOST`.
 
 The tenant needs open dynamic registration allowing `authorization_code` and
 `refresh_token` (the plans register their clients) with `dcr.require_pkce` off (the

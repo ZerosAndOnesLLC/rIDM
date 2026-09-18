@@ -109,7 +109,7 @@ async fn an_abandoned_second_factor_leaves_no_usable_session() {
     // The password passes, the MFA page is shown... and abandoned.
     let jar = browser();
     let (_, after) = support::password_login(&jar, &app, &app.tenant.slug, "alice").await;
-    assert_eq!(after["stage"], "mfa", "{after}");
+    assert!(after["stage"] == "mfa", "the flow is not at `mfa`");
 
     // A fresh authorization, without acr_values, from the same browser.
     assert_owes(&app, &jar, "mfa", "mfa").await;
@@ -123,7 +123,7 @@ async fn a_policy_tightened_after_sign_in_applies_to_the_live_session() {
     support::user_with_password(&app, app.tenant.id, "alice").await;
     let jar = browser();
     let (_, after) = support::password_login(&jar, &app, &app.tenant.slug, "alice").await;
-    assert_eq!(after["stage"], "done", "{after}");
+    assert!(after["stage"] == "done", "the flow is not at `done`");
     let code = support::finish(&jar, &after).await;
     assert!(!code.is_empty());
 
@@ -151,6 +151,9 @@ async fn an_abandoned_password_change_leaves_no_usable_session() {
     .unwrap();
     let jar = browser();
     let (_, after) = support::password_login(&jar, &app, &app.tenant.slug, "alice").await;
-    assert_eq!(after["stage"], "password_change", "{after}");
+    assert!(
+        after["stage"] == "password_change",
+        "the flow is not at `password_change`"
+    );
     assert_owes(&app, &jar, "password_change", "login").await;
 }

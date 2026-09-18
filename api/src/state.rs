@@ -33,6 +33,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(config: Config, db: Db, redis: Cache) -> Self {
+        crate::util::outbound::allow_networks(&config.outbound_allow_networks);
         let cache = CacheLayer::new(redis.clone());
         let hasher = Arc::new(crate::services::password::Argon2Hasher::new(config.argon2));
         let key_encryptor =

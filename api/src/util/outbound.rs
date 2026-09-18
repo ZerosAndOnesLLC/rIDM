@@ -19,13 +19,38 @@
 //! plain-http loopback targets. Any other name that resolves to loopback is
 //! refused like any other private address.
 //!
+//! The operator can open private networks with `OUTBOUND_ALLOW_NETWORKS`
+//! ([`allow_networks`], called once at startup): an internal application's
+//! back-channel logout endpoint or an internal webhook receiver lives on one.
+//! Addresses inside those networks are treated as public, literal or resolved.
+//!
 //! Clients built here ignore `HTTP(S)_PROXY`: a proxy would resolve the target
 //! itself, out of this check's sight.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
+use ipnet::IpNet;
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
+
+/// Networks the operator opened (`OUTBOUND_ALLOW_NETWORKS`).
+static ALLOWED_NETWORKS: OnceLock<Vec<IpNet>> = OnceLock::new();
+
+/// Open `networks` to outbound requests for the life of the process. The
+/// first call wins: the configuration is read once, at startup.
+pub fn allow_networks(networks: &[IpNet]) {
+    let _ = ALLOWED_NETWORKS.set(networks.to_vec());
+}
+
+/// May a request to someone else's URL reach `ip`? A public address, or one
+/// inside a network the operator opened.
+pub fn is_permitted(ip: IpAddr) -> bool {
+    permitted_in(ip, ALLOWED_NETWORKS.get().map_or(&[], Vec::as_slice))
+}
+
+fn permitted_in(ip: IpAddr, opened: &[IpNet]) -> bool {
+    is_public(ip) || opened.iter().any(|n| n.contains(&ip))
+}
 
 /// Is `ip` an address on the public internet? Private, loopback,
 /// link-local, unspecified, multicast, broadcast, carrier-grade NAT,
@@ -106,17 +131,18 @@ fn is_loopback_name(host: &str) -> bool {
     host.trim_end_matches('.').eq_ignore_ascii_case("localhost")
 }
 
-/// Keep the addresses a connection to `host` may use: public ones, plus
-/// loopback when `host` is `localhost`.
+/// Keep the addresses a connection to `host` may use: permitted ones
+/// ([`is_permitted`]), plus loopback when `host` is `localhost`.
 pub fn allowed_addrs(host: &str, addrs: impl IntoIterator<Item = SocketAddr>) -> Vec<SocketAddr> {
     let loopback_ok = is_loopback_name(host);
     addrs
         .into_iter()
-        .filter(|a| is_public(a.ip()) || (loopback_ok && a.ip().is_loopback()))
+        .filter(|a| is_permitted(a.ip()) || (loopback_ok && a.ip().is_loopback()))
         .collect()
 }
 
-/// Refuse a URL whose host is a non-public IP literal (loopback excepted).
+/// Refuse a URL whose host is an IP literal [`is_permitted`] refuses
+/// (loopback excepted).
 /// Hostnames pass here; [`PublicResolver`] checks what they resolve to.
 pub fn check_url(raw: &str) -> Result<(), String> {
     let u = url::Url::parse(raw).map_err(|_| format!("`{raw}` is not a valid URL"))?;
@@ -126,7 +152,7 @@ pub fn check_url(raw: &str) -> Result<(), String> {
         Some(url::Host::Domain(_)) => return Ok(()),
         None => return Err(format!("`{raw}` has no host")),
     };
-    if is_public(ip) || ip.is_loopback() {
+    if is_permitted(ip) || ip.is_loopback() {
         Ok(())
     } else {
         Err(format!(
@@ -141,7 +167,7 @@ pub fn check_url(raw: &str) -> Result<(), String> {
 pub fn check_host(host: &str) -> Result<(), String> {
     let bare = host.trim_start_matches('[').trim_end_matches(']');
     match bare.parse::<IpAddr>() {
-        Ok(ip) if !(is_public(ip) || ip.is_loopback()) => Err(format!(
+        Ok(ip) if !(is_permitted(ip) || ip.is_loopback()) => Err(format!(
             "`{ip}` is a private, link-local or reserved address"
         )),
         _ => Ok(()),
@@ -281,6 +307,21 @@ mod tests {
         ] {
             assert!(is_public(ip(s)), "{s} is public");
         }
+    }
+
+    #[test]
+    fn opened_networks_are_permitted_and_nothing_else() {
+        let opened: Vec<IpNet> = vec![
+            "10.1.0.0/16".parse().unwrap(),
+            "fd00::1/128".parse().unwrap(),
+        ];
+        let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+        assert!(permitted_in(ip("10.1.1.130"), &opened));
+        assert!(permitted_in(ip("fd00::1"), &opened));
+        assert!(!permitted_in(ip("10.2.0.1"), &opened));
+        assert!(!permitted_in(ip("fd00::2"), &opened));
+        assert!(!permitted_in(ip("10.1.1.130"), &[]));
+        assert!(permitted_in(ip("93.184.215.14"), &[]));
     }
 
     #[test]

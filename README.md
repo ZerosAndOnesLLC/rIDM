@@ -208,6 +208,7 @@ in [`.env.example`](.env.example). The essentials:
 | `MASTER_KEY` / `MASTER_KEY_FILE` | 32-byte key (hex or base64) encrypting secrets at rest |
 | `BIND_ADDR` | Listen address, default `0.0.0.0:8080` |
 | `TRUSTED_PROXIES` | CIDRs whose `X-Forwarded-For` / `Forwarded` headers are honoured |
+| `OUTBOUND_ALLOW_NETWORKS` | private CIDRs that requests to tenant-chosen URLs may reach anyway (internal applications); empty = public addresses only |
 | `TLS_CERT` / `TLS_KEY` | Native TLS termination; leave unset behind a reverse proxy |
 | `MIGRATE_ON_START` | `true`: apply pending migrations at startup (and in `ridm-api bootstrap`) as `DATABASE_URL`'s role, which must then own the schema; an up-to-date database needs nothing. Off (default): startup only warns when migrations are pending; run `ridm-api migrate` as the schema-owner role |
 | `LOG_FORMAT`, `RUST_LOG` | `json` or `pretty`; tracing filter |
@@ -500,7 +501,9 @@ other reserved addresses (IPv4-mapped and similar IPv6 forms included) and fails
 none is left, so a name that later resolves inward (DNS rebinding) is refused at
 connection time; IP literals are checked before the request is sent. These clients
 follow no redirects and ignore `HTTP_PROXY`/`HTTPS_PROXY`. For development, loopback
-named as such (`localhost`, `127.0.0.0/8`, `::1`) is allowed. A tenant SMTP host that is
+named as such (`localhost`, `127.0.0.0/8`, `::1`) is allowed, and the operator can open
+private networks for internal applications with `OUTBOUND_ALLOW_NETWORKS` (addresses
+inside them count as public). A tenant SMTP host that is
 a private IP literal is refused when saved; a named one is resolved the same way, the
 connection goes to the vetted address (the first allowed one only) and TLS verifies the
 configured host name. URLs the operator sets in the environment (`AUDIT_SINK_URL`,

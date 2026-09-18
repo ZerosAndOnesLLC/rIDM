@@ -24,9 +24,9 @@ async fn two_tenants_on_one_host_keep_separate_sessions() {
 
     let jar = browser();
     let (_, after_a) = support::password_login(&jar, &app, &a.slug, "alice").await;
-    assert_eq!(after_a["stage"], "done", "{after_a}");
+    assert!(after_a["stage"] == "done", "the flow is not at `done`");
     let (_, after_b) = support::password_login(&jar, &app, &b.slug, "alice").await;
-    assert_eq!(after_b["stage"], "done", "{after_b}");
+    assert!(after_b["stage"] == "done", "the flow is not at `done`");
 
     // Both sessions are still usable from the same jar without a new login.
     for t in [&a, &b] {

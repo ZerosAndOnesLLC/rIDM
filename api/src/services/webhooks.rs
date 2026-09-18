@@ -93,7 +93,7 @@ async fn decrypt_secret(state: &AppState, w: &Webhook) -> AppResult<Zeroizing<St
 fn is_private_literal(host: &str) -> bool {
     let bare = host.trim_start_matches('[').trim_end_matches(']');
     bare.parse::<std::net::IpAddr>()
-        .is_ok_and(|ip| !(outbound::is_public(ip) || ip.is_loopback()))
+        .is_ok_and(|ip| !(outbound::is_permitted(ip) || ip.is_loopback()))
 }
 
 fn validate_url(raw: &str) -> AppResult<()> {

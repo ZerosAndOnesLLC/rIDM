@@ -286,8 +286,9 @@ rIDM makes one attempt per client with a five-second timeout and does not
 retry, so the endpoint should be quick and must be reachable from rIDM. It
 must also resolve to a public address: rIDM refuses to deliver to private,
 loopback (other than `localhost` itself, for development) and other internal
-addresses, and follows no redirects (see
-[Outbound requests](../concepts/tenants.md#outbound-requests)).
+addresses unless the operator opened that network with `OUTBOUND_ALLOW_NETWORKS`
+(the usual case for an application on an internal network), and follows no redirects
+(see [Outbound requests](../concepts/tenants.md#outbound-requests)).
 
 A missed logout token is not fatal: the session's refresh tokens are revoked
 either way, so the app also finds out at its next refresh, within one

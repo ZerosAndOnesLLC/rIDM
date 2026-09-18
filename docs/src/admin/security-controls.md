@@ -363,6 +363,16 @@ For all of them:
   would resolve the name out of the check's sight.
 - **Development allowance**: loopback literals (`127.0.0.0/8`, `::1`) and the host
   name `localhost` may reach loopback. Any other name resolving to loopback is refused.
+- **Networks the operator opens**: `OUTBOUND_ALLOW_NETWORKS` lists private networks
+  these requests may reach anyway, for applications that live on an internal network
+  (a back-channel logout endpoint at `https://orders.internal`, a webhook receiver in the
+  same VPC). An address inside one counts as public, literal or resolved. Open the
+  narrowest networks that hold those applications, not the whole private range: a
+  tenant administrator can point a webhook at anything inside them.
+
+```bash
+OUTBOUND_ALLOW_NETWORKS=10.20.0.0/16,192.168.40.12
+```
 
 A tenant's SMTP server is resolved just before each connection; rIDM connects to the
 first allowed address it found (only that one is tried) while TLS still verifies the
