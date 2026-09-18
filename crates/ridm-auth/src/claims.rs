@@ -179,8 +179,14 @@ impl Claims {
         self.extra.get(name)
     }
 
-    /// Is this a machine token (client credentials), with no user behind it?
-    pub fn is_client_credentials(&self) -> bool {
+    /// Is the client itself the subject — a token with no user behind it at
+    /// all?
+    ///
+    /// True for `client_credentials` where the client has no service account.
+    /// A machine client that *has* one carries that user as `sub` and reads
+    /// here like any other user, which is the point of a service account: it
+    /// holds roles, groups and permissions.
+    pub fn is_client_only(&self) -> bool {
         self.client_id.as_deref() == Some(self.sub.as_str())
     }
 
@@ -322,15 +328,21 @@ mod tests {
     }
 
     #[test]
-    fn a_machine_token_is_the_one_whose_subject_is_its_client() {
+    fn a_token_with_no_user_is_the_one_whose_subject_is_its_client() {
         let mut machine = base();
         machine["sub"] = serde_json::json!("reporting-job");
         machine["client_id"] = serde_json::json!("reporting-job");
-        assert!(parse(machine).is_client_credentials());
+        assert!(parse(machine).is_client_only());
+
+        // A machine client with a service account has a user subject, and is
+        // not "client only" even though nobody is at a keyboard.
+        let mut service_account = base();
+        service_account["client_id"] = serde_json::json!("reporting-job");
+        assert!(!parse(service_account).is_client_only());
 
         let mut user = base();
         user["client_id"] = serde_json::json!("web-app");
-        assert!(!parse(user).is_client_credentials());
+        assert!(!parse(user).is_client_only());
     }
 
     #[test]

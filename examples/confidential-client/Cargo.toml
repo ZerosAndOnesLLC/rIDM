@@ -1,0 +1,26 @@
+[package]
+name = "ridm-example-confidential-client"
+description = "Example: a server-side web app signing users in with rIDM (authorization code + PKCE, a server session, refresh, RP-initiated and back-channel logout)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# Copied out of this repository, this line becomes `ridm-auth = "0.1"`.
+ridm-auth = { path = "../../crates/ridm-auth", version = "0.1.0-dev" }
+
+axum = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+base64 = { workspace = true }
+sha2 = { workspace = true }
+rand = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

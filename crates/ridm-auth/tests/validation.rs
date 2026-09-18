@@ -26,7 +26,7 @@ async fn a_token_from_the_issuer_is_accepted_and_its_claims_read() {
     assert!(claims.has_role("staff"));
     assert!(claims.has_group("warehouse"));
     claims.require_permission("orders:read").unwrap();
-    assert!(!claims.is_client_credentials());
+    assert!(!claims.is_client_only());
 }
 
 #[tokio::test]
@@ -418,7 +418,7 @@ async fn a_machine_token_carries_its_client_as_the_subject() {
     machine.as_object_mut().unwrap().remove("groups");
 
     let claims = validator.validate(&access_token(&machine)).await.unwrap();
-    assert!(claims.is_client_credentials());
+    assert!(claims.is_client_only());
     assert!(claims.roles.is_empty());
 }
 

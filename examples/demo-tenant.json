@@ -1,0 +1,88 @@
+{
+  "format": "ridm.tenant/1",
+  "tenant": {
+    "slug": "demo",
+    "display_name": "Example Orders Co."
+  },
+  "resource_servers": [
+    {
+      "identifier": "https://orders.example",
+      "name": "Orders API",
+      "allow_offline_access": true,
+      "permissions": [
+        { "name": "orders:read", "description": "See orders" },
+        { "name": "orders:write", "description": "Place orders" }
+      ]
+    }
+  ],
+  "scopes": [
+    {
+      "name": "orders:read",
+      "description": "See your orders",
+      "resource_server": "https://orders.example"
+    },
+    {
+      "name": "orders:write",
+      "description": "Place orders on your behalf",
+      "resource_server": "https://orders.example"
+    }
+  ],
+  "roles": [
+    {
+      "name": "orders-reader",
+      "description": "May see orders",
+      "permissions": ["https://orders.example#orders:read"]
+    },
+    {
+      "name": "orders-manager",
+      "description": "May see and place orders",
+      "permissions": [
+        "https://orders.example#orders:read",
+        "https://orders.example#orders:write"
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "client_id": "orders-spa",
+      "name": "Orders (single-page app)",
+      "client_type": "spa",
+      "redirect_uris": ["http://localhost:3100/callback/"],
+      "post_logout_redirect_uris": ["http://localhost:3100/"],
+      "allowed_grants": ["authorization_code", "refresh_token"],
+      "allowed_scopes": [
+        "openid",
+        "profile",
+        "email",
+        "offline_access",
+        "orders:read",
+        "orders:write"
+      ],
+      "allowed_audiences": ["https://orders.example"],
+      "require_pkce": true,
+      "require_consent": false,
+      "cors_origins": ["http://localhost:3100"]
+    },
+    {
+      "client_id": "orders-web",
+      "name": "Orders (server-side web app)",
+      "client_type": "web",
+      "token_endpoint_auth_method": "client_secret_basic",
+      "redirect_uris": ["http://localhost:3200/callback"],
+      "post_logout_redirect_uris": ["http://localhost:3200/"],
+      "backchannel_logout_uri": "http://localhost:3200/backchannel-logout",
+      "allowed_grants": ["authorization_code", "refresh_token"],
+      "allowed_scopes": [
+        "openid",
+        "profile",
+        "email",
+        "offline_access",
+        "orders:read",
+        "orders:write"
+      ],
+      "allowed_audiences": ["https://orders.example"],
+      "require_pkce": true,
+      "require_consent": false
+    }
+  ]
+}

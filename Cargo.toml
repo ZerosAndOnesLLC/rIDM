@@ -1,6 +1,13 @@
 [workspace]
 resolver = "3"
-members = ["api", "crates/ridm-auth", "crates/ridm-core", "crates/ridm-cli"]
+members = [
+    "api",
+    "crates/ridm-auth",
+    "crates/ridm-core",
+    "crates/ridm-cli",
+    "examples/axum-api",
+    "examples/confidential-client",
+]
 # cargo-fuzz crates are built by `cargo fuzz`, not as workspace members.
 exclude = ["api/fuzz"]
 

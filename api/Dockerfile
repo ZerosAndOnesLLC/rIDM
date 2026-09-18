@@ -25,23 +25,31 @@ WORKDIR /src
 # Cache dependency compilation separately from source changes. Cargo loads the
 # manifest of every workspace member even when only one package is built, so
 # each member needs its Cargo.toml and a stub target here — including
-# `ridm-cli` and `ridm-auth`, which the image does not ship.
+# `ridm-cli`, `ridm-auth` and the examples, which the image does not ship.
 COPY Cargo.toml Cargo.lock ./
 COPY api/Cargo.toml api/Cargo.toml
 COPY crates/ridm-core/Cargo.toml crates/ridm-core/Cargo.toml
 COPY crates/ridm-cli/Cargo.toml crates/ridm-cli/Cargo.toml
 COPY crates/ridm-auth/Cargo.toml crates/ridm-auth/Cargo.toml
+COPY examples/axum-api/Cargo.toml examples/axum-api/Cargo.toml
+COPY examples/confidential-client/Cargo.toml examples/confidential-client/Cargo.toml
 RUN mkdir -p api/src crates/ridm-core/src crates/ridm-cli/src crates/ridm-auth/src \
+      examples/axum-api/src examples/confidential-client/src \
  && echo 'fn main() {}' > api/src/main.rs \
  && echo '' > api/src/lib.rs \
  && echo '' > crates/ridm-core/src/lib.rs \
  && echo 'fn main() {}' > crates/ridm-cli/src/main.rs \
  && echo '' > crates/ridm-auth/src/lib.rs \
+ && echo 'fn main() {}' > examples/axum-api/src/main.rs \
+ && echo 'fn main() {}' > examples/confidential-client/src/main.rs \
  && cargo build --release --locked -p ridm-api \
- && rm -rf api/src crates/ridm-core/src crates/ridm-cli/src crates/ridm-auth/src
+ && rm -rf api/src crates/ridm-core/src crates/ridm-cli/src crates/ridm-auth/src \
+      examples/axum-api/src examples/confidential-client/src
 
 COPY api api
 COPY crates crates
+COPY examples/axum-api examples/axum-api
+COPY examples/confidential-client examples/confidential-client
 # Touch sources so cargo notices they changed after the dependency-only build.
 RUN touch api/src/main.rs api/src/lib.rs crates/ridm-core/src/lib.rs \
  && cargo build --release --locked -p ridm-api \

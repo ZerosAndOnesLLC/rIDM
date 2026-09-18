@@ -656,6 +656,24 @@ does not do revocation — rIDM's access tokens are short-lived, and an API that
 sooner should call `/introspect` instead. `api/tests/ridm_auth.rs` runs it against tokens
 this server really issues.
 
+### Example relying parties
+
+[`examples/`](examples/README.md) holds three applications against one demo tenant,
+each showing a different half of the protocol:
+
+| Example | What it is | Runs on |
+|---------|------------|---------|
+| `examples/axum-api/` | a **resource server** — a Rust API that accepts rIDM tokens through `ridm-auth`, with no session and no user table of its own | `:8081` |
+| `examples/nextjs-spa/` | a **public client** — authorization code with PKCE, no secret, tokens in memory, silent re-authentication with `prompt=none` | `:3100` |
+| `examples/confidential-client/` | a **confidential client** — a server-side web app with a secret, a session cookie, refresh token rotation, RP-initiated *and* back-channel logout | `:3200` |
+
+Both clients call the same API, so one token can be watched all the way: minted
+for `https://orders.example`, verified by a service that has never heard of the
+user. `examples/setup.sh` builds the tenant from
+[`examples/demo-tenant.json`](examples/demo-tenant.json) — the resource server and
+its permissions, the scopes, two roles and the two clients — with
+`ridm tenant import`, then creates a user for each role.
+
 ### Command-line administration (`ridm`)
 
 `crates/ridm-cli` builds a second binary, `ridm`, that works the admin API from a
@@ -1129,6 +1147,7 @@ the load tests in [`perf/README.md`](perf/README.md).
 | `crates/ridm-auth/` | `ridm-auth`: published to crates.io; validates rIDM tokens in someone else's Rust API |
 | `crates/ridm-cli/` | `ridm`: command-line administration over the admin API |
 | `ui/` | Next.js 16 static export: admin console, account console, auth pages |
+| `examples/` | three relying parties: an axum resource server, a Next.js SPA, a confidential web app |
 | `deploy/` | docker-compose, Helm chart, reverse-proxy examples |
 | `api/fuzz/` | cargo-fuzz targets and their seed corpora |
 | `perf/` | k6 load tests: the PR smoke and the release baseline |
