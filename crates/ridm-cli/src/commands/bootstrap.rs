@@ -116,8 +116,8 @@ async fn act(
             CliError::failed(message)
         })?;
         match outcome {
-            service::BootstrapOutcome::Created { admin_user_id } => {
-                say(&format!("Global admin created (user id {admin_user_id})."));
+            service::BootstrapOutcome::Created { .. } => {
+                say("Global admin created in the master tenant.");
                 if args.issue_token.is_none() {
                     say("Next: `ridm login --url <server URL>` with a personal access token.");
                 }
@@ -132,7 +132,7 @@ async fn act(
     if let Some(name) = &args.issue_token {
         let token = issue_token(state, &username, name, args.token_days).await?;
         println!("{}", token.as_str());
-        eprintln!("  (a personal access token for `{username}` in `master`; shown once)");
+        eprintln!("  (a personal access token for the administrator, in `master`; shown once)");
     }
     Ok(())
 }
