@@ -97,6 +97,16 @@ async function drive(page, id, url) {
       await page.waitForTimeout(500);
     }
     if (clicked.size > 0 && page.url() !== here) continue;
+    // The signed-out page of a logout with no post-logout redirect is where
+    // such a logout ends, but it keeps its status line (and any front-channel
+    // iframes) on screen, so the "still loading" rule below would hold it to
+    // the deadline — a minute during which this driver serves no other test.
+    // Give the front-channel frames a moment, then call it finished.
+    if (URL.canParse(here) && /\/logout\/?$/.test(path) && new URL(here).searchParams.get("done") === "1") {
+      await page.waitForTimeout(3000);
+      log(id, "signed out at", here.slice(0, 100));
+      return done("settled");
+    }
     // Settled somewhere else (an error page from the OP, or a page that
     // finished on its own): give it a moment, then report where it ended. A
     // page still loading its flow, or one still framing the relying parties
