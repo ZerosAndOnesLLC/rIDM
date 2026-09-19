@@ -17202,6 +17202,56 @@
         ]
       }
     },
+    "/t/{slug}/account/organizations": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Read-only: membership is managed by an administrator, by an invitation or\nby a verified auto-join domain. To act in another one, sign in again.",
+        "operationId": "account_list_organizations",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AccountOrganization"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/t/{slug}/account/password": {
       "get": {
         "tags": [
@@ -18225,6 +18275,31 @@
             "$ref": "#/components/schemas/AccountTenant"
           },
           "username": {
+            "type": "string"
+          }
+        }
+      },
+      "AccountOrganization": {
+        "type": "object",
+        "required": [
+          "id",
+          "slug",
+          "display_name",
+          "primary"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "primary": {
+            "type": "boolean",
+            "description": "The user's primary organization."
+          },
+          "slug": {
             "type": "string"
           }
         }

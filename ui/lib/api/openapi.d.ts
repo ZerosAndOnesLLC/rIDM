@@ -2362,6 +2362,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/t/{slug}/account/organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read-only: membership is managed by an administrator, by an invitation or
+         *     by a verified auto-join domain. To act in another one, sign in again.
+         */
+        get: operations["account_list_organizations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/t/{slug}/account/password": {
         parameters: {
             query?: never;
@@ -2557,6 +2577,14 @@ export interface components {
             phone_verified: boolean;
             tenant: components["schemas"]["AccountTenant"];
             username: string;
+        };
+        AccountOrganization: {
+            display_name: string;
+            /** Format: uuid */
+            id: string;
+            /** @description The user's primary organization. */
+            primary: boolean;
+            slug: string;
         };
         /** @description Self-service rights of the account console. */
         AccountPolicy: {
@@ -17409,6 +17437,37 @@ export interface operations {
             };
             /** @description Recent authentication required */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_list_organizations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountOrganization"][];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -14,6 +14,7 @@ const PAGES: [string, string, string][] = [
   ["users", `/console/users/?tenant=${TENANT}`, "Users"],
   ["invitations", `/console/users/?tenant=${TENANT}&view=invitations`, "Invitations"],
   ["groups", `/console/groups/?tenant=${TENANT}`, "Groups"],
+  ["organizations", `/console/organizations/?tenant=${TENANT}`, "Organizations"],
   ["roles", `/console/roles/?tenant=${TENANT}`, "Roles"],
   ["clients", `/console/clients/?tenant=${TENANT}`, "Clients"],
   ["resource servers", `/console/resource-servers/?tenant=${TENANT}`, "Resource servers"],
