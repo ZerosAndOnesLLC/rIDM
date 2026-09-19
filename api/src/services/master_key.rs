@@ -214,6 +214,91 @@ async fn rotate_table(state: &AppState, t: &EncryptedTable, target: u32) -> AppR
     Ok((ok, failed))
 }
 
+/// What [`check`] found.
+#[derive(Debug, Default)]
+pub struct CheckReport {
+    /// Sampled signing keys that decrypted.
+    pub signing_keys_ok: usize,
+    pub failures: Vec<CheckFailure>,
+}
+
+/// A stored secret the configured master keys could not decrypt.
+#[derive(Debug)]
+pub struct CheckFailure {
+    pub table: &'static str,
+    pub key_version: i32,
+    pub error: String,
+}
+
+/// Decrypt a sample of stored secrets with the configured keys, to catch a
+/// wrong `MASTER_KEY` (or a generation missing from `MASTER_KEY_PREVIOUS`)
+/// at start-up rather than at the first sign-in. That is the classic mistake
+/// after a restore: the server starts and reports ready, then fails every
+/// token request, and generates new signing keys under the wrong key for
+/// tenants that had none. One signing key per generation is tried (the table
+/// is small: a few keys per tenant), and the first row of every other
+/// encrypted table, which reads no further than one row whatever its size.
+pub async fn check(state: &AppState) -> AppResult<CheckReport> {
+    let mut samples: Vec<(&EncryptedTable, String, Uuid, Vec<u8>, i32)> = vec![];
+    let mut tx = db::bypass_tx(&state.db).await?;
+    for t in TABLES {
+        // Table and column names are compile-time constants from TABLES.
+        let sql = if t.table == "signing_keys" {
+            format!(
+                "SELECT DISTINCT ON (key_version) {id}::text, tenant_id, {col}, key_version \
+                 FROM {table} ORDER BY key_version",
+                id = t.id_column,
+                col = t.column,
+                table = t.table
+            )
+        } else {
+            format!(
+                "SELECT {id}::text, tenant_id, {col}, key_version FROM {table} LIMIT 1",
+                id = t.id_column,
+                col = t.column,
+                table = t.table
+            )
+        };
+        let rows: Vec<(String, Uuid, Vec<u8>, i32)> = sqlx::query_as(sqlx::AssertSqlSafe(sql))
+            .fetch_all(&mut *tx)
+            .await?;
+        samples.extend(
+            rows.into_iter()
+                .map(|(id, tenant, blob, version)| (t, id, tenant, blob, version)),
+        );
+    }
+    tx.commit().await?;
+    let mut report = CheckReport::default();
+    for (t, id, tenant_id, blob, key_version) in samples {
+        match decrypt_row(state, t, tenant_id, &id, &blob).await {
+            Ok(_) if t.table == "signing_keys" => report.signing_keys_ok += 1,
+            Ok(_) => {}
+            Err(err) => report.failures.push(CheckFailure {
+                table: t.table,
+                key_version,
+                error: err.to_string(),
+            }),
+        }
+    }
+    Ok(report)
+}
+
+async fn decrypt_row(
+    state: &AppState,
+    t: &EncryptedTable,
+    tenant_id: Uuid,
+    id: &str,
+    blob: &[u8],
+) -> AppResult<zeroize::Zeroizing<Vec<u8>>> {
+    let aad = t.aad(tenant_id, id);
+    let encrypted = Encrypted::from_bytes(blob).map_err(|e| AppError::Internal(e.to_string()))?;
+    state
+        .key_encryptor
+        .decrypt(&encrypted, &aad)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
 async fn reencrypt(
     state: &AppState,
     t: &EncryptedTable,
@@ -222,12 +307,7 @@ async fn reencrypt(
     blob: &[u8],
 ) -> AppResult<Vec<u8>> {
     let aad = t.aad(tenant_id, id);
-    let encrypted = Encrypted::from_bytes(blob).map_err(|e| AppError::Internal(e.to_string()))?;
-    let plaintext = state
-        .key_encryptor
-        .decrypt(&encrypted, &aad)
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let plaintext = decrypt_row(state, t, tenant_id, id, blob).await?;
     let fresh = state
         .key_encryptor
         .encrypt(&plaintext, &aad)

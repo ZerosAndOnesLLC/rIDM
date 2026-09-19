@@ -1,8 +1,9 @@
 //! Global well-known documents (not tenant scoped).
 
 use axum::Router;
-use axum::http::{HeaderValue, header};
-use axum::response::IntoResponse;
+use axum::extract::State;
+use axum::http::{HeaderValue, StatusCode, header};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 
 use crate::state::AppState;
@@ -11,16 +12,12 @@ pub fn router() -> Router<AppState> {
     Router::new().route("/.well-known/security.txt", get(security_txt))
 }
 
-/// RFC 9116 security.txt. Kept in sync with SECURITY.md.
-const SECURITY_TXT: &str = "\
-Contact: https://github.com/ZerosAndOnesLLC/rIDM/security/advisories/new
-Expires: 2027-09-14T00:00:00.000Z
-Preferred-Languages: en
-Policy: https://github.com/ZerosAndOnesLLC/rIDM/blob/main/SECURITY.md
-Canonical: https://github.com/ZerosAndOnesLLC/rIDM/blob/main/api/src/routes/wellknown.rs
-";
-
-async fn security_txt() -> impl IntoResponse {
+/// RFC 9116 security.txt, as the operator configured it (see
+/// [`crate::util::security_txt`]); 404 when they have not.
+async fn security_txt(State(state): State<AppState>) -> Response {
+    let Some(txt) = &state.config.security_txt else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
     (
         [
             (
@@ -32,6 +29,7 @@ async fn security_txt() -> impl IntoResponse {
                 HeaderValue::from_static("public, max-age=86400"),
             ),
         ],
-        SECURITY_TXT,
+        txt.render(chrono::Utc::now()),
     )
+        .into_response()
 }

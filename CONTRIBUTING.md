@@ -53,6 +53,13 @@ rewrites your own `~/.config/ridm/config.json`.
 
 **Migrations**
 - Forward-only, created with `sqlx migrate add --source api/migrations <name>`.
+- Never edit a migration once it is on `main`; sqlx refuses a database whose applied
+  migration's checksum changed.
+- Keep the previous release working (rolling upgrades run it on the new schema): add
+  tables, columns with defaults and indexes; drop or rename only what the previous
+  release no longer uses, one release after it stopped. The same goes for anything
+  stored in Valkey. A migration that cannot keep this goes under **Upgrade notes** in
+  `CHANGELOG.md` ([Upgrading](docs/src/deploy/upgrading.md)).
 - Tested locally with `sqlx migrate run` before committing.
 - Tenant-scoped tables call `enable_tenant_rls('table')`, which enables and forces the
   `tenant_isolation` policy. Child tables use composite `(tenant_id, id)` foreign keys.

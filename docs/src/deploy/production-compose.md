@@ -157,9 +157,13 @@ Other server settings are not passed through. Add them to the `ridm` service's
 - **Logs.** JSON lines on the server's standard output: `docker compose logs ridm`.
 - **Upgrading.** Change `RIDM_IMAGE` and `docker compose up -d`. `migrate` runs first
   and the server starts only if it succeeds. Back up the database before upgrading;
-  an upgrade guide is plan item 11.5.
-- **Backups.** `docker compose exec -T postgres pg_dump -U ridm -Fc ridm > ridm.dump`,
-  kept with a copy of the master key. A backup and restore guide is plan item 11.5.
+  see [Upgrading](upgrading.md).
+- **Backups.** `docker compose exec -T postgres pg_dump -U ridm -Fc ridm > ridm.dump`
+  (as the superuser `ridm`, which row level security does not stop). Keep a copy of
+  `secrets/master_key` somewhere else: never beside the dumps. See
+  [Backup and restore](backup-restore.md).
+- **Security contact.** Set `SECURITY_CONTACT` in `.env` so that
+  `/.well-known/security.txt` tells researchers where to report a problem.
 - **More than one host.** This stack is one node. For several, run the server on each
   host against a shared Postgres and Valkey, or use the [Helm chart](kubernetes.md).
 

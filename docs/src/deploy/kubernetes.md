@@ -132,7 +132,7 @@ common ingress controller does.
 
 `helm upgrade` runs the migration Job first; the Deployment rolls only after it
 succeeds, and a failed migration leaves the running pods untouched. Read the release
-notes before upgrading across versions; an upgrade guide is plan item 11.5.
+notes before upgrading across versions; see [Upgrading](upgrading.md).
 
 ## Testing the chart
 

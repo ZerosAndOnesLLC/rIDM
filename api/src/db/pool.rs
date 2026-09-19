@@ -48,23 +48,46 @@ pub async fn migrate(db: &Db) -> Result<(), sqlx::migrate::MigrateError> {
     MIGRATOR.run(db).await
 }
 
-/// How many embedded migrations the database has not applied yet. Only reads
-/// `_sqlx_migrations` (a missing table means none is applied), so the
+/// Versions of the migrations the database has applied successfully. Only
+/// reads `_sqlx_migrations` (a missing table means none is applied), so the
 /// DML-only application role can ask.
+async fn applied_migrations(db: &Db) -> Result<Vec<i64>, sqlx::Error> {
+    match sqlx::query_scalar("SELECT version FROM _sqlx_migrations WHERE success")
+        .fetch_all(db)
+        .await
+    {
+        Ok(v) => Ok(v),
+        Err(sqlx::Error::Database(e)) if e.code().as_deref() == Some("42P01") => Ok(vec![]),
+        Err(e) => Err(e),
+    }
+}
+
+/// How many embedded migrations the database has not applied yet.
 pub async fn pending_migrations(db: &Db) -> Result<usize, sqlx::Error> {
-    let applied: Vec<i64> =
-        match sqlx::query_scalar("SELECT version FROM _sqlx_migrations WHERE success")
-            .fetch_all(db)
-            .await
-        {
-            Ok(v) => v,
-            Err(sqlx::Error::Database(e)) if e.code().as_deref() == Some("42P01") => vec![],
-            Err(e) => return Err(e),
-        };
+    let applied = applied_migrations(db).await?;
     Ok(MIGRATOR
         .iter()
         .filter(|m| m.migration_type.is_up_migration() && !applied.contains(&m.version))
         .count())
+}
+
+/// Applied migrations this binary does not embed, oldest first: the schema
+/// was migrated by a newer release, and this one is running on it after a
+/// rollback or during a rolling upgrade.
+pub async fn unknown_migrations(db: &Db) -> Result<Vec<i64>, sqlx::Error> {
+    let applied = applied_migrations(db).await?;
+    Ok(not_embedded(&applied, MIGRATOR.iter().map(|m| m.version)))
+}
+
+fn not_embedded(applied: &[i64], embedded: impl Iterator<Item = i64>) -> Vec<i64> {
+    let embedded: Vec<i64> = embedded.collect();
+    let mut unknown: Vec<i64> = applied
+        .iter()
+        .copied()
+        .filter(|v| !embedded.contains(v))
+        .collect();
+    unknown.sort_unstable();
+    unknown
 }
 
 /// [`migrate`], but only when something is pending. Applying migrations
@@ -85,4 +108,21 @@ pub async fn ping(db: &Db) -> Result<(), sqlx::Error> {
         .fetch_one(db)
         .await
         .map(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migrations_the_binary_lacks_are_reported_in_order() {
+        assert_eq!(
+            not_embedded(&[1, 2], [1, 2, 3].into_iter()),
+            Vec::<i64>::new()
+        );
+        assert_eq!(
+            not_embedded(&[5, 1, 4, 2], [1, 2, 3].into_iter()),
+            vec![4, 5]
+        );
+    }
 }

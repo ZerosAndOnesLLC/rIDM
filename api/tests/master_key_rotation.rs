@@ -186,3 +186,41 @@ async fn rows_under_an_unknown_generation_are_reported_not_destroyed() {
     assert_eq!(still.key_version, 1, "failed rows are left untouched");
     assert!(keys::private_der(&app.state, &still).await.is_ok());
 }
+
+/// The start-up check: a node given the wrong master key (a restore with the
+/// wrong key, a typo in a secret) finds out before it serves anything.
+#[tokio::test]
+async fn the_start_up_check_catches_a_wrong_master_key() {
+    let _turn = ROTATION.lock().await;
+    let app = TestApp::spawn().await; // master key: 0x07.., version 1
+    keys::create(
+        &app.state,
+        app.tenant.id,
+        Actor::System,
+        SigningAlg::EdDSA,
+        RsaBits::B2048,
+        KeyStatus::Active,
+        None,
+    )
+    .await
+    .unwrap();
+
+    // Every generation-1 row of the shared database is under 0x07; rows other
+    // tests left under later generations are not this node's concern here.
+    let right = master_key::check(&app.state).await.unwrap();
+    assert!(right.signing_keys_ok >= 1, "{right:?}");
+    assert!(
+        right.failures.iter().all(|f| f.key_version != 1),
+        "{right:?}"
+    );
+
+    let wrong = state_with_key(&app, 1, 0x44, vec![]).await;
+    let report = master_key::check(&wrong).await.unwrap();
+    assert!(
+        report
+            .failures
+            .iter()
+            .any(|f| f.table == "signing_keys" && f.key_version == 1),
+        "{report:?}"
+    );
+}

@@ -11,6 +11,7 @@ use ipnet::IpNet;
 use url::Url;
 
 use crate::util::secret::{SecretBytes, SecretString};
+use crate::util::security_txt::SecurityTxt;
 
 /// Length in bytes of the master key used to encrypt secrets at rest.
 pub const MASTER_KEY_LEN: usize = 32;
@@ -99,6 +100,10 @@ pub struct Config {
     pub outbound_allow_networks: Vec<IpNet>,
     /// Deployment-wide request ceilings (per-tenant policy is in tenant settings).
     pub rate_limits: RateLimitConfig,
+    /// What `/.well-known/security.txt` serves; `None` answers 404. Set by
+    /// `SECURITY_TXT`/`SECURITY_TXT_FILE`, or `SECURITY_CONTACT` and
+    /// `SECURITY_POLICY_URL`.
+    pub security_txt: Option<SecurityTxt>,
     /// `Strict-Transport-Security` max-age in seconds, sent when `PUBLIC_URL`
     /// is https; 0 disables the header.
     pub hsts_max_age: u64,
@@ -293,6 +298,12 @@ impl Config {
                 RateLimitConfig::default().ip_per_minute,
             )?,
         };
+        let security_txt = SecurityTxt::from_settings(
+            secret!("SECURITY_TXT")?,
+            optional("SECURITY_CONTACT"),
+            optional("SECURITY_POLICY_URL"),
+        )
+        .map_err(|(name, reason)| ConfigError::Invalid { name, reason })?;
         let hsts_max_age = u64::from(parse_u32("HSTS_MAX_AGE", 63_072_000)?);
         let retention_days = parse_u32("RETENTION_DAYS", 30)?;
         let otlp_endpoint = optional("OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -430,6 +441,7 @@ impl Config {
             trusted_proxies,
             outbound_allow_networks,
             rate_limits,
+            security_txt,
             hsts_max_age,
             retention_days,
             otlp_endpoint,

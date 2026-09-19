@@ -22,7 +22,7 @@ The **Limit** column names the rate-limit family a route counts against (see [Ra
 | GET | `/openapi.json` | none | — | The admin and account API's OpenAPI 3 document. Always served. |
 | GET | `/docs` | none | — | Swagger UI over `/openapi.json`; mounted only when `DOCS_ENABLED=true`. |
 | GET | `/.well-known/webfinger` | none | — | Issuer discovery (OIDC Discovery 1.0 §2, RFC 7033). `resource` is `acct:user@domain` (the domain must be in a tenant's `settings.discovery.email_domains`) or an issuer URL or any URL beneath it. |
-| GET | `/.well-known/security.txt` | none | — | Vulnerability disclosure policy (RFC 9116). |
+| GET | `/.well-known/security.txt` | none | — | Where to report vulnerabilities in this deployment (RFC 9116), as `SECURITY_CONTACT` or `SECURITY_TXT` configures it; `404` when neither is set. See [Server configuration](configuration.md#security-and-keys). |
 
 The container image's `HEALTHCHECK` runs `ridm-api --healthcheck` inside the container, which probes `/healthz` at `BIND_ADDR` (loopback for a wildcard address), over HTTPS when `TLS_CERT` is set.
 

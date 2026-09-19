@@ -108,8 +108,9 @@ are embedded in the binary, and are recorded in sqlx's `_sqlx_migrations` table.
 are forward-only. `ridm-api migrate` applies whatever is pending, under an advisory lock
 so concurrent runs are safe, and exits; `sqlx migrate run --source api/migrations` from a
 checkout does the same. How to run them in each environment is in
-[Container image](container.md#running-migrations). An upgrade guide is planned (11.5);
-take a backup before applying a new release's migrations.
+[Container image](container.md#running-migrations). A release's migrations keep the
+release before it working, so upgrades can roll; see [Upgrading](upgrading.md), and take
+a backup before applying a new release's migrations.
 
 ## Connection pools
 
@@ -227,5 +228,6 @@ Back up Postgres; Valkey holds nothing that cannot be lost at the cost above. A 
 backup contains encrypted secrets that decrypt only with the master key in use (and any
 listed in `MASTER_KEY_PREVIOUS`), so keep a copy of the key, stored apart from the
 backups, for as long as you keep the backups. Backups hold user data and credential
-hashes: encrypt them and control access. A backup and restore guide, including the
-master key, is planned (plan item 11.5).
+hashes: encrypt them and control access. A logical dump must run as a role that
+bypasses row level security. [Backup and restore](backup-restore.md) has the commands,
+the restore procedure and what to do if the master key is lost.

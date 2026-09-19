@@ -3,7 +3,9 @@
 Every release of rIDM, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html); until 1.0.0 a minor
-version may break compatibility, and its notes say how.
+version may break compatibility, and its notes say how, under **Upgrade notes**. That
+heading also marks any release whose migrations do not keep the release before it
+working, which makes its upgrade stop-the-world (see the docs' *Upgrading*).
 
 A release's section becomes the body of its GitHub release
 (`scripts/release/notes.sh`), and the release workflow refuses a tag whose version
@@ -31,5 +33,10 @@ The first release, 0.1.0, is being prepared. It will cover everything built so f
   and Traefik configurations, and a documentation site.
 - Release workflow: signed multi-arch images with SBOMs, static Linux binaries,
   the Helm chart as an OCI artifact, checksums signed with Sigstore.
+- Backup and restore, and upgrade, guides; a start-up check that refuses a master key
+  that does not decrypt the database's signing keys, and a warning when the database was
+  migrated by a newer release.
+- `/.well-known/security.txt` is the operator's: `SECURITY_CONTACT`,
+  `SECURITY_POLICY_URL` or a whole `SECURITY_TXT_FILE`, and 404 until one is set.
 
 [Unreleased]: https://github.com/ZerosAndOnesLLC/rIDM/commits/main

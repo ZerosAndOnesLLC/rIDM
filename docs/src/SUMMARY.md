@@ -61,6 +61,8 @@
 - [Postgres and Valkey](deploy/postgres-valkey.md)
 - [Scaling and performance](deploy/scaling.md)
 - [Observability](deploy/observability.md)
+- [Backup and restore](deploy/backup-restore.md)
+- [Upgrading](deploy/upgrading.md)
 - [Production checklist](deploy/checklist.md)
 
 # Migration
