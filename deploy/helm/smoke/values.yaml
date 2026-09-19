@@ -1,0 +1,29 @@
+# Chart values for the smoke test (https publicUrl, as behind a TLS ingress;
+# the checks go through a port-forward): two replicas, the master key from a Secret
+# the test creates (the existing-Secret path), everything else inline.
+publicUrl: https://ridm.smoke.test
+trustedProxies: 10.244.0.0/16
+image:
+  pullPolicy: Never
+database:
+  url: postgres://ridm_app:app-smoke@postgres:5432/ridm
+redis:
+  url: redis://valkey:6379
+masterKey:
+  existingSecret:
+    name: smoke-master-key
+    key: key
+migrations:
+  database:
+    url: postgres://ridm_migrator:migrator-smoke@postgres:5432/ridm
+bootstrap:
+  enabled: true
+  adminEmail: admin@ridm.smoke.test
+  adminPassword: Kube-Smoke-Passw0rd-2026
+ingress:
+  enabled: true
+  hosts:
+    - host: ridm.smoke.test
+      paths: [{path: /, pathType: Prefix}]
+resources:
+  requests: {cpu: 50m, memory: 64Mi}

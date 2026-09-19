@@ -74,6 +74,14 @@ jobs:
         # The shipped bundle is what an end user runs; build-only tooling is
         # covered by the lockfile review, not by failing the build.
         run: npm audit --omit=dev
+      - name: helm and kubeconform
+        run: |
+          curl -fsSL https://get.helm.sh/helm-v4.3.0-linux-amd64.tar.gz \
+            | sudo tar xz -C /usr/local/bin --strip-components=1 linux-amd64/helm
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz \
+            | sudo tar xz -C /usr/local/bin kubeconform
+      - name: helm chart (lint, schema)
+        run: deploy/helm/lint.sh
 
   unit:
     name: unit

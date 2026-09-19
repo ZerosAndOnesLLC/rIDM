@@ -1345,6 +1345,30 @@ as non-root, has no dynamic OpenSSL dependency, and its
 (loopback when bound to all interfaces), over HTTPS trusting exactly `TLS_CERT` when
 native TLS is on.
 
+### Kubernetes (Helm)
+
+`deploy/helm/ridm` is the chart: the image as a Deployment (non-root, read-only root
+filesystem, no service-account token, the master key mounted as a file for
+`MASTER_KEY_FILE`), a Service, and optionally an Ingress, an HPA, a PodDisruptionBudget
+and a ServiceMonitor; migrations run as a `pre-install`/`pre-upgrade` hook Job with the
+schema owner's credential in a hook Secret that is deleted with it. Postgres and Valkey
+are external. Every secret value is either inline or a reference to your own Secret by
+name and key, and `values.schema.json` plus render-time checks refuse an incomplete or
+misspelled release.
+
+```bash
+helm install ridm deploy/helm/ridm -n ridm --create-namespace -f ridm-values.yaml
+```
+
+`deploy/helm/smoke/run.sh` (with `RIDM_IMAGE` set to a locally built image) installs,
+checks, upgrades and uninstalls it in a throwaway kind cluster. See
+[Kubernetes (Helm)](docs/src/deploy/kubernetes.md) for a full walk-through.
+
+Nodes that start together (a Deployment's replicas, a first rollout) take turns at the
+one-time start-up work, bootstrap and the built-in console clients, under a Postgres
+advisory lock (`services/startup.rs`); without it, two fresh nodes both created the first
+administrator and one crashed.
+
 ### CI
 
 Every pull request runs the `ci` workflow: rustfmt, `cargo check`, clippy with warnings
@@ -1387,7 +1411,7 @@ cd docs && mdbook serve --open     # live reload; the API reference page needs .
 | `examples/` | three relying parties: an axum resource server, a Next.js SPA, a confidential web app |
 | `dev/` | development seed data (`make seed`) |
 | `Makefile` | development shortcuts (`make` lists them) |
-| `deploy/` | docker-compose (a Helm chart and reverse-proxy examples come in Phase 11) |
+| `deploy/` | docker-compose, the Helm chart (`deploy/helm/ridm`, smoke test in `deploy/helm/smoke`); reverse-proxy examples come in Phase 11.3 |
 | `docs/` | the documentation site (mdBook): concepts, quickstarts, admin guide, reference, deployment, migration |
 | `api/fuzz/` | cargo-fuzz targets and their seed corpora |
 | `perf/` | k6 load tests: the PR smoke and the release baseline |

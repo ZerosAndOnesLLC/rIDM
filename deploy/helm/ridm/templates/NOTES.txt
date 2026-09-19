@@ -1,0 +1,35 @@
+rIDM {{ .Chart.AppVersion }} is deployed as {{ include "ridm.fullname" . }} ({{ ternary "autoscaled" (printf "%d replicas" (int .Values.replicaCount)) .Values.autoscaling.enabled }}).
+
+Issuers:        {{ .Values.publicUrl | trimSuffix "/" }}/t/<tenant>   (master: {{ .Values.publicUrl | trimSuffix "/" }}/t/master)
+{{- if and .Values.embeddedUi (not .Values.uiUrl) }}
+Admin console:  {{ .Values.publicUrl | trimSuffix "/" }}/console/
+Account:        {{ .Values.publicUrl | trimSuffix "/" }}/account/?tenant=<tenant>
+{{- else }}
+UI:             {{ default .Values.publicUrl .Values.uiUrl }} (hosted apart from the server)
+{{- end }}
+
+{{- if not .Values.ingress.enabled }}
+
+No Ingress was created. To try it from here:
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "ridm.fullname" . }} 8080:{{ .Values.service.port }}
+publicUrl must still be what browsers and relying parties use.
+{{- end }}
+{{- if not .Values.trustedProxies }}
+
+trustedProxies is empty: behind an ingress controller every client will appear
+to come from it, which defeats per-address rate limits and IP rules. Set it to
+the ingress controller's pod network.
+{{- end }}
+{{- if not .Values.bootstrap.enabled }}
+
+To create the first global administrator (once; the password must be changed
+at first sign-in):
+  kubectl --namespace {{ .Release.Namespace }} exec -i deploy/{{ include "ridm.fullname" . }} -- \
+    /ridm-api bootstrap --email you@example.com --password-stdin < password.txt
+or upgrade with bootstrap.enabled=true.
+{{- end }}
+{{- if not .Values.migrations.enabled }}
+
+Migrations are not run by this chart (migrations.enabled=false): run
+`ridm-api migrate` as the schema owner before every upgrade.
+{{- end }}

@@ -177,9 +177,10 @@ retries) rather than expecting the port at once.
 
 ## Kubernetes
 
-There is no Helm chart yet (plan item 11.2). The pieces map directly: a Deployment of
-the image with the probes above, a Job running `migrate` as the migrator role before each
-rollout, the master key and database passwords from Secrets (`MASTER_KEY_FILE` pointing
-at a mounted Secret keeps the key out of the process environment), and a Service behind
-your Ingress with `TRUSTED_PROXIES` set to the Ingress controller's pod network. Set
-`terminationGracePeriodSeconds` above 20 so the drain can finish.
+Use the Helm chart; see [Kubernetes (Helm)](kubernetes.md). It is the same pieces a
+hand-written manifest would need: a Deployment of the image with the probes above, a Job
+running `migrate` as the migrator role before each rollout, the master key and database
+passwords from Secrets (the key mounted as a file for `MASTER_KEY_FILE`, out of the
+process environment), and a Service behind your Ingress with `TRUSTED_PROXIES` set to the
+Ingress controller's pod network, with `terminationGracePeriodSeconds` above the 20-second
+drain.

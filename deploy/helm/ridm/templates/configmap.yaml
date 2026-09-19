@@ -1,0 +1,9 @@
+{{- include "ridm.validate" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ridm.fullname" . }}
+  labels:
+    {{- include "ridm.labels" . | nindent 4 }}
+data:
+  {{- include "ridm.plainEnv" . | nindent 2 }}

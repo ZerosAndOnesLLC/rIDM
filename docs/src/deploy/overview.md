@@ -8,8 +8,7 @@ This page describes the moving parts and what each one needs; the rest of this s
 covers each part in detail.
 
 rIDM is pre-release (`0.1.0-dev`). Several packaging pieces an operator would expect are
-planned and not yet present: a
-Helm chart (11.2), reverse-proxy example files and a production docker-compose profile
+planned and not yet present: reverse-proxy example files and a production docker-compose profile
 (11.3), published release binaries and signed images (11.4), and backup/restore and
 upgrade guides (11.5). Where one of these would naturally appear, these pages say so.
 

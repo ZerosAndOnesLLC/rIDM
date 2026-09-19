@@ -54,6 +54,7 @@
 - [Deployment overview](deploy/overview.md)
 - [docker-compose](deploy/docker-compose.md)
 - [Container image](deploy/container.md)
+- [Kubernetes (Helm)](deploy/kubernetes.md)
 - [TLS and reverse proxies](deploy/tls-and-proxies.md)
 - [Postgres and Valkey](deploy/postgres-valkey.md)
 - [Scaling and performance](deploy/scaling.md)

@@ -1,0 +1,32 @@
+{{- if .Values.metrics.serviceMonitor.enabled }}
+{{- $fullname := include "ridm.fullname" . }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "ridm.labels" . | nindent 4 }}
+    {{- with .Values.metrics.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "ridm.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.metrics.serviceMonitor.scrapeTimeout }}
+      {{- if .Values.metrics.existingSecret.name }}
+      authorization:
+        credentials:
+          name: {{ .Values.metrics.existingSecret.name }}
+          key: {{ .Values.metrics.existingSecret.key }}
+      {{- else if .Values.metrics.token }}
+      authorization:
+        credentials:
+          name: {{ $fullname }}
+          key: METRICS_TOKEN
+      {{- end }}
+{{- end }}

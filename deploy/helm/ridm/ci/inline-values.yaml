@@ -1,0 +1,12 @@
+# Everything inline: the chart keeps the secrets. Used by the lint and render checks.
+publicUrl: https://id.example.com
+trustedProxies: 10.0.0.0/8
+database:
+  url: postgres://ridm_app:app@postgres:5432/ridm
+redis:
+  url: redis://valkey:6379
+masterKey:
+  value: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+migrations:
+  database:
+    url: postgres://ridm_migrator:migrator@postgres:5432/ridm
