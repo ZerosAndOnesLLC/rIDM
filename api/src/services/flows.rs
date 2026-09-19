@@ -1635,6 +1635,10 @@ async fn open_session(
     {
         sessions::bind_device(state, &mut session, d.id).await?;
     }
+    // A verified address at a verified auto-join domain joins its organization
+    // as the session opens, so enabling a domain reaches the users a tenant
+    // already has. Before the stage is computed, so the new membership counts.
+    organizations::ensure_auto_join(state, tenant.id, user).await?;
     flow.user_id = Some(user_id);
     flow.session_id = Some(session.id);
     flow.amr = amr;
@@ -1687,9 +1691,6 @@ pub async fn complete_authentication(
     )
     .increment(1);
     let session = open_session(state, &tenant.tenant, &mut flow, user, amr.clone(), ctx).await?;
-    // A verified address at a verified auto-join domain joins its organization
-    // here, so enabling a domain reaches the users already in the tenant.
-    organizations::ensure_auto_join(state, tid, user).await?;
     advance(state, &tenant.tenant, &mut flow, must_change_password).await?;
     login_flows::save(state, &flow).await?;
     state.events.publish(
