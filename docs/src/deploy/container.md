@@ -3,8 +3,10 @@
 The server ships as one container image built from
 [`api/Dockerfile`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/api/Dockerfile).
 The same image runs everywhere and is configured entirely through environment variables.
-No image is published yet: signed multi-arch images on GHCR, with an SBOM, are plan item
-11.4. Until then, build it yourself.
+Each release publishes it to `ghcr.io/zerosandonesllc/ridm` for linux/amd64 and
+linux/arm64, signed and with an SBOM attached; see
+[Releases and verification](releases.md). No release has been cut yet, so until the
+first one, build it yourself.
 
 ## Building
 

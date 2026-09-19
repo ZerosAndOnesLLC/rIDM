@@ -57,9 +57,9 @@ non-root users. `secrets/`, `certs/` and `.env` are git-ignored.
 provider credentials in the database; a backup restored without it is unreadable. See
 [Signing keys and the master key](../concepts/keys.md).
 
-No image is published yet (release images are plan item 11.4). Until then build it from
-the checkout, `docker compose build`, or set `RIDM_IMAGE` to one you built and pushed.
-Pin a tag in production rather than `latest`.
+Releases publish the image ([Releases and verification](releases.md)); until the first
+one is cut, build it from the checkout, `docker compose build`, or set `RIDM_IMAGE` to
+one you built and pushed. Pin a version, or better a digest, rather than `latest`.
 
 ### The first administrator
 

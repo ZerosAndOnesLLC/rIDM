@@ -6,6 +6,11 @@ use ridm_api::state::AppState;
 use ridm_api::{build_router, cache, db, telemetry};
 use std::net::SocketAddr;
 
+// The static release binaries (see the `mimalloc` feature in Cargo.toml).
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[tokio::main]
 async fn main() {
     // Ignore a missing .env file; production sets real environment variables.

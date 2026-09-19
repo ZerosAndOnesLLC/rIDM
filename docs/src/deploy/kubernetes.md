@@ -8,8 +8,9 @@ PodDisruptionBudget and a Prometheus Operator ServiceMonitor. Migrations run in 
 before every install and upgrade. It does not run Postgres or Valkey: bring your own
 (a managed service, an operator such as CloudNativePG, or your own StatefulSets).
 
-The chart is not published to a repository yet; packaging it with each release is plan
-item 11.4. Install it from a checkout.
+Each release publishes the chart to `oci://ghcr.io/zerosandonesllc/charts/ridm`, signed
+([Releases and verification](releases.md)). No release has been cut yet, so until the
+first one, install it from a checkout.
 
 ## Before installing
 

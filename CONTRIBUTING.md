@@ -109,6 +109,37 @@ merges.
 - Update `README.md` (and docs) when behaviour or configuration changes.
 - Commit messages: imperative subject line, body explains *why*.
 
+## Cutting a release
+
+Releases are built and published by `.github/workflows/release.yml` from a `v*` tag;
+nothing is built or uploaded by hand. What a release publishes and how users verify it
+is in the docs' *Releases and verification* page.
+
+1. **Bump the version** in one pull request, everywhere it lives (and nowhere else in
+   ordinary PRs): `Cargo.toml` (`[workspace.package] version`), `ui/package.json` (and
+   `npm install --package-lock-only` for the lockfile), `deploy/helm/ridm/Chart.yaml`
+   (`version` and `appVersion`), and the `version` on the `ridm-auth` path dependency in
+   `examples/*/Cargo.toml`. Run `cargo check` so `Cargo.lock` follows.
+2. **Write the notes**: rename `## [Unreleased]` in `CHANGELOG.md` to
+   `## [X.Y.Z] - YYYY-MM-DD`, start a new empty Unreleased section above it, and update
+   the link references at the bottom.
+3. `scripts/release/check-version.sh vX.Y.Z` must pass, and
+   `scripts/release/notes.sh X.Y.Z` must print the notes. Merge the PR.
+4. **Tag the merge commit on `main`** and push the tag:
+   `git tag -a vX.Y.Z -m "rIDM X.Y.Z" && git push origin vX.Y.Z`. A version with a
+   pre-release part (`0.2.0-rc.1`) makes a GitHub pre-release and moves no floating
+   image tag.
+5. Watch the `release` run. It checks the versions again, builds both architectures
+   natively, pushes and signs the image and chart, creates the GitHub release, publishes
+   `ridm-auth` to crates.io (only when the `CARGO_REGISTRY_TOKEN` secret is set), and runs
+   the load baseline.
+
+The first time an image or chart is pushed, GHCR creates the package as private: make
+`ridm` and `charts/ridm` public under the organisation's packages, once.
+
+A pull request that touches the workflow or `scripts/release/` runs every build job
+without publishing anything, so the release build is proven before a tag relies on it.
+
 ## Reporting security issues
 
 Please do not open public issues for vulnerabilities. See [SECURITY.md](SECURITY.md).
