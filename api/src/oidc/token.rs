@@ -438,8 +438,8 @@ struct Issue<'a> {
     dpop_jkt: Option<&'a str>,
     /// `act` claim of a delegated token (token exchange).
     act: Option<serde_json::Value>,
-    /// Never outlive this (token exchange: the subject token's remaining life).
-    max_ttl: Option<std::time::Duration>,
+    /// Expire no later than this (token exchange: the subject token's `exp`).
+    not_after: Option<chrono::DateTime<Utc>>,
 }
 
 async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, OAuthError> {
@@ -462,11 +462,7 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
     if let Some(ttl) = i.audience.ttl_override {
         tc.access_token_ttl = std::time::Duration::from_secs(ttl);
     }
-    if let Some(max) = i.max_ttl {
-        tc.access_token_ttl = tc
-            .access_token_ttl
-            .min(max.max(std::time::Duration::from_secs(1)));
-    }
+    tc.not_after = i.not_after;
     // The token service sets `permissions` itself; no mapper may.
     tc.permissions = i.audience.permissions.clone();
     let empty_roles: Vec<Role> = vec![];
@@ -736,7 +732,7 @@ async fn authorization_code(
             code_for_hash: Some(code_hash(code)),
             dpop_jkt,
             act: None,
-            max_ttl: None,
+            not_after: None,
         },
     )
     .await
@@ -796,7 +792,7 @@ async fn device_code(
             code_for_hash: None,
             dpop_jkt,
             act: None,
-            max_ttl: None,
+            not_after: None,
         },
     )
     .await
@@ -865,7 +861,7 @@ async fn refresh_token(
             code_for_hash: None,
             dpop_jkt,
             act: None,
-            max_ttl: None,
+            not_after: None,
         },
     )
     .await?;
@@ -941,7 +937,7 @@ async fn client_credentials(
             code_for_hash: None,
             dpop_jkt,
             act: None,
-            max_ttl: None,
+            not_after: None,
         },
     )
     .await
@@ -1126,7 +1122,10 @@ async fn token_exchange(
         }
         act
     });
-    let remaining = subject_claims["exp"].as_i64().unwrap_or_default() - Utc::now().timestamp();
+    let subject_exp = subject_claims["exp"]
+        .as_i64()
+        .and_then(|t| chrono::DateTime::from_timestamp(t, 0))
+        .unwrap_or_else(Utc::now);
     let session_id = subject_claims["sid"]
         .as_str()
         .and_then(|s| Uuid::parse_str(s).ok());
@@ -1156,7 +1155,7 @@ async fn token_exchange(
             code_for_hash: None,
             dpop_jkt,
             act,
-            max_ttl: Some(std::time::Duration::from_secs(remaining.max(1) as u64)),
+            not_after: Some(subject_exp),
         },
     )
     .await?;
