@@ -99,10 +99,13 @@ async fn bootstrap_is_idempotent_and_creates_a_global_owner() {
         .await
         .unwrap();
     tx.commit().await.unwrap();
+    // A password made at run time: nothing here needs to know it.
+    let password = uuid::Uuid::new_v4().to_string();
     let nodes = (0..4).map(|_| {
         let state = app.state.clone();
+        let password = password.clone();
         tokio::spawn(async move {
-            startup::serialized(&state, bootstrap::run(&state, req("correct-horse-battery"))).await
+            startup::serialized(&state, bootstrap::run(&state, req(&password))).await
         })
     });
     let outcomes: Vec<_> = futures::future::join_all(nodes)
