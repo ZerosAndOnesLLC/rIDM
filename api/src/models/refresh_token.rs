@@ -21,6 +21,9 @@ pub struct RefreshToken {
     pub auth_time: Option<DateTime<Utc>>,
     pub amr: Vec<String>,
     pub acr: Option<String>,
+    /// Organization the sign-in this family descends from acted in; every
+    /// token minted from it repeats it as `org_id`.
+    pub org_id: Option<Uuid>,
     pub expires_at: DateTime<Utc>,
     /// DPoP key thumbprint the token is bound to (public clients, RFC 9449 §5).
     pub dpop_jkt: Option<String>,

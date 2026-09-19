@@ -98,6 +98,7 @@ pub async fn token(app: &TestApp, tenant: &Tenant, user_id: Uuid, opts: TokenOpt
             roles: &role_list,
             groups: &[],
             session_id: opts.session_id,
+            org_id: None,
             auth_time: None,
             amr: &["pwd".into()],
             acr: None,

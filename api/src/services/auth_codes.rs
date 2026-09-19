@@ -33,6 +33,9 @@ pub struct AuthCode {
     pub auth_time: DateTime<Utc>,
     pub amr: Vec<String>,
     pub acr: Option<String>,
+    /// Organization the session acts in, so the exchanged tokens name it.
+    #[serde(default)]
+    pub org_id: Option<Uuid>,
     /// The `claims` request parameter, verbatim (OIDC Core §5.5).
     pub claims: Option<serde_json::Value>,
     pub issued_at: DateTime<Utc>,

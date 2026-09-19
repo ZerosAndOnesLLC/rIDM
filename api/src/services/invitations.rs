@@ -72,6 +72,15 @@ pub async fn create(
             return Err(AppError::BadRequest(format!("group {g} does not exist")));
         }
     }
+    if let Some(org) = input.org_id
+        && repos::organizations::find_by_id(&mut *tx, tenant.id, org)
+            .await?
+            .is_none()
+    {
+        return Err(AppError::BadRequest(format!(
+            "organization {org} does not exist"
+        )));
+    }
     let inv = repos::invitations::insert(
         &mut *tx,
         tenant.id,
@@ -318,6 +327,12 @@ pub async fn accept(
     }
     for g in &inv.groups {
         crate::services::groups::add_member(state, tenant.id, Actor::System, *g, user.id).await?;
+    }
+    // The invitation's organization is the new user's primary one (set with
+    // the account above); the membership row follows here.
+    if let Some(org) = inv.org_id {
+        crate::services::organizations::add_member(state, tenant.id, Actor::System, org, user.id)
+            .await?;
     }
     let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
     if input.terms_accepted {

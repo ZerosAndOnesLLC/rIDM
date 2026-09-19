@@ -131,7 +131,13 @@ async fn build(state: &AppState, tenant: &TenantCtx, token: &str) -> Result<Buil
     let user = users::get(state, tenant.id(), user_id)
         .await
         .map_err(|_| Reject::Token("user no longer exists"))?;
-    let role_list = roles::effective_roles(state, tenant.id(), user.id, user.org_id).await?;
+    // The organization the token acts in, not the user's primary one: a
+    // mapper reading roles must see what the token was issued with.
+    let org_id = claims
+        .get("org_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| uuid::Uuid::parse_str(s).ok());
+    let role_list = roles::effective_roles(state, tenant.id(), user.id, org_id).await?;
     let group_list = groups::groups_of_user(state, tenant.id(), user.id, true).await?;
 
     let mappers = crate::oidc::token::effective_mappers_for(state, tenant.id(), &client).await?;

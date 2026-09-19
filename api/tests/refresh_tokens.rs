@@ -60,6 +60,7 @@ fn req<'a>(
         auth_time: None,
         amr: &[],
         acr: None,
+        org_id: None,
     }
 }
 
@@ -315,6 +316,7 @@ async fn jti_denylist_revokes_access_tokens_before_expiry() {
             roles: &[],
             groups: &[],
             session_id: None,
+            org_id: None,
             auth_time: None,
             amr: &[],
             acr: None,

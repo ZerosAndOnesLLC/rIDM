@@ -399,6 +399,7 @@ async fn direct_token(fx: &Fx, user_id: Uuid, audience: &str, format: AccessToke
             roles: &role_list,
             groups: &[],
             session_id: None,
+            org_id: None,
             auth_time: None,
             amr: &["pwd".into()],
             acr: None,

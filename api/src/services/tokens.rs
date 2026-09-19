@@ -177,6 +177,9 @@ pub struct AccessTokenRequest<'a> {
     pub auth_time: Option<DateTime<Utc>>,
     pub amr: &'a [String],
     pub acr: Option<&'a str>,
+    /// Organization the sign-in acts in (`org_id`). The roles above were
+    /// resolved in it.
+    pub org_id: Option<Uuid>,
     /// DPoP key thumbprint the token is bound to (`cnf.jkt`, RFC 9449 §6.1).
     pub cnf_jkt: Option<&'a str>,
     /// Acting party of a delegated token (`act`, RFC 8693 §4.1).
@@ -192,6 +195,8 @@ pub struct IdTokenRequest<'a> {
     pub groups: &'a [Group],
     pub session_id: Option<Uuid>,
     pub auth_time: DateTime<Utc>,
+    /// Organization the sign-in acts in (`org_id`).
+    pub org_id: Option<Uuid>,
     pub nonce: Option<&'a str>,
     pub amr: &'a [String],
     pub acr: Option<&'a str>,
@@ -361,6 +366,11 @@ pub async fn issue_access_token(
     claims.insert("jti".into(), json!(Uuid::now_v7()));
     claims.insert("tid".into(), json!(req.tenant.id));
     claims.insert("scope".into(), json!(req.scopes.join(" ")));
+    // The organization this sign-in acts in, not the user's primary one: the
+    // same user in another organization gets another token.
+    if let Some(org) = req.org_id {
+        claims.insert("org_id".into(), json!(org));
+    }
     if req.user.is_some() {
         // A `roles` or `groups` mapper reshapes these (a client's roles only,
         // group paths); its output stands. Mappers of any other kind cannot
@@ -456,6 +466,9 @@ pub async fn issue_id_token(state: &AppState, req: IdTokenRequest<'_>) -> AppRes
     claims.insert("exp".into(), json!(exp.timestamp()));
     claims.insert("auth_time".into(), json!(req.auth_time.timestamp()));
     claims.insert("tid".into(), json!(req.tenant.id));
+    if let Some(org) = req.org_id {
+        claims.insert("org_id".into(), json!(org));
+    }
     if let Some(n) = req.nonce {
         claims.insert("nonce".into(), json!(n));
     }

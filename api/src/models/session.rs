@@ -14,6 +14,7 @@ pub struct SessionRow {
     pub ip: Option<String>,
     pub user_agent: Option<String>,
     pub device_id: Option<Uuid>,
+    pub org_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub last_seen_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,

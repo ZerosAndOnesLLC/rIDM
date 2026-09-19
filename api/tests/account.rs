@@ -168,6 +168,7 @@ async fn token(fx: &Fx, user_id: Uuid, auth: Auth) -> String {
             auth_time: Some(auth_time),
             amr: &["pwd".into()],
             acr: auth.acr,
+            org_id: None,
             cnf_jkt: None,
             act: None,
         },

@@ -5031,6 +5031,11 @@ export interface components {
             ip?: string | null;
             /** Format: date-time */
             last_seen_at: string;
+            /**
+             * Format: uuid
+             * @description Organization this session acts in; the source of the `org_id` claim.
+             */
+            org_id?: string | null;
             /** Format: uuid */
             tenant_id: string;
             user_agent?: string | null;

@@ -32,6 +32,9 @@ pub struct IssueRequest<'a> {
     pub auth_time: Option<DateTime<Utc>>,
     pub amr: &'a [String],
     pub acr: Option<&'a str>,
+    /// Organization the sign-in acted in, repeated by every token minted from
+    /// this family.
+    pub org_id: Option<Uuid>,
 }
 
 /// A freshly minted token: the secret is only ever returned here.
@@ -73,6 +76,7 @@ async fn insert_in(
         auth_time: req.auth_time,
         amr: req.amr.to_vec(),
         acr: req.acr.map(str::to_string),
+        org_id: req.org_id,
         expires_at,
         dpop_jkt: req.dpop_jkt.map(str::to_string),
         consumed_at: None,
@@ -253,6 +257,7 @@ pub async fn rotate(
         auth_time: current.auth_time,
         amr: &current.amr,
         acr: current.acr.as_deref(),
+        org_id: current.org_id,
     };
     // The family keeps its absolute expiry (and its DPoP binding); rotation never extends it.
     let issued = insert_in(

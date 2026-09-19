@@ -6,8 +6,8 @@ use uuid::Uuid;
 use crate::models::SessionRow;
 use crate::services::sessions::SsoSession;
 
-const COLUMNS: &str = "id, tenant_id, user_id, auth_time, amr, acr, ip, user_agent, device_id, created_at, \
-    last_seen_at, expires_at, idle_expires_at, revoked_at";
+const COLUMNS: &str = "id, tenant_id, user_id, auth_time, amr, acr, ip, user_agent, device_id, org_id, \
+    created_at, last_seen_at, expires_at, idle_expires_at, revoked_at";
 
 pub async fn insert<'e>(
     exec: impl PgExecutor<'e>,
@@ -17,7 +17,8 @@ pub async fn insert<'e>(
     let device_id = device_id.or(s.device_id);
     sqlx::query(
         "INSERT INTO sso_sessions (id, tenant_id, user_id, auth_time, amr, acr, ip, user_agent, device_id, \
-         created_at, last_seen_at, expires_at, idle_expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) \
+         org_id, created_at, last_seen_at, expires_at, idle_expires_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) \
          ON CONFLICT (id) DO NOTHING",
     )
     .bind(s.id)
@@ -29,6 +30,7 @@ pub async fn insert<'e>(
     .bind(&s.ip)
     .bind(&s.user_agent)
     .bind(device_id)
+    .bind(s.org_id)
     .bind(s.created_at)
     .bind(s.last_seen_at)
     .bind(s.expires_at)
@@ -65,6 +67,22 @@ pub async fn set_device<'e>(
         .bind(tenant_id)
         .bind(id)
         .bind(device_id)
+        .execute(exec)
+        .await?;
+    Ok(())
+}
+
+/// The organization a session acts in, chosen while signing in.
+pub async fn set_organization<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+    org_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE sso_sessions SET org_id = $3 WHERE tenant_id = $1 AND id = $2")
+        .bind(tenant_id)
+        .bind(id)
+        .bind(org_id)
         .execute(exec)
         .await?;
     Ok(())

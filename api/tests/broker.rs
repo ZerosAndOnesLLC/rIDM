@@ -987,6 +987,7 @@ async fn account_token(fx: &Fx, user_id: Uuid) -> String {
             roles: &[],
             groups: &[],
             session_id: Some(session.id),
+            org_id: None,
             auth_time: Some(Utc::now()),
             amr: &["pwd".into()],
             acr: None,
