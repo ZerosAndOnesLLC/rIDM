@@ -5,7 +5,7 @@ use ridm_api::error::AppError;
 use ridm_api::models::MASTER_TENANT_ID;
 use ridm_api::services::bootstrap::{self, BootstrapOutcome, BootstrapRequest, GLOBAL_OWNER_ROLE};
 use ridm_api::services::password::{self, VerifyOutcome};
-use ridm_api::services::{roles, users};
+use ridm_api::services::{roles, startup, users};
 use zeroize::Zeroizing;
 
 fn req(password: &str) -> BootstrapRequest {
@@ -17,7 +17,8 @@ fn req(password: &str) -> BootstrapRequest {
     }
 }
 
-#[tokio::test]
+// Several threads, so the concurrent start-up at the end really overlaps.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn bootstrap_is_idempotent_and_creates_a_global_owner() {
     let app = TestApp::spawn().await;
     // Other test binaries may have bootstrapped the shared master tenant already;
@@ -87,6 +88,37 @@ async fn bootstrap_is_idempotent_and_creates_a_global_owner() {
         .await
         .unwrap();
     assert_eq!(admin2.password_hash, admin.password_hash);
+
+    // Nodes of a fresh deployment start together. Under the start-up lock
+    // they take turns: one creates the administrator, the rest find it (the
+    // same race without the lock made the losers fail on the unique username).
+    let mut tx = ridm_api::db::bypass_tx(&app.state.db).await.unwrap();
+    sqlx::query("DELETE FROM users WHERE tenant_id = $1")
+        .bind(MASTER_TENANT_ID)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let nodes = (0..4).map(|_| {
+        let state = app.state.clone();
+        tokio::spawn(async move {
+            startup::serialized(&state, bootstrap::run(&state, req("correct-horse-battery"))).await
+        })
+    });
+    let outcomes: Vec<_> = futures::future::join_all(nodes)
+        .await
+        .into_iter()
+        .map(|r| r.unwrap().expect("every node starts"))
+        .collect();
+    assert_eq!(
+        outcomes
+            .iter()
+            .filter(|o| matches!(o, BootstrapOutcome::Created { .. }))
+            .count(),
+        1,
+        "{outcomes:?}"
+    );
+    assert!(bootstrap::is_bootstrapped(&app.state).await.unwrap());
 }
 
 /// `BOOTSTRAP_SAMPLE_CLIENT=true` seeds a public SPA client in `master`, once.

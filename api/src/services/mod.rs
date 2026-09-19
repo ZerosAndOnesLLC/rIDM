@@ -52,6 +52,7 @@ pub mod scim;
 pub mod scim_tokens;
 pub mod scopes;
 pub mod sessions;
+pub mod startup;
 pub mod stats;
 pub mod tenant_config;
 pub mod tenants;
