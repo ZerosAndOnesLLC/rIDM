@@ -56,6 +56,7 @@
 - [Production with docker-compose](deploy/production-compose.md)
 - [Container image](deploy/container.md)
 - [Kubernetes (Helm)](deploy/kubernetes.md)
+- [Releases and verification](deploy/releases.md)
 - [TLS and reverse proxies](deploy/tls-and-proxies.md)
 - [Postgres and Valkey](deploy/postgres-valkey.md)
 - [Scaling and performance](deploy/scaling.md)

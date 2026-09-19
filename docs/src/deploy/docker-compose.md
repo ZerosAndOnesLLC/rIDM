@@ -22,8 +22,9 @@ Choose one profile. `api` and `api-dev` both publish `RIDM_HTTP_PORT`, so the tw
 run together. Services without a profile start with either.
 
 The rIDM image is `${RIDM_IMAGE:-ghcr.io/zerosandonesllc/ridm:latest}`, and each service
-using it also has a `build` section pointing at `api/Dockerfile`. No image is published
-yet (release images are plan item 11.4), so build it from the checkout:
+using it also has a `build` section pointing at `api/Dockerfile`. Releases publish that
+image ([Releases and verification](releases.md)); until the first one is cut, build it
+from the checkout:
 
 ```bash
 docker compose -f deploy/docker-compose.yml --profile dev build

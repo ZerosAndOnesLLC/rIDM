@@ -1418,7 +1418,8 @@ cd docs && mdbook serve --open     # live reload; the API reference page needs .
 | `api/fuzz/` | cargo-fuzz targets and their seed corpora |
 | `perf/` | k6 load tests: the PR smoke and the release baseline |
 | `conformance/` | the OpenID Foundation conformance rig |
-| `.github/` | CI workflows, issue and PR templates |
+| `scripts/release/` | release checks: every version agrees with the tag, notes from `CHANGELOG.md` |
+| `.github/` | CI workflows (the `release` workflow publishes signed images, the chart and static binaries from a `v*` tag), issue and PR templates |
 
 ## Roadmap
 
@@ -1427,6 +1428,14 @@ tenants/users/roles → keys and JWTs → OIDC core → browser flows and end-us
 API → admin UI → MFA and passkeys → account console, brokering, device flow → scale,
 security and operability → CLI and developer experience → packaging and v0.1.0. Post-v1:
 organizations, adaptive auth, SAML, LDAP, HSM/KMS key custody.
+
+## Releases
+
+Each `v*` tag publishes a signed multi-arch image (`ghcr.io/zerosandonesllc/ridm`, amd64
+and arm64, with an SBOM), the Helm chart (`oci://ghcr.io/zerosandonesllc/charts/ridm`),
+static Linux binaries of `ridm-api` and `ridm`, and a GitHub release with signed
+checksums; see the docs' *Releases and verification* page and
+[`CHANGELOG.md`](CHANGELOG.md). No release has been cut yet; the first is v0.1.0.
 
 ## Contributing and security
 

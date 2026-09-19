@@ -1,31 +1,434 @@
 name: release
 
-# What a release gets that a pull request does not: the full k6 baseline
-# (200 VUs for two minutes against a release build, p99 thresholds) instead of
-# the PR smoke. The result is uploaded and summarised for the release notes.
+# A `v*` tag becomes a release (see CONTRIBUTING.md, "Cutting a release"):
+#
+#   image      linux/amd64 and linux/arm64, built natively on each architecture,
+#              pushed to ghcr.io/zerosandonesllc/ridm as one multi-arch index
+#              with BuildKit's SBOM and provenance attestations, signed with
+#              cosign (keyless, this workflow's GitHub identity) and carrying
+#              a cosign-attested SPDX SBOM
+#   binaries   static (musl) ridm-api and ridm for linux amd64 and arm64
+#   chart      the Helm chart, packaged and pushed to
+#              oci://ghcr.io/zerosandonesllc/charts, signed the same way
+#   release    a GitHub release with the tarballs, the chart, the SBOM,
+#              SHA256SUMS and its Sigstore bundle, notes from CHANGELOG.md
+#   crate      ridm-auth to crates.io, when CARGO_REGISTRY_TOKEN is set
+#   baseline   the full k6 load baseline against a release build
+#
+# The tag must match every version in the tree (scripts/release/check-version.sh).
+# A pull request that changes this file or scripts/release runs everything up to
+# publishing, so the build is proven before a tag depends on it; nothing is
+# pushed, signed or released from a pull request.
 
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/release/**
   workflow_dispatch:
     inputs:
       vus:
-        description: Virtual users on /token
+        description: Virtual users on /token (load baseline)
         default: "200"
       duration:
-        description: How long to hold them
+        description: How long to hold them (load baseline)
         default: "2m"
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
+  NODE_VERSION: "24"
+  IMAGE: ghcr.io/zerosandonesllc/ridm
+  CHART_REPO: oci://ghcr.io/zerosandonesllc/charts
 
 jobs:
+  prepare:
+    name: prepare
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      publish: ${{ steps.v.outputs.publish }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: v
+        name: version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            scripts/release/check-version.sh "${GITHUB_REF_NAME}"
+            version="${GITHUB_REF_NAME#v}"
+            publish=true
+            scripts/release/notes.sh "$version" > /dev/null
+          else
+            # A rehearsal: the tree's own version, nothing published.
+            version="$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p}' Cargo.toml)"
+            publish=false
+          fi
+          case "$version" in *-*) prerelease=true ;; *) prerelease=false ;; esac
+          {
+            echo "version=$version"
+            echo "publish=$publish"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+          echo "version $version, publish $publish, prerelease $prerelease"
+
+  # The UI's static export, built once: the same files go into every binary.
+  ui:
+    name: ui
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: build (same-origin)
+        working-directory: ui
+        env:
+          NEXT_PUBLIC_API_URL: ""
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ui-out
+          path: ui/out
+          retention-days: 3
+
+  binaries:
+    name: binaries (${{ matrix.arch }})
+    needs: [prepare, ui]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+    runs-on: ${{ matrix.runner }}
+    env:
+      TARGET: ${{ matrix.target }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: ui-out
+          path: ui/out
+      - name: toolchain
+        # rust-toolchain.toml pins the compiler; install it with the musl target.
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q musl-tools
+          channel="$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal --target "$TARGET"
+          rustup show active-toolchain
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: build
+        # Native on each architecture, so musl-gcc is the target's compiler.
+        # The server with the UI compiled in and mimalloc (musl's allocator
+        # serialises threads); the CLI on its own, so it does not embed the UI.
+        run: |
+          triple="$(tr 'a-z-' 'A-Z_' <<<"$TARGET")"
+          export "CC_${TARGET//-/_}=musl-gcc" "CARGO_TARGET_${triple}_LINKER=musl-gcc"
+          cargo build --release --locked --target "$TARGET" -p ridm-api --features embedded-ui,mimalloc
+          cargo build --release --locked --target "$TARGET" -p ridm-cli
+      - name: check
+        run: |
+          dir="target/$TARGET/release"
+          for bin in ridm-api ridm; do
+            file "$dir/$bin"
+            file "$dir/$bin" | grep -q 'static' || { echo "$bin is not statically linked" >&2; exit 1; }
+          done
+          "$dir/ridm" --version
+          # The server refuses to start without configuration, and says so.
+          set +e
+          out="$("$dir/ridm-api" 2>&1)"; code=$?
+          set -e
+          echo "$out"
+          [ "$code" -eq 2 ] && grep -q 'configuration error' <<<"$out"
+      - name: package
+        run: |
+          name="ridm-${VERSION}-linux-${{ matrix.arch }}"
+          mkdir -p "dist/$name"
+          cp "target/$TARGET/release/ridm-api" "target/$TARGET/release/ridm" "dist/$name/"
+          cp LICENSE README.md CHANGELOG.md "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          rm -rf "dist/$name"
+          ls -la dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binaries-${{ matrix.arch }}
+          path: dist/*.tar.gz
+          retention-days: 7
+
+  image:
+    name: image (${{ matrix.arch }})
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PUBLISH: ${{ needs.prepare.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        if: env.PUBLISH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+      # Built on its own architecture (no emulation), pushed by digest only;
+      # the `manifest` job joins the two digests under the release's tags.
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: api/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          outputs: ${{ env.PUBLISH == 'true' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.IMAGE) || 'type=cacheonly' }}
+          sbom: ${{ env.PUBLISH == 'true' }}
+          provenance: ${{ env.PUBLISH == 'true' && 'mode=max' || 'false' }}
+          cache-from: type=gha,scope=release-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=release-${{ matrix.arch }}
+      - name: record digest
+        if: env.PUBLISH == 'true'
+        run: |
+          mkdir -p digests
+          touch "digests/${DIGEST#sha256:}"
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+      - uses: actions/upload-artifact@v7
+        if: env.PUBLISH == 'true'
+        with:
+          name: digest-${{ matrix.arch }}
+          path: digests/*
+          retention-days: 3
+
+  manifest:
+    name: manifest
+    needs: [prepare, image]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digest-*
+          merge-multiple: true
+          path: digests
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # 1.2.3 gets 1.2.3, 1.2 and latest; a pre-release gets only its own tag.
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ needs.prepare.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ needs.prepare.outputs.prerelease == 'false' }}
+      - id: push
+        name: create the multi-arch index
+        working-directory: digests
+        run: |
+          # shellcheck disable=SC2046
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<<"$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "$IMAGE@sha256:%s " *)
+          digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          docker buildx imagetools inspect "$IMAGE@$digest"
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+      - uses: sigstore/cosign-installer@v4
+      - uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.push.outputs.digest }}
+          format: spdx-json
+          output-file: ridm-${{ needs.prepare.outputs.version }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: sign and attest
+        # Keyless: the certificate names this workflow at this tag, which is
+        # what `cosign verify` checks (docs/src/deploy/releases.md).
+        env:
+          REF: ${{ env.IMAGE }}@${{ steps.push.outputs.digest }}
+          SBOM: ridm-${{ needs.prepare.outputs.version }}.spdx.json
+        run: |
+          cosign sign --yes "$REF"
+          cosign attest --yes --type spdxjson --predicate "$SBOM" "$REF"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sbom
+          path: ridm-${{ needs.prepare.outputs.version }}.spdx.json
+          retention-days: 7
+
+  chart:
+    name: chart
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      PUBLISH: ${{ needs.prepare.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
+        with:
+          version: v4.3.0
+      - name: package
+        # Chart.yaml already carries the release version (check-version.sh);
+        # the chart's image tag defaults to its appVersion.
+        run: |
+          helm lint --strict deploy/helm/ridm -f deploy/helm/ridm/ci/inline-values.yaml
+          helm package deploy/helm/ridm --destination dist
+          ls -la dist
+          test -f "dist/ridm-$VERSION.tgz"
+      - name: push
+        if: env.PUBLISH == 'true'
+        id: push
+        run: |
+          helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin <<<"${{ secrets.GITHUB_TOKEN }}"
+          helm push "dist/ridm-$VERSION.tgz" "$CHART_REPO" 2>&1 | tee push.log
+          digest="$(sed -n 's/^Digest: //p' push.log)"
+          test -n "$digest"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - uses: sigstore/cosign-installer@v4
+        if: env.PUBLISH == 'true'
+      - name: sign
+        if: env.PUBLISH == 'true'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | cosign login ghcr.io -u "${{ github.actor }}" --password-stdin
+          cosign sign --yes "${CHART_REPO#oci://}/ridm@${{ steps.push.outputs.digest }}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: chart
+          path: dist/*.tgz
+          retention-days: 7
+
+  release:
+    name: release
+    needs: [prepare, binaries, manifest, chart]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: binaries-*
+          merge-multiple: true
+          path: dist
+      - uses: actions/download-artifact@v8
+        with:
+          name: chart
+          path: dist
+      - uses: actions/download-artifact@v8
+        with:
+          name: sbom
+          path: dist
+      - uses: sigstore/cosign-installer@v4
+      - name: checksums
+        working-directory: dist
+        run: |
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+          cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json SHA256SUMS
+      - name: publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+          DIGEST: ${{ needs.manifest.outputs.digest }}
+        run: |
+          {
+            scripts/release/notes.sh "$VERSION"
+            echo
+            echo "## Artifacts"
+            echo
+            echo "- Image: \`$IMAGE:$VERSION\` (\`$DIGEST\`), linux/amd64 and linux/arm64"
+            echo "- Helm chart: \`helm install ridm $CHART_REPO/ridm --version $VERSION\`"
+            echo "- Static binaries for linux amd64 and arm64 below; verify them with \`SHA256SUMS\` and its Sigstore bundle."
+            echo
+            echo "Verifying signatures: https://zerosandonesllc.github.io/rIDM/deploy/releases.html#verifying-a-release"
+          } > notes.md
+          flags=()
+          [ "$PRERELEASE" = true ] && flags+=(--prerelease)
+          gh release create "v$VERSION" dist/* \
+            --verify-tag --title "rIDM $VERSION" --notes-file notes.md "${flags[@]}"
+
+  crate:
+    name: crate
+    needs: [prepare, release]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: publish ridm-auth
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo "::notice::CARGO_REGISTRY_TOKEN is not set; ridm-auth was not published to crates.io"
+            exit 0
+          fi
+          cargo publish -p ridm-auth --locked
+
   load-baseline:
     name: load-baseline
+    needs: prepare
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     services:

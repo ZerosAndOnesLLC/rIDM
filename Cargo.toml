@@ -110,6 +110,9 @@ utoipa-swagger-ui = { version = "=9.0.2", features = ["axum"] }
 # Embedded UI
 rust-embed = { version = "=8.12.0", features = ["mime-guess"] }
 
+# Allocator for the static (musl) release binaries
+mimalloc = { version = "=0.1.52", default-features = false }
+
 # Dev
 testcontainers-modules = { version = "=0.15.0", features = ["postgres", "redis"] }
 testcontainers = { version = "=0.27.3", features = ["reusable-containers"] }

@@ -22,9 +22,15 @@ path = "src/lib.rs"
 # the container image ships. Off by default so a Rust-only checkout builds
 # without Node; a debug build reads the files from `ui/out` at run time.
 embedded-ui = []
+# mimalloc as the global allocator. The static (musl) release binaries turn it
+# on: musl's own allocator serialises threads and falls far behind glibc's
+# under a multi-threaded server's load. glibc builds, the image among them,
+# have no need of it.
+mimalloc = ["dep:mimalloc"]
 
 [dependencies]
 ridm-core = { workspace = true }
+mimalloc = { workspace = true, optional = true }
 
 axum = { workspace = true }
 axum-server = { workspace = true }

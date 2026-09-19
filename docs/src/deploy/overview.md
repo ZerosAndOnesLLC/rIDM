@@ -8,7 +8,8 @@ This page describes the moving parts and what each one needs; the rest of this s
 covers each part in detail.
 
 rIDM is pre-release (`0.1.0-dev`). Several packaging pieces an operator would expect are
-planned and not yet present: published release binaries and signed images (11.4), and
+planned and not yet present: the first release (the release workflow exists, but no
+version has been cut, so there are no published images, charts or binaries yet), and
 backup/restore and upgrade guides (11.5). Where one of these would naturally appear, these pages say so.
 
 ## The parts
