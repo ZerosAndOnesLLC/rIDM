@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 # Copied out of this repository, this line becomes `ridm-auth = "0.1"`.
-ridm-auth = { path = "../../crates/ridm-auth", version = "0.1.0-dev" }
+ridm-auth = { path = "../../crates/ridm-auth", version = "0.1.0" }
 
 axum = { workspace = true }
 tokio = { workspace = true }

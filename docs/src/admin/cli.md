@@ -7,8 +7,8 @@ URL, a tenant and a bearer token, sends one or two requests, and prints either a
 readable summary or the server's JSON. It needs nothing but network access to the
 server and a token.
 
-rIDM is pre-release and nothing is published yet, so build the binary from the
-repository:
+Each release ships a static `ridm` for linux amd64 and arm64
+([Releases and verification](../deploy/releases.md)). To build it from the repository:
 
 ```bash
 cargo build --release -p ridm-cli        # target/release/ridm
