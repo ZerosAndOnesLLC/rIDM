@@ -7,9 +7,9 @@ A modern, multi-tenant Identity Management server: OpenID Connect provider, JWT 
 user/group/role management, MFA, and identity brokering, with a bundled admin console and
 end-user account console.
 
-> **Status:** pre-release, under active development. Nothing here is production ready
-> until v0.1.0 is tagged. See [`working-plan.md`](working-plan.md) for the roadmap and
-> what is done.
+> **Status:** v0.1.0, the first release. Until 1.0.0 a minor version may break
+> compatibility; [`CHANGELOG.md`](CHANGELOG.md) says how under **Upgrade notes**. See
+> [`working-plan.md`](working-plan.md) for the roadmap and what is still to come.
 
 **Documentation:** <https://zerosandonesllc.github.io/rIDM/> — concepts, quickstarts,
 the admin guide, the API reference, deployment and migration from Keycloak or Auth0.
@@ -1446,7 +1446,7 @@ Each `v*` tag publishes a signed multi-arch image (`ghcr.io/zerosandonesllc/ridm
 and arm64, with an SBOM), the Helm chart (`oci://ghcr.io/zerosandonesllc/charts/ridm`),
 static Linux binaries of `ridm-api` and `ridm`, and a GitHub release with signed
 checksums; see the docs' *Releases and verification* page and
-[`CHANGELOG.md`](CHANGELOG.md). No release has been cut yet; the first is v0.1.0.
+[`CHANGELOG.md`](CHANGELOG.md). The first release is v0.1.0.
 
 ## Contributing and security
 

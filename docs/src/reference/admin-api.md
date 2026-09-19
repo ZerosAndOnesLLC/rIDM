@@ -17,7 +17,7 @@ cargo run -p ridm-api -- openapi > openapi.json      # from source, no database 
 docker run --rm <image> openapi > openapi.json       # from the container image
 ```
 
-`info.version` is the server's crate version (`0.1.0-dev` today). Swagger UI is served at `/docs` when `DOCS_ENABLED=true`.
+`info.version` is the server's crate version (`0.1.0` today). Swagger UI is served at `/docs` when `DOCS_ENABLED=true`.
 
 ## Organisation
 

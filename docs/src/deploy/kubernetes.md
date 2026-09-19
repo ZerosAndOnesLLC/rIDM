@@ -9,8 +9,7 @@ before every install and upgrade. It does not run Postgres or Valkey: bring your
 (a managed service, an operator such as CloudNativePG, or your own StatefulSets).
 
 Each release publishes the chart to `oci://ghcr.io/zerosandonesllc/charts/ridm`, signed
-([Releases and verification](releases.md)). No release has been cut yet, so until the
-first one, install it from a checkout.
+([Releases and verification](releases.md)); it can also be installed from a checkout.
 
 ## Before installing
 
@@ -66,6 +65,9 @@ ingress:
 ```
 
 ```bash
+helm install ridm oci://ghcr.io/zerosandonesllc/charts/ridm --version 0.1.0 \
+  -n ridm -f ridm-values.yaml --wait
+# or, from a checkout:
 helm install ridm deploy/helm/ridm -n ridm -f ridm-values.yaml --wait
 ```
 

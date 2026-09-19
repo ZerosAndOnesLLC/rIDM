@@ -7,9 +7,9 @@ server and serves on its own origin; they can also be hosted on any static web s
 This page describes the moving parts and what each one needs; the rest of this section
 covers each part in detail.
 
-rIDM is pre-release (`0.1.0-dev`). The release workflow exists, but no version has been
-cut, so there are no published images, charts or binaries yet; build them from a
-checkout until `v0.1.0`. Where a release would naturally appear, these pages say so.
+Each release publishes a signed image, the Helm chart and static Linux binaries
+([Releases and verification](releases.md)); every part can also be built from a
+checkout, and these pages show both where it matters.
 
 ## The parts
 

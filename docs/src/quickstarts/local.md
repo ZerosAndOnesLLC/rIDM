@@ -5,8 +5,8 @@ administrator and a demo tenant with users you can sign in as. Everything here
 is for a laptop: the passwords are written down on purpose, and none of them
 belongs on a machine anyone else can reach.
 
-rIDM is pre-release (`0.1.0-dev`) and there are no release binaries yet, so this
-page builds from source.
+This page builds from source, since it is about working on rIDM. To run a release
+instead, see [Releases and verification](../deploy/releases.md).
 
 ## What you need
 
