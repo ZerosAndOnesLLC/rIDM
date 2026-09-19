@@ -129,6 +129,8 @@ services:
     environment:
       <<: *ridm-env
       METRICS_TOKEN_FILE: /run/secrets/metrics_token
+      SECURITY_CONTACT: ${SECURITY_CONTACT:-}
+      SECURITY_POLICY_URL: ${SECURITY_POLICY_URL:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USERNAME: ${SMTP_USERNAME:-}

@@ -350,6 +350,7 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
             enabled: false,
             ip_per_minute: 0,
         },
+        security_txt: None,
         hsts_max_age: 63_072_000,
         retention_days: 30,
         otlp_endpoint: None,

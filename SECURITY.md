@@ -9,6 +9,10 @@ current and previous minor release are supported.
 
 ## Reporting a vulnerability
 
+This policy covers the rIDM software. A problem with a particular deployment (its
+configuration, its hosting, its data) goes to whoever runs it: their
+`/.well-known/security.txt` names them.
+
 **Please do not report security vulnerabilities through public GitHub issues.**
 
 Use GitHub's private reporting:

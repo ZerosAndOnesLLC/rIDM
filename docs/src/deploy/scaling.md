@@ -25,8 +25,8 @@ in-flight requests up to 20 seconds to finish. `/readyz` does not change on shut
 so deregister the node from the load balancer first (orchestrators do this when a pod
 terminates) so new requests go elsewhere. Schema migrations
 run as a separate step before the rollout (see
-[Container image](container.md#running-migrations)); there is no tested upgrade path
-between versions yet (plan items 11.5 and 11.7).
+[Container image](container.md#running-migrations)); a release's migrations keep the
+release before it working during the roll ([Upgrading](upgrading.md)).
 
 ## Background jobs on many nodes
 

@@ -229,7 +229,18 @@ Health probes: `GET /healthz` (liveness) and `GET /readyz` (database + cache); `
 `ridm-api --healthcheck` probes `/healthz` itself for images without curl: it dials
 `BIND_ADDR` (an unspecified `0.0.0.0` or `::` becomes loopback) and, when `TLS_CERT` is
 set, speaks HTTPS trusting exactly that certificate.
-`GET /.well-known/security.txt` serves the vulnerability disclosure policy.
+`GET /.well-known/security.txt` (RFC 9116) names the deployment's own security contact:
+`SECURITY_CONTACT` (and `SECURITY_POLICY_URL`) generate it with a rolling 30-day
+`Expires`, or `SECURITY_TXT_FILE` serves the operator's own, possibly signed, document;
+with neither set it answers 404, since the rIDM project is not the right recipient for a
+report about someone's deployment.
+
+At start-up each node decrypts a signing key of every master-key generation the database
+holds and refuses to start when it cannot, so a wrong `MASTER_KEY` after a restore stops
+the node with a clear message instead of failing every token request. A database
+migrated by a newer release logs a warning. Backups (which need a role that bypasses row
+level security), restores, a lost master key, upgrades and rollbacks are covered in the
+docs' *Backup and restore* and *Upgrading*.
 
 ### SCIM provisioning
 

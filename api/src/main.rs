@@ -67,11 +67,12 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|_| "failed to install rustls crypto provider")?;
 
     let db = db::connect(&config).await?;
-    if config.migrate_on_start {
+    let schema_current = if config.migrate_on_start {
         let applied = db::migrate_pending(&db).await?;
         if applied > 0 {
             tracing::info!(applied, "pending migrations applied");
         }
+        true
     } else {
         let pending = db::pending_migrations(&db).await?;
         if pending > 0 {
@@ -80,6 +81,24 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
                 "database migrations are pending; run `ridm-api migrate` as the schema owner"
             );
         }
+        pending == 0
+    };
+    let unknown = db::unknown_migrations(&db).await?;
+    if let Some(newest) = unknown.last() {
+        tracing::warn!(
+            count = unknown.len(),
+            newest,
+            "the database has migrations this release does not know: a newer release migrated \
+             it. Run that release, or restore the backup taken before the upgrade"
+        );
+    }
+    if let Some(expires) = config
+        .security_txt
+        .as_ref()
+        .and_then(|t| t.document_expires())
+        .filter(|e| *e <= chrono::Utc::now())
+    {
+        tracing::warn!(%expires, "the configured security.txt has expired; renew SECURITY_TXT");
     }
     let cache = cache::connect(&config)?;
     cache::ping(&cache).await?;
@@ -88,6 +107,9 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     let bootstrap = config.bootstrap.clone();
     let mut state = AppState::new(config, db, cache);
     state.db_read = db_read;
+    if schema_current {
+        check_master_key(&state).await?;
+    }
     // Bootstrap and the built-in clients, one node at a time.
     ridm_api::services::startup::prepare(&state, bootstrap).await?;
     let _invalidation_listener = state.cache.spawn_invalidation_listener();
@@ -119,6 +141,51 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     tracing::info!("shutdown complete");
+    Ok(())
+}
+
+/// Refuse to start when the master keys do not decrypt the tenants' signing
+/// keys: the node would report ready and then fail every token request, and
+/// generate further keys under the wrong master key. That is a signing key
+/// under the current generation that fails (the wrong `MASTER_KEY`), or no
+/// signing key decrypting at all (a backup from before a master-key rotation,
+/// restored without its generation in `MASTER_KEY_PREVIOUS`). Anything else
+/// that fails is warned about: one damaged row cannot keep the service down,
+/// and a deployment recovering from a lost master key, having deleted its
+/// signing keys, starts and re-enters the other secrets.
+async fn check_master_key(state: &AppState) -> Result<(), Box<dyn std::error::Error>> {
+    let current = state.key_encryptor.current_version() as i32;
+    let report = ridm_api::services::master_key::check(state).await?;
+    for f in &report.failures {
+        tracing::error!(
+            table = f.table,
+            key_version = f.key_version,
+            error = %f.error,
+            "a stored secret does not decrypt with the configured master keys"
+        );
+    }
+    let failed_keys: Vec<i32> = report
+        .failures
+        .iter()
+        .filter(|f| f.table == "signing_keys")
+        .map(|f| f.key_version)
+        .collect();
+    if failed_keys.contains(&current) || (!failed_keys.is_empty() && report.signing_keys_ok == 0) {
+        return Err(format!(
+            "the configured master keys do not decrypt this database's signing keys \
+             (generation(s) {failed_keys:?}; MASTER_KEY_VERSION is {current}). After a restore, \
+             configure the master key that was current when the backup was taken, and any \
+             older generation still in use in MASTER_KEY_PREVIOUS"
+        )
+        .into());
+    }
+    if !report.failures.is_empty() {
+        tracing::warn!(
+            "some stored secrets do not decrypt: add their generation to MASTER_KEY_PREVIOUS \
+             (`ridm-api rotate-master-key --status` lists what is stored), or re-enter them if \
+             that key is lost"
+        );
+    }
     Ok(())
 }
 

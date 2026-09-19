@@ -170,5 +170,4 @@ beyond a trial, give Valkey enough memory that it never evicts (see
 
 Pull or rebuild the image and run `up` again. `migrate` runs on every `up`, applies
 whatever migrations the new image carries, and the API starts only after it succeeds.
-There is no upgrade guide or tested upgrade path between versions yet (plan items 11.5
-and 11.7); take a database backup before upgrading.
+Take a database backup before upgrading; see [Upgrading](upgrading.md).

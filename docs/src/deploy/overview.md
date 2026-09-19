@@ -7,10 +7,9 @@ server and serves on its own origin; they can also be hosted on any static web s
 This page describes the moving parts and what each one needs; the rest of this section
 covers each part in detail.
 
-rIDM is pre-release (`0.1.0-dev`). Several packaging pieces an operator would expect are
-planned and not yet present: the first release (the release workflow exists, but no
-version has been cut, so there are no published images, charts or binaries yet), and
-backup/restore and upgrade guides (11.5). Where one of these would naturally appear, these pages say so.
+rIDM is pre-release (`0.1.0-dev`). The release workflow exists, but no version has been
+cut, so there are no published images, charts or binaries yet; build them from a
+checkout until `v0.1.0`. Where a release would naturally appear, these pages say so.
 
 ## The parts
 

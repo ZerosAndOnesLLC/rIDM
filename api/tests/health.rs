@@ -1,6 +1,7 @@
 mod common;
 
 use common::TestApp;
+use ridm_api::util::security_txt::SecurityTxt;
 
 #[tokio::test]
 async fn healthz_reports_version() {
@@ -22,8 +23,10 @@ async fn readyz_checks_database_and_cache() {
     assert_eq!(body["checks"]["cache"], "ok");
 }
 
+/// A deployment answers for its own security, so there is no document until
+/// the operator names a contact.
 #[tokio::test]
-async fn security_txt_is_served() {
+async fn security_txt_is_absent_until_configured() {
     let app = TestApp::spawn().await;
     let res = app
         .http
@@ -31,16 +34,33 @@ async fn security_txt_is_served() {
         .send()
         .await
         .unwrap();
+    assert_eq!(res.status(), 404);
+}
+
+#[tokio::test]
+async fn security_txt_serves_the_configured_contacts() {
+    let app = TestApp::spawn_configured(axum::Router::new(), |state| {
+        let mut config = (*state.config).clone();
+        config.security_txt = SecurityTxt::from_settings(
+            None,
+            Some("mailto:security@acme.example".into()),
+            Some("https://acme.example/disclosure".into()),
+        )
+        .unwrap();
+        state.config = std::sync::Arc::new(config);
+    })
+    .await;
+    let res = app
+        .http
+        .get(app.url("/.well-known/security.txt"))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(res.status(), 200);
-    assert!(
-        res.headers()["content-type"]
-            .to_str()
-            .unwrap()
-            .starts_with("text/plain")
-    );
+    assert_eq!(res.headers()["content-type"], "text/plain; charset=utf-8");
     let text = res.text().await.unwrap();
-    assert!(text.contains("Contact:"));
-    assert!(text.contains("Expires:"));
+    assert!(text.starts_with("Contact: mailto:security@acme.example\nExpires: "));
+    assert!(text.ends_with("Policy: https://acme.example/disclosure\n"));
 }
 
 #[tokio::test]

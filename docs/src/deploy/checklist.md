@@ -47,6 +47,9 @@ a commit you have reviewed and record which one you run.
 - [ ] **`DOCS_ENABLED` is off** (the default), so Swagger UI is not served at `/docs`.
   `/openapi.json` is served either way; it describes the API and holds no data.
   [Server configuration](../reference/configuration.md)
+- [ ] **`/.well-known/security.txt` names your security contact** (`SECURITY_CONTACT`,
+  or your own document in `SECURITY_TXT_FILE`); it answers `404` until you set one.
+  [Server configuration](../reference/configuration.md#security-and-keys)
 - [ ] **`/metrics` is protected**: `METRICS_TOKEN` is set, or the path is not routed from
   the internet, or both. [Observability](observability.md#metrics)
 - [ ] **Postgres and Valkey are not reachable from the internet**, and the compose file's
@@ -114,8 +117,12 @@ a commit you have reviewed and record which one you run.
 - [ ] **`RETENTION_DAYS` and each tenant's audit retention match your policy.**
   [Scaling and performance](scaling.md#background-jobs-on-many-nodes)
 - [ ] **Postgres is backed up, encrypted and access-controlled, and a restore has been
-  tested with the master key.** A backup and restore guide, and an upgrade guide, are
-  planned (plan item 11.5) and not written yet; until then follow your usual Postgres
-  practice. [Postgres and Valkey](postgres-valkey.md#backups)
+  tested with the master key**, into a scratch database, as far as issuing a token. A
+  logical dump needs a role that bypasses row level security.
+  [Backup and restore](backup-restore.md)
+- [ ] **The master key has a second, offline copy**, and every older generation is kept
+  for as long as a backup encrypted under it. [Backup and restore](backup-restore.md#the-master-key)
+- [ ] **You know how you will upgrade and roll back**: migrate first, roll second, a
+  backup before every upgrade. [Upgrading](upgrading.md)
 - [ ] **Load has been tested on your hardware** with `perf/token.js` if you expect high
   volume. [Scaling and performance](scaling.md#load-testing)

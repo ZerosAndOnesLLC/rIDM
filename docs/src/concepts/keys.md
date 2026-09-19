@@ -110,6 +110,9 @@ file named by `MASTER_KEY_FILE` (for container secrets). It must be the same on
 every node. rIDM never writes it anywhere, so **back it up separately from the
 database**: a database backup without its master key can be restored, but its
 signing keys, MFA enrolments, IdP secrets and webhook secrets cannot be read.
+A node checks at start-up that its keys decrypt the database's signing keys and
+refuses to start if they do not. See [Backup and restore](../deploy/backup-restore.md),
+which also covers recovering from a lost key.
 
 ### Rotating the master key
 
