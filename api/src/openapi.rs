@@ -29,6 +29,7 @@ use crate::state::AppState;
         (name = "clients", description = "OAuth / OIDC clients"),
         (name = "users", description = "Users and everything attached to them"),
         (name = "groups", description = "Groups, membership and group roles"),
+        (name = "organizations", description = "Organizations within a tenant: membership, email domains and org-scoped role grants"),
         (name = "roles", description = "Roles, composites and permission grants"),
         (name = "resource_servers", description = "Resource servers (audiences) and permissions"),
         (name = "scopes", description = "OAuth scopes"),
@@ -76,6 +77,7 @@ pub fn admin_router() -> OpenApiRouter<AppState> {
         .merge(admin::clients_router())
         .merge(admin::users_router())
         .merge(admin::groups_router())
+        .merge(admin::organizations_router())
         .merge(admin::roles_router())
         .merge(admin::resource_servers_router())
         .merge(admin::scopes_router())

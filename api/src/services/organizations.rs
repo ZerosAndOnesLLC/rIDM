@@ -407,6 +407,24 @@ pub async fn unassign_role(
     Ok(())
 }
 
+/// Role grants scoped to this organization.
+pub async fn role_grants(
+    state: &AppState,
+    tenant_id: Uuid,
+    org_id: Uuid,
+) -> AppResult<Vec<crate::models::RoleAssignment>> {
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    if repos::organizations::find_by_id(&mut *tx, tenant_id, org_id)
+        .await?
+        .is_none()
+    {
+        return Err(AppError::NotFound("organization"));
+    }
+    let rows = repos::roles::assignments_of_org(&mut *tx, tenant_id, org_id).await?;
+    tx.commit().await?;
+    Ok(rows)
+}
+
 // Domains ------------------------------------------------------------------
 
 pub async fn domains(

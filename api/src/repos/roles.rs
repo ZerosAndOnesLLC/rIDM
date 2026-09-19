@@ -165,6 +165,22 @@ pub async fn unassign<'e>(
 }
 
 /// Direct assignments of a principal.
+/// Role grants scoped to one organization (both user and group principals).
+pub async fn assignments_of_org<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    org_id: Uuid,
+) -> Result<Vec<RoleAssignment>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("SELECT ");
+    qb.push(ASSIGNMENT_COLUMNS)
+        .push(" FROM role_assignments WHERE tenant_id = ")
+        .push_bind(tenant_id)
+        .push(" AND org_id = ")
+        .push_bind(org_id)
+        .push(" ORDER BY created_at, id");
+    qb.build_query_as::<RoleAssignment>().fetch_all(exec).await
+}
+
 pub async fn assignments_of<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
