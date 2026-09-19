@@ -7,6 +7,17 @@
 #   * RIDM_APP_USER is what the API connects as: DML only, cannot alter tables.
 set -eu
 
+# Each password may instead come from a file named by *_PASSWORD_FILE (a
+# Docker secret), as the image's own POSTGRES_PASSWORD_FILE does.
+from_file() {
+    eval "file=\${$1_FILE:-}"
+    if [ -n "$file" ]; then
+        eval "$1=\$(cat \"\$file\")"
+    fi
+}
+from_file RIDM_MIGRATOR_PASSWORD
+from_file RIDM_APP_PASSWORD
+
 : "${RIDM_MIGRATOR_USER:=ridm_migrator}"
 : "${RIDM_MIGRATOR_PASSWORD:=ridm_migrator}"
 : "${RIDM_APP_USER:=ridm_app}"

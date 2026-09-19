@@ -1,0 +1,77 @@
+# rIDM behind Traefik: routes for the server's public host and every tenant
+# custom domain, everything proxied to rIDM (API and embedded UI alike). The
+# static configuration (entry points, the ACME resolver) is the `command:` of
+# the traefik service in deploy/production/compose.yml.
+#
+# Traefik renders this file as a Go template, reading:
+#   RIDM_DOMAIN          the host in PUBLIC_URL, e.g. id.example.com
+#   RIDM_CUSTOM_DOMAINS  tenants' custom domains, space-separated (optional)
+#   RIDM_TLS_MODE        acme (default): certificates from the `letsencrypt`
+#                        resolver; files: /certs/fullchain.pem and privkey.pem
+#   RIDM_UPSTREAM        URL of the rIDM nodes (http://ridm:8080 in compose)
+#
+# Traefik passes Host through, discards a caller's X-Forwarded-For (no
+# forwardedHeaders.trustedIPs are configured) and sets it to the address that
+# connected, and has no request-body limit. rIDM sends its own security
+# headers and HSTS; Traefik adds none.
+{{- $hosts := list (env "RIDM_DOMAIN") }}
+{{- range $d := splitList " " (env "RIDM_CUSTOM_DOMAINS") }}
+{{- if $d }}{{ $hosts = append $hosts $d }}{{ end }}
+{{- end }}
+{{- $rule := "" }}
+{{- range $i, $h := $hosts }}
+{{- if $i }}{{ $rule = print $rule " || " }}{{ end }}
+{{- $rule = print $rule "Host(`" $h "`)" }}
+{{- end }}
+{{- $files := eq (env "RIDM_TLS_MODE") "files" }}
+
+http:
+  routers:
+    ridm:
+      entryPoints: [websecure]
+      rule: "{{ $rule }}"
+      service: ridm
+      tls:
+        {{- if not $files }}
+        certResolver: letsencrypt
+        {{- end }}
+
+    # Scrape /metrics from the private network, with METRICS_TOKEN.
+    metrics:
+      entryPoints: [websecure]
+      rule: "({{ $rule }}) && Path(`/metrics`)"
+      priority: 10000
+      service: ridm
+      middlewares: [nobody]
+      tls: {}
+
+  middlewares:
+    nobody:
+      ipAllowList:
+        sourceRange: ["127.0.0.1/32"]
+
+  services:
+    ridm:
+      loadBalancer:
+        servers:
+          - url: "{{ env "RIDM_UPSTREAM" }}"
+        # Take a node out of rotation while it drains or loses its database.
+        healthCheck:
+          path: /readyz
+          interval: 10s
+          timeout: 3s
+
+tls:
+  options:
+    default:
+      minVersion: VersionTLS12
+{{- if $files }}
+  certificates:
+    - certFile: /certs/fullchain.pem
+      keyFile: /certs/privkey.pem
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /certs/fullchain.pem
+        keyFile: /certs/privkey.pem
+{{- end }}

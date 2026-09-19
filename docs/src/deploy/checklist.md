@@ -38,7 +38,7 @@ a commit you have reviewed and record which one you run.
   (`UI_URL` unset), or `ui/out` on the same host with the framing headers and HSTS added
   by the static server.
   [Deployment overview](overview.md#where-the-ui-is-served-from),
-  [TLS and reverse proxies](tls-and-proxies.md#a-starting-point-for-nginx)
+  [TLS and reverse proxies](tls-and-proxies.md#hosting-uiout-yourself)
 - [ ] **Custom domains have DNS, a certificate and a proxy route** before a tenant turns
   one on. [Custom domains](../admin/custom-domains.md)
 
@@ -79,8 +79,9 @@ a commit you have reviewed and record which one you run.
 
 - [ ] **The first global administrator is bootstrapped and has changed the initial
   password** (forced at first sign-in unless `--no-must-change` was used). Remove
-  `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` from the environment afterwards.
-  [docker-compose](docker-compose.md#the-prod-profile),
+  `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` from the environment afterwards
+  (or empty `secrets/bootstrap_admin_password` in the production compose stack).
+  [Production with docker-compose](production-compose.md#the-first-administrator),
   [Administrator access](../admin/access.md)
 - [ ] **Administrators use a second factor.** [MFA policy](../admin/mfa-policy.md)
 - [ ] **Email works**: `SMTP_HOST`, `SMTP_FROM` (required once `SMTP_HOST` is set),

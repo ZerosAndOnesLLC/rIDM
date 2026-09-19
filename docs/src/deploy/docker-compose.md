@@ -3,8 +3,9 @@
 [`deploy/docker-compose.yml`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/deploy/docker-compose.yml)
 runs the API with Postgres and Valkey on one machine. It is the fastest way to evaluate
 rIDM and the stack CI boots to test the container image. It is not a production
-deployment: it has no TLS, no reverse proxy and no UI. A production compose profile and
-reverse-proxy examples are plan item 11.3 and are not written yet.
+deployment: it has no TLS and no reverse proxy, publishes Postgres and Valkey on the
+host, and defaults every password. For production on one host use
+[`deploy/production/`](production-compose.md) instead.
 
 ## Services and profiles
 

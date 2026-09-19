@@ -190,7 +190,9 @@ otherwise; the password must be changed at first sign-in; the image serves the a
 console at <http://localhost:8080/console/>) and the public SPA client
 `sample-spa` in `master` (PKCE, redirect `http://localhost:3000/callback`, post-logout
 `http://localhost:3000/`, CORS origin `http://localhost:3000`). Use `--profile prod`
-for a stack without those extras. With `-f deploy/docker-compose.yml`, compose reads
+for a stack without those extras. For production on one host, `deploy/production/` runs
+rIDM behind nginx, Caddy or Traefik with secrets in files and Postgres and Valkey
+unreachable from outside (see the docs' *Production with docker-compose*). With `-f deploy/docker-compose.yml`, compose reads
 its `.env` from `deploy/`; to use the repository's `.env` pass `--env-file .env`. Ports are overridable with
 `RIDM_HTTP_PORT`, `RIDM_PG_PORT`, `RIDM_VALKEY_PORT`, `RIDM_MAILPIT_UI_PORT`.
 
@@ -1411,7 +1413,7 @@ cd docs && mdbook serve --open     # live reload; the API reference page needs .
 | `examples/` | three relying parties: an axum resource server, a Next.js SPA, a confidential web app |
 | `dev/` | development seed data (`make seed`) |
 | `Makefile` | development shortcuts (`make` lists them) |
-| `deploy/` | docker-compose, the Helm chart (`deploy/helm/ridm`, smoke test in `deploy/helm/smoke`); reverse-proxy examples come in Phase 11.3 |
+| `deploy/` | docker-compose for evaluation (`docker-compose.yml`), the production compose stack (`deploy/production`, smoke test in `deploy/production/smoke`), reverse-proxy configurations for nginx, Caddy and Traefik (`deploy/proxy`), the Helm chart (`deploy/helm/ridm`, smoke test in `deploy/helm/smoke`) |
 | `docs/` | the documentation site (mdBook): concepts, quickstarts, admin guide, reference, deployment, migration |
 | `api/fuzz/` | cargo-fuzz targets and their seed corpora |
 | `perf/` | k6 load tests: the PR smoke and the release baseline |
