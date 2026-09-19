@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
 // Static export: the build writes plain HTML/JS/CSS to `out/`, which any
-// static host serves (the API embedding it, single-binary mode, is planned for
-// Phase 11.1 and not built yet). `trailingSlash` makes
+// static host serves, and which the API embeds with its `embedded-ui` feature
+// (single-binary mode). `trailingSlash` makes
 // every page a directory index so `/login/` resolves on any file server.
 const nextConfig: NextConfig = {
   output: "export",

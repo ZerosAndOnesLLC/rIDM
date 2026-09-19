@@ -142,7 +142,8 @@ notes before upgrading across versions; see [Upgrading](upgrading.md).
 [kind](https://kind.sigs.k8s.io/) cluster with Postgres and Valkey beside it, checks
 readiness, discovery, the key set and the embedded pages through a port-forward, checks
 that no pod restarted and that the migration Job and its Secret are gone, upgrades (the
-hook runs again and the pods roll), uninstalls, and deletes the cluster:
+hook runs again and the pods roll), uninstalls, and deletes the cluster. CI's
+`helm-smoke` job runs it on every pull request against the image built there:
 
 ```bash
 docker build -f api/Dockerfile -t ridm:smoke .
