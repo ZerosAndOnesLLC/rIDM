@@ -70,7 +70,7 @@ async fn handle(
     }
     // The device page stands in for the client's redirect URI: denial and
     // approval both land there.
-    let device_page = state.config.ui_page("device", &[("tenant", tenant.slug())]);
+    let device_page = state.ui_page(&tenant.tenant, "device", &[("tenant", tenant.slug())]);
     let now = Utc::now();
     let mut flow = LoginFlow {
         id: Uuid::now_v7(),
@@ -125,7 +125,8 @@ async fn handle(
     let flow = login_flows::create(state, flow).await?;
     let page = broker::page_for(flow.stage);
     Ok(VerifyResponse {
-        redirect_to: state.config.ui_page(
+        redirect_to: state.ui_page(
+            &tenant.tenant,
             page,
             &[("tenant", tenant.slug()), ("flow", &flow.id.to_string())],
         ),

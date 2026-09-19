@@ -4,14 +4,17 @@
 //! whose only audience is the built-in account resource server, so a user's
 //! browser session obtains tokens that reach `/t/{slug}/account/...` and
 //! nothing else. Like the admin console's client it follows `UI_URL`, cannot
-//! be deleted and is left out of tenant exports.
-
-use uuid::Uuid;
+//! be deleted and is left out of tenant exports. Unlike the admin console,
+//! the account console is also served on a tenant's custom domain (by a node
+//! serving the embedded UI), so the client accepts that host's pages too.
 
 use crate::config::Config;
+use crate::config::page_url;
 use crate::error::AppResult;
 use crate::models::grants;
-use crate::models::{Client, ClientType, NewClient, STANDARD_SCOPES, TokenEndpointAuthMethod};
+use crate::models::{
+    Client, ClientType, NewClient, STANDARD_SCOPES, Tenant, TokenEndpointAuthMethod,
+};
 use crate::services::admin_console;
 use crate::state::AppState;
 
@@ -36,16 +39,25 @@ pub fn home_uri(config: &Config) -> String {
     config.ui_page("account", &[])
 }
 
-/// The client as it should look for the current configuration.
-pub fn desired(config: &Config) -> NewClient {
+/// The client as it should look for the current configuration and `tenant`:
+/// the pages under `UI_URL`, plus those on the tenant's custom domain when
+/// this node serves the embedded UI there.
+pub fn desired(state: &AppState, tenant: &Tenant) -> NewClient {
+    let config = &state.config;
+    let mut redirect_uris = vec![callback_uri(config)];
+    let mut post_logout_redirect_uris = vec![home_uri(config)];
+    if let Some(base) = state.tenant_ui_base(tenant) {
+        redirect_uris.push(page_url(&base, "account/callback", &[]));
+        post_logout_redirect_uris.push(page_url(&base, "account", &[]));
+    }
     NewClient {
         client_id: Some(ACCOUNT_CLIENT_ID.into()),
         name: "rIDM Account".into(),
         client_type: Some(ClientType::Spa),
         description: Some("Built-in client of the bundled account console.".into()),
         token_endpoint_auth_method: Some(TokenEndpointAuthMethod::None),
-        redirect_uris: vec![callback_uri(config)],
-        post_logout_redirect_uris: vec![home_uri(config)],
+        redirect_uris,
+        post_logout_redirect_uris,
         allowed_grants: Some(vec![
             grants::AUTHORIZATION_CODE.into(),
             grants::REFRESH_TOKEN.into(),
@@ -58,12 +70,14 @@ pub fn desired(config: &Config) -> NewClient {
     }
 }
 
-/// Create the account client in `tenant_id`, or re-point it at the configured UI.
-pub async fn ensure(state: &AppState, tenant_id: Uuid) -> AppResult<Client> {
-    admin_console::ensure_builtin(state, tenant_id, ACCOUNT_CLIENT_ID, desired(&state.config)).await
+/// Create the account client in `tenant`, or re-point it at the configured
+/// UI (and the tenant's custom domain). Called at startup, on tenant creation
+/// and whenever a tenant's custom domain changes.
+pub async fn ensure(state: &AppState, tenant: &Tenant) -> AppResult<Client> {
+    admin_console::ensure_builtin(state, tenant.id, ACCOUNT_CLIENT_ID, desired(state, tenant)).await
 }
 
 /// Bring every tenant's account client in line (startup).
 pub async fn ensure_all(state: &AppState) -> AppResult<()> {
-    admin_console::for_every_tenant(state, |tid| ensure(state, tid)).await
+    admin_console::for_every_tenant(state, |t| async move { ensure(state, &t).await }).await
 }

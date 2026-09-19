@@ -14,6 +14,7 @@ use uuid::Uuid;
 use crate::error::{AppError, AppResult};
 use crate::middleware::TenantCtx;
 use crate::middleware::client_ip;
+use crate::models::Tenant;
 use crate::services::broker::{self, BrokerError, CallbackParams, Mode, Outcome};
 use crate::services::{flows, identity_providers, sessions, trusted_devices};
 use crate::state::AppState;
@@ -106,7 +107,12 @@ async fn callback_post(
 
 /// The account console page a link returns to: a path on the UI, never a
 /// foreign origin.
-fn return_page(state: &AppState, return_to: Option<&str>, error: Option<&str>) -> String {
+fn return_page(
+    state: &AppState,
+    tenant: &Tenant,
+    return_to: Option<&str>,
+    error: Option<&str>,
+) -> String {
     let path = return_to
         .filter(|p| p.starts_with('/') && !p.starts_with("//"))
         .unwrap_or("/account/security/");
@@ -129,7 +135,7 @@ fn return_page(state: &AppState, return_to: Option<&str>, error: Option<&str>) -
     } else {
         params.push(("linked", "1"));
     }
-    state.config.ui_page(page, &params)
+    state.ui_page(tenant, page, &params)
 }
 
 async fn finish(
@@ -159,7 +165,8 @@ async fn finish(
     };
     match broker::callback(&state, &tenant, &idp, params, ctx).await {
         Ok(Outcome::Authenticated { session, flow }) => {
-            let url = state.config.ui_page(
+            let url = state.ui_page(
+                &tenant.tenant,
                 broker::page_for(flow.stage),
                 &[("tenant", tenant.slug()), ("flow", &flow.id.to_string())],
             );
@@ -173,15 +180,19 @@ async fn finish(
             }
             res
         }
-        Ok(Outcome::Linked { return_to }) => {
-            redirect(&return_page(&state, return_to.as_deref(), None))
-        }
+        Ok(Outcome::Linked { return_to }) => redirect(&return_page(
+            &state,
+            &tenant.tenant,
+            return_to.as_deref(),
+            None,
+        )),
         Ok(Outcome::Failed {
             flow_id: Some(flow_id),
             error,
             ..
         }) => {
-            let url = state.config.ui_page(
+            let url = state.ui_page(
+                &tenant.tenant,
                 "login",
                 &[
                     ("tenant", tenant.slug()),
@@ -215,6 +226,7 @@ async fn finish(
             error,
         }) => redirect(&return_page(
             &state,
+            &tenant.tenant,
             return_to.as_deref(),
             Some(error.code()),
         )),

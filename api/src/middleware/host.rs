@@ -14,7 +14,14 @@
 //!   whatever host it uses;
 //! * the host-wide `/.well-known/webfinger` and `/.well-known/security.txt`;
 //! * the tenant's own `/t/{slug}/…` and `/scim/v2/{slug}/…` paths, for a UI
-//!   or provisioning client that names the tenant explicitly.
+//!   or provisioning client that names the tenant explicitly;
+//! * on a node serving the embedded UI, a GET or HEAD of a file of the export
+//!   (`/login/`, `/account/`, `/_next/static/…`): the tenant's sign-in pages
+//!   and account console are served on its own host, so the session they set
+//!   belongs to the host its `/authorize` answers on. Only exact files: a
+//!   page named without its slash (`/account/me`, `/register`) stays the
+//!   tenant's route. The admin console and the root page are not served
+//!   there, since the admin API does not answer on a custom domain.
 //!
 //! Everything else lands under the prefix and so reaches nothing but the
 //! tenant's routes: another tenant's `/t/{other}/…` or `/scim/v2/{other}/…`,
@@ -26,7 +33,7 @@ use std::net::SocketAddr;
 
 use axum::Router;
 use axum::extract::{ConnectInfo, Request};
-use axum::http::{HeaderMap, StatusCode, Uri, header};
+use axum::http::{HeaderMap, Method, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 use tower::ServiceExt as _;
 
@@ -84,6 +91,19 @@ fn passes_unprefixed(path: &str, slug: &str) -> bool {
     own("/t/") || own("/scim/v2/")
 }
 
+/// Is this a request for a file of the embedded UI that a custom domain
+/// serves (everything but the admin console and the root page)?
+fn is_tenant_page(state: &AppState, req: &Request) -> bool {
+    let Some(ui) = &state.ui else {
+        return false;
+    };
+    let path = req.uri().path();
+    matches!(*req.method(), Method::GET | Method::HEAD)
+        && path != "/"
+        && !path.starts_with("/console/")
+        && ui.has_file(path)
+}
+
 /// Serve a request: as it is on the primary hosts, mapped onto the tenant on
 /// a custom domain.
 pub async fn dispatch(state: AppState, routed: Router, req: Request) -> Response {
@@ -107,7 +127,7 @@ pub async fn dispatch(state: AppState, routed: Router, req: Request) -> Response
         Ok(None) => return routed.oneshot(req).await.into_response(),
         Err(err) => return err.into_response(),
     };
-    if passes_unprefixed(req.uri().path(), &tenant.slug) {
+    if passes_unprefixed(req.uri().path(), &tenant.slug) || is_tenant_page(&state, &req) {
         return routed.oneshot(req).await.into_response();
     }
     let (mut parts, body) = req.into_parts();

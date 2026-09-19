@@ -34,9 +34,10 @@ a commit you have reviewed and record which one you run.
 - [ ] **`TRUSTED_PROXIES` lists exactly your proxy tier**: empty behind a proxy makes
   every user one address; too wide lets callers forge theirs.
   [TLS and reverse proxies](tls-and-proxies.md#trusted_proxies-and-the-client-address)
-- [ ] **The UI is served from the same origin as the API**, with `X-Frame-Options: DENY`
-  (or `frame-ancestors 'none'`) and HSTS added by the static server.
-  [Deployment overview](overview.md#where-the-ui-is-served-from-today),
+- [ ] **The UI is served from the same origin as the API**: the image's embedded UI
+  (`UI_URL` unset), or `ui/out` on the same host with the framing headers and HSTS added
+  by the static server.
+  [Deployment overview](overview.md#where-the-ui-is-served-from),
   [TLS and reverse proxies](tls-and-proxies.md#a-starting-point-for-nginx)
 - [ ] **Custom domains have DNS, a certificate and a proxy route** before a tenant turns
   one on. [Custom domains](../admin/custom-domains.md)

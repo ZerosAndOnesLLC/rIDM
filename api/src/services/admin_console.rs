@@ -13,7 +13,9 @@ use uuid::Uuid;
 use crate::config::Config;
 use crate::error::AppResult;
 use crate::models::grants;
-use crate::models::{Client, ClientType, NewClient, STANDARD_SCOPES, TokenEndpointAuthMethod};
+use crate::models::{
+    Client, ClientType, NewClient, STANDARD_SCOPES, Tenant, TokenEndpointAuthMethod,
+};
 use crate::repos;
 use crate::services::admin_access::ADMIN_AUDIENCE;
 use crate::services::clients;
@@ -118,13 +120,13 @@ pub async fn ensure_builtin(
 
 /// Bring every tenant's console client in line (startup).
 pub async fn ensure_all(state: &AppState) -> AppResult<()> {
-    for_every_tenant(state, |tid| ensure(state, tid)).await
+    for_every_tenant(state, |t| ensure(state, t.id)).await
 }
 
 /// Run `f` for every tenant, a page at a time.
 pub async fn for_every_tenant<F, Fut>(state: &AppState, f: F) -> AppResult<()>
 where
-    F: Fn(Uuid) -> Fut,
+    F: Fn(Tenant) -> Fut,
     Fut: Future<Output = AppResult<Client>>,
 {
     let mut after = None;
@@ -132,7 +134,7 @@ where
         let rows = repos::tenants::list(&state.db, after.take(), 200).await?;
         let more = rows.len() > 200;
         for t in rows.iter().take(200) {
-            f(t.id).await?;
+            f(t.clone()).await?;
         }
         if !more {
             return Ok(());

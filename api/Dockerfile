@@ -4,12 +4,29 @@
 #
 #   docker buildx build --platform linux/amd64,linux/arm64 -f api/Dockerfile -t ridm .
 #
-# Stage 1 builds the release binary for the target platform. Stage 2 copies it
-# into a distroless image (no shell, no package manager, runs as non-root).
-# The UI is embedded into the binary in Phase 11.1; until then the image serves
-# the API only.
+# Stage 1 builds the UI's static export (`ui/out`) once, on the build
+# platform: it is the same files for every architecture. Stage 2 builds the
+# release binary for the target platform with that export compiled in
+# (`--features embedded-ui`), so the image serves the sign-in pages and both
+# consoles on the API's own origin. Stage 3 copies the binary into a
+# distroless image (no shell, no package manager, runs as non-root).
 
 ARG RUST_VERSION=1.98.1
+ARG NODE_VERSION=24.21.0
+
+# ---------------------------------------------------------------------------
+# ui
+# ---------------------------------------------------------------------------
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-bookworm-slim AS ui
+
+WORKDIR /src/ui
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY ui ./
+# Same-origin build: an empty NEXT_PUBLIC_API_URL makes every page call the
+# host it was loaded from, which is the API serving it.
+ENV NEXT_PUBLIC_API_URL="" NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
 
 # ---------------------------------------------------------------------------
 # builder
@@ -42,7 +59,7 @@ RUN mkdir -p api/src crates/ridm-core/src crates/ridm-cli/src crates/ridm-auth/s
  && echo '' > crates/ridm-auth/src/lib.rs \
  && echo 'fn main() {}' > examples/axum-api/src/main.rs \
  && echo 'fn main() {}' > examples/confidential-client/src/main.rs \
- && cargo build --release --locked -p ridm-api \
+ && cargo build --release --locked -p ridm-api --features embedded-ui \
  && rm -rf api/src crates/ridm-core/src crates/ridm-cli/src crates/ridm-auth/src \
       examples/axum-api/src examples/confidential-client/src
 
@@ -50,9 +67,10 @@ COPY api api
 COPY crates crates
 COPY examples/axum-api examples/axum-api
 COPY examples/confidential-client examples/confidential-client
+COPY --from=ui /src/ui/out ui/out
 # Touch sources so cargo notices they changed after the dependency-only build.
 RUN touch api/src/main.rs api/src/lib.rs crates/ridm-core/src/lib.rs \
- && cargo build --release --locked -p ridm-api \
+ && cargo build --release --locked -p ridm-api --features embedded-ui \
  && strip target/release/ridm-api
 
 # ---------------------------------------------------------------------------

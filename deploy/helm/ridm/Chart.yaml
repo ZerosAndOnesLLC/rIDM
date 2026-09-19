@@ -1,0 +1,22 @@
+apiVersion: v2
+name: ridm
+description: rIDM, a self-hosted multi-tenant OpenID Connect provider and identity server, with its admin and account consoles embedded
+type: application
+# Chart and app versions move together and are bumped only when a release is cut.
+version: 0.1.0-dev
+appVersion: 0.1.0-dev
+kubeVersion: ">=1.27.0-0"
+home: https://github.com/ZerosAndOnesLLC/rIDM
+sources:
+  - https://github.com/ZerosAndOnesLLC/rIDM
+annotations:
+  artifacthub.io/license: MIT
+keywords:
+  - oidc
+  - openid-connect
+  - oauth2
+  - identity-provider
+  - sso
+maintainers:
+  - name: ZerosAndOnesLLC
+    url: https://github.com/ZerosAndOnesLLC

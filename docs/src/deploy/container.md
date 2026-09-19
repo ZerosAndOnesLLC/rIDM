@@ -14,18 +14,25 @@ docker buildx build --platform linux/amd64,linux/arm64 -f api/Dockerfile -t ridm
 ```
 
 Run either from the repository root; the build context is the whole workspace. The
-build has two stages:
+build has three stages:
 
+- **ui** (`node:24.21.0-bookworm-slim`, overridable with `--build-arg NODE_VERSION=...`)
+  runs `npm ci` and `npm run build` in `ui/` with `NEXT_PUBLIC_API_URL` empty, producing
+  the same-origin static export `ui/out`. It runs once on the build platform, since the
+  files are the same for every architecture.
 - **builder** (`rust:1.98.1-bookworm`, overridable with `--build-arg RUST_VERSION=...`)
   compiles the dependencies first against stub sources, so a source change does not
-  rebuild them, then builds `ridm-api` in release mode with `--locked` and strips it.
+  rebuild them, then builds `ridm-api` in release mode with `--locked` and
+  `--features embedded-ui`, which compiles `ui/out` into the binary, and strips it.
 - **runtime** (`gcr.io/distroless/cc-debian12:nonroot`) holds only the binary at
   `/ridm-api`. There is no shell and no package manager, and no dynamic OpenSSL: TLS
   uses rustls with the aws-lc-rs provider.
 
-The image contains the API only. The UI (`ui/out`) is built and served separately
-until the embedded UI mode (plan item 11.1) lands; see
-[Deployment overview](overview.md#where-the-ui-is-served-from-today).
+The image serves the sign-in pages and both consoles itself on `PUBLIC_URL`'s origin
+(`/login/`, `/console/`, `/account/`, ...); nothing else needs hosting. Set
+`EMBEDDED_UI=false` for a node that should answer the API alone, or `UI_URL` to another
+origin when the pages are hosted elsewhere; see
+[Deployment overview](overview.md#where-the-ui-is-served-from).
 
 ## Runtime properties
 
@@ -170,9 +177,10 @@ retries) rather than expecting the port at once.
 
 ## Kubernetes
 
-There is no Helm chart yet (plan item 11.2). The pieces map directly: a Deployment of
-the image with the probes above, a Job running `migrate` as the migrator role before each
-rollout, the master key and database passwords from Secrets (`MASTER_KEY_FILE` pointing
-at a mounted Secret keeps the key out of the process environment), and a Service behind
-your Ingress with `TRUSTED_PROXIES` set to the Ingress controller's pod network. Set
-`terminationGracePeriodSeconds` above 20 so the drain can finish.
+Use the Helm chart; see [Kubernetes (Helm)](kubernetes.md). It is the same pieces a
+hand-written manifest would need: a Deployment of the image with the probes above, a Job
+running `migrate` as the migrator role before each rollout, the master key and database
+passwords from Secrets (the key mounted as a file for `MASTER_KEY_FILE`, out of the
+process environment), and a Service behind your Ingress with `TRUSTED_PROXIES` set to the
+Ingress controller's pod network, with `terminationGracePeriodSeconds` above the 20-second
+drain.

@@ -203,7 +203,7 @@ pub async fn send_verification(
         params.push(("flow", f.to_string()));
     }
     let refs: Vec<(&str, &str)> = params.iter().map(|(k, v)| (*k, v.as_str())).collect();
-    let link = state.config.ui_page("verify", &refs);
+    let link = state.ui_page(tenant, "verify", &refs);
     messaging::send(
         state,
         tenant,

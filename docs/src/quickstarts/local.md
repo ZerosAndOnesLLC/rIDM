@@ -179,9 +179,12 @@ API_PROXY=http://localhost:8090 npx next dev -p 3110
 ```
 
 `API_PROXY` makes the dev server forward `/t`, `/admin` and `/.well-known` to the
-API, so the pages call it same-origin, as they will once the UI is embedded in
-the server, and session cookies work without CORS. (Embedding the UI in the
-server binary is planned, not present; today it is always served separately.)
+API, so the pages call it same-origin, as they are when the server embeds the UI,
+and session cookies work without CORS. `next dev` reloads pages as you edit them.
+To run the pages the way the container image serves them instead, build the export
+once (`NEXT_PUBLIC_API_URL= npm run build` in `ui/`), start the API with
+`cargo run -p ridm-api --features embedded-ui` and without `UI_URL`, and open
+<http://localhost:8090/console/>.
 
 | Page | URL |
 |------|-----|
@@ -296,10 +299,10 @@ also builds and runs the API (`api-dev`, on 8080), runs the migrations with the
 one-shot `migrate` service, and seeds `master` with an administrator from
 `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` (compose defaults
 `admin@ridm.local` and `ChangeMe-Now-1234`) and the sample client `sample-spa`
-described above. It does not set `UI_URL`, and the
-image does not serve the UI yet, so the consoles are not usable against it
-without further changes. For UI work, run the API with `cargo` as above. See
-[docker-compose](../deploy/docker-compose.md).
+described above. The image embeds the UI, so the consoles are at
+<http://localhost:8080/console/> and <http://localhost:8080/account/?tenant=master>
+with nothing else running. For work on the pages, run the API with `cargo` and the
+UI under `next dev` as above. See [docker-compose](../deploy/docker-compose.md).
 
 ## Resetting
 

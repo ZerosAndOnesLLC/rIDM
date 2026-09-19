@@ -114,7 +114,7 @@ Both are game over by construction, and the mitigation is operational.
 |---|---|
 | SQL injection | Every query is parameterised through sqlx; the only interpolated identifiers are compile-time constants |
 | Cross-site scripting in the hosted pages | React escaping; a hash-based CSP on every exported page; server-rendered pages escape and carry their own policy |
-| Clickjacking | `X-Frame-Options: DENY` and `frame-ancestors 'none'` |
+| Clickjacking | `X-Frame-Options: DENY` and `frame-ancestors 'none'` on every API response and UI page, except the login page, which only its own origin may frame (`SAMEORIGIN`, `frame-ancestors 'self'`) for the console's branding preview |
 | SSRF through URLs tenant administrators or client registrations choose | Webhooks, back-channel logout URIs, client `jwks_uri`s, identity provider endpoints, tenant HTTP email/SMS gateways, the CAPTCHA `verify_url` and a tenant SMTP host go through `util::outbound`: a resolver that keeps only public addresses (private, loopback, link-local, CGNAT, unique-local, documentation and mapped forms refused) at connection time, so DNS rebinding does not help; IP literals checked before sending; no redirects; no environment proxy. Loopback named as such stays allowed for development. The tenant SMTP connection goes to the vetted address with TLS verifying the configured name. Operator-set URLs (audit sink, breach check) are not filtered |
 | Header injection through forwarded headers | The forwarded chain is read from the right past `TRUSTED_PROXIES`, so an appending proxy cannot let a caller choose its own address |
 

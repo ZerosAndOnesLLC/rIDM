@@ -836,7 +836,8 @@ pub async fn deliver_to_client(
 }
 
 fn redirect_to_ui(state: &AppState, tenant: &TenantCtx, page: &str, flow_id: Uuid) -> Response {
-    let url = state.config.ui_page(
+    let url = state.ui_page(
+        &tenant.tenant,
         page,
         &[("tenant", tenant.slug()), ("flow", &flow_id.to_string())],
     );

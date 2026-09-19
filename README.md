@@ -28,10 +28,10 @@ The source is in [`docs/`](docs/); this README stays the developer's overview.
   token rotation with reuse detection, device flow, PAR, JAR/JARM, DCR, RP-initiated,
   back-channel and front-channel logout, token exchange, DPoP. No implicit, hybrid, or
   password grants.
-- **One image, plus a static UI.** A deployment is the API image plus Postgres and
-  Valkey; the UI is a static export for any static host or CDN. Serving the UI
-  from the API binary itself (a single-binary mode) is planned for Phase 11.1 and
-  not built yet.
+- **One image.** A deployment is the API image plus Postgres and Valkey. The image
+  compiles the UI's static export into the server, which serves the sign-in pages and
+  both consoles on its own origin; the same export can also go on any static host or
+  CDN.
 - **Config as code.** Every tenant exports to one JSON document and imports
   idempotently, for GitOps and reproducible environments.
 - **Built for scale.** Stateless API nodes, cache-first reads, short-lived JWTs, Valkey
@@ -186,7 +186,8 @@ curl http://localhost:8080/readyz
 The `dev` profile adds [Mailpit](http://localhost:8025) to catch outbound email and, on
 first run, seeds a global administrator in the `master` tenant (`admin@ridm.local` /
 `ChangeMe-Now-1234` unless `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` say
-otherwise; the password must be changed at first sign-in) and the public SPA client
+otherwise; the password must be changed at first sign-in; the image serves the admin
+console at <http://localhost:8080/console/>) and the public SPA client
 `sample-spa` in `master` (PKCE, redirect `http://localhost:3000/callback`, post-logout
 `http://localhost:3000/`, CORS origin `http://localhost:3000`). Use `--profile prod`
 for a stack without those extras. With `-f deploy/docker-compose.yml`, compose reads
@@ -480,12 +481,18 @@ prefixed paths keep working and report the same issuer). Requests are matched by
 `Host` header, or `X-Forwarded-Host` from a `TRUSTED_PROXIES` peer; the host is looked up
 through the tenant cache and takes effect the moment the setting changes. Domains are
 validated, lower-cased, unique across tenants and may not be the deployment's own hosts.
-The UI stays where `UI_URL` says until the embedded UI mode (Phase 11.1) serves it on
-every host.
+When the server serves the embedded UI, the tenant's sign-in pages and account console
+are served on that host too, and every redirect and emailed link for the tenant's users
+(`/authorize` to `/login/`, logout, device, recovery, invitation, verification and
+magic links) points there, so the session the pages set belongs to the host `/authorize`
+answers on; the built-in account console client accepts the host's callback. With the UI
+hosted separately, the pages stay at `UI_URL`.
 
 A custom domain serves its tenant and nothing else. Only `/healthz`, `/readyz`,
-`/.well-known/webfinger`, `/.well-known/security.txt` and the tenant's own `/t/{slug}/…`
-and `/scim/v2/{slug}/…` paths pass through as they are; every other path is rewritten
+`/.well-known/webfinger`, `/.well-known/security.txt`, the tenant's own `/t/{slug}/…`
+and `/scim/v2/{slug}/…` paths and, with the embedded UI, a GET of a file of the export
+(`/login/`, `/account/`, `/_next/static/…`, but not the admin console or `/`) pass
+through as they are; every other path is rewritten
 under `/t/{slug}`, so the admin API, `/metrics`, `/docs`, `/openapi.json` and other
 tenants' paths answer `404` there. Session cookies are `Path=/` and named per tenant, so
 sign-in works on the custom domain as on the primary host.
@@ -1116,8 +1123,22 @@ npm run lint && npm run typecheck
 npm run build          # static export to ui/out
 ```
 
-`NEXT_PUBLIC_API_URL` is empty by default (same origin: `ui/out` served on the API's
-host, behind the same reverse proxy, as the planned embedded mode will also do). Set it at build time when hosting `ui/out` on a separate static host or CDN.
+`NEXT_PUBLIC_API_URL` is empty by default (same origin: the pages call the host they
+were loaded from). Set it at build time when hosting `ui/out` on a separate static host
+or CDN.
+
+**Embedded UI mode.** `cargo build -p ridm-api --features embedded-ui` compiles `ui/out`
+into the binary (`api/src/routes/ui.rs`, `rust-embed`; a debug build reads the files
+from `ui/out` at run time instead), and the server then serves the pages itself as the
+router's fallback when `UI_URL` is its own origin (the default) and `EMBEDDED_UI` is not
+`false`. API routes always win; a miss under an API prefix (`/t/`, `/admin`, `/scim/`,
+`/.well-known/`, the probes, `/metrics`, `/docs`, `/openapi.json`) stays the API's bare
+`404`; `/login` redirects to `/login/` (`308`, query kept); unknown paths get the
+export's `404.html`; `/_next/static/` is cached for a year as immutable and everything
+else revalidates against a weak `ETag`; text is gzip-compressed on request. The
+container image builds the export in a Node stage and always enables the feature. The
+feature is off by default so a Rust-only checkout builds without Node, and CI's `ui-e2e`
+job runs the Playwright suite against an API built with it.
 
 The build's `postbuild` step (`scripts/csp.mjs`, unit-tested with `npm run test:scripts`)
 gives every exported page a `Content-Security-Policy` `<meta>` tag: scripts may come
@@ -1126,9 +1147,12 @@ scripts (each allowed by its SHA-256 hash, since a static export has no nonces);
 connections and form posts may go to the page's origin and `NEXT_PUBLIC_API_URL`;
 styles stay inline (React style props and tenant custom CSS); images and fonts may
 come from anywhere over https (tenant logos), and objects are forbidden. A meta tag
-cannot restrict framing, so whoever serves `ui/out` (your reverse proxy or static
-host) should also send `X-Frame-Options: DENY` or
-`Content-Security-Policy: frame-ancestors 'none'`, and `Strict-Transport-Security`.
+cannot restrict framing, so the embedded server sends `X-Frame-Options: DENY` and
+`frame-ancestors 'none'` with every page but `/login/`, which the console's branding
+preview frames and which therefore gets `SAMEORIGIN` and `frame-ancestors 'self'`; the
+console pages' meta policy is the only one with `frame-src 'self'`. A reverse proxy or
+static host serving `ui/out` itself must send the same headers, and
+`Strict-Transport-Security`.
 
 `npm run e2e` runs the Playwright suite (the end-user journeys — password, magic link,
 registration, recovery, two-step verification, passkeys through a virtual
@@ -1314,10 +1338,36 @@ docker build -f api/Dockerfile -t ridm .
 docker buildx build --platform linux/amd64,linux/arm64 -f api/Dockerfile -t ridm .
 ```
 
-The image is distroless, runs as non-root, has no dynamic OpenSSL dependency, and its
+The build compiles the UI's static export (built in a Node stage) into the binary, so
+the image serves the sign-in pages and consoles itself. The image is distroless, runs
+as non-root, has no dynamic OpenSSL dependency, and its
 `HEALTHCHECK` runs `/ridm-api --healthcheck`, which asks `/healthz` on `BIND_ADDR`
 (loopback when bound to all interfaces), over HTTPS trusting exactly `TLS_CERT` when
 native TLS is on.
+
+### Kubernetes (Helm)
+
+`deploy/helm/ridm` is the chart: the image as a Deployment (non-root, read-only root
+filesystem, no service-account token, the master key mounted as a file for
+`MASTER_KEY_FILE`), a Service, and optionally an Ingress, an HPA, a PodDisruptionBudget
+and a ServiceMonitor; migrations run as a `pre-install`/`pre-upgrade` hook Job with the
+schema owner's credential in a hook Secret that is deleted with it. Postgres and Valkey
+are external. Every secret value is either inline or a reference to your own Secret by
+name and key, and `values.schema.json` plus render-time checks refuse an incomplete or
+misspelled release.
+
+```bash
+helm install ridm deploy/helm/ridm -n ridm --create-namespace -f ridm-values.yaml
+```
+
+`deploy/helm/smoke/run.sh` (with `RIDM_IMAGE` set to a locally built image) installs,
+checks, upgrades and uninstalls it in a throwaway kind cluster. See
+[Kubernetes (Helm)](docs/src/deploy/kubernetes.md) for a full walk-through.
+
+Nodes that start together (a Deployment's replicas, a first rollout) take turns at the
+one-time start-up work, bootstrap and the built-in console clients, under a Postgres
+advisory lock (`services/startup.rs`); without it, two fresh nodes both created the first
+administrator and one crashed.
 
 ### CI
 
@@ -1361,7 +1411,7 @@ cd docs && mdbook serve --open     # live reload; the API reference page needs .
 | `examples/` | three relying parties: an axum resource server, a Next.js SPA, a confidential web app |
 | `dev/` | development seed data (`make seed`) |
 | `Makefile` | development shortcuts (`make` lists them) |
-| `deploy/` | docker-compose (a Helm chart and reverse-proxy examples come in Phase 11) |
+| `deploy/` | docker-compose, the Helm chart (`deploy/helm/ridm`, smoke test in `deploy/helm/smoke`); reverse-proxy examples come in Phase 11.3 |
 | `docs/` | the documentation site (mdBook): concepts, quickstarts, admin guide, reference, deployment, migration |
 | `api/fuzz/` | cargo-fuzz targets and their seed corpora |
 | `perf/` | k6 load tests: the PR smoke and the release baseline |

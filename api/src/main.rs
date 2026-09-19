@@ -83,30 +83,8 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     let bootstrap = config.bootstrap.clone();
     let mut state = AppState::new(config, db, cache);
     state.db_read = db_read;
-    if let Some(b) = bootstrap {
-        let outcome = bootstrap::run(
-            &state,
-            bootstrap::BootstrapRequest {
-                admin_email: b.admin_email,
-                admin_username: b.admin_username,
-                admin_password: zeroize::Zeroizing::new(b.admin_password.expose().to_string()),
-                must_change_password: true,
-            },
-        )
-        .await?;
-        if outcome == bootstrap::BootstrapOutcome::AlreadyBootstrapped {
-            tracing::debug!("bootstrap: already done, skipping");
-        }
-        if b.sample_client && !bootstrap::ensure_sample_client(&state).await? {
-            tracing::debug!(
-                client_id = bootstrap::SAMPLE_CLIENT_ID,
-                "bootstrap: sample client exists"
-            );
-        }
-    }
-    // Every tenant carries the console's client; its redirect URIs follow UI_URL.
-    ridm_api::services::admin_console::ensure_all(&state).await?;
-    ridm_api::services::account_console::ensure_all(&state).await?;
+    // Bootstrap and the built-in clients, one node at a time.
+    ridm_api::services::startup::prepare(&state, bootstrap).await?;
     let _invalidation_listener = state.cache.spawn_invalidation_listener();
     let _audit_writer = ridm_api::services::audit::spawn_writer(state.clone());
     let _webhook_dispatcher = ridm_api::services::webhooks::spawn_dispatcher(state.clone());

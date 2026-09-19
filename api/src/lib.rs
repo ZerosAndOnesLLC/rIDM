@@ -113,6 +113,16 @@ fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
         .merge(limited(oauth_tokens, Category::Token, Style::OAuth))
         .merge(oidc::end_session::router())
         .merge(extra)
+        // Unmatched paths: the embedded UI's pages, compressed (hashed
+        // bundles are large and the pages are text), or the API's 404.
+        .fallback_service(
+            tower::ServiceBuilder::new()
+                .layer(tower_http::compression::CompressionLayer::new())
+                .service(axum::handler::Handler::with_state(
+                    routes::ui::fallback,
+                    state.clone(),
+                )),
+        )
         .layer(from_fn_with_state(
             state.clone(),
             security_headers::security_headers,

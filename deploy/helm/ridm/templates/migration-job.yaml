@@ -1,0 +1,113 @@
+{{- if .Values.migrations.enabled }}
+{{- include "ridm.validate" . }}
+{{- $fullname := include "ridm.fullname" . }}
+{{- $secret := printf "%s-migrate" $fullname | trunc 63 | trimSuffix "-" }}
+{{- $v := .Values }}
+{{- /* The Job connects as the schema owner; the rest is what configuration parsing needs. */}}
+{{- $items := list
+  (dict "env" "DATABASE_URL" "value" $v.migrations.database.url "ref" $v.migrations.database.existingSecret)
+  (dict "env" "REDIS_URL" "value" $v.redis.url "ref" $v.redis.existingSecret)
+  (dict "env" "MASTER_KEY" "value" $v.masterKey.value "ref" $v.masterKey.existingSecret) }}
+{{- $inline := dict }}
+{{- range $items }}
+{{- if and .value (not .ref.name) }}
+{{- $_ := set $inline .env .value }}
+{{- end }}
+{{- end }}
+{{- if $inline }}
+# Hook resources run before the release's own Secret exists, and this one
+# carries the schema owner's credential: it lives only as long as the Job.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secret }}
+  labels:
+    {{- include "ridm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrations
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+type: Opaque
+data:
+  {{- range $k, $val := $inline }}
+  {{ $k }}: {{ $val | toString | b64enc | quote }}
+  {{- end }}
+---
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-migrate" $fullname | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "ridm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrations
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    # A failed Job stays for its logs until the next attempt replaces it.
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ $v.migrations.backoffLimit }}
+  activeDeadlineSeconds: {{ $v.migrations.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "ridm.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrations
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      {{- with $v.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $v.podSecurityContext | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "ridm.image" . }}
+          imagePullPolicy: {{ $v.image.pullPolicy }}
+          args: ["migrate"]
+          securityContext:
+            {{- toYaml $v.securityContext | nindent 12 }}
+          env:
+            {{- range $k, $val := (include "ridm.plainEnv" . | fromYaml) }}
+            {{- /* The pods bootstrap; the Job has no password to go with the email. */}}
+            {{- if not (hasPrefix "BOOTSTRAP_" $k) }}
+            - name: {{ $k }}
+              value: {{ $val | toString | quote }}
+            {{- end }}
+            {{- end }}
+            {{- range $items }}
+            {{- if not (and $v.masterKey.asFile (eq .env "MASTER_KEY")) }}
+            {{- include "ridm.secretEnv" (dict "item" . "secret" $secret) | nindent 12 }}
+            {{- end }}
+            {{- end }}
+            {{- if $v.masterKey.asFile }}
+            - name: MASTER_KEY_FILE
+              value: /run/secrets/ridm/master-key
+            {{- end }}
+          {{- with $v.migrations.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if $v.masterKey.asFile }}
+          volumeMounts:
+            - name: master-key
+              mountPath: /run/secrets/ridm
+              readOnly: true
+          {{- end }}
+      {{- if $v.masterKey.asFile }}
+      volumes:
+        {{- include "ridm.masterKeyVolume" (dict "root" . "secret" $secret) | nindent 8 }}
+      {{- end }}
+      {{- with $v.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $v.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

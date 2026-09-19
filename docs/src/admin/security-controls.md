@@ -323,8 +323,13 @@ The HTML pages the API renders itself (authorization errors, refusals) use
 all https too.
 
 The UI is a static export with its own `Content-Security-Policy` meta tag on every
-page. A meta tag cannot forbid framing, so whatever serves the UI files should add
-`X-Frame-Options: DENY` (or `frame-ancestors 'none'`) and `Strict-Transport-Security`.
+page: scripts only from the page's origin, the CAPTCHA vendors and the page's own inline
+scripts by SHA-256 hash. A meta tag cannot restrict framing, so the server adds that
+when it serves the embedded UI: `X-Frame-Options: DENY` and `frame-ancestors 'none'` on
+every page except `/login/`, which gets `SAMEORIGIN` and `frame-ancestors 'self'`
+because the admin console shows it in an iframe as the live branding preview (the
+console pages' own policy is the only one that allows framing this origin). A static
+host serving `ui/out` itself must send the same headers, and `Strict-Transport-Security`.
 
 Cookies set by the API are `HttpOnly`, `SameSite=Lax`, host-only with `Path=/`, named
 per tenant (`__Host-ridm_session_acme`, `__Host-ridm_device_acme`), and `Secure` unless

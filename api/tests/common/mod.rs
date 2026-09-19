@@ -334,6 +334,7 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
         redis_url: redis_url.to_string(),
         public_url: public_url.parse().expect("public url"),
         ui_url: public_url.parse().expect("ui url"),
+        embedded_ui: false,
         master_key: SecretBytes::new(vec![7u8; 32]),
         master_key_version: 1,
         master_key_previous: vec![],

@@ -9,6 +9,7 @@ pub mod invitations;
 pub mod jwks;
 pub mod recovery;
 pub mod scim;
+pub mod ui;
 pub mod verification;
 pub mod webfinger;
 pub mod wellknown;

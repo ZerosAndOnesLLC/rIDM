@@ -67,10 +67,12 @@ It is created once and left alone afterwards. For your own applications, see
 
 Mail sent by any tenant appears at <http://localhost:8025>.
 
-The dev profile does not start the UI. Build and serve it as described in
-[Run rIDM locally](../quickstarts/local.md), and set `UI_URL` on the API if the pages are
-not on the API's own origin (`api-dev` does not pass `UI_URL` through; add it to the
-service's `environment` or run the API outside compose as the quickstart does).
+The image embeds the UI, so the admin console is at <http://localhost:8080/console/> and
+the sign-in pages are on the same origin; sign in through tenant `master` as `admin`.
+To work on the pages themselves, run them under `next dev` as described in
+[Run rIDM locally](../quickstarts/local.md) and point `UI_URL` at it (`api-dev` does not
+pass `UI_URL` through; add it to the service's `environment` or run the API outside
+compose as the quickstart does).
 
 ### The prod profile
 

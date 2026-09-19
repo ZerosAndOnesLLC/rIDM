@@ -1,0 +1,245 @@
+# Default values for the rIDM chart. Every setting maps to an environment
+# variable documented in docs/src/reference/configuration.md.
+#
+# rIDM needs Postgres 16+ and Valkey 9+ (or Redis 8+), which this chart does
+# not run: point it at yours. Secret values can be given inline (the chart
+# then keeps them in a Secret of its own) or taken from a Secret you manage,
+# by name and key; a reference wins over an inline value.
+
+image:
+  repository: ghcr.io/zerosandonesllc/ridm
+  # Defaults to the chart's appVersion.
+  tag: ""
+  # Pin by digest in production: sha256:...
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Ignored while autoscaling is on.
+replicaCount: 2
+
+# -- Required. The externally visible base URL; every tenant's issuer is
+# {publicUrl}/t/{slug}. Changing it later changes every issuer.
+publicUrl: ""
+# Where the sign-in pages and consoles are served. Empty: publicUrl, where
+# the image's embedded UI serves them. Set only when the UI is hosted apart.
+uiUrl: ""
+# Serve the UI compiled into the image (EMBEDDED_UI).
+embeddedUi: true
+# CIDRs of the proxies in front of the pods (the ingress controller's pods,
+# a load balancer) whose X-Forwarded-For / X-Forwarded-Host are trusted. With
+# none, every client appears to be the ingress controller. Example: the pod
+# network, "10.0.0.0/8".
+trustedProxies: ""
+# Secure cookies; sign-in then works only over https. Off only for plain-http
+# development.
+cookieSecure: true
+logFormat: json
+# RUST_LOG filter.
+logLevel: info
+# Serve Swagger UI at /docs. Keep off in production.
+docsEnabled: false
+# Apply pending migrations at startup as the app's own role. Leave off and use
+# the migration hook below: the app role should not own the schema.
+migrateOnStart: false
+
+database:
+  # postgres://ridm_app:...@host:5432/ridm — a non-superuser, DML-only role
+  # (superusers bypass row level security).
+  url: ""
+  existingSecret:
+    name: ""
+    key: DATABASE_URL
+  # Optional read replica for listings and statistics.
+  readUrl: ""
+  readExistingSecret:
+    name: ""
+    key: DATABASE_READ_URL
+  poolMin: 2
+  poolMax: 20
+
+redis:
+  # redis://, rediss://, redis+cluster://h1,h2 or redis+sentinel://s1,s2/<master>
+  url: ""
+  existingSecret:
+    name: ""
+    key: REDIS_URL
+  poolMax: 32
+
+masterKey:
+  # 32 bytes, hex or base64: openssl rand -hex 32. Keep it safe: it encrypts
+  # signing keys and every other secret at rest.
+  value: ""
+  existingSecret:
+    name: ""
+    key: MASTER_KEY
+  # Mount the key as a read-only file (MASTER_KEY_FILE) rather than passing
+  # it in the environment, where anything that dumps the environment sees it.
+  asFile: true
+  # Generation of the current key; bump it when rotating (see the key
+  # rotation guide) and list older generations in `previous`.
+  version: 1
+  # "1=<hex>,2=<hex>" while rows are re-encrypted after a rotation.
+  previous: ""
+  previousExistingSecret:
+    name: ""
+    key: MASTER_KEY_PREVIOUS
+
+# Deployment-wide mail defaults; tenants may configure their own.
+smtp:
+  host: ""
+  port: 587
+  # starttls, tls or none
+  security: starttls
+  from: ""
+  username: ""
+  password: ""
+  existingSecret:
+    name: ""
+    key: SMTP_PASSWORD
+
+metrics:
+  # Bearer token GET /metrics demands; open when empty.
+  token: ""
+  existingSecret:
+    name: ""
+    key: METRICS_TOKEN
+  # A Prometheus Operator ServiceMonitor scraping /metrics.
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+
+# First global administrator, created on a start that finds none (a no-op
+# afterwards). The password must be changed at first sign-in. Alternatively
+# run `ridm bootstrap` once against the database.
+bootstrap:
+  enabled: false
+  adminEmail: ""
+  adminUsername: admin
+  adminPassword: ""
+  existingSecret:
+    name: ""
+    key: BOOTSTRAP_ADMIN_PASSWORD
+
+# Migrations run in a Job before every install and upgrade (a Helm hook),
+# as a role that owns the schema, so the pods never hold that credential.
+migrations:
+  enabled: true
+  database:
+    # postgres://ridm_migrator:...@host:5432/ridm
+    url: ""
+    existingSecret:
+      name: ""
+      key: MIGRATOR_DATABASE_URL
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  resources: {}
+
+# Further plain environment variables (see the configuration reference),
+# e.g. RETENTION_DAYS: "30" or OTEL_EXPORTER_OTLP_ENDPOINT: http://otel:4318.
+env: {}
+# Further EnvVar entries, for anything taken from elsewhere.
+extraEnv: []
+# Further envFrom sources (a ConfigMap or Secret of variables).
+extraEnvFrom: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  # Keep the bulk user import (up to 32 MiB) working behind ingress-nginx:
+  #   nginx.ingress.kubernetes.io/proxy-body-size: 32m
+  hosts:
+    - host: id.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: ridm-tls
+  #    hosts: [id.example.com]
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  # Empty: CPU only.
+  targetMemoryUtilizationPercentage: ""
+
+podDisruptionBudget:
+  enabled: true
+  # One of the two; minAvailable wins when both are set.
+  minAvailable: ""
+  maxUnavailable: 1
+
+# The server drains in-flight requests for up to 20 s on SIGTERM.
+terminationGracePeriodSeconds: 30
+
+startupProbe:
+  # Start-up brings every tenant's built-in clients in line, which takes a
+  # while on a large database.
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 5
+  failureThreshold: 60
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+# Empty: spread replicas across nodes and zones where possible.
+topologySpreadConstraints: []
+priorityClassName: ""

@@ -2,13 +2,13 @@
 
 rIDM is one stateless server binary (`ridm-api`) in front of two stateful services it
 does not run itself: Postgres and Valkey. The browser pages (sign-in, consent, the admin
-and account consoles) are a static export served by whatever web server you choose.
+and account consoles) are a static export that the container image compiles into the
+server and serves on its own origin; they can also be hosted on any static web server.
 This page describes the moving parts and what each one needs; the rest of this section
 covers each part in detail.
 
 rIDM is pre-release (`0.1.0-dev`). Several packaging pieces an operator would expect are
-planned and not yet present: the UI embedded in the server binary (plan item 11.1), a
-Helm chart (11.2), reverse-proxy example files and a production docker-compose profile
+planned and not yet present: reverse-proxy example files and a production docker-compose profile
 (11.3), published release binaries and signed images (11.4), and backup/restore and
 upgrade guides (11.5). Where one of these would naturally appear, these pages say so.
 
@@ -20,17 +20,17 @@ upgrade guides (11.5). Where one of these would naturally appear, these pages sa
                                      | https
                                      v
                   +-------------------------------------+
-                  |  reverse proxy / load balancer      |   TLS, static UI files,
-                  |  (nginx, Caddy, a cloud LB, ...)    |   routes API paths to rIDM
+                  |  reverse proxy / load balancer      |   TLS
+                  |  (nginx, Caddy, a cloud LB, ...)    |
                   +-------------------------------------+
-                        |                        |
-                 API paths                 everything else
-                        |                        |
-          +-------------+-------------+          v
-          |             |             |     ui/out (static export)
+                                     |
+                       API paths and the UI's pages
+                                     |
+          +-------------+-------------+
+          |             |             |
      +---------+   +---------+   +---------+
-     | ridm-api|   | ridm-api|   | ridm-api|   stateless nodes, any number
-     +---------+   +---------+   +---------+
+     | ridm-api|   | ridm-api|   | ridm-api|   stateless nodes, any number,
+     +---------+   +---------+   +---------+   each serving the embedded UI
           |  \          |          /  |
           |   +---------+---------+   |
           v             v             v
@@ -51,7 +51,7 @@ upgrade guides (11.5). Where one of these would naturally appear, these pages sa
 | `ridm-api` | The HTTP server: OIDC and OAuth endpoints, the flow API the sign-in pages drive, the admin, account and SCIM APIs, background jobs | yes |
 | Postgres | The system of record: tenants, users, credentials, clients, keys, refresh tokens, audit log, queues. Version 16 or later; CI and the compose file run 18.6 | yes |
 | Valkey | Shared short-lived state and the cache: browser sessions, authorization codes, login flows, one-time codes, rate-limit counters, the access-token denylist, job leader locks, cache invalidation. CI and the compose file run Valkey 9.1 | yes |
-| Static UI | `ui/out`, the Next.js static export of the sign-in pages and the consoles | yes, for any browser sign-in |
+| UI | `ui/out`, the Next.js static export of the sign-in pages and the consoles; compiled into the image's binary and served by every node, or hosted separately | yes, for any browser sign-in |
 | Mail | The deployment's SMTP defaults (`SMTP_*`), which tenants may override with their own SMTP server or an HTTP mail API | for verification, recovery, invitations, email one-time codes |
 | SMS | A per-tenant HTTP webhook configured in the admin console; there is no deployment-wide SMS default | only for SMS one-time codes |
 
@@ -83,9 +83,23 @@ Background jobs (key rotation, cleanup, delivery retries) run in every node's pr
 and take a Valkey lock per pass, so each job runs on one node at a time without any
 node being special.
 
-## Where the UI is served from today
+## Where the UI is served from
 
-The server serves the API only. The UI is built separately:
+**Embedded (the default).** The container image builds the UI's static export and
+compiles it into the server (the `embedded-ui` cargo feature), so every node serves the
+sign-in pages and both consoles itself, on `PUBLIC_URL`'s origin: `/login/`,
+`/consent/`, `/console/`, `/account/` and the rest. Leave `UI_URL` unset (it defaults to
+`PUBLIC_URL`) and there is nothing else to host; the proxy sends every path to rIDM.
+API routes always win over pages, and a miss under an API prefix (`/t/`, `/admin/`,
+`/scim/`, `/.well-known/`) stays the API's `404` rather than a page. Pages are served
+with `trailingSlash` semantics (`/login` redirects to `/login/`), hashed build assets
+under `/_next/static/` are cached for a year as immutable, pages revalidate against an
+`ETag`, and text is gzip-compressed for clients that accept it. `EMBEDDED_UI=false`
+turns the pages off on a node that should serve the API alone.
+
+**Hosted separately.** A binary built without the feature (a plain
+`cargo build -p ridm-api`) serves the API only, and a node with `UI_URL` on another
+origin does not serve its embedded pages. Build the UI yourself:
 
 ```bash
 cd ui
@@ -93,27 +107,26 @@ npm install
 npm run build          # static export to ui/out
 ```
 
-and `ui/out` is served by any static web server. Two layouts work:
+and serve `ui/out` from any static web server. Two layouts work:
 
-- **Same origin (recommended).** One host name; the proxy sends API paths (`/t/`,
-  `/admin/`, `/scim/`, `/.well-known/`, `/openapi.json`, `/healthz`, `/readyz`) to rIDM
-  and everything else to `ui/out`. Leave `UI_URL` unset (it defaults to `PUBLIC_URL`)
-  and build the UI with `NEXT_PUBLIC_API_URL` empty. The session cookie then needs no
-  cross-origin handling. [TLS and reverse proxies](tls-and-proxies.md) has nginx and
-  Caddy starting points for this layout.
+- **Same origin.** One host name; the proxy sends API paths (`/t/`, `/admin/`, `/scim/`,
+  `/.well-known/`, `/openapi.json`, `/healthz`, `/readyz`) to rIDM and everything else
+  to `ui/out`. Leave `UI_URL` unset and build the UI with `NEXT_PUBLIC_API_URL` empty.
+  [TLS and reverse proxies](tls-and-proxies.md) has nginx and Caddy starting points.
 - **Separate host.** Build the UI with `NEXT_PUBLIC_API_URL=https://id.example.com` and
   set `UI_URL` on the server to where the pages are hosted. rIDM sends browsers to
   `{UI_URL}/login/`, `{UI_URL}/consent/` and the other pages, admits the UI's origin for
   cross-origin calls, and registers the built-in console clients with redirect URIs
   under `UI_URL`.
 
+Either way the static host must add the framing headers the pages cannot set
+themselves (see [Security controls](../admin/security-controls.md#security-headers)).
 In development the UI runs under `next dev` with the API proxied; see
-[Run rIDM locally](../quickstarts/local.md). Serving `ui/out` from the server binary
-itself is plan item 11.1 and is not built.
+[Run rIDM locally](../quickstarts/local.md).
 
 A tenant's [custom domain](../admin/custom-domains.md) moves its issuer and endpoints to
-that host, but its sign-in pages stay at `UI_URL` until the embedded UI can answer on
-every host.
+that host. With the embedded UI its sign-in pages and account console move there too;
+with the UI hosted separately they stay at `UI_URL`.
 
 ## Outbound connections
 
