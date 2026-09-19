@@ -285,7 +285,7 @@ jobs:
           docker buildx imagetools inspect "$IMAGE@$digest"
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
-      - uses: sigstore/cosign-installer@v4
+      - uses: sigstore/cosign-installer@v4.1.2
       - uses: anchore/sbom-action@v0
         with:
           image: ${{ env.IMAGE }}@${{ steps.push.outputs.digest }}
@@ -341,7 +341,7 @@ jobs:
           digest="$(sed -n 's/^Digest: //p' push.log)"
           test -n "$digest"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
-      - uses: sigstore/cosign-installer@v4
+      - uses: sigstore/cosign-installer@v4.1.2
         if: env.PUBLISH == 'true'
       - name: sign
         if: env.PUBLISH == 'true'
@@ -379,7 +379,7 @@ jobs:
         with:
           name: sbom
           path: dist
-      - uses: sigstore/cosign-installer@v4
+      - uses: sigstore/cosign-installer@v4.1.2
       - name: checksums
         working-directory: dist
         run: |
