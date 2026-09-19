@@ -13,7 +13,7 @@
 #   * the client address rIDM records is not one the caller forged in
 #     X-Forwarded-For, nor the proxy's own (its per-address rate-limit
 #     counters in Valkey name the address it saw);
-#   * a 20 MiB body reaches /admin/ (bulk import accepts 32 MiB);
+#   * a 20 MiB body reaches /admin/ whole (bulk import accepts 32 MiB);
 #   * a host the proxy does not serve gets nothing from rIDM;
 #
 # then gives the `master` tenant the custom domain login.acme.test and checks,
@@ -106,6 +106,17 @@ log "secrets"
 log "database, cache, migrations, server"
 compose up -d --no-build --wait --wait-timeout 180 ridm
 
+# An admin token for the body-size check: a personal access token of the
+# bootstrap administrator, written straight into the database (the table holds
+# the SHA-256 of the whole token) and expiring with the run.
+token="rpat_$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
+compose exec -T postgres psql -v ON_ERROR_STOP=1 -qU ridm -d ridm -c "
+  INSERT INTO personal_access_tokens (id, tenant_id, user_id, name, token_hash, scopes, expires_at)
+  SELECT gen_random_uuid(), u.tenant_id, u.id, 'proxy-smoke', sha256('$token'::bytea),
+         ARRAY['ridm:users:write', 'ridm:invitations:write'], now() + interval '1 hour'
+  FROM users u JOIN tenants t ON t.id = u.tenant_id
+  WHERE t.slug = 'master' AND u.username = 'admin'" >/dev/null
+
 log "stack-wide checks"
 for s in postgres valkey; do
   published="$(compose ps --format '{{range .Publishers}}{{if .PublishedPort}}{{.PublishedPort}} {{end}}{{end}}' "$s")"
@@ -194,13 +205,17 @@ check_proxy() {
   fi
   echo "ok: client address $(sed 's/^ridm:rl:ip://' <<<"$keys" | tr '\n' ' ')(forged $forged ignored)"
 
-  # A bulk-import-sized body reaches rIDM (which refuses it unauthenticated).
+  # A bulk-import-sized body reaches rIDM whole: with a valid token rIDM reads
+  # all of it before refusing it as JSON (400). A proxy limit shows as 413; a
+  # truncated or dropped upload as a 5xx or no answer.
   head -c $((20 * 1024 * 1024)) /dev/zero >"$out/body.bin"
-  status="$(curl_tls -o /dev/null -w '%{http_code}' -X POST \
-    -H 'Content-Type: application/json' --data-binary "@$out/body.bin" \
-    "$https/admin/tenants/master/users/import" || true)"
-  case "$status" in 413 | 000) fail "$proxy: a 20 MiB body to /admin/ got $status" ;; esac
-  echo "ok: 20 MiB to /admin/ reached rIDM ($status)"
+  status="$(curl_tls -o "$out/import.json" -w '%{http_code}' -X POST \
+    -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+    --data-binary "@$out/body.bin" \
+    "$https/admin/tenants/master/users/import?dry_run=true" || true)"
+  [ "$status" = 400 ] ||
+    fail "$proxy: a 20 MiB body to /admin/ got $status, not rIDM's 400: $(head -c 300 "$out/import.json")"
+  echo "ok: 20 MiB to /admin/ read whole by rIDM (400 for the JSON)"
 
   # A host this proxy does not serve reaches nothing of rIDM's.
   status="$(curl_tls -k -o /dev/null -w '%{http_code}' \

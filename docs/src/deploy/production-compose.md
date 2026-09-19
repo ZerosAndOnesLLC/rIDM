@@ -172,7 +172,9 @@ over https that plain http is redirected; discovery names the https issuer and J
 answers; `/console/` and `/login/` arrive with rIDM's framing headers and exactly one
 HSTS header; `/metrics` is refused; a forged `X-Forwarded-For` is not the address rIDM
 records, and neither is the proxy's own (read from rIDM's per-address rate-limit
-counters in Valkey); a 20 MiB body reaches `/admin/`; the custom domain serves the
+counters in Valkey); a 20 MiB bulk-import body reaches rIDM whole (an administrator's
+token makes rIDM read it all before refusing it as JSON, so a proxy limit or a cut-off
+upload fails the check); the custom domain serves the
 tenant with its own issuer; and an unknown host gets nothing from rIDM. Once per run it
 also checks that Postgres and Valkey publish no port, that no secret's value appears in
 `docker inspect`, and that the server is not given the migrator's database URL.

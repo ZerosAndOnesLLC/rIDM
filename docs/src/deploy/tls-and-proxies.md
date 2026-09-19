@@ -120,7 +120,7 @@ The repository ships configurations for three proxies in
 are what the [production compose stack](production-compose.md) runs, and CI boots that
 stack behind each one and checks it from outside: the http redirect, the https issuer,
 rIDM's headers arriving unchanged, `/metrics` refused, a forged `X-Forwarded-For`
-ignored, a 20 MiB body reaching `/admin/`, and a custom domain served as its tenant.
+ignored, a 20 MiB bulk-import body arriving whole, and a custom domain served as its tenant.
 
 All three assume the default layout: the UI embedded in the server, so every path goes
 to the rIDM nodes. They pass `Host` through, give rIDM the connecting address in
