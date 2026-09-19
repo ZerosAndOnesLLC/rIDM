@@ -8,9 +8,8 @@ This page describes the moving parts and what each one needs; the rest of this s
 covers each part in detail.
 
 rIDM is pre-release (`0.1.0-dev`). Several packaging pieces an operator would expect are
-planned and not yet present: reverse-proxy example files and a production docker-compose profile
-(11.3), published release binaries and signed images (11.4), and backup/restore and
-upgrade guides (11.5). Where one of these would naturally appear, these pages say so.
+planned and not yet present: published release binaries and signed images (11.4), and
+backup/restore and upgrade guides (11.5). Where one of these would naturally appear, these pages say so.
 
 ## The parts
 
@@ -158,8 +157,12 @@ the deployment's `SMTP_HOST`) are not filtered. See
 
 - [docker-compose](docker-compose.md): the compose file in `deploy/`, for evaluation and
   development.
+- [Production with docker-compose](production-compose.md): one host behind nginx, Caddy
+  or Traefik, secrets in files, the backends unreachable from outside.
+- [Kubernetes (Helm)](kubernetes.md): the chart in `deploy/helm/ridm`.
 - [Container image](container.md): building and running the image, migrations, health checks.
-- [TLS and reverse proxies](tls-and-proxies.md): `PUBLIC_URL`, `TRUSTED_PROXIES`, cookies.
+- [TLS and reverse proxies](tls-and-proxies.md): `PUBLIC_URL`, `TRUSTED_PROXIES`, cookies,
+  the nginx, Caddy and Traefik configurations.
 - [Postgres and Valkey](postgres-valkey.md): roles, row level security, pools, topologies.
 - [Scaling and performance](scaling.md) and [Observability](observability.md).
 - [Production checklist](checklist.md).

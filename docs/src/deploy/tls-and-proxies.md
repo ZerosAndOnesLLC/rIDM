@@ -113,25 +113,35 @@ nothing else. The compose `dev` profile sets it; the `prod` profile does not.
 `SameSite=Lax` also means the cookie is not sent on cross-site `fetch` calls, which is why
 the UI belongs on the same origin as the API (or at least the same site).
 
-## A starting point for nginx
+## Proxy configurations
 
-Official reverse-proxy examples are plan item 11.3 and do not exist yet. The two configs
-below are starting points, written for this application but not tested in CI: review
-them against your environment. Both assume the default layout: one host,
-`id.example.com`, with the UI embedded in the server, so every path goes to the rIDM
-nodes on port 8080. Set `TRUSTED_PROXIES` on the nodes to the proxy's address.
+The repository ships configurations for three proxies in
+[`deploy/proxy/`](https://github.com/ZerosAndOnesLLC/rIDM/tree/main/deploy/proxy). They
+are what the [production compose stack](production-compose.md) runs, and CI boots that
+stack behind each one and checks it from outside: the http redirect, the https issuer,
+rIDM's headers arriving unchanged, `/metrics` refused, a forged `X-Forwarded-For`
+ignored, a 20 MiB body reaching `/admin/`, and a custom domain served as its tenant.
+
+All three assume the default layout: the UI embedded in the server, so every path goes
+to the rIDM nodes. They pass `Host` through, give rIDM the connecting address in
+`X-Forwarded-For`, allow the 32 MiB bulk import, refuse `/metrics` and add no security
+headers: rIDM sends its own on every response, pages included (framing is refused
+everywhere except the login page, which only its own origin may frame, for the console's
+branding preview), and HSTS when `PUBLIC_URL` is https. `/docs` is served only if
+`DOCS_ENABLED` is on, which production should not do.
+
+### nginx
+
+[`deploy/proxy/nginx/templates/default.conf.template`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/deploy/proxy/nginx/templates/default.conf.template)
+is a template for the official image, which fills in `RIDM_DOMAIN`,
+`RIDM_CUSTOM_DOMAINS` and `RIDM_UPSTREAM` at start. Its core, with the values filled in
+for nodes outside Docker:
 
 ```nginx
-upstream ridm_api {
+upstream ridm {
     server 10.0.1.11:8080;
     server 10.0.1.12:8080;
     keepalive 32;
-}
-
-server {
-    listen 80;
-    server_name id.example.com;
-    return 301 https://$host$request_uri;
 }
 
 server {
@@ -139,48 +149,92 @@ server {
     http2 on;
     server_name id.example.com;
 
-    ssl_certificate     /etc/nginx/tls/id.example.com/fullchain.pem;
-    ssl_certificate_key /etc/nginx/tls/id.example.com/privkey.pem;
+    ssl_certificate     /etc/nginx/tls/fullchain.pem;
+    ssl_certificate_key /etc/nginx/tls/privkey.pem;
 
-    # The API and the embedded UI's pages alike.
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
     location / {
-        proxy_pass http://ridm_api;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_pass http://ridm;
     }
-    # Bulk user import accepts up to 32 MiB.
+    # Bulk user import accepts up to 32 MiB; nginx's default is 1 MiB.
     location /admin/ {
         client_max_body_size 32m;
-        proxy_pass http://ridm_api;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_pass http://ridm;
     }
     # Scrape /metrics on the private network instead.
     location = /metrics { return 404; }
 }
 ```
 
-Notes on it:
+The file also redirects http to https, refuses the TLS handshake for hosts it does not
+serve, and re-resolves the upstream through Docker's DNS (`resolve`, nginx 1.27.3 or
+later), which outside Docker becomes your own resolver or a fixed list of addresses.
+nginx obtains no certificates: renew them with your ACME client and reload.
 
-- `Host` is passed through unchanged. That is what rIDM compares against `PUBLIC_URL`'s
-  host and against tenants' custom domains.
-- rIDM sends its own security headers on every response, pages included (framing is
-  refused everywhere except the login page, which only its own origin may frame, for the
-  console's branding preview), and HSTS when `PUBLIC_URL` is https. The proxy adds none.
-- `/docs` is served only if you turned `DOCS_ENABLED` on, which production should not.
+`$proxy_add_x_forwarded_for` appends to whatever the caller sent, which is safe because
+rIDM reads the list from the right (see above). Setting it to `$remote_addr` instead is
+equally correct at the edge but loses the earlier hops when nginx sits behind another
+proxy you operate.
 
-**Hosting `ui/out` yourself** (a binary built without the embedded UI): route only the
-API paths to rIDM and serve the files, adding the headers a page's `<meta>` policy cannot
-set. The console frames `/login/` for its branding preview, so that one page must allow
-its own origin:
+### Caddy
+
+[`deploy/proxy/caddy/Caddyfile`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/deploy/proxy/caddy/Caddyfile)
+obtains and renews certificates itself (or reads files with `RIDM_TLS_MODE=files`).
+Caddy passes `Host` through and replaces `X-Forwarded-For` with the connecting address by
+default, and has no request-body limit, so the whole configuration is short:
+
+```caddy
+id.example.com login.acme.com {
+	respond /metrics 404
+	reverse_proxy 10.0.1.11:8080 10.0.1.12:8080 {
+		health_uri /readyz
+		health_interval 10s
+	}
+	header -Server
+}
+```
+
+### Traefik
+
+Traefik takes its static configuration (entry points, the http-to-https redirect, the
+Let's Encrypt resolver) from one source only; the compose stack gives it as the
+`traefik` service's `command:`. The routes are the file provider's
+[`deploy/proxy/traefik/dynamic/ridm.yml`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/deploy/proxy/traefik/dynamic/ridm.yml),
+a Go template reading the same `RIDM_` variables: one router for every host, a
+`/metrics` router behind an `ipAllowList` that admits nobody, and a load-balanced
+service with `/readyz` health checks. Traefik drops a caller's `X-Forwarded-For` unless
+the caller is in the entry point's `forwardedHeaders.trustedIPs` (none are configured)
+and sets it to the connecting address; it has no request-body limit.
+
+With Traefik's Docker provider instead of a file, the same router is a set of labels on
+the rIDM service:
+
+```yaml
+labels:
+  traefik.enable: "true"
+  traefik.http.routers.ridm.rule: Host(`id.example.com`)
+  traefik.http.routers.ridm.entrypoints: websecure
+  traefik.http.routers.ridm.tls.certresolver: letsencrypt
+  traefik.http.services.ridm.loadbalancer.server.port: "8080"
+  traefik.http.services.ridm.loadbalancer.healthcheck.path: /readyz
+```
+
+### Hosting `ui/out` yourself
+
+A binary built without the embedded UI serves only the API, and the proxy serves the
+static export. Route the API paths to rIDM and serve the files, adding the headers a
+page's `<meta>` policy cannot set. The console frames `/login/` for its branding preview,
+so that one page must allow its own origin. This variant is not among the tested
+configurations; in nginx:
 
 ```nginx
-    location ~ ^/(t|admin|scim|\.well-known)/ { proxy_pass http://ridm_api; ... }
-    location ~ ^/(openapi\.json|healthz|readyz)$ { proxy_pass http://ridm_api; ... }
+    location ~ ^/(t|admin|scim|\.well-known)/ { proxy_pass http://ridm; ... }
+    location ~ ^/(openapi\.json|healthz|readyz)$ { proxy_pass http://ridm; ... }
 
     root /srv/ridm/ui/out;
     location / {
@@ -200,30 +254,15 @@ its own origin:
     error_page 404 /404.html;
 ```
 
-## A starting point for Caddy
-
-The same layout. Caddy obtains and renews the certificate itself, sets
-`X-Forwarded-For` and passes `Host` through by default, and has no request-body limit
-unless you set one.
-
-```caddy
-id.example.com {
-	respond /metrics 404
-	reverse_proxy 10.0.1.11:8080 10.0.1.12:8080 {
-		health_uri /readyz
-	}
-}
-```
-
-The repository's OpenID conformance setup puts Caddy in front of rIDM in the
-separately-hosted layout, API paths to the server and the rest to `ui/out`
-([`conformance/Caddyfile`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/conformance/Caddyfile)),
-with its own certificates and both upstreams on the host.
+The repository's OpenID conformance setup puts Caddy in front of rIDM in this layout,
+API paths to the server and the rest to `ui/out`
+([`conformance/Caddyfile`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/conformance/Caddyfile)).
 
 ## Custom domains behind the proxy
 
 A tenant with a custom domain (say `login.acme.com`) is served on that host without the
-`/t/{slug}` prefix, so the proxy needs a server block (nginx) or site (Caddy) for the
-domain that sends everything to rIDM with `Host` preserved, and a certificate for it.
-With the embedded UI the tenant's sign-in pages and account console are served on that
+`/t/{slug}` prefix, so the proxy must send that host to rIDM with `Host` preserved and
+hold a certificate for it: in the shipped configurations, add it to
+`RIDM_CUSTOM_DOMAINS`. rIDM compares the whole `Host` value, port included, with the
+domain, so serve custom domains on port 443. With the embedded UI the tenant's sign-in pages and account console are served on that
 host as well, through the same route. See [Custom domains](../admin/custom-domains.md).

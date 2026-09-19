@@ -1,0 +1,80 @@
+# rIDM behind nginx: the server's public host and every tenant custom domain
+# proxied to rIDM (API and embedded UI alike). The official nginx image renders
+# this template into /etc/nginx/conf.d/default.conf at start, substituting only
+# the RIDM_ variables (NGINX_ENVSUBST_FILTER=^RIDM_), so nginx's own variables
+# below are left alone:
+#   RIDM_DOMAIN          the host in PUBLIC_URL, e.g. id.example.com
+#   RIDM_CUSTOM_DOMAINS  tenants' custom domains, space-separated (may be empty)
+#   RIDM_UPSTREAM        host:port of the rIDM nodes (ridm:8080 in compose)
+#
+# nginx does not obtain certificates. It reads fullchain.pem and privkey.pem
+# from /etc/nginx/tls; the certificate must name every host above. Renew with
+# your ACME client and `docker compose exec nginx nginx -s reload`.
+
+# Docker's embedded DNS, so the upstream is re-resolved when the rIDM
+# container is recreated with a new address. Outside Docker, use your own
+# resolver or list the nodes' addresses and drop `resolve`.
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+upstream ridm {
+    zone ridm 64k;
+    server ${RIDM_UPSTREAM} resolve;
+    keepalive 32;
+}
+
+server_tokens off;
+
+# Plain http: the known hosts are sent to https, anything else is dropped.
+server {
+    listen 80 default_server;
+    return 444;
+}
+server {
+    listen 80;
+    server_name ${RIDM_DOMAIN} ${RIDM_CUSTOM_DOMAINS};
+    return 301 https://$host$request_uri;
+}
+
+# A TLS handshake for a host this proxy does not serve is refused outright.
+server {
+    listen 443 ssl default_server;
+    ssl_reject_handshake on;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${RIDM_DOMAIN} ${RIDM_CUSTOM_DOMAINS};
+
+    ssl_certificate     /etc/nginx/tls/fullchain.pem;
+    ssl_certificate_key /etc/nginx/tls/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    # rIDM matches tenants' custom domains by Host, and reads the client
+    # address from the right-hand end of X-Forwarded-For, which nginx appends
+    # to: a value the caller sent stays to the left, where it is ignored.
+    # rIDM sends its own security headers and HSTS; nginx adds none.
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    location / {
+        proxy_pass http://ridm;
+    }
+
+    # Bulk user import accepts up to 32 MiB; nginx's default is 1 MiB.
+    location /admin/ {
+        client_max_body_size 32m;
+        proxy_pass http://ridm;
+    }
+
+    # Scrape /metrics from the private network, with METRICS_TOKEN.
+    location = /metrics {
+        return 404;
+    }
+}

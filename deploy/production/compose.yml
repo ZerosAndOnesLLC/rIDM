@@ -1,0 +1,331 @@
+# rIDM on one host, for production: the server behind a TLS-terminating
+# reverse proxy, with Postgres and Valkey on a network that has no route out
+# and no published port. See docs/src/deploy/production-compose.md.
+#
+#   cd deploy/production
+#   cp .env.example .env            # set RIDM_DOMAIN, pick a proxy profile
+#   ./init.sh                       # generate secrets/ (once)
+#   docker compose up -d
+#
+# Exactly one proxy runs, chosen by profile (COMPOSE_PROFILES in .env):
+#   caddy    automatic certificates (ACME) or files      deploy/proxy/caddy
+#   nginx    certificates from files                     deploy/proxy/nginx
+#   traefik  automatic certificates (ACME) or files      deploy/proxy/traefik
+#
+# Secrets are files under ./secrets (RIDM_SECRETS_DIR), mounted read-only and
+# read through the server's *_FILE variables, so none of them sits in
+# `docker inspect` output. Certificates for RIDM_TLS_MODE=files are in ./certs
+# (RIDM_CERTS_DIR).
+
+name: ${COMPOSE_PROJECT_NAME:-ridm}
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: "5"
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  logging: *logging
+  restart: unless-stopped
+
+x-ridm: &ridm
+  <<: *hardening
+  image: ${RIDM_IMAGE:-ghcr.io/zerosandonesllc/ridm:latest}
+  build:
+    context: ../..
+    dockerfile: api/Dockerfile
+  read_only: true
+  cap_drop: [ALL]
+  tmpfs:
+    - /tmp:size=16m
+
+x-ridm-env: &ridm-env
+  PUBLIC_URL: https://${RIDM_DOMAIN:?set RIDM_DOMAIN in .env}
+  BIND_ADDR: 0.0.0.0:8080
+  LOG_FORMAT: json
+  RUST_LOG: ${RUST_LOG:-info}
+  MIGRATE_ON_START: "false"
+  COOKIE_SECURE: "true"
+  DOCS_ENABLED: "false"
+  # Exactly the proxy's address: anything wider would let a caller who reaches
+  # the server some other way choose the client address it records.
+  TRUSTED_PROXIES: ${RIDM_PROXY_ADDRESS:-172.30.53.10}
+  DATABASE_URL_FILE: /run/secrets/database_url
+  REDIS_URL_FILE: /run/secrets/redis_url
+  MASTER_KEY_FILE: /run/secrets/master_key
+
+services:
+  postgres:
+    <<: *hardening
+    image: postgres:18.6-alpine
+    environment:
+      POSTGRES_DB: ridm
+      POSTGRES_USER: ridm
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      RIDM_MIGRATOR_USER: ridm_migrator
+      RIDM_MIGRATOR_PASSWORD_FILE: /run/secrets/migrator_password
+      RIDM_APP_USER: ridm_app
+      RIDM_APP_PASSWORD_FILE: /run/secrets/app_password
+    command: >
+      postgres -c shared_buffers=${RIDM_PG_SHARED_BUFFERS:-512MB}
+               -c max_connections=200
+               -c log_min_duration_statement=250
+               -c password_encryption=scram-sha-256
+    secrets: [postgres_password, migrator_password, app_password]
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ../postgres/init-app-role.sh:/docker-entrypoint-initdb.d/10-app-role.sh:ro
+    networks: [backend]
+    shm_size: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ridm -d ridm"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  valkey:
+    <<: *hardening
+    image: valkey/valkey:9.1.2-alpine3.24
+    # The password is fed on stdin as configuration, so it never appears in
+    # the process list; the image's entrypoint still drops to the valkey user.
+    # `noeviction`: Valkey holds browser sessions and the access-token
+    # denylist, which must never be dropped to make room.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        printf 'requirepass "%s"\n' "$$(cat /run/secrets/valkey_password)" |
+        exec docker-entrypoint.sh valkey-server - --appendonly yes
+        --maxmemory ${RIDM_VALKEY_MAXMEMORY:-512mb} --maxmemory-policy noeviction
+    secrets: [valkey_password]
+    volumes:
+      - valkeydata:/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/valkey_password)\" valkey-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # One-shot: applies pending migrations as the schema owner, then exits. The
+  # server itself connects as the DML-only role and cannot alter the schema.
+  migrate:
+    <<: *ridm
+    restart: "no"
+    command: ["migrate"]
+    environment:
+      <<: *ridm-env
+      DATABASE_URL_FILE: /run/secrets/migrator_database_url
+    secrets: [migrator_database_url, redis_url, master_key]
+    networks: [backend]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ridm:
+    <<: *ridm
+    environment:
+      <<: *ridm-env
+      METRICS_TOKEN_FILE: /run/secrets/metrics_token
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+      # First start only: creates the global administrator in `master`, who
+      # must change the password at first sign-in. A no-op once one exists.
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/bootstrap_admin_password
+    secrets:
+      - database_url
+      - redis_url
+      - master_key
+      - metrics_token
+      - smtp_password
+      - bootstrap_admin_password
+    networks:
+      edge:
+      backend:
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/ridm-api", "--healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: ${RIDM_MEMORY_LIMIT:-1g}
+
+  # ---------------------------------------------------------------------------
+  # The reverse proxy: one of the three, by profile. Each owns ports 80 and 443
+  # and sits at RIDM_PROXY_ADDRESS, the one address the server trusts.
+  # ---------------------------------------------------------------------------
+  caddy:
+    <<: *hardening
+    profiles: [caddy]
+    image: caddy:2.11.4-alpine
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    environment:
+      RIDM_DOMAIN: ${RIDM_DOMAIN}
+      RIDM_CUSTOM_DOMAINS: ${RIDM_CUSTOM_DOMAINS:-}
+      RIDM_TLS_MODE: ${RIDM_TLS_MODE:-acme}
+      RIDM_UPSTREAM: ridm:8080
+    volumes:
+      - ../proxy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${RIDM_CERTS_DIR:-./certs}:/certs:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    ports:
+      - "${RIDM_HTTP_PORT:-80}:80"
+      - "${RIDM_HTTPS_PORT:-443}:443"
+      - "${RIDM_HTTPS_PORT:-443}:443/udp"
+    networks:
+      edge:
+        ipv4_address: ${RIDM_PROXY_ADDRESS:-172.30.53.10}
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "443"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+      start_interval: 1s
+    depends_on:
+      ridm:
+        condition: service_healthy
+
+  nginx:
+    <<: *hardening
+    profiles: [nginx]
+    image: nginx:1.30.5-alpine
+    environment:
+      RIDM_DOMAIN: ${RIDM_DOMAIN}
+      RIDM_CUSTOM_DOMAINS: ${RIDM_CUSTOM_DOMAINS:-}
+      RIDM_UPSTREAM: ridm:8080
+      # Only these are substituted into the templates; nginx's own $variables
+      # are left alone.
+      NGINX_ENVSUBST_FILTER: ^RIDM_
+    volumes:
+      - ../proxy/nginx/templates:/etc/nginx/templates:ro
+      - ${RIDM_CERTS_DIR:-./certs}:/etc/nginx/tls:ro
+    ports:
+      - "${RIDM_HTTP_PORT:-80}:80"
+      - "${RIDM_HTTPS_PORT:-443}:443"
+    networks:
+      edge:
+        ipv4_address: ${RIDM_PROXY_ADDRESS:-172.30.53.10}
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "443"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+      start_interval: 1s
+    depends_on:
+      ridm:
+        condition: service_healthy
+
+  traefik:
+    <<: *hardening
+    profiles: [traefik]
+    image: traefik:v3.7.13
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    # Static configuration. Traefik takes it from one source only, so it is
+    # all here; the routes are in deploy/proxy/traefik/dynamic.
+    command:
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls=true
+      # No request-body limit is set: Traefik has none by default, and bulk
+      # user import sends up to 32 MiB.
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=false
+      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --ping=true
+      - --log.level=WARN
+      - --accesslog=true
+      - --global.checknewversion=false
+      - --global.sendanonymoususage=false
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+      start_interval: 1s
+    environment:
+      RIDM_DOMAIN: ${RIDM_DOMAIN}
+      RIDM_CUSTOM_DOMAINS: ${RIDM_CUSTOM_DOMAINS:-}
+      RIDM_TLS_MODE: ${RIDM_TLS_MODE:-acme}
+      RIDM_UPSTREAM: http://ridm:8080
+    volumes:
+      - ../proxy/traefik/dynamic:/etc/traefik/dynamic:ro
+      - ${RIDM_CERTS_DIR:-./certs}:/certs:ro
+      - traefikacme:/acme
+    ports:
+      - "${RIDM_HTTP_PORT:-80}:80"
+      - "${RIDM_HTTPS_PORT:-443}:443"
+    networks:
+      edge:
+        ipv4_address: ${RIDM_PROXY_ADDRESS:-172.30.53.10}
+    depends_on:
+      ridm:
+        condition: service_healthy
+
+networks:
+  # The proxy and the server. Its subnet is fixed so the proxy's address, and
+  # with it TRUSTED_PROXIES, is known in advance.
+  edge:
+    ipam:
+      config:
+        - subnet: ${RIDM_EDGE_SUBNET:-172.30.53.0/24}
+  # The server, the database and the cache: no route to the outside world and
+  # nothing published on the host.
+  backend:
+    internal: true
+
+volumes:
+  pgdata:
+  valkeydata:
+  caddydata:
+  caddyconfig:
+  traefikacme:
+
+secrets:
+  postgres_password:
+    file: ${RIDM_SECRETS_DIR:-./secrets}/postgres_password
+  migrator_password:
+    file: ${RIDM_SECRETS_DIR:-./secrets}/migrator_password
+  app_password:
+    file: ${RIDM_SECRETS_DIR:-./secrets}/app_password
+  valkey_password:
+    file: ${RIDM_SECRETS_DIR:-./secrets}/valkey_password
+  database_url:
+    file: ${RIDM_SECRETS_DIR:-./secrets}/database_url
+  migrator_database_url:
+    file: ${RIDM_SECRETS_DIR:-./secrets}/migrator_database_url
+  redis_url:
+    file: ${RIDM_SECRETS_DIR:-./secrets}/redis_url
+  master_key:
+    file: ${RIDM_SECRETS_DIR:-./secrets}/master_key
+  metrics_token:
+    file: ${RIDM_SECRETS_DIR:-./secrets}/metrics_token
+  smtp_password:
+    file: ${RIDM_SECRETS_DIR:-./secrets}/smtp_password
+  bootstrap_admin_password:
+    file: ${RIDM_SECRETS_DIR:-./secrets}/bootstrap_admin_password

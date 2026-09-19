@@ -53,6 +53,7 @@
 
 - [Deployment overview](deploy/overview.md)
 - [docker-compose](deploy/docker-compose.md)
+- [Production with docker-compose](deploy/production-compose.md)
 - [Container image](deploy/container.md)
 - [Kubernetes (Helm)](deploy/kubernetes.md)
 - [TLS and reverse proxies](deploy/tls-and-proxies.md)

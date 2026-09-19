@@ -197,12 +197,28 @@ impl Default for Argon2Params {
     }
 }
 
+/// A secret setting: `NAME` itself, else the contents of the file `NAME_FILE`
+/// names (a Docker or Kubernetes secret mount). The variable wins when both
+/// are set, as with `MASTER_KEY`.
+macro_rules! secret {
+    ($name:literal) => {
+        secret($name, concat!($name, "_FILE"))
+    };
+}
+
+/// [`secret!`] for a setting the server cannot start without.
+macro_rules! required_secret {
+    ($name:literal) => {
+        secret!($name)?.ok_or(ConfigError::Missing(concat!($name, " or ", $name, "_FILE")))
+    };
+}
+
 impl Config {
     /// Load configuration from the process environment.
     pub fn from_env() -> Result<Self, ConfigError> {
-        let database_url = required("DATABASE_URL")?;
-        let database_read_url = optional("DATABASE_READ_URL");
-        let redis_url = required("REDIS_URL")?;
+        let database_url = required_secret!("DATABASE_URL")?;
+        let database_read_url = secret!("DATABASE_READ_URL")?;
+        let redis_url = required_secret!("REDIS_URL")?;
         let public_url = parse("PUBLIC_URL", required("PUBLIC_URL")?, |v| {
             Url::parse(&v).map_err(|e| e.to_string()).and_then(|u| {
                 if !matches!(u.scheme(), "http" | "https") {
@@ -287,7 +303,7 @@ impl Config {
             })
             .transpose()?;
         let otel_service_name = optional("OTEL_SERVICE_NAME").unwrap_or_else(|| "ridm".to_string());
-        let metrics_token = optional("METRICS_TOKEN").map(SecretString::new);
+        let metrics_token = secret!("METRICS_TOKEN")?.map(SecretString::new);
         let audit_sink_url = optional("AUDIT_SINK_URL")
             .map(|v| {
                 parse("AUDIT_SINK_URL", v, |v| {
@@ -305,7 +321,7 @@ impl Config {
                 })
             })
             .transpose()?;
-        let audit_sink_token = optional("AUDIT_SINK_TOKEN").map(SecretString::new);
+        let audit_sink_token = secret!("AUDIT_SINK_TOKEN")?.map(SecretString::new);
         if retention_days == 0 {
             return Err(ConfigError::Invalid {
                 name: "RETENTION_DAYS",
@@ -369,7 +385,7 @@ impl Config {
                 host,
                 port: parse_u32("SMTP_PORT", 587)? as u16,
                 username: optional("SMTP_USERNAME"),
-                password: optional("SMTP_PASSWORD").map(SecretString::new),
+                password: secret!("SMTP_PASSWORD")?.map(SecretString::new),
                 from: optional("SMTP_FROM").ok_or(ConfigError::Missing("SMTP_FROM"))?,
                 security: optional("SMTP_SECURITY").unwrap_or_else(|| "starttls".into()),
             }),
@@ -377,7 +393,7 @@ impl Config {
         };
         let bootstrap = match (
             optional("BOOTSTRAP_ADMIN_EMAIL"),
-            optional("BOOTSTRAP_ADMIN_PASSWORD"),
+            secret!("BOOTSTRAP_ADMIN_PASSWORD")?,
         ) {
             (Some(admin_email), Some(password)) => Some(BootstrapConfig {
                 admin_email,
@@ -484,6 +500,31 @@ fn optional(name: &'static str) -> Option<String> {
 
 fn required(name: &'static str) -> Result<String, ConfigError> {
     optional(name).ok_or(ConfigError::Missing(name))
+}
+
+fn secret(name: &'static str, file_var: &'static str) -> Result<Option<String>, ConfigError> {
+    if let Some(v) = optional(name) {
+        return Ok(Some(v));
+    }
+    match optional(file_var) {
+        Some(path) => read_secret_file(file_var, PathBuf::from(path)),
+        None => Ok(None),
+    }
+}
+
+/// The file's contents without the line ending an editor or `echo` leaves;
+/// anything else, surrounding spaces included, is part of the secret. An empty
+/// file is an unset setting, as an empty variable is, so a deployment can
+/// mount a secret for every setting and leave the unused ones empty.
+fn read_secret_file(file_var: &'static str, path: PathBuf) -> Result<Option<String>, ConfigError> {
+    let raw = std::fs::read_to_string(&path).map_err(|source| ConfigError::Io {
+        name: file_var,
+        path,
+        source,
+    })?;
+    let value = raw.strip_suffix('\n').unwrap_or(&raw);
+    let value = value.strip_suffix('\r').unwrap_or(value);
+    Ok((!value.trim().is_empty()).then(|| value.to_string()))
 }
 
 fn parse<T, E: ToString>(
@@ -611,6 +652,32 @@ mod tests {
         let b64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
         assert!(decode_master_key("MASTER_KEY", b64.as_bytes()).is_ok());
         assert!(decode_master_key("MASTER_KEY", b"tooshort").is_err());
+    }
+
+    #[test]
+    fn secret_files_lose_only_the_line_ending_and_empty_is_unset() {
+        let dir = std::env::temp_dir().join(format!("ridm-secret-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let read = |name: &str, contents: &str| {
+            let path = dir.join(name);
+            std::fs::write(&path, contents).unwrap();
+            read_secret_file("X_FILE", path)
+        };
+        let value = |name: &str, contents: &str| read(name, contents).unwrap();
+        assert_eq!(
+            value("lf", "postgres://a:b@db/x\n").as_deref(),
+            Some("postgres://a:b@db/x")
+        );
+        assert_eq!(value("crlf", "s3cret\r\n").as_deref(), Some("s3cret"));
+        assert_eq!(value("bare", " pass word ").as_deref(), Some(" pass word "));
+        assert_eq!(value("two", "a\n\n").as_deref(), Some("a\n"));
+        assert_eq!(value("empty", ""), None);
+        assert_eq!(value("blank", " \n"), None);
+        assert!(matches!(
+            read_secret_file("X_FILE", dir.join("missing")),
+            Err(ConfigError::Io { name: "X_FILE", .. })
+        ));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

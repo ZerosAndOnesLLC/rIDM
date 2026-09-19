@@ -1,0 +1,36 @@
+# rIDM behind Caddy: one site for the server's public host and every tenant
+# custom domain, everything proxied to rIDM (API and embedded UI alike).
+#
+# Environment (deploy/production/compose.yml sets all of it):
+#   RIDM_DOMAIN          the host in PUBLIC_URL, e.g. id.example.com
+#   RIDM_CUSTOM_DOMAINS  tenants' custom domains, space-separated (optional)
+#   RIDM_TLS_MODE        acme (default): Caddy obtains and renews certificates
+#                        itself; files: /certs/fullchain.pem and privkey.pem
+#   RIDM_UPSTREAM        host:port of the rIDM nodes (default ridm:8080)
+#
+# Caddy passes Host through, replaces X-Forwarded-For with the address that
+# connected to it (a caller's own value is dropped), and has no request-body
+# limit, so bulk user import (32 MiB) needs nothing here. rIDM sends its own
+# security headers and HSTS; Caddy adds none.
+
+(tls-acme) {
+}
+
+(tls-files) {
+	tls /certs/fullchain.pem /certs/privkey.pem
+}
+
+{$RIDM_DOMAIN} {$RIDM_CUSTOM_DOMAINS} {
+	import tls-{$RIDM_TLS_MODE:acme}
+
+	# Scrape /metrics from the private network, with METRICS_TOKEN.
+	respond /metrics 404
+
+	reverse_proxy {$RIDM_UPSTREAM:ridm:8080} {
+		# Take a node out of rotation while it drains or loses its database.
+		health_uri /readyz
+		health_interval 10s
+	}
+
+	header -Server
+}

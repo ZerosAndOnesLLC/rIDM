@@ -402,6 +402,18 @@ jobs:
           done
           docker compose -f deploy/docker-compose.yml --profile prod logs api
           exit 1
+      # The production stack (deploy/production) behind nginx, Caddy and
+      # Traefik in turn, checked over https from outside; run.sh says what.
+      - name: production compose behind each proxy
+        env:
+          RIDM_IMAGE: ridm:ci
+        run: deploy/production/smoke/run.sh
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: proxy-smoke
+          path: target/proxy-smoke/logs
+          retention-days: 7
 
   # The example applications against the shipped stack: the image above under
   # docker-compose, the first admin and token from `ridm bootstrap`, the demo
