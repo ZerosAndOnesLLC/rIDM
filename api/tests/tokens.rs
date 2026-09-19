@@ -540,3 +540,55 @@ async fn mappers_and_encrypted_id_tokens() {
     .unwrap();
     assert_eq!(claims["sub"], fx.user.id.to_string());
 }
+
+/// An access token never expires after the caller's `not_after`, which is an
+/// instant, not a TTL: token exchange once turned the subject token's remaining
+/// life into a TTL a second before signing, and a clock tick in between issued
+/// a token outliving its subject by a second.
+#[tokio::test]
+async fn access_token_expiry_is_capped_at_not_after() {
+    let fx = fixture(SigningAlg::ES256).await;
+    let limit = chrono::DateTime::from_timestamp(chrono::Utc::now().timestamp() + 7, 0).unwrap();
+    let issue = |client: TokenClient| {
+        let fx = &fx;
+        async move {
+            tokens::issue_access_token(
+                &fx.app.state,
+                AccessTokenRequest {
+                    tenant: &fx.tenant,
+                    client: &client,
+                    user: Some(&fx.user),
+                    scopes: &[],
+                    audiences: &[],
+                    roles: &[],
+                    groups: &[],
+                    session_id: None,
+                    auth_time: None,
+                    amr: &[],
+                    acr: None,
+                    cnf_jkt: None,
+                    act: None,
+                },
+            )
+            .await
+            .unwrap()
+        }
+    };
+    // A five-minute TTL is cut back to the limit.
+    let capped = issue(TokenClient {
+        not_after: Some(limit),
+        ..TokenClient::public("web-app")
+    })
+    .await;
+    assert_eq!(capped.expires_at, limit);
+    assert_eq!(decode_payload(&capped.token)["exp"], limit.timestamp());
+    // A limit beyond the TTL changes nothing.
+    let far = limit + chrono::Duration::hours(1);
+    let uncapped = issue(TokenClient {
+        not_after: Some(far),
+        ..TokenClient::public("web-app")
+    })
+    .await;
+    assert!(uncapped.expires_at < far);
+    assert!(uncapped.expires_at > limit);
+}

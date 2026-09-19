@@ -56,6 +56,11 @@ pub struct TokenClient {
     /// `permissions` claim of the access token: what the subject's roles
     /// hold on the requested resource servers (empty: no claim).
     pub permissions: Vec<String>,
+    /// The access token expires no later than this, whatever the TTL says
+    /// (token exchange: the subject token's own `exp`). An instant rather
+    /// than a shorter TTL, so a clock second passing between the caller's
+    /// arithmetic and signing cannot push `exp` past it.
+    pub not_after: Option<DateTime<Utc>>,
 }
 
 impl TokenClient {
@@ -108,6 +113,7 @@ impl TokenClient {
             access_token_format: client.access_token_format,
             access_token_alg: None,
             permissions: vec![],
+            not_after: None,
             id_token_encryption,
             access_token_ttl: Duration::from_secs(
                 client
@@ -138,6 +144,7 @@ impl TokenClient {
             access_token_format: AccessTokenFormat::Jwt,
             access_token_alg: None,
             permissions: vec![],
+            not_after: None,
         }
     }
 }
@@ -303,7 +310,10 @@ pub async fn issue_access_token(
     req: AccessTokenRequest<'_>,
 ) -> AppResult<IssuedToken> {
     let now = Utc::now();
-    let exp = now + chrono::Duration::from_std(req.client.access_token_ttl).unwrap_or_default();
+    let mut exp = now + chrono::Duration::from_std(req.client.access_token_ttl).unwrap_or_default();
+    if let Some(limit) = req.client.not_after {
+        exp = exp.min(limit);
+    }
 
     // Profile attributes exposed to access tokens first, then the mappers,
     // which may override them.

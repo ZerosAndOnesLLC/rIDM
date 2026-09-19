@@ -17,24 +17,32 @@ test.describe("operations", () => {
     await expect(page.getByRole("heading", { name: "Signing keys", level: 1 })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("list", { name: "Key timeline" })).toBeVisible();
     await expect(page.getByText("Master key", { exact: true })).toBeVisible();
-    const before = await page.getByText("pending", { exact: true }).count();
+    // Every step targets the key this test creates, by kid: the page orders
+    // keys by `not_before`, so "the first active card" can be another key,
+    // and revoking the key that signed this session's own token ends it.
+    const kids = async () => new Set(await page.locator("section span.font-mono").allTextContents());
+    const before = await kids();
     await page.getByRole("button", { name: "New key" }).click();
     await page.getByRole("dialog", { name: "New signing key" }).getByRole("button", { name: "Create key" }).click();
-    await expect(page.getByText("pending", { exact: true })).toHaveCount(before + 1, { timeout: 15_000 });
+    await expect.poll(async () => (await kids()).size, { timeout: 15_000 }).toBe(before.size + 1);
+    const kid = [...(await kids())].find((k) => !before.has(k));
+    expect(kid).toBeTruthy();
+    // The innermost section holding the kid: its card, not the list around it.
+    const card = page.locator("section").filter({ has: page.getByText(kid!, { exact: true }) }).last();
+    await expect(card.getByText("pending", { exact: true })).toBeVisible();
     await expectAccessible(page);
-    // The newest key is listed first: activate it, then retire it, then revoke it.
-    const card = page.locator("section").filter({ has: page.getByText("pending", { exact: true }) }).first();
+    // Activate it (the key that was active starts retiring), then retire it.
     await card.getByRole("button", { name: "Activate" }).click();
-    await expect(page.getByText("active", { exact: true }).first()).toBeVisible({ timeout: 10_000 });
-    const active = page.locator("section").filter({ has: page.getByRole("button", { name: "Retire" }) }).first();
-    await active.getByRole("button", { name: "Retire" }).click();
-    await expect(page.getByText("retiring", { exact: true }).first()).toBeVisible({ timeout: 10_000 });
-    const retiring = page.locator("section").filter({ has: page.getByText("retiring", { exact: true }) }).first();
-    await retiring.getByRole("button", { name: "Revoke" }).click();
-    await expect(page.getByText("revoked", { exact: true }).first()).toBeVisible({ timeout: 10_000 });
-    // Rotation leaves exactly one active key per algorithm.
+    await expect(card.getByText("active", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await card.getByRole("button", { name: "Retire" }).click();
+    await expect(card.getByText("retiring", { exact: true })).toBeVisible({ timeout: 10_000 });
+    // Nothing is active now. Rotation makes a key and leaves exactly one
+    // active per algorithm, and only then is the retired key revoked, so the
+    // tenant never has to sign without an active key.
     await page.getByRole("button", { name: "Rotate now" }).click();
     await expect(page.getByText("active", { exact: true })).toHaveCount(1, { timeout: 15_000 });
+    await card.getByRole("button", { name: "Revoke" }).click();
+    await expect(card.getByText("revoked", { exact: true })).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: "Show public key (JWK)" }).first().click();
     await expect(page.getByLabel("Public JWK").first()).toContainText('"kty"');
   });
