@@ -5,8 +5,7 @@ The server ships as one container image built from
 The same image runs everywhere and is configured entirely through environment variables.
 Each release publishes it to `ghcr.io/zerosandonesllc/ridm` for linux/amd64 and
 linux/arm64, signed and with an SBOM attached; see
-[Releases and verification](releases.md). No release has been cut yet, so until the
-first one, build it yourself.
+[Releases and verification](releases.md). To build it yourself instead:
 
 ## Building
 

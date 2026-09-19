@@ -106,7 +106,7 @@ rust-embed = { workspace = true }
 ridm-core = { workspace = true, features = ["test-support"] }
 # The published relying-party crate, tested against the tokens this server
 # really issues (`tests/ridm_auth.rs`).
-ridm-auth = { path = "../crates/ridm-auth", version = "0.1.0-dev", default-features = false }
+ridm-auth = { path = "../crates/ridm-auth", version = "0.1.0", default-features = false }
 reqwest = { workspace = true, features = ["cookies", "query"] }
 testcontainers-modules = { workspace = true }
 testcontainers = { workspace = true }

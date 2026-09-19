@@ -1,8 +1,8 @@
 # Production checklist
 
 Go through this before a deployment carries real users. Each item links to the page that
-explains it. rIDM is pre-release (`0.1.0-dev`) with no tagged version yet, so build from
-a commit you have reviewed and record which one you run.
+explains it. Run a release, or a commit you have reviewed,
+and record which one (by image digest) you run.
 
 ## Secrets and keys
 

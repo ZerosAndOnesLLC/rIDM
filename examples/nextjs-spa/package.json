@@ -1,6 +1,6 @@
 {
   "name": "ridm-example-nextjs-spa",
-  "version": "0.1.0-dev",
+  "version": "0.1.0",
   "private": true,
   "description": "Example: a Next.js single-page app signing users in with rIDM (authorization code + PKCE, no client secret)",
   "license": "MIT",

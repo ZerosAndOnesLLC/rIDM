@@ -14,7 +14,9 @@ release renames that heading to the version and date.
 
 ## [Unreleased]
 
-The first release, 0.1.0, is being prepared. It will cover everything built so far:
+## [0.1.0] - 2026-09-19
+
+The first release.
 
 ### Added
 
@@ -39,4 +41,5 @@ The first release, 0.1.0, is being prepared. It will cover everything built so f
 - `/.well-known/security.txt` is the operator's: `SECURITY_CONTACT`,
   `SECURITY_POLICY_URL` or a whole `SECURITY_TXT_FILE`, and 404 until one is set.
 
-[Unreleased]: https://github.com/ZerosAndOnesLLC/rIDM/commits/main
+[Unreleased]: https://github.com/ZerosAndOnesLLC/rIDM/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.1.0
