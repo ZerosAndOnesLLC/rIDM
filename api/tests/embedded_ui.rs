@@ -1,12 +1,17 @@
 //! Embedded UI mode (`routes::ui`): pages served as the router's fallback
 //! from a fixture export, with the trailing-slash redirect, the export's own
 //! 404 page, caching and revalidation, compression, and the API keeping every
-//! path of its own.
+//! path of its own; then the pages on a tenant's custom domain.
 
 mod common;
 
 use common::TestApp;
+use ridm_api::models::{ClientType, NewClient, TenantSettings};
 use ridm_api::routes::ui::EmbeddedUi;
+use ridm_api::services::account_console::{self, ACCOUNT_CLIENT_ID};
+use ridm_api::services::clients;
+use ridm_api::services::tenants::{self, TenantUpdate};
+use ridm_core::events::Actor;
 
 #[derive(rust_embed::RustEmbed)]
 #[folder = "tests/fixtures/ui"]
@@ -248,4 +253,183 @@ async fn without_an_embedded_ui_the_fallback_is_a_bare_404() {
         assert_eq!(res.status(), 404, "{path}");
         assert!(res.text().await.unwrap().is_empty(), "{path}");
     }
+}
+
+// ---------------------------------------------------------------------------
+// Custom domains: a tenant's sign-in pages and account console on its host.
+// ---------------------------------------------------------------------------
+
+async fn set_domain(app: &TestApp, domain: Option<&str>) {
+    let current = tenants::get(&app.state, app.tenant.id).await.unwrap();
+    let settings = TenantSettings {
+        custom_domain: domain.map(str::to_string),
+        ..current.settings.0.clone()
+    };
+    tenants::update(
+        &app.state,
+        Actor::System,
+        app.tenant.id,
+        TenantUpdate {
+            display_name: None,
+            status: None,
+            settings: Some(settings),
+        },
+    )
+    .await
+    .unwrap();
+}
+
+fn domain_for(app: &TestApp) -> String {
+    format!("login-{}.acme.test", &app.tenant.slug[2..])
+}
+
+async fn on_host(app: &TestApp, host: &str, path: &str) -> reqwest::Response {
+    app.http
+        .get(app.url(path))
+        .header("host", host)
+        .send()
+        .await
+        .unwrap()
+}
+
+async fn spa_client(app: &TestApp) {
+    clients::create(
+        &app.state,
+        app.tenant.id,
+        Actor::System,
+        NewClient {
+            client_id: Some("spa".into()),
+            name: "SPA".into(),
+            client_type: Some(ClientType::Spa),
+            redirect_uris: vec!["https://app.example/cb".into()],
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+}
+
+/// Start an authorization on `host` and return where the browser is sent.
+async fn authorize_on(app: &TestApp, host: &str, path: &str) -> url::Url {
+    let res = app
+        .http
+        .get(app.url(path))
+        .header("host", host)
+        .query(&[
+            ("response_type", "code"),
+            ("client_id", "spa"),
+            ("redirect_uri", "https://app.example/cb"),
+            ("scope", "openid"),
+            ("state", "xyz"),
+            (
+                "code_challenge",
+                "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+            ),
+            ("code_challenge_method", "S256"),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 303);
+    url::Url::parse(header(&res, "location")).unwrap()
+}
+
+#[tokio::test]
+async fn a_custom_host_serves_the_tenants_pages_but_not_the_admin_console() {
+    let app = spawn().await;
+    let host = domain_for(&app);
+    set_domain(&app, Some(&host)).await;
+
+    for (path, text) in [("/login/", "login page"), ("/account/", "account page")] {
+        let res = on_host(&app, &host, path).await;
+        assert_eq!(res.status(), 200, "{path}");
+        assert!(res.text().await.unwrap().contains(text), "{path}");
+    }
+    let res = on_host(&app, &host, "/_next/static/chunks/app-3f9a.js").await;
+    assert_eq!(res.status(), 200);
+    // The admin API does not answer here, so neither does its console; nor
+    // does the root page. Both land under the tenant's prefix and miss.
+    for path in ["/console/", "/"] {
+        let res = on_host(&app, &host, path).await;
+        assert_eq!(res.status(), 404, "{path}");
+        assert!(!res.text().await.unwrap().contains("page"), "{path}");
+    }
+    // The tenant's routes keep their paths: a page named without its slash
+    // is not redirected, `/account/me` is the account API, and discovery
+    // answers with the custom issuer.
+    let res = on_host(&app, &host, "/account/me").await;
+    assert_eq!(res.status(), 401);
+    let res = on_host(&app, &host, "/.well-known/openid-configuration").await;
+    assert_eq!(res.status(), 200);
+    let doc: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(doc["issuer"], format!("https://{host}"));
+    // Another tenant's pages are the same files; the tenant comes from the
+    // query, and the flow API the page calls answers for this tenant only.
+    let res = on_host(&app, &host, "/t/other/branding").await;
+    assert_eq!(res.status(), 404);
+}
+
+#[tokio::test]
+async fn sign_in_happens_on_the_custom_host() {
+    let app = spawn().await;
+    let host = domain_for(&app);
+    set_domain(&app, Some(&host)).await;
+    spa_client(&app).await;
+    let to = authorize_on(&app, &host, "/authorize").await;
+    assert_eq!(to.scheme(), "https");
+    assert_eq!(to.host_str(), Some(host.as_str()));
+    assert_eq!(to.path(), "/login/");
+    assert!(to.query_pairs().any(|(k, _)| k == "flow"));
+    // The primary path of the same tenant sends the browser there too: the
+    // pages, like the issuer, belong to the tenant, not to the URL used.
+    let primary = app.base_url.trim_start_matches("http://").to_string();
+    let to = authorize_on(&app, &primary, &format!("/t/{}/authorize", app.tenant.slug)).await;
+    assert_eq!(to.host_str(), Some(host.as_str()));
+}
+
+#[tokio::test]
+async fn without_the_embedded_ui_sign_in_stays_at_ui_url() {
+    let app = TestApp::spawn().await;
+    let host = domain_for(&app);
+    set_domain(&app, Some(&host)).await;
+    spa_client(&app).await;
+    let to = authorize_on(&app, &host, "/authorize").await;
+    assert_eq!(
+        to.as_str().split('?').next().unwrap(),
+        format!("{}/login/", app.base_url)
+    );
+    // And the custom host serves no pages.
+    assert_eq!(on_host(&app, &host, "/login/").await.status(), 404);
+}
+
+#[tokio::test]
+async fn the_account_console_client_follows_the_custom_domain() {
+    let app = spawn().await;
+    let host = domain_for(&app);
+    let uris = || async {
+        let c = clients::find_by_client_id(&app.state, app.tenant.id, ACCOUNT_CLIENT_ID)
+            .await
+            .unwrap()
+            .expect("built-in client");
+        (c.redirect_uris.clone(), c.post_logout_redirect_uris.clone())
+    };
+    let primary = format!("{}/account/callback/", app.base_url);
+    account_console::ensure(
+        &app.state,
+        &tenants::get(&app.state, app.tenant.id).await.unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(uris().await.0, vec![primary.clone()]);
+
+    set_domain(&app, Some(&host)).await;
+    let (redirects, logouts) = uris().await;
+    assert_eq!(
+        redirects,
+        vec![primary.clone(), format!("https://{host}/account/callback/")]
+    );
+    assert!(logouts.contains(&format!("https://{host}/account/")));
+
+    set_domain(&app, None).await;
+    assert_eq!(uris().await.0, vec![primary]);
 }

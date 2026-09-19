@@ -17,6 +17,7 @@ With `settings.custom_domain` set to `login.acme.example`:
 | JWKS | `…/t/acme/.well-known/jwks.json` | `https://login.acme.example/.well-known/jwks.json` |
 | Identity-provider callback | `…/t/acme/broker/{alias}/callback` | `https://login.acme.example/broker/{alias}/callback` |
 | Passkey relying party id | the UI's host | `login.acme.example` |
+| Sign-in pages and account console (embedded UI) | `https://id.example.com/login/`, `/account/` | `https://login.acme.example/login/`, `/account/` |
 
 Every tenant endpoint answers on the custom host without the `/t/{slug}` prefix:
 discovery, JWKS, `/authorize`, `/par`, `/token`, `/userinfo`, `/introspect`, `/revoke`,
@@ -35,6 +36,7 @@ tenant's routes by prefixing the path with `/t/{slug}`, except:
 | `/.well-known/webfinger`, `/.well-known/security.txt` | The host-wide documents, unchanged |
 | `/t/acme/…` (the tenant's own prefix) | Unchanged, for pages or clients that name the tenant explicitly |
 | `/scim/v2/acme/…` (the tenant's own SCIM base) | Unchanged |
+| A file of the embedded UI (`/login/`, `/consent/`, `/account/`, `/_next/static/…`), GET or HEAD | The page, when the server serves the embedded UI; not the admin console (`/console/`) or the root page |
 
 Everything else lands under the tenant's prefix, so it reaches only the tenant's routes or
 nothing: another tenant's `/t/{other}/…` and `/scim/v2/{other}/…`, the admin API
@@ -49,9 +51,22 @@ Other effects:
 - **Registration management**: `registration_client_uri` for dynamically registered
   clients uses the custom host.
 
-The admin console and the sign-in pages stay where `UI_URL` says. Serving them on
-every tenant's own host is part of the planned embedded UI mode (Phase 11.1), not
-present today.
+Only exact files of the UI pass: a page named without its trailing slash is left to the
+tenant's routes, which own `/account/me`, `/register` and the like, so `/login` (no
+slash) is a `404` on the custom host rather than a redirect.
+
+**The sign-in pages move with the tenant.** When the server serves the
+[embedded UI](../deploy/overview.md#where-the-ui-is-served-from), every page it sends the
+tenant's users to is on the custom host: `/authorize` (on either host) redirects to
+`https://login.acme.example/login/`, and logout, the device page, and the links in
+recovery, invitation, verification and magic-link emails all point there. The pages call
+the tenant's flow API on the same host, so the session they set is the one `/authorize`
+on the custom host sees, and passkeys (whose relying party id is the custom domain) work
+there. The account console is served on the custom host too, and its built-in client
+accepts `https://login.acme.example/account/callback/` alongside the primary host's,
+updated whenever the domain changes. The admin console is not: administer the tenant
+through the primary host. With the UI hosted separately (`UI_URL` on another origin, or
+a binary without the embedded UI), the pages stay at `UI_URL`; see the caveat below.
 
 ## Setting a domain
 
@@ -132,12 +147,14 @@ client at the same moment. Plan it as a migration:
   (`__Host-ridm_session_acme`, `__Host-ridm_device_acme`; see
   [Sign-in flows and sessions](../concepts/flows-and-sessions.md)). A session set on the custom host
   is therefore sent back to every path there, `/authorize` included. A cookie is still
-  bound to the host that set it, though: the sign-in pages at `UI_URL` call the flow
-  API on the host they were built against, so a session they create belongs to that
-  host, and an authorization on the custom host does not see it. Test the browser flows
-  your clients use end to end on the custom host before moving production traffic;
-  machine-to-machine traffic (`client_credentials`, token exchange, introspection) is
-  unaffected. Serving the pages on the tenant's host arrives with the embedded UI mode
-  (Phase 11.1).
-- The admin API does not answer on a custom host, and the built-in admin console
-  clients are not configured for one; administer the tenant through the primary host.
+  bound to the host that set it, though. With the embedded UI the pages run on the custom
+  host and this needs nothing. With the UI hosted separately, the sign-in pages at
+  `UI_URL` call the flow API on the host they were built against, so a session they
+  create belongs to that host, an authorization on the custom host does not see it, and
+  passkeys (bound to the custom domain) cannot be used from pages on another host. Test
+  the browser flows your clients use end to end on the custom host before moving
+  production traffic; machine-to-machine traffic (`client_credentials`, token exchange,
+  introspection) is unaffected.
+- The admin API and the admin console do not answer on a custom host, and the built-in
+  admin console client is not configured for one; administer the tenant through the
+  primary host.

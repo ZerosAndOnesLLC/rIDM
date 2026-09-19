@@ -5,9 +5,12 @@ use std::sync::Arc;
 use ridm_core::events::EventBus;
 use ridm_core::providers::{KeyEncryptor, PasswordHasher};
 
+use url::Url;
+
 use crate::cache::{Cache, CacheLayer};
-use crate::config::Config;
+use crate::config::{Config, page_url};
 use crate::db::Db;
+use crate::models::Tenant;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -74,6 +77,30 @@ impl AppState {
             breach,
             audit_sink,
             ui,
+        }
+    }
+}
+
+impl AppState {
+    /// Origin the UI's pages for `tenant` are served on when that is its
+    /// custom domain: only a node serving the embedded UI answers the pages
+    /// there too (see `middleware::host`). `None`: the pages are under
+    /// `UI_URL`.
+    pub fn tenant_ui_base(&self, tenant: &Tenant) -> Option<Url> {
+        self.ui.as_ref()?;
+        let domain = tenant.settings.custom_domain.as_deref()?;
+        Url::parse(&format!("https://{domain}/")).ok()
+    }
+
+    /// URL of a UI page (`/login/`, `/consent/`, ...) for `tenant`'s users.
+    /// A tenant on a custom domain gets its pages on that host when this
+    /// node serves the embedded UI, so the session the sign-in pages set
+    /// belongs to the host its `/authorize` answers on; otherwise the page
+    /// is under `UI_URL`.
+    pub fn ui_page(&self, tenant: &Tenant, page: &str, params: &[(&str, &str)]) -> String {
+        match self.tenant_ui_base(tenant) {
+            Some(base) => page_url(&base, page, params),
+            None => self.config.ui_page(page, params),
         }
     }
 }

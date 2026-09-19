@@ -225,5 +225,5 @@ with its own certificates and both upstreams on the host.
 A tenant with a custom domain (say `login.acme.com`) is served on that host without the
 `/t/{slug}` prefix, so the proxy needs a server block (nginx) or site (Caddy) for the
 domain that sends everything to rIDM with `Host` preserved, and a certificate for it.
-The sign-in pages stay at `UI_URL` until the embedded UI can answer on every host
-(plan item 11.1). See [Custom domains](../admin/custom-domains.md).
+With the embedded UI the tenant's sign-in pages and account console are served on that
+host as well, through the same route. See [Custom domains](../admin/custom-domains.md).

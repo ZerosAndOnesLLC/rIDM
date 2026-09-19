@@ -242,7 +242,8 @@ async fn decide(
         },
     )
     .await?;
-    let url = state.config.ui_page(
+    let url = state.ui_page(
+        &tenant.tenant,
         "logout",
         &[("tenant", tenant.slug()), ("flow", &flow.id.to_string())],
     );
@@ -268,9 +269,11 @@ fn finish(
             }
             u.to_string()
         }
-        None => state
-            .config
-            .ui_page("logout", &[("tenant", tenant.slug()), ("done", "1")]),
+        None => state.ui_page(
+            &tenant.tenant,
+            "logout",
+            &[("tenant", tenant.slug()), ("done", "1")],
+        ),
     };
     let mut res = if outcome.frontchannel_logout_uris.is_empty() {
         Redirect::to(&target).into_response()
@@ -367,9 +370,11 @@ async fn confirm(
     };
     if !body.confirm {
         let target = flow.post_logout_redirect_uri.clone().unwrap_or_else(|| {
-            state
-                .config
-                .ui_page("logout", &[("tenant", tenant.slug()), ("cancelled", "1")])
+            state.ui_page(
+                &tenant.tenant,
+                "logout",
+                &[("tenant", tenant.slug()), ("cancelled", "1")],
+            )
         });
         return axum::Json(serde_json::json!({"redirect_to": target, "logged_out": false}))
             .into_response();
@@ -389,9 +394,11 @@ async fn confirm(
             }
             u.to_string()
         }
-        None => state
-            .config
-            .ui_page("logout", &[("tenant", tenant.slug()), ("done", "1")]),
+        None => state.ui_page(
+            &tenant.tenant,
+            "logout",
+            &[("tenant", tenant.slug()), ("done", "1")],
+        ),
     };
     let mut res = axum::Json(serde_json::json!({
         "redirect_to": target,

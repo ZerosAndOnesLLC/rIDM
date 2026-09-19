@@ -126,8 +126,8 @@ In development the UI runs under `next dev` with the API proxied; see
 [Run rIDM locally](../quickstarts/local.md).
 
 A tenant's [custom domain](../admin/custom-domains.md) moves its issuer and endpoints to
-that host, but its sign-in pages stay at `UI_URL` until the embedded UI can answer on
-every host.
+that host. With the embedded UI its sign-in pages and account console move there too;
+with the UI hosted separately they stay at `UI_URL`.
 
 ## Outbound connections
 

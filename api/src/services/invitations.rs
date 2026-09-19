@@ -113,9 +113,11 @@ async fn send_email(
             .unwrap_or_else(|_| "An administrator".into()),
         None => "An administrator".into(),
     };
-    let link = state
-        .config
-        .ui_page("invite", &[("tenant", &tenant.slug), ("token", token)]);
+    let link = state.ui_page(
+        tenant,
+        "invite",
+        &[("tenant", &tenant.slug), ("token", token)],
+    );
     messaging::send(
         state,
         tenant,

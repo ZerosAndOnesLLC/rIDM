@@ -201,8 +201,9 @@ pub async fn issue(
     )
     .await?;
     tx.commit().await?;
-    let verification_uri = state.config.ui_page("device", &[("tenant", tenant.slug())]);
-    let verification_uri_complete = state.config.ui_page(
+    let verification_uri = state.ui_page(&tenant.tenant, "device", &[("tenant", tenant.slug())]);
+    let verification_uri_complete = state.ui_page(
+        &tenant.tenant,
         "device",
         &[("tenant", tenant.slug()), ("user_code", &user_code)],
     );

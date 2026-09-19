@@ -481,12 +481,18 @@ prefixed paths keep working and report the same issuer). Requests are matched by
 `Host` header, or `X-Forwarded-Host` from a `TRUSTED_PROXIES` peer; the host is looked up
 through the tenant cache and takes effect the moment the setting changes. Domains are
 validated, lower-cased, unique across tenants and may not be the deployment's own hosts.
-The UI stays where `UI_URL` says until the embedded UI mode (Phase 11.1) serves it on
-every host.
+When the server serves the embedded UI, the tenant's sign-in pages and account console
+are served on that host too, and every redirect and emailed link for the tenant's users
+(`/authorize` to `/login/`, logout, device, recovery, invitation, verification and
+magic links) points there, so the session the pages set belongs to the host `/authorize`
+answers on; the built-in account console client accepts the host's callback. With the UI
+hosted separately, the pages stay at `UI_URL`.
 
 A custom domain serves its tenant and nothing else. Only `/healthz`, `/readyz`,
-`/.well-known/webfinger`, `/.well-known/security.txt` and the tenant's own `/t/{slug}/…`
-and `/scim/v2/{slug}/…` paths pass through as they are; every other path is rewritten
+`/.well-known/webfinger`, `/.well-known/security.txt`, the tenant's own `/t/{slug}/…`
+and `/scim/v2/{slug}/…` paths and, with the embedded UI, a GET of a file of the export
+(`/login/`, `/account/`, `/_next/static/…`, but not the admin console or `/`) pass
+through as they are; every other path is rewritten
 under `/t/{slug}`, so the admin API, `/metrics`, `/docs`, `/openapi.json` and other
 tenants' paths answer `404` there. Session cookies are `Path=/` and named per tenant, so
 sign-in works on the custom domain as on the primary host.

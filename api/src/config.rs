@@ -433,19 +433,12 @@ impl Config {
         })
     }
 
-    /// URL of a UI page (`/login/`, `/consent/`, ...) with query parameters.
+    /// URL of a UI page (`/login/`, `/consent/`, ...) under `UI_URL`, with
+    /// query parameters. Pages for a tenant's users go through
+    /// [`AppState::ui_page`](crate::state::AppState::ui_page), which knows
+    /// about custom domains.
     pub fn ui_page(&self, page: &str, params: &[(&str, &str)]) -> String {
-        let mut u = self.ui_url.clone();
-        let base = u.path().trim_end_matches('/').to_string();
-        u.set_path(&format!("{base}/{}/", page.trim_matches('/')));
-        u.set_query(None);
-        if !params.is_empty() {
-            let mut q = u.query_pairs_mut();
-            for (k, v) in params {
-                q.append_pair(k, v);
-            }
-        }
-        u.to_string()
+        page_url(&self.ui_url, page, params)
     }
 
     /// Origins (scheme, host, port) of the UI and of the API itself: browsers on
@@ -517,6 +510,21 @@ fn parse_networks(v: String) -> Result<Vec<IpNet>, String> {
             })
         })
         .collect()
+}
+
+/// `{base}/{page}/?{params}`: a page of the UI under `base`.
+pub fn page_url(base: &Url, page: &str, params: &[(&str, &str)]) -> String {
+    let mut u = base.clone();
+    let prefix = u.path().trim_end_matches('/').to_string();
+    u.set_path(&format!("{prefix}/{}/", page.trim_matches('/')));
+    u.set_query(None);
+    if !params.is_empty() {
+        let mut q = u.query_pairs_mut();
+        for (k, v) in params {
+            q.append_pair(k, v);
+        }
+    }
+    u.to_string()
 }
 
 fn parse_bool(name: &'static str, default: bool) -> Result<bool, ConfigError> {

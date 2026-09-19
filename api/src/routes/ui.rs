@@ -139,10 +139,10 @@ impl EmbeddedUi {
         Resolved::NotFound
     }
 
-    /// Does `path` name something the UI serves (a file, or a directory
-    /// index with or without its slash)?
-    pub fn serves(&self, path: &str) -> bool {
-        !matches!(self.resolve(path), Resolved::NotFound)
+    /// Does `path` name a file of the export (a page's directory with its
+    /// slash, a bundle, a page payload)?
+    pub fn has_file(&self, path: &str) -> bool {
+        matches!(self.resolve(path), Resolved::File { .. })
     }
 
     /// The response for a GET or HEAD of `path`.

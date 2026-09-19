@@ -69,7 +69,7 @@ pub async fn create(state: &AppState, actor: Actor, input: NewTenant) -> AppResu
     ));
     // The admin console signs in through a built-in client in every tenant.
     super::admin_console::ensure(state, tenant.id).await?;
-    super::account_console::ensure(state, tenant.id).await?;
+    super::account_console::ensure(state, &tenant).await?;
     Ok(tenant)
 }
 
@@ -178,6 +178,11 @@ pub async fn update(
             tenant_id: tenant.id,
         },
     ));
+    // The account console is served on the custom domain too; its client
+    // follows the domain.
+    if before.settings.custom_domain != tenant.settings.custom_domain {
+        super::account_console::ensure(state, &tenant).await?;
+    }
     Ok(tenant)
 }
 

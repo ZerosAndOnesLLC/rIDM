@@ -178,7 +178,8 @@ pub async fn send(
                     MAGIC_LINK_TTL_SECS,
                 )
                 .await?;
-            let link = state.config.ui_page(
+            let link = state.ui_page(
+                tenant,
                 "login",
                 &[
                     ("tenant", &tenant.slug),

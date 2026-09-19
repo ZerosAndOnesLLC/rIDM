@@ -55,9 +55,11 @@ pub async fn request_password_reset(
             RESET_TTL_SECS,
         )
         .await?;
-    let link = state
-        .config
-        .ui_page("recover", &[("tenant", &tenant.slug), ("token", &token)]);
+    let link = state.ui_page(
+        tenant,
+        "recover",
+        &[("tenant", &tenant.slug), ("token", &token)],
+    );
     messaging::send(
         state,
         tenant,
