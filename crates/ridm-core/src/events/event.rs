@@ -152,6 +152,37 @@ pub enum EventKind {
         user_id: Uuid,
     },
 
+    // Organizations
+    OrganizationCreated {
+        org_id: Uuid,
+    },
+    OrganizationUpdated {
+        org_id: Uuid,
+    },
+    OrganizationDeleted {
+        org_id: Uuid,
+    },
+    OrganizationMemberAdded {
+        org_id: Uuid,
+        user_id: Uuid,
+    },
+    OrganizationMemberRemoved {
+        org_id: Uuid,
+        user_id: Uuid,
+    },
+    OrganizationDomainAdded {
+        org_id: Uuid,
+        domain_id: Uuid,
+    },
+    OrganizationDomainVerified {
+        org_id: Uuid,
+        domain_id: Uuid,
+    },
+    OrganizationDomainRemoved {
+        org_id: Uuid,
+        domain_id: Uuid,
+    },
+
     // Roles
     RoleCreated {
         role_id: Uuid,
@@ -447,6 +478,14 @@ impl EventKind {
             Self::GroupDeleted { .. } => "group.deleted",
             Self::GroupMemberAdded { .. } => "group.member_added",
             Self::GroupMemberRemoved { .. } => "group.member_removed",
+            Self::OrganizationCreated { .. } => "organization.created",
+            Self::OrganizationUpdated { .. } => "organization.updated",
+            Self::OrganizationDeleted { .. } => "organization.deleted",
+            Self::OrganizationMemberAdded { .. } => "organization.member_added",
+            Self::OrganizationMemberRemoved { .. } => "organization.member_removed",
+            Self::OrganizationDomainAdded { .. } => "organization.domain_added",
+            Self::OrganizationDomainVerified { .. } => "organization.domain_verified",
+            Self::OrganizationDomainRemoved { .. } => "organization.domain_removed",
             Self::RoleCreated { .. } => "role.created",
             Self::RoleUpdated { .. } => "role.updated",
             Self::RoleDeleted { .. } => "role.deleted",

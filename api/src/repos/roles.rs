@@ -262,10 +262,14 @@ pub async fn composite_would_cycle<'e>(
 /// Effective roles of a user: direct assignments, assignments of every group
 /// the user is in (including ancestor groups), and the transitive closure of
 /// composite roles. Ordered by name.
+/// Effective roles of a user. `org_id` is the organization the session acts
+/// in: grants scoped to another organization are left out, and a session
+/// without an organization sees only unscoped grants.
 pub async fn effective_roles_of_user<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
     user_id: Uuid,
+    org_id: Option<Uuid>,
 ) -> Result<Vec<Role>, sqlx::Error> {
     sqlx::query_as::<_, Role>(
         "WITH RECURSIVE user_groups AS ( \
@@ -276,10 +280,13 @@ pub async fn effective_roles_of_user<'e>(
             SELECT p.id, p.parent_id, ug.depth + 1 FROM groups p \
               JOIN user_groups ug ON p.id = ug.parent_id WHERE p.tenant_id = $1 AND ug.depth < 64), \
          direct AS ( \
-            SELECT ra.role_id FROM role_assignments ra WHERE ra.tenant_id = $1 AND ra.user_id = $2 \
+            SELECT ra.role_id FROM role_assignments ra \
+             WHERE ra.tenant_id = $1 AND ra.user_id = $2 \
+               AND (ra.org_id IS NULL OR ra.org_id = $3) \
             UNION \
             SELECT ra.role_id FROM role_assignments ra \
-              JOIN user_groups ug ON ra.group_id = ug.id WHERE ra.tenant_id = $1), \
+              JOIN user_groups ug ON ra.group_id = ug.id WHERE ra.tenant_id = $1 \
+               AND (ra.org_id IS NULL OR ra.org_id = $3)), \
          effective AS ( \
             SELECT role_id, 0 AS depth FROM direct \
             UNION \
@@ -292,6 +299,7 @@ pub async fn effective_roles_of_user<'e>(
     )
     .bind(tenant_id)
     .bind(user_id)
+    .bind(org_id)
     .fetch_all(exec)
     .await
 }

@@ -201,7 +201,7 @@ async fn load_subject(
             "user is not active",
         ));
     }
-    let roles = roles::effective_roles(state, tenant_id, user_id)
+    let roles = roles::effective_roles(state, tenant_id, user_id, None)
         .await?
         .to_vec();
     let groups = groups::groups_of_user(state, tenant_id, user_id, true).await?;

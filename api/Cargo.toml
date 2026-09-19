@@ -69,6 +69,7 @@ base64 = { workspace = true }
 hex = { workspace = true }
 
 reqwest = { workspace = true }
+hickory-resolver = { workspace = true }
 lettre = { workspace = true }
 handlebars = { workspace = true }
 

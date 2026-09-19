@@ -396,7 +396,7 @@ async fn invitation_lifecycle() {
         .unwrap();
     assert!(carol.email_verified);
     assert_eq!(
-        roles::effective_role_names(&app.state, tid, carol.id)
+        roles::effective_role_names(&app.state, tid, carol.id, None)
             .await
             .unwrap(),
         vec!["member"]

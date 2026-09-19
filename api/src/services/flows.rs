@@ -889,7 +889,7 @@ pub async fn policy_requires_mfa(
         MfaPolicy::Required => true,
         MfaPolicy::Optional => false,
         MfaPolicy::RequiredForRoles { roles } => {
-            let held = roles::effective_role_names(state, tenant.id, user.id).await?;
+            let held = roles::effective_role_names(state, tenant.id, user.id, None).await?;
             roles.iter().any(|r| held.iter().any(|h| h == r))
         }
         MfaPolicy::RequiredForAdmins => {

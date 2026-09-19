@@ -81,7 +81,7 @@ impl Default for TokenOpts<'_> {
 /// Issue an admin-audience access token for `user_id` from `tenant`'s keys.
 pub async fn token(app: &TestApp, tenant: &Tenant, user_id: Uuid, opts: TokenOpts<'_>) -> String {
     let user = users::get(&app.state, tenant.id, user_id).await.unwrap();
-    let role_list = roles::effective_roles(&app.state, tenant.id, user_id)
+    let role_list = roles::effective_roles(&app.state, tenant.id, user_id, None)
         .await
         .unwrap();
     let mut client = TokenClient::public("admin-ui");

@@ -131,7 +131,7 @@ async fn build(state: &AppState, tenant: &TenantCtx, token: &str) -> Result<Buil
     let user = users::get(state, tenant.id(), user_id)
         .await
         .map_err(|_| Reject::Token("user no longer exists"))?;
-    let role_list = roles::effective_roles(state, tenant.id(), user.id).await?;
+    let role_list = roles::effective_roles(state, tenant.id(), user.id, user.org_id).await?;
     let group_list = groups::groups_of_user(state, tenant.id(), user.id, true).await?;
 
     let mappers = crate::oidc::token::effective_mappers_for(state, tenant.id(), &client).await?;

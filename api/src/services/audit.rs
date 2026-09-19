@@ -25,11 +25,12 @@ const EXPORT_PAGE: i64 = 500;
 const PURGE_BATCH: i64 = 5_000;
 
 /// Payload keys that name the entity an event is about, in priority order.
-const SUBJECT_KEYS: [&str; 10] = [
+const SUBJECT_KEYS: [&str; 11] = [
     "user_id",
     "client_id",
     "role_id",
     "group_id",
+    "org_id",
     "invitation_id",
     "key_id",
     "mapper_id",

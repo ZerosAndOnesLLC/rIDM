@@ -95,7 +95,7 @@ async fn fixture(alg: SigningAlg) -> Fx {
     groups::add_member(&app.state, tid, Actor::System, group.id, user.id)
         .await
         .unwrap();
-    let roles = roles::effective_roles(&app.state, tid, user.id)
+    let roles = roles::effective_roles(&app.state, tid, user.id, None)
         .await
         .unwrap()
         .to_vec();

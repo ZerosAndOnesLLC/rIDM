@@ -198,7 +198,7 @@ async fn repo_reads_from_another_tenant_are_empty() {
             .is_empty()
     );
     assert!(
-        repos::roles::effective_roles_of_user(&mut *c, f.a, f.user)
+        repos::roles::effective_roles_of_user(&mut *c, f.a, f.user, None)
             .await
             .unwrap()
             .is_empty()
@@ -343,7 +343,7 @@ async fn repo_writes_from_another_tenant_affect_nothing() {
         1
     );
     assert_eq!(
-        roles::effective_role_names(&f.app.state, f.a, f.user)
+        roles::effective_role_names(&f.app.state, f.a, f.user, None)
             .await
             .unwrap(),
         vec!["r"]
@@ -376,7 +376,7 @@ async fn service_layer_returns_not_found_across_tenants() {
     .await);
     nf(roles::add_composite(s, f.b, Actor::System, f.role, Uuid::now_v7()).await);
     assert!(
-        roles::effective_roles(s, f.b, f.user)
+        roles::effective_roles(s, f.b, f.user, None)
             .await
             .unwrap()
             .is_empty()

@@ -149,7 +149,7 @@ pub async fn export(state: &AppState, tenant: &Tenant, user: &User) -> AppResult
         )
         .await?,
         identities: crate::services::broker::identities_of(state, tenant.id, user.id).await?,
-        roles: roles::effective_role_names(state, tenant.id, user.id).await?,
+        roles: roles::effective_role_names(state, tenant.id, user.id, user.org_id).await?,
         groups: groups::groups_of_user(state, tenant.id, user.id, true).await?,
         audit_events,
     })

@@ -364,20 +364,24 @@ pub async fn bump_roles_version(state: &AppState, tenant_id: Uuid) -> AppResult<
     Ok(())
 }
 
-/// Effective roles of a user (direct + groups incl. ancestors + composites), cached.
+/// Effective roles of a user (direct + groups incl. ancestors + composites),
+/// cached. `org_id` is the organization the caller acts in; grants scoped to
+/// another organization are left out.
 pub async fn effective_roles(
     state: &AppState,
     tenant_id: Uuid,
     user_id: Uuid,
+    org_id: Option<Uuid>,
 ) -> AppResult<Arc<Vec<Role>>> {
     let version = roles_version(state, tenant_id).await?;
-    let key = keys::effective_roles(tenant_id, &version, user_id);
+    let key = keys::effective_roles(tenant_id, &version, user_id, org_id);
     let db = state.db.clone();
     let roles = state
         .cache
         .get_or_load(&key, EFFECTIVE_ROLES_TTL, || async move {
             let mut tx = db::tenant_tx(&db, tenant_id).await?;
-            let rows = repos::roles::effective_roles_of_user(&mut *tx, tenant_id, user_id).await?;
+            let rows =
+                repos::roles::effective_roles_of_user(&mut *tx, tenant_id, user_id, org_id).await?;
             tx.commit().await?;
             Ok(Some(rows))
         })
@@ -390,8 +394,9 @@ pub async fn effective_role_names(
     state: &AppState,
     tenant_id: Uuid,
     user_id: Uuid,
+    org_id: Option<Uuid>,
 ) -> AppResult<Vec<String>> {
-    Ok(effective_roles(state, tenant_id, user_id)
+    Ok(effective_roles(state, tenant_id, user_id, org_id)
         .await?
         .iter()
         .map(|r| r.name.clone())

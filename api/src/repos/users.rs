@@ -363,7 +363,8 @@ pub async fn count<'e>(exec: impl PgExecutor<'e>, tenant_id: Uuid) -> Result<i64
         .await
 }
 
-fn escape_like(s: &str) -> String {
+/// Escapes a user-supplied `ILIKE` pattern (also used by the organization list).
+pub(crate) fn escape_like(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('%', "\\%")
         .replace('_', "\\_")

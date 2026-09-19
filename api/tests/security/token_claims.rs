@@ -30,7 +30,7 @@ use crate::common::admin::{admin_token, call, user_with_role};
 async fn opaque(app: &TestApp, tenant_id: Uuid, user_id: Uuid, audience: &str) -> String {
     let tenant = tenants::get(&app.state, tenant_id).await.unwrap();
     let user = users::get(&app.state, tenant_id, user_id).await.unwrap();
-    let role_list = roles::effective_roles(&app.state, tenant_id, user_id)
+    let role_list = roles::effective_roles(&app.state, tenant_id, user_id, None)
         .await
         .unwrap();
     let client = TokenClient {
