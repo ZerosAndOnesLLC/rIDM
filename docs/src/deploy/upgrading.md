@@ -43,6 +43,19 @@ stop-the-world upgrade: migrations are cumulative, and `migrate` applies all of 
 order, but a 1.2 node is not promised to work on the 1.5 schema. Stop every old node
 first, or upgrade one release at a time with a rolling upgrade each.
 
+Every pull request checks the rule. `deploy/upgrade-smoke/run.sh`, in CI's `packaging`
+job, starts the previous release's image on the compose stack and bootstraps an
+administrator. It then upgrades the same volumes to the image under test, which
+migrates, starts, answers `/readyz` and still publishes every signing key the old release
+published. Last, it starts the previous image again on the migrated database, as it would
+serve during a roll. A release whose upgrade notes break the rule runs it with
+`ALLOW_BREAKING_SCHEMA=1`, which skips that last step. To run it locally:
+
+```bash
+docker build -f api/Dockerfile -t ridm:ci .
+TO_IMAGE=ridm:ci deploy/upgrade-smoke/run.sh     # FROM_IMAGE=… to pick the old image
+```
+
 ## Before you upgrade
 
 1. **Read the release notes**, back to the release you run.

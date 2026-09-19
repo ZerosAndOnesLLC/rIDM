@@ -1389,7 +1389,8 @@ denied, `cargo audit`, `cargo deny`, `cargo package` for `ridm-auth` (published 
 ESLint, `tsc`, `npm audit`, unit tests, integration
 tests against Postgres and Valkey, coverage, the UI static export, the Playwright e2e
 suite, a k6 smoke with thresholds (`load-smoke`), a minute of fuzzing per target
-(`fuzz-smoke`), a container image boot test, and the example applications signed into
+(`fuzz-smoke`), a container image boot test, an upgrade from the previous release's image
+(`packaging`), the Helm chart on a kind cluster (`helm-smoke`), and the example applications signed into
 in headless Chromium against that image under docker-compose (`examples-smoke`). The `conformance` workflow runs the
 OpenID Foundation suite on the same pull request. `main` is protected; all of those are
 required checks and no one can bypass them. Dependencies are exact-pinned and updated by

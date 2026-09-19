@@ -408,12 +408,51 @@ jobs:
         env:
           RIDM_IMAGE: ridm:ci
         run: deploy/production/smoke/run.sh
+      # The previous release's image, then this one over the same volumes, then
+      # the previous one again on the migrated schema; run.sh says what. Passes
+      # with a notice while there is no earlier release tag.
+      - name: upgrade from the previous release
+        env:
+          TO_IMAGE: ridm:ci
+        run: |
+          git fetch --tags --force --quiet origin
+          deploy/upgrade-smoke/run.sh
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: proxy-smoke
-          path: target/proxy-smoke/logs
+          path: |
+            target/proxy-smoke/logs
+            target/upgrade-smoke
           retention-days: 7
+
+  # The Helm chart installed on a throwaway kind cluster from the image built
+  # here, upgraded and uninstalled (deploy/helm/smoke/run.sh says what).
+  helm-smoke:
+    name: helm-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: build image (amd64)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: api/Dockerfile
+          push: false
+          load: true
+          tags: ridm:ci
+          cache-from: type=gha
+      - name: helm and kind
+        run: |
+          curl -fsSL https://get.helm.sh/helm-v4.3.0-linux-amd64.tar.gz \
+            | sudo tar xz -C /usr/local/bin --strip-components=1 linux-amd64/helm
+          curl -fsSLo kind https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64
+          sudo install -m 0755 kind /usr/local/bin/kind && rm kind
+      - name: chart on kind
+        env:
+          RIDM_IMAGE: ridm:ci
+        run: deploy/helm/smoke/run.sh
 
   # The example applications against the shipped stack: the image above under
   # docker-compose, the first admin and token from `ridm bootstrap`, the demo
