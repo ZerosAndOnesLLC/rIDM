@@ -101,6 +101,17 @@ export function useFlow(slug: string | null, id: string | null, accepts: readonl
       if (!flowUrl || !state.flow) throw new ApiError(410, null);
       const res = await api<T>(`${flowUrl}/${step}`, {
         body: { csrf: state.flow.csrf, ...body },
+      }).catch((e: unknown) => {
+        // The risk policy refused the sign-in: there is no step left to
+        // show, and the client is waiting at the redirect the server named.
+        if (e instanceof ApiError && e.status === 403) {
+          const to = (e.body as { redirect_to?: unknown } | null)?.redirect_to;
+          if (typeof to === "string" && to) {
+            redirected.current = true;
+            navigate(to);
+          }
+        }
+        throw e;
       });
       const maybe = res as unknown as Partial<PublicFlow> & { redirect_to?: string };
       if (maybe.redirect_to) {

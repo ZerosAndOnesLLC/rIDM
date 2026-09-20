@@ -265,6 +265,9 @@ pub enum Outcome {
     },
     /// Linked from the account console: back to it.
     Linked { return_to: Option<String> },
+    /// The risk policy refused the sign-in: straight back to the client
+    /// with `access_denied`; there is no flow left to tell.
+    Blocked { redirect_to: String },
     /// Stopped: the page to tell it on (`Some(flow)` for the login page,
     /// `None` when linking) and why.
     Failed {
@@ -376,6 +379,7 @@ pub async fn callback(
                 AuthStep::Authenticated { session, flow } => {
                     Ok(Outcome::Authenticated { session, flow })
                 }
+                AuthStep::Blocked { redirect_to } => Ok(Outcome::Blocked { redirect_to }),
                 AuthStep::Rejected { .. } => Ok(failed(BrokerError::AccountDisabled)),
             }
         }

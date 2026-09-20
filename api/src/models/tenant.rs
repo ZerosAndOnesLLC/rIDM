@@ -48,6 +48,8 @@ pub struct TenantSettings {
     pub mfa: MfaPolicy,
     /// Second factors the tenant offers (passkeys follow `auth.passkey`).
     pub mfa_methods: MfaMethods,
+    /// Risk-based adaptive authentication (Phase 12.3), off until enabled.
+    pub risk: RiskPolicy,
     pub registration: RegistrationPolicy,
     pub locale: LocaleSettings,
     pub branding: Branding,
@@ -362,6 +364,80 @@ pub enum MfaPolicy {
     RequiredForRoles {
         roles: Vec<String>,
     },
+}
+
+/// Risk-based adaptive authentication.
+///
+/// Every signal a sign-in raises contributes its weight; the sum is measured
+/// against two thresholds, so a tenant decides both how much each signal
+/// counts and how much is too much. `step_up_at` demands the second factor
+/// for that sign-in even where the MFA policy would not, and `block_at`
+/// refuses it outright. A threshold of 0 switches that outcome off, which is
+/// how a tenant runs the policy in step-up-only mode.
+///
+/// Nothing here has any effect while `enabled` is false, which is the default:
+/// a deployment that upgrades into this release signs its users in exactly as
+/// before until an administrator turns it on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(default)]
+pub struct RiskPolicy {
+    pub enabled: bool,
+    pub weights: RiskWeights,
+    /// Score at or above which the sign-in must pass a second factor
+    /// (0 = never step up).
+    pub step_up_at: u32,
+    /// Score at or above which the sign-in is refused (0 = never block).
+    pub block_at: u32,
+    /// Travel faster than this between two sign-ins is impossible. Only
+    /// reachable when the geo source yields coordinates.
+    pub impossible_travel_kmh: u32,
+    /// Window the velocity signal counts failed sign-ins from one address in.
+    pub velocity_window_minutes: u32,
+    /// Failures from the address within the window that raise the signal
+    /// (0 = off).
+    pub velocity_max_failures: u32,
+}
+
+impl Default for RiskPolicy {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            weights: RiskWeights::default(),
+            step_up_at: 50,
+            block_at: 100,
+            impossible_travel_kmh: 900,
+            velocity_window_minutes: 15,
+            velocity_max_failures: 10,
+        }
+    }
+}
+
+/// What each signal contributes to the score. With the defaults, a new
+/// country alone steps up, a new country on a new browser steps up, and
+/// impossible travel on a new browser from a new country blocks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(default)]
+pub struct RiskWeights {
+    /// The browser has no trusted-device cookie and no earlier session.
+    pub new_device: u32,
+    /// The user has never signed in from this country.
+    pub new_country: u32,
+    /// The distance from the last known location cannot be covered in the
+    /// time since it was seen.
+    pub impossible_travel: u32,
+    /// The address is behind an unusual number of recent failures.
+    pub velocity: u32,
+}
+
+impl Default for RiskWeights {
+    fn default() -> Self {
+        Self {
+            new_device: 20,
+            new_country: 50,
+            impossible_travel: 60,
+            velocity: 40,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]

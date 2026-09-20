@@ -58,6 +58,17 @@ Conventions used below:
 | `ARGON2_P_COST` | integer | `1` | argon2id lanes. |
 | `BREACH_CHECK_URL` | URL, or `off`/`none`/`false` | `https://api.pwnedpasswords.com/range/` | Have I Been Pwned compatible range endpoint used by tenants with `password.check_breached` on (k-anonymity: only a five-character hash prefix leaves the server). A trailing `/` is added when missing. `off`, `none` or `false` disables the check for the whole deployment (air-gapped installs). |
 
+## Geo-IP
+
+Where the country and coordinates behind [adaptive authentication](../admin/adaptive-auth.md)'s location signals come from. Both sources are optional and consulted in this order; with neither, a tenant's risk policy still scores the device and velocity signals and simply never raises a location one.
+
+| Variable | Type | Default | Meaning |
+|----------|------|---------|---------|
+| `GEOIP_COUNTRY_HEADERS` | header name list | `cloudfront-viewer-country,cf-ipcountry,x-geo-country` | Comma-separated headers a proxy or CDN sets, first one present wins. An ISO 3166-1 alpha-2 code; `XX` and `T1` mean "unknown" and are ignored. **Only read when the request came through a `TRUSTED_PROXIES` peer**, exactly like `X-Forwarded-For`. |
+| `GEOIP_LATITUDE_HEADERS` | header name list | `cloudfront-viewer-latitude,x-geo-latitude` | Coordinates from the same proxy, needed for impossible travel. A country without them still works. |
+| `GEOIP_LONGITUDE_HEADERS` | header name list | `cloudfront-viewer-longitude,x-geo-longitude` | |
+| `GEOIP_DB` | file path | unset | A MaxMind DB file (GeoLite2 or GeoIP2, City or Country), read into memory at start-up and used when no trusted header answered. rIDM bundles no data: supply and refresh the file yourself, under its own licence. A file that cannot be read is logged and treated as absent. |
+
 The argon2 parameters may not go below 8 MiB, 1 iteration and 1 lane. Hashes made with weaker parameters are upgraded on the user's next successful sign-in, so raising them is safe.
 
 ## Native TLS

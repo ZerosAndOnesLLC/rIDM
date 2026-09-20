@@ -258,6 +258,23 @@ pub enum EventKind {
     TermsAccepted {
         user_id: Uuid,
     },
+    /// A sign-in scored at or above the tenant's step-up threshold: the
+    /// second factor was demanded whatever the MFA policy says.
+    RiskStepUp {
+        user_id: Uuid,
+        score: u32,
+        /// `new_device`, `new_country`, `impossible_travel`, `velocity`.
+        signals: Vec<String>,
+        country: Option<String>,
+    },
+    /// A sign-in scored at or above the tenant's block threshold and was
+    /// refused. No session survives it.
+    RiskBlocked {
+        user_id: Uuid,
+        score: u32,
+        signals: Vec<String>,
+        country: Option<String>,
+    },
 
     // Security notices
     /// A sign-in from a browser the user had not used before.
@@ -505,6 +522,8 @@ impl EventKind {
             Self::LoginFailed { .. } => "login.failed",
             Self::UserLocked { .. } => "user.locked",
             Self::TermsAccepted { .. } => "user.terms_accepted",
+            Self::RiskStepUp { .. } => "risk.step_up",
+            Self::RiskBlocked { .. } => "risk.blocked",
             Self::NewDeviceLogin { .. } => "login.new_device",
             Self::EmailChanged { .. } => "user.email_changed",
             Self::MfaChanged { .. } => "mfa.changed",

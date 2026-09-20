@@ -141,6 +141,12 @@ pub struct LoginFlow {
     /// The browser presented a live trusted-device cookie for this user.
     #[serde(default)]
     pub trusted_device: bool,
+    /// The risk policy scored this sign-in at or above the step-up
+    /// threshold: the second factor is required whatever the MFA policy and
+    /// the trusted-device cookie say. Decided once, when the first factor
+    /// passed, and carried for the rest of the flow.
+    #[serde(default)]
+    pub risk_step_up: bool,
     /// The user asked to remember this browser; the device is registered
     /// (and its cookie set) when the flow finishes, never before.
     #[serde(default)]

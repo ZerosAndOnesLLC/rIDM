@@ -88,6 +88,10 @@ validator = { version = "=0.21.0", features = ["derive"] }
 regex = "=1.13.1"
 url = { version = "=2.5.8", features = ["serde"] }
 ipnet = { version = "=2.12.2", features = ["serde"] }
+# Geo-IP lookups for risk-based adaptive authentication; reads a MaxMind DB
+# file the deployment supplies (no data is bundled). Default features only:
+# the file is read into memory rather than memory-mapped.
+maxminddb = { version = "=0.32.0", default-features = false }
 async-trait = "=0.1.92"
 futures = "=0.3.34"
 

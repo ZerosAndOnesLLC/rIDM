@@ -33,6 +33,7 @@ export const EVENT_NAMES = [
   "invitation.accepted", "invitation.created", "invitation.revoked",
   "login.failed", "login.new_device", "login.passwordless_sent", "login.succeeded",
   "master_key.rotated", "mfa.changed",
+  "risk.blocked", "risk.step_up",
   "role.assigned", "role.composite_added", "role.composite_removed", "role.created", "role.deleted", "role.unassigned", "role.updated",
   "scope.created", "scope.deleted", "scope.updated",
   "session.created", "session.revoked", "signing_key.created", "signing_key.status_changed",

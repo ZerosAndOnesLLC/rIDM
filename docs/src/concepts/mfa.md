@@ -77,6 +77,13 @@ complete sign-in including any second step) skips the policy-driven second
 step for `settings.session.remember_device_days`. See
 [Sign-in flows and sessions](flows-and-sessions.md#session-policy).
 
+The tenant's **risk policy** can demand the second step for one sign-in
+whatever the mode above says, when that sign-in scores as unusual — from a
+new country, after impossible travel, on a new device, or from an address
+behind a run of failures. A trusted device does not waive a step-up the risk
+policy asked for: the cookie says which browser this is, not who is holding
+it. See [Adaptive authentication](../admin/adaptive-auth.md).
+
 ## Step-up: acr and amr
 
 Applications learn how a user signed in from two claims, carried in ID tokens

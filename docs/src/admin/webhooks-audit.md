@@ -33,6 +33,8 @@ those of the event's `kind` document (next to `type`).
 | `login.new_device` | `user_id`, `session_id` |
 | `login.brokered` | `user_id`, `idp_id`, `provider` |
 | `mfa.changed` | `user_id`, `change` |
+| `risk.step_up` | `user_id`, `score`, `signals`, `country` |
+| `risk.blocked` | `user_id`, `score`, `signals`, `country` |
 | `device.trusted`, `device.revoked` | `user_id`, `device_id` |
 | `session.created`, `session.revoked` | `session_id`, `user_id` |
 | `authorization.granted` | `user_id`, `client_id`, `scopes` |

@@ -69,6 +69,7 @@ The tenant's status (active or disabled) is not part of the document.
 | `session` | `idle_timeout_secs` (1800), `absolute_timeout_secs` (43200), `max_concurrent` (0, unlimited), `remember_device_days` (30), `access_token_ttl_secs` (300), `refresh_token_ttl_secs` (2592000), `id_token_ttl_secs` (300) |
 | `mfa` | `{"mode": "off"}`; also `optional`, `required`, `required_for_admins`, `{"mode": "required_for_roles", "roles": [...]}` |
 | `mfa_methods` | `totp` (`true`), `email_otp` (`false`), `sms_otp` (`false`) |
+| `risk` | `enabled` (`false`), `weights` (`new_device` 20, `new_country` 50, `impossible_travel` 60, `velocity` 40), `step_up_at` (50), `block_at` (100), `impossible_travel_kmh` (900), `velocity_window_minutes` (15), `velocity_max_failures` (10) |
 | `auth` | first-factor methods: `password` (`true`), `magic_link`, `email_otp`, `sms_otp`, `passkey` (all `false`) |
 | `registration` | `enabled` (`false`), `require_email_verification` (`true`), `require_terms` (`false`), `terms_url`, `privacy_url` (`null`), `allowed_email_domains` (`[]`, any). A leftover `captcha` key from older exports is ignored; the setting is `captcha.on_registration` |
 | `locale` | `default` (`"en"`), `supported` (`["en"]`) |

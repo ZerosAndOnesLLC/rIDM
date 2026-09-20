@@ -19,7 +19,7 @@ use crate::error::AppError;
 use crate::middleware::{TenantCtx, client_ip};
 use crate::services::flows::{self, AuthStep, ConsentOutcome};
 use crate::services::login_flows::FlowStage;
-use crate::services::{sessions, trusted_devices};
+use crate::services::{geoip, sessions, trusted_devices};
 use crate::state::AppState;
 use webauthn_rs::prelude::{PublicKeyCredential, RegisterPublicKeyCredential};
 
@@ -169,7 +169,8 @@ async fn password(
     if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
         return e.into_response();
     }
-    let ip = client_ip(&state, &headers, Some(peer));
+    let origin = geoip::Origin::of_request(&state, &headers, Some(peer));
+    let (ip, location) = (origin.ip_string(), origin.location);
     let ua = headers
         .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok())
@@ -187,6 +188,7 @@ async fn password(
         captcha_token: body.captcha_token,
         device_secret: trusted_devices::secret_from_headers(&state, &tenant.tenant, &headers),
         remember_device: body.remember_device,
+        location,
     };
     match flows::password_step(&state, &tenant, flow, attempt).await {
         Ok(AuthStep::Authenticated { session, flow }) => {
@@ -200,6 +202,7 @@ async fn password(
             }
             res
         }
+        Ok(AuthStep::Blocked { redirect_to }) => blocked(&redirect_to),
         Ok(AuthStep::Rejected { flow, locked }) => {
             let (code, message) = if locked {
                 (
@@ -219,6 +222,22 @@ async fn password(
         }
         Err(e) => e.into_response(),
     }
+}
+
+/// The risk policy refused this sign-in: the browser is sent back to the
+/// client with `access_denied` rather than shown a step it could retry.
+fn blocked(redirect_to: &str) -> Response {
+    no_store(
+        (
+            StatusCode::FORBIDDEN,
+            axum::Json(json!({
+                "error": "access_denied",
+                "error_description": "the sign-in was refused",
+                "redirect_to": redirect_to,
+            })),
+        )
+            .into_response(),
+    )
 }
 
 #[derive(Deserialize)]
@@ -570,8 +589,10 @@ async fn passkey_finish(
     if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
         return e.into_response();
     }
+    let origin = geoip::Origin::of_request(&state, &headers, Some(peer));
+    let (ip, location) = (origin.ip_string(), origin.location);
     let ctx = flows::RequestContext {
-        ip: client_ip(&state, &headers, Some(peer)),
+        ip,
         user_agent: headers
             .get(header::USER_AGENT)
             .and_then(|v| v.to_str().ok())
@@ -582,6 +603,7 @@ async fn passkey_finish(
             .flatten(),
         device_secret: trusted_devices::secret_from_headers(&state, &tenant.tenant, &headers),
         remember_device: body.remember_device,
+        location,
     };
     match flows::passkey_finish(&state, &tenant, flow, &body.credential, ctx).await {
         Ok(AuthStep::Authenticated { session, flow }) => {
@@ -595,6 +617,7 @@ async fn passkey_finish(
             }
             res
         }
+        Ok(AuthStep::Blocked { redirect_to }) => blocked(&redirect_to),
         Ok(AuthStep::Rejected { flow, .. }) => no_store(
             (
                 StatusCode::UNAUTHORIZED,
@@ -1022,8 +1045,10 @@ async fn verify_passwordless(
     if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
         return e.into_response();
     }
+    let origin = geoip::Origin::of_request(&state, &headers, Some(peer));
+    let (ip, location) = (origin.ip_string(), origin.location);
     let ctx = flows::RequestContext {
-        ip: client_ip(&state, &headers, Some(peer)),
+        ip,
         user_agent: headers
             .get(header::USER_AGENT)
             .and_then(|v| v.to_str().ok())
@@ -1034,6 +1059,7 @@ async fn verify_passwordless(
             .flatten(),
         device_secret: trusted_devices::secret_from_headers(&state, &tenant.tenant, &headers),
         remember_device: body.remember_device,
+        location,
     };
     match flows::passwordless_verify_step(&state, &tenant, flow, method, &body.code, ctx).await {
         Ok(AuthStep::Authenticated { session, flow }) => {
@@ -1043,6 +1069,7 @@ async fn verify_passwordless(
             }
             res
         }
+        Ok(AuthStep::Blocked { redirect_to }) => blocked(&redirect_to),
         Ok(AuthStep::Rejected { flow, .. }) => no_store(
             (
                 StatusCode::UNAUTHORIZED,
@@ -1120,12 +1147,15 @@ async fn register(
     if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
         return e.into_response();
     }
+    let origin = geoip::Origin::of_request(&state, &headers, Some(peer));
+    let (ip, location) = (origin.ip_string(), origin.location);
     let ctx = flows::RequestContext {
-        ip: client_ip(&state, &headers, Some(peer)),
+        ip,
         user_agent: headers
             .get(header::USER_AGENT)
             .and_then(|v| v.to_str().ok())
             .map(|s| s.chars().take(512).collect()),
+        location,
         ..Default::default()
     };
     match flows::register_step(
@@ -1149,6 +1179,7 @@ async fn register(
             }
             res
         }
+        Ok(AuthStep::Blocked { redirect_to }) => blocked(&redirect_to),
         // Waiting for the verification link.
         Ok(AuthStep::Rejected { flow, .. }) => respond_state(&state, &tenant, &flow).await,
         Err(e) => e.into_response(),

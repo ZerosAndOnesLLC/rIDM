@@ -89,6 +89,7 @@ export function NumberInput({
   nullable = false,
   describedBy,
   unit,
+  disabled,
 }: {
   id: string;
   value: number | null;
@@ -98,6 +99,7 @@ export function NumberInput({
   nullable?: boolean;
   describedBy?: string;
   unit?: string;
+  disabled?: boolean;
 }) {
   const [text, setText] = useState(value === null ? "" : String(value));
   const [seen, setSeen] = useState(value);
@@ -111,6 +113,7 @@ export function NumberInput({
       <input
         id={id}
         inputMode="numeric"
+        disabled={disabled}
         aria-invalid={invalid || undefined}
         aria-describedby={describedBy}
         value={text}
