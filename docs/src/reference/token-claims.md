@@ -32,6 +32,7 @@ Access tokens are JWTs unless the client is registered with `access_token_format
 | `exp` | always | expiry; see [lifetimes](#lifetimes) |
 | `jti` | always | a UUIDv7; revocation denylists it until `exp` |
 | `tid` | always | the tenant's UUID. A relying party serving several tenants of one deployment keys on it |
+| `org_id` | the sign-in acts in an organization | the organization's UUID (see [Organizations](../concepts/organizations.md)). It comes from the session, so the same user signing in to another organization gets another value; no mapper can write it |
 | `scope` | always | the granted scopes, space-separated (see [Scopes in the token](#scopes-in-the-token)) |
 | `roles` | a user subject | names of the user's effective roles: direct, inherited through groups and their ancestors, and expanded composites; a `roles` claim mapper replaces it |
 | `groups` | a user subject | names (not paths) of the user's groups, including ancestor groups; a `groups` claim mapper replaces it |
@@ -85,6 +86,7 @@ Issued from the token endpoint when the scope includes `openid` and there is a u
 | `iat`, `exp` | always | issue time and expiry |
 | `auth_time` | always | when the user authenticated; a token minted from a refresh token repeats the original value (OIDC Core §12.2) |
 | `tid` | always | the tenant's UUID |
+| `org_id` | the sign-in acts in an organization | as in the access token |
 | `nonce` | the authorization request had one | echoed |
 | `sid` | a browser session exists | the session's UUID, the value back- and front-channel logout name |
 | `amr`, `acr` | as in the access token | refresh-derived ID tokens repeat the original values |

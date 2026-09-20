@@ -1311,6 +1311,18 @@ template (must compile) or audience, with the tokens they are included in. Detai
 save as you go; membership-style changes apply at once. Identity providers have their
 own page (see above).
 
+**Organizations** (`/console/organizations/`): a tenant's customers, business units or
+teams, as a grouping inside one tenant (not a tenant of their own: users, clients, keys
+and settings stay shared). A user may belong to several, one of them primary. The page
+searches the list and holds a detail with name, slug, status and description, members
+added through a user search, email domains with the TXT record to publish and a check
+button, an auto-join switch, and the roles granted inside the organization. A role granted
+inside one applies only to sessions acting there. A session's organization is chosen on
+the login page when a user belongs to more than one (or named by an `organization`
+parameter on `/authorize`) and becomes the `org_id` claim in the tokens; members see what
+they belong to in the account console. A verified domain with auto-join adds everyone with
+a verified address there as they sign in. See the docs' *Organizations* pages.
+
 **Overview** (`/console/`): the dashboard — sign-ins, failed sign-ins and live sessions
 for the chosen window (7, 30 or 90 days), two-step adoption, a sign-ins-per-day line
 chart with a table view, the most authorized clients, and user counts — fed by the new

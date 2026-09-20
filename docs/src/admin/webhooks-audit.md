@@ -47,6 +47,9 @@ those of the event's `kind` document (next to `type`).
 | `dcr_token.created`, `dcr_token.revoked` | `token_id` (a dynamic registration [initial access token](clients.md#initial-access-tokens)) |
 | `group.created`, `group.updated`, `group.deleted` | `group_id` |
 | `group.member_added`, `group.member_removed` | `group_id`, `user_id` |
+| `organization.created`, `organization.updated`, `organization.deleted` | `org_id` |
+| `organization.member_added`, `organization.member_removed` | `org_id`, `user_id` |
+| `organization.domain_added`, `organization.domain_verified`, `organization.domain_removed` | `org_id`, `domain_id` |
 | `role.created`, `role.updated`, `role.deleted` | `role_id` |
 | `role.assigned`, `role.unassigned` | `role_id`, `user_id` or `group_id` |
 | `role.composite_added`, `role.composite_removed` | `parent_role_id`, `child_role_id` |
