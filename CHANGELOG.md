@@ -24,6 +24,17 @@ release renames that heading to the version and date.
   `ridm:orgs:read` and `ridm:orgs:write` permissions (user managers hold both),
   a console page, and a read-only list in the account console. A tenant with no
   organizations is unaffected, and no token gains a claim.
+- Organization administrators: a role granted *inside* an organization now
+  reaches the admin API for that organization alone — its record, members,
+  domains, invitations and internal role grants — and never satisfies a
+  tenant-wide permission check. A sixth built-in role, `ridm:org-admin`, is
+  seeded in every tenant for it. Creating, deleting and listing organizations,
+  changing a slug or status, and adding an existing user as a member stay
+  tenant-wide; an organization's own administrator adds people through new
+  org-scoped invitation routes, and `GET …/{org}/grantable-roles` says which
+  roles they may grant there. `GET /admin/me` gained `organization` and
+  `organization_permissions`, the console opens such an administrator on their
+  own organization, and the MFA-for-administrators policy counts them.
 
 ## [0.1.0] - 2026-09-19
 

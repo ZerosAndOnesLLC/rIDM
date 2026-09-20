@@ -12,25 +12,29 @@ import { formatDate } from "@/i18n";
 
 /** Landing page: who you are, what you can do, and the tenant in view. */
 export default function Overview() {
-  const { me, client } = useConsole();
+  const { me, client, can, org } = useConsole();
   const tenant = useConsoleTenant();
   const [showAll, setShowAll] = useState(false);
+  // An administrator who only administers an organization reads neither the
+  // tenant nor its statistics; the page then talks about the organization.
+  const tenantWide = can("ridm:tenants:read");
   const detail = useQuery({
     queryKey: ["tenant", tenant],
-    enabled: Boolean(tenant),
+    enabled: Boolean(tenant) && tenantWide,
     queryFn: async () => {
       const { data, error } = await client.GET("/admin/tenants/{slug}", { params: { path: { slug: tenant! } } });
       if (error) throw new Error(error.detail ?? error.title);
       return data;
     },
   });
-  const permissions = me?.permissions ?? [];
+  const permissions =
+    (me?.permissions?.length ?? 0) > 0 ? me!.permissions : (me?.organization_permissions ?? []);
   const shown = showAll ? permissions : permissions.slice(0, 12);
 
   return (
     <>
       <PageHeader title="Overview" sub={detail.data ? `${detail.data.display_name} · ${detail.data.slug}` : tenant ?? undefined} />
-      {tenant && (
+      {tenant && tenantWide && (
         <div className="mb-6">
           <Dashboard tenant={tenant} />
         </div>
@@ -45,6 +49,7 @@ export default function Overview() {
               </span>
             </Row>
             <Row label="Home tenant">{me?.tenant_slug}</Row>
+            {org && <Row label="Organization">{org.display_name}</Row>}
             <Row label="Scope">{me?.scope === "global" ? <Badge tone="accent">Global</Badge> : <Badge>Tenant</Badge>}</Row>
             <Row label="Roles">
               <span className="flex flex-wrap justify-end gap-1">
@@ -56,8 +61,18 @@ export default function Overview() {
           </dl>
         </Card>
 
-        <Card title="Tenant">
-          {detail.isError ? (
+        <Card title={tenantWide ? "Tenant" : "Organization"}>
+          {!tenantWide ? (
+            org ? (
+              <dl>
+                <Row label="Name">{org.display_name}</Row>
+                <Row label="Slug">{org.slug}</Row>
+                <Row label="Tenant">{me?.tenant_slug}</Row>
+              </dl>
+            ) : (
+              <p className="text-[0.875rem] text-muted">Nothing to show here with these permissions.</p>
+            )
+          ) : detail.isError ? (
             <p className="text-[0.875rem] text-danger">{detail.error.message}</p>
           ) : detail.data ? (
             <dl>
@@ -73,7 +88,7 @@ export default function Overview() {
         </Card>
 
         <Card
-          title="Permissions"
+          title={(me?.permissions?.length ?? 0) > 0 ? "Permissions" : "Permissions in this organization"}
           actions={<span className="text-[0.8125rem] text-muted">{permissions.length}</span>}
         >
           <div className="flex flex-wrap gap-1.5">

@@ -36,9 +36,26 @@ pub fn effective_roles(
     }
 }
 
-/// Admin permissions of a user, derived from effective roles (same version token).
-pub fn admin_permissions(tenant_id: Uuid, version: &str, user_id: Uuid) -> String {
-    format!("{PREFIX}:t:{tenant_id}:admin_perms:{version}:user:{user_id}")
+/// Effective roles of a user ignoring org scoping (every grant counts).
+pub fn effective_roles_anywhere(tenant_id: Uuid, version: &str, user_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:roles:{version}:user:{user_id}:org:any")
+}
+
+/// Admin permissions of a user, derived from effective roles (same version
+/// token). The organization the caller acts in is part of the key: a grant
+/// scoped to one organization must not be served to a session in another.
+pub fn admin_permissions(
+    tenant_id: Uuid,
+    version: &str,
+    user_id: Uuid,
+    org: Option<String>,
+) -> String {
+    match org {
+        Some(org) => {
+            format!("{PREFIX}:t:{tenant_id}:admin_perms:{version}:user:{user_id}:org:{org}")
+        }
+        None => format!("{PREFIX}:t:{tenant_id}:admin_perms:{version}:user:{user_id}"),
+    }
 }
 
 pub fn profile_schema(tenant_id: Uuid) -> String {

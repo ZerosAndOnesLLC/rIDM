@@ -230,7 +230,7 @@ async fn migrations_apply_cleanly_and_are_idempotent() {
         let mut tx = pool.begin().await.unwrap();
         ridm_api::db::bind_tenant(&mut tx, tid).await.unwrap();
         // Superusers bypass RLS, so scope explicitly. Every tenant insert
-        // seeds the five built-in admin roles on top of what the test added.
+        // seeds the six built-in admin roles on top of what the test added.
         let (u, g, r, b): (i64, i64, i64, i64) = sqlx::query_as(
             "SELECT (SELECT count(*) FROM users WHERE tenant_id = $1), \
                     (SELECT count(*) FROM groups WHERE tenant_id = $1), \
@@ -241,7 +241,7 @@ async fn migrations_apply_cleanly_and_are_idempotent() {
         .fetch_one(&mut *tx)
         .await
         .unwrap();
-        assert_eq!((u, g, r, b), (1, 1, 1, 5));
+        assert_eq!((u, g, r, b), (1, 1, 1, 6));
         tx.rollback().await.unwrap();
         pool.close().await;
     };

@@ -198,6 +198,35 @@ pub async fn permissions_for_roles<'e>(
     .await
 }
 
+/// Admin permissions each of `role_ids` carries once composites are expanded,
+/// as (the role asked about, permission name) pairs. One query for the whole
+/// set, which is what a role picker needs.
+pub async fn permissions_per_role<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    resource_server_id: Uuid,
+    role_ids: &[Uuid],
+) -> Result<Vec<(Uuid, String)>, sqlx::Error> {
+    sqlx::query_as(
+        "WITH RECURSIVE reach AS ( \
+            SELECT id AS root_id, id AS role_id, 0 AS depth \
+              FROM roles WHERE tenant_id = $1 AND id = ANY($3) \
+            UNION \
+            SELECT re.root_id, rc.child_role_id, re.depth + 1 FROM role_composites rc \
+              JOIN reach re ON rc.parent_role_id = re.role_id \
+             WHERE rc.tenant_id = $1 AND re.depth < 64) \
+         SELECT DISTINCT re.root_id, p.name FROM reach re \
+           JOIN permission_assignments pa ON pa.tenant_id = $1 AND pa.role_id = re.role_id \
+           JOIN permissions p ON p.tenant_id = pa.tenant_id AND p.id = pa.permission_id \
+          WHERE p.resource_server_id = $2 ORDER BY re.root_id, p.name",
+    )
+    .bind(tenant_id)
+    .bind(resource_server_id)
+    .bind(role_ids)
+    .fetch_all(exec)
+    .await
+}
+
 /// Change the mutable columns (identifier and `built_in` never change).
 pub async fn update<'e>(
     exec: impl PgExecutor<'e>,

@@ -37,7 +37,7 @@ Content-Type: application/json
 
 A new tenant is seeded with the standard scopes (`openid`, `profile`, `email`,
 `phone`, `address`, `offline_access`), the `urn:ridm:admin` and `urn:ridm:account`
-resource servers, the five built-in admin roles, and the two built-in console clients
+resource servers, the six built-in admin roles, and the two built-in console clients
 (`ridm-admin-console`, `ridm-account-console`). Its first signing key is made on first
 use. It has no users: invite or create an administrator for it next (see
 [Users, invitations and bulk import](users.md)).

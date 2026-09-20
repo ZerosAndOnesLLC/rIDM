@@ -144,7 +144,7 @@ printf '%s' "$CLIENT_SECRET" | ridm login --url https://id.example.com \
 |---------|-------|------|
 | `ridm login` | `--name NAME` profile to write (default: the selected one, else `default`); `--token-stdin`; `--client-id ID`; `--client-secret-stdin` (needs `--client-id`); `--device` (needs `--client-id`); `--scope SCOPE` (default `openid`, for the device grant) | Obtain a credential, verify it with `GET /admin/me`, store it. `--token-stdin` and `--client-id` are mutually exclusive; a global `--token` is stored as given |
 | `ridm logout` | `--all` | Forget the profile's credential; `--all` removes the profile |
-| `ridm whoami` | — | `GET /admin/me`: user, tenant, scope (`global` or `tenant`), roles and permissions |
+| `ridm whoami` | — | `GET /admin/me`: user, tenant, scope (`global` or `tenant`), roles and permissions, and the organization the sign-in acts in when there is one |
 | `ridm profile list` | — | Stored profiles, the selected one marked, and the file path |
 | `ridm profile use NAME` | — | Select the profile commands use by default |
 | `ridm profile show [NAME]` | — | One profile (default: the selected one), credential redacted |

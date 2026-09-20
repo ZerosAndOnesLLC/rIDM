@@ -151,6 +151,16 @@ pub async fn whoami(ctx: &mut Ctx) -> Result<()> {
     println!("scope       {}", output::field(&me, "scope"));
     println!("roles       {}", join(&me, "roles"));
     println!("permissions {}", join(&me, "permissions"));
+    // A token issued in a session that acts in an organization also carries
+    // what is granted inside it (never a personal access token's).
+    if let Some(org) = me.get("organization").filter(|v| !v.is_null()) {
+        println!(
+            "org         {} ({})",
+            output::field(org, "display_name"),
+            output::field(org, "slug")
+        );
+        println!("org perms   {}", join(&me, "organization_permissions"));
+    }
     Ok(())
 }
 

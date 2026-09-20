@@ -98,6 +98,7 @@ async fn subject_token(fx: &Fx) -> String {
             audiences: &["https://frontend.example"],
             session_id: Some(Uuid::new_v4()),
             ttl: Duration::from_secs(120),
+            ..Default::default()
         },
     )
     .await

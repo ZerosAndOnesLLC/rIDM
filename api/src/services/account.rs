@@ -167,9 +167,14 @@ pub async fn delete_own(state: &AppState, tenant: &Tenant, user: &User) -> AppRe
             "this organisation does not allow deleting your own account".into(),
         ));
     }
-    if !admin_access::permissions_of_user(state, tenant.id, user.id)
-        .await?
-        .is_empty()
+    if !admin_access::permissions_of_user(
+        state,
+        tenant.id,
+        user.id,
+        admin_access::OrgScope::Anywhere,
+    )
+    .await?
+    .is_empty()
     {
         return Err(AppError::Forbidden(
             "administrators must be removed by another administrator".into(),

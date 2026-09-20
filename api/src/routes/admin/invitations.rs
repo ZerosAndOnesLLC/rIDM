@@ -50,7 +50,15 @@ async fn list(
 ) -> AppResult<Json<Page<Invitation>>> {
     admin.require(tenant.id, P_READ)?;
     Ok(Json(
-        invitations::list(&state, tenant.id, q.open_only, q.cursor.as_deref(), q.limit).await?,
+        invitations::list(
+            &state,
+            tenant.id,
+            None,
+            q.open_only,
+            q.cursor.as_deref(),
+            q.limit,
+        )
+        .await?,
     ))
 }
 

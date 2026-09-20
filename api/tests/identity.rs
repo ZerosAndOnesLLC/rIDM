@@ -646,7 +646,7 @@ async fn effective_roles_resolve_groups_ancestors_and_composites() {
             .is_empty()
     );
     let all = roles::list(st, tid, None).await.unwrap();
-    // Every tenant also carries the five built-in `ridm:*` admin roles.
+    // Every tenant also carries the six built-in `ridm:*` admin roles.
     assert_eq!(all.iter().filter(|r| !r.built_in).count(), 4);
-    assert_eq!(all.iter().filter(|r| r.built_in).count(), 5);
+    assert_eq!(all.iter().filter(|r| r.built_in).count(), 6);
 }

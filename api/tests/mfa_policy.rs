@@ -9,12 +9,12 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use common::TestApp;
 use common::admin;
 use ridm_api::models::{
-    ClientType, MfaPolicy, NewClient, NewRole, NewUser, Principal, TenantSettings,
+    ClientType, MfaPolicy, NewClient, NewOrganization, NewRole, NewUser, Principal, TenantSettings,
 };
-use ridm_api::services::admin_access::ADMIN_ROLE;
+use ridm_api::services::admin_access::{ADMIN_ROLE, ORG_ADMIN_ROLE};
 use ridm_api::services::password::{self, SetPasswordOptions};
 use ridm_api::services::tenants::{self, TenantUpdate};
-use ridm_api::services::{clients, flows, roles, totp, users};
+use ridm_api::services::{clients, flows, organizations, roles, totp, users};
 use ridm_core::events::Actor;
 use serde_json::{Value, json};
 use totp_rs::{Algorithm, Builder, Secret};
@@ -323,11 +323,45 @@ async fn required_for_admins_asks_anyone_with_an_admin_permission() {
     let tid = fx.app.tenant.id;
     let alice = user(&fx, "alice").await;
     user(&fx, "bob").await;
+    let carol = user(&fx, "carol").await;
     admin::assign(&fx.app, tid, alice, ADMIN_ROLE).await;
+
+    // Phase 12.2: an organization's administrator is an administrator too,
+    // and the policy is applied before any organization has been chosen.
+    let org = organizations::create(
+        &fx.app.state,
+        tid,
+        Actor::System,
+        NewOrganization {
+            slug: "acme".into(),
+            display_name: "Acme".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    organizations::add_member(&fx.app.state, tid, Actor::System, org.id, carol)
+        .await
+        .unwrap();
+    organizations::assign_role(
+        &fx.app.state,
+        tid,
+        Actor::System,
+        org.id,
+        admin::role_id(&fx.app, tid, ORG_ADMIN_ROLE).await,
+        Principal::User { id: carol },
+    )
+    .await
+    .unwrap();
 
     let (_, after) = password_login(&client(), &fx, "alice", &[]).await;
     assert_eq!(after["stage"], "mfa", "an administrator must enrol");
     assert_eq!(after["mfa"]["enroll"], true);
+    let (_, after) = password_login(&client(), &fx, "carol", &[]).await;
+    assert_eq!(
+        after["stage"], "mfa",
+        "an organization's administrator must enrol too"
+    );
     let (_, after) = password_login(&client(), &fx, "bob", &[]).await;
     assert_eq!(after["stage"], "done");
 }

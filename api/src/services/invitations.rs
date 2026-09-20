@@ -190,9 +190,12 @@ pub async fn revoke(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
     Ok(())
 }
 
+/// `org_id` narrows the page to one organization's invitations, which is what
+/// an organization's own administrator may see.
 pub async fn list(
     state: &AppState,
     tenant_id: Uuid,
+    org_id: Option<Uuid>,
     open_only: bool,
     cursor: Option<&str>,
     limit: Option<u32>,
@@ -200,7 +203,8 @@ pub async fn list(
     let after = cursor.map(Cursor::decode).transpose()?;
     let limit = page_size(limit);
     let mut tx = db::read_tx(&state.db_read, tenant_id).await?;
-    let rows = repos::invitations::list(&mut *tx, tenant_id, open_only, after, limit).await?;
+    let rows =
+        repos::invitations::list(&mut *tx, tenant_id, org_id, open_only, after, limit).await?;
     tx.commit().await?;
     Ok(Page::from_rows(rows, limit, |i| Cursor {
         created_at: i.created_at,

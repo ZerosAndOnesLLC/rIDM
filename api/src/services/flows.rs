@@ -1030,9 +1030,16 @@ pub async fn policy_requires_mfa(
             roles.iter().any(|r| held.iter().any(|h| h == r))
         }
         MfaPolicy::RequiredForAdmins => {
-            !admin_access::permissions_of_user(state, tenant.id, user.id)
-                .await?
-                .is_empty()
+            // An organization's administrator is an administrator too, and no
+            // organization has been chosen at this point in the flow.
+            !admin_access::permissions_of_user(
+                state,
+                tenant.id,
+                user.id,
+                admin_access::OrgScope::Anywhere,
+            )
+            .await?
+            .is_empty()
         }
     };
     Ok(required || totp::has_second_factor(state, tenant.id, user.id).await?)
