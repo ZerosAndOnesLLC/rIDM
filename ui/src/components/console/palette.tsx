@@ -5,7 +5,7 @@ import { AppWindow, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useDebounced } from "@/lib/console/hooks";
-import { allNavItems, consoleHref } from "@/lib/console/nav";
+import { allNavItems, consoleHref, navVisible } from "@/lib/console/nav";
 import { useConsole } from "@/lib/console/session";
 import { Picker, type PickerItem } from "./picker";
 import { Kbd } from "./ui";
@@ -15,7 +15,7 @@ import { Kbd } from "./ui";
  * and clients of the current tenant by prefix.
  */
 export function CommandPalette({ open, onOpenChange, tenant }: { open: boolean; onOpenChange: (o: boolean) => void; tenant: string | null }) {
-  const { client, can } = useConsole();
+  const { client, can, canInOrg, me } = useConsole();
   const router = useRouter();
   const [query, setQuery] = useState("");
   const q = useDebounced(query.trim(), 150);
@@ -50,7 +50,11 @@ export function CommandPalette({ open, onOpenChange, tenant }: { open: boolean; 
   const lower = q.toLowerCase();
   const items: PickerItem[] = [
     ...allNavItems()
-      .filter((n) => can(n.permission) && (!lower || n.label.toLowerCase().includes(lower)))
+      .filter(
+        (n) =>
+          navVisible(n, { can, canInOrg, global: me?.scope === "global" }) &&
+          (!lower || n.label.toLowerCase().includes(lower)),
+      )
       .map<PickerItem>((n) => ({
         id: `page:${n.href}`,
         group: "Pages",

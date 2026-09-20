@@ -15,6 +15,11 @@ export interface NavItem {
   key?: string;
   /** Only meaningful for global administrators (signed in through `master`). */
   global?: boolean;
+  /**
+   * The page also opens for an administrator who holds `permission` only
+   * inside the organization their sign-in acts in (Phase 12.2).
+   */
+  orgScoped?: boolean;
 }
 
 export interface NavGroup {
@@ -32,7 +37,7 @@ export const NAV: NavGroup[] = [
     items: [
       { label: "Users", href: "/console/users/", icon: UsersRound, permission: "ridm:users:read", key: "u" },
       { label: "Groups", href: "/console/groups/", icon: FolderTree, permission: "ridm:groups:read", key: "g" },
-      { label: "Organizations", href: "/console/organizations/", icon: Briefcase, permission: "ridm:orgs:read", key: "z" },
+      { label: "Organizations", href: "/console/organizations/", icon: Briefcase, permission: "ridm:orgs:read", key: "z", orgScoped: true },
       { label: "Roles", href: "/console/roles/", icon: ShieldCheck, permission: "ridm:roles:read", key: "r" },
     ],
   },
@@ -79,6 +84,18 @@ export const PAGE_TITLES: Record<string, string> = {
 
 export function allNavItems(): NavItem[] {
   return NAV.flatMap((g) => g.items);
+}
+
+export interface NavAccess {
+  can: (permission: string | undefined) => boolean;
+  canInOrg: (permission: string | undefined) => boolean;
+  global: boolean;
+}
+
+/** May this administrator open the page? */
+export function navVisible(item: NavItem, { can, canInOrg, global }: NavAccess): boolean {
+  if (item.global && !global) return false;
+  return item.orgScoped ? canInOrg(item.permission) : can(item.permission);
 }
 
 /** `href` with the current tenant carried along; other parameters are dropped. */

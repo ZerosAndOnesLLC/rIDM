@@ -162,8 +162,13 @@ async fn scim_cannot_add_members_to_a_group_that_grants_admin_permissions() {
     )
     .await;
     assert_eq!(status, 200, "{body}");
-    let held = admin_access::permissions_of_user(&app.state, tid, mallory)
-        .await
-        .unwrap();
+    let held = admin_access::permissions_of_user(
+        &app.state,
+        tid,
+        mallory,
+        admin_access::OrgScope::Anywhere,
+    )
+    .await
+    .unwrap();
     assert!(held.is_empty(), "mallory must hold no admin permission");
 }

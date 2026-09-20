@@ -157,10 +157,11 @@ address), and MFA changes (an authenticator added, a recovery code used). Each n
 tenant under `settings.notifications`.
 
 The admin API (`/admin/...`) is guarded by `ridm:<resource>:<action>` permissions that
-every tenant carries on a built-in resource server, `urn:ridm:admin`, with five built-in
-roles: `ridm:owner`, `ridm:admin`, `ridm:user-manager`, `ridm:client-manager` and
-`ridm:viewer`. Roles held in `master` reach every tenant; roles held in any other
-tenant reach that tenant only. Permissions are re-read from the caller's effective
+every tenant carries on a built-in resource server, `urn:ridm:admin`, with six built-in
+roles: `ridm:owner`, `ridm:admin`, `ridm:user-manager`, `ridm:client-manager`,
+`ridm:org-admin` and `ridm:viewer`. Roles held in `master` reach every tenant; roles
+held in any other tenant reach that tenant only, and a role granted inside an
+organization administers that organization alone. Permissions are re-read from the caller's effective
 roles on every request, so revoking a role takes effect immediately. See
 [Admin API access](#admin-api-access).
 
@@ -1057,7 +1058,7 @@ pagination with `?cursor=&limit=`):
 
 Besides one suite per resource (`api/tests/admin_*.rs`), `admin_matrix.rs` derives every
 admin operation and the permission it requires from the route sources and checks all
-five built-in roles, the global owner and anonymous callers against each one, then calls
+six built-in roles, the global owner and anonymous callers against each one, then calls
 every tenant-scoped operation across tenants; `admin_pagination.rs` walks listings with
 inserts in the middle; `openapi.rs` keeps `api/openapi.json` current; and the Playwright
 spec `ui/e2e/openapi-contract.spec.ts` compares the live document with the committed one
@@ -1321,7 +1322,14 @@ inside one applies only to sessions acting there. A session's organization is ch
 the login page when a user belongs to more than one (or named by an `organization`
 parameter on `/authorize`) and becomes the `org_id` claim in the tokens; members see what
 they belong to in the account console. A verified domain with auto-join adds everyone with
-a verified address there as they sign in. See the docs' *Organizations* pages.
+a verified address there as they sign in. An **organization administrator** — someone
+holding `ridm:org-admin` (or any role) through a grant made *inside* an organization —
+opens the console on that organization alone: its members, domains, roles and
+invitations, with the tenant's own pages and its other organizations out of reach.
+Creating and deleting organizations, renaming a slug, disabling one and adding an
+existing user as a member stay with the tenant's administrators; an organization
+administrator adds people by inviting an email address. See the docs' *Organizations*
+pages and [Administrator access](https://zerosandonesllc.github.io/rIDM/admin/access.html).
 
 **Overview** (`/console/`): the dashboard — sign-ins, failed sign-ins and live sessions
 for the chosen window (7, 30 or 90 days), two-step adoption, a sign-ins-per-day line

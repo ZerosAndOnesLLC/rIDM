@@ -76,7 +76,14 @@ it disappears from `roles` in their tokens there. Grants with no organization
 are unscoped and apply everywhere, as they always did.
 
 This is what makes "administrator of Northwind, ordinary member of Contoso"
-expressible without one role per customer.
+expressible without one role per customer — and rIDM's own administration works
+the same way. A grant of `ridm:orgs:read` and `ridm:orgs:write` inside an
+organization makes its holder that organization's administrator: they manage its
+members, domains, invitations and internal role grants, and nothing else. The
+tenant keeps what is the tenant's — creating and deleting organizations,
+renaming one, disabling one, adding an existing user to one — and an org-scoped
+grant never satisfies a tenant-wide permission check. See
+[Administrator access](../admin/access.md#organization-administrators).
 
 A user must be a member of the organization before a role can be granted to them
 inside it, and granting a role there runs the same no-escalation check as

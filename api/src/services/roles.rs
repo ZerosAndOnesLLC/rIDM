@@ -389,6 +389,30 @@ pub async fn effective_roles(
     Ok(roles.unwrap_or_default())
 }
 
+/// Every role the user holds anywhere in the tenant, whatever organization a
+/// grant is scoped to. Cached separately from the scoped resolutions, under
+/// the same version token.
+pub async fn effective_roles_anywhere(
+    state: &AppState,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> AppResult<Arc<Vec<Role>>> {
+    let version = roles_version(state, tenant_id).await?;
+    let key = keys::effective_roles_anywhere(tenant_id, &version, user_id);
+    let db = state.db.clone();
+    let roles = state
+        .cache
+        .get_or_load(&key, EFFECTIVE_ROLES_TTL, || async move {
+            let mut tx = db::tenant_tx(&db, tenant_id).await?;
+            let rows = repos::roles::effective_roles_of_user_anywhere(&mut *tx, tenant_id, user_id)
+                .await?;
+            tx.commit().await?;
+            Ok(Some(rows))
+        })
+        .await?;
+    Ok(roles.unwrap_or_default())
+}
+
 /// Effective role names, for token claims.
 pub async fn effective_role_names(
     state: &AppState,

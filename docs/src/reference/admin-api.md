@@ -31,6 +31,7 @@ Operations are grouped by tag. Operation ids are the handler names prefixed with
 | `clients` | OAuth / OIDC clients, secrets, service accounts, registration access tokens, and the initial access tokens of dynamic registration (`/admin/tenants/{slug}/dcr/initial-access-tokens`) |
 | `users` | users and everything attached to them: password, sessions, credentials, trusted devices, roles, groups, consents, linked identities, personal access tokens, bulk import and export |
 | `groups` | groups, membership and group roles |
+| `organizations` | organizations, their members, domains, invitations and the roles granted inside them |
 | `roles` | roles, composites, permission grants and holders |
 | `resource_servers` | resource servers (audiences) and their permissions |
 | `scopes` | OAuth scopes |
@@ -57,6 +58,8 @@ Every admin operation takes a token in the `Authorization` header only (never a 
 The token may come from any tenant. A token issued by `master` is **global**: it may act on every tenant. A token from any other tenant reaches only that tenant; a request for another tenant is `403`. Tenant lifecycle operations (creating and deleting tenants, master-key rotation, the global audit chain) need a global token.
 
 Permissions are resolved from the user's effective roles on every request (cached, and evicted whenever a role, group or grant changes), so revoking a role takes effect at once regardless of the `permissions` claim in the token. See [Administrator access](../admin/access.md).
+
+A token that names an organization (the `org_id` claim, put there by the sign-in) also carries the roles granted inside it. Those count only on the routes of that organization, under `/admin/tenants/{slug}/organizations/{org}/...`; everywhere else the caller is judged by their tenant-wide grants alone. See [Organization administrators](../admin/access.md#organization-administrators).
 
 ### Permissions
 

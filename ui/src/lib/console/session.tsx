@@ -62,7 +62,17 @@ export interface ConsoleSession extends Snapshot<Me> {
   client: AdminClient;
   signIn: (tenant: string, returnTo?: string) => Promise<void>;
   signOut: () => void;
+  /** Holds the permission tenant-wide: what every page outside an organization needs. */
   can: (permission: string | undefined) => boolean;
+  /** Holds it inside the organization this sign-in acts in (tenant-wide counts). */
+  canInOrg: (permission: string | undefined) => boolean;
+  /** The organization this sign-in acts in, if any. */
+  org: Me["organization"] | null;
+  /**
+   * Holds it only through that organization, so their reach ends there: the
+   * console then hides what belongs to the tenant.
+   */
+  confinedToOrg: (permission: string) => boolean;
 }
 
 export function useConsole(): ConsoleSession {
@@ -80,6 +90,20 @@ export function useConsole(): ConsoleSession {
 
   const me = snap.me;
   const can = useCallback((permission: string | undefined) => hasPermission(me?.permissions ?? [], permission), [me]);
+  const canInOrg = useCallback(
+    (permission: string | undefined) =>
+      hasPermission(me?.permissions ?? [], permission) ||
+      (!!me?.organization && hasPermission(me?.organization_permissions ?? [], permission)),
+    [me],
+  );
+  const confinedToOrg = useCallback(
+    (permission: string) => !can(permission) && canInOrg(permission),
+    [can, canInOrg],
+  );
+  const org = me?.organization ?? null;
 
-  return useMemo(() => ({ ...snap, client: adminClient, signIn, signOut, can }), [snap, signIn, signOut, can]);
+  return useMemo(
+    () => ({ ...snap, client: adminClient, signIn, signOut, can, canInOrg, confinedToOrg, org }),
+    [snap, signIn, signOut, can, canInOrg, confinedToOrg, org],
+  );
 }

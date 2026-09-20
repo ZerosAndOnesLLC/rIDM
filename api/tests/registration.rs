@@ -480,12 +480,12 @@ async fn invitation_lifecycle() {
             .status(),
         404
     );
-    let open = invitations::list(&app.state, tid, true, None, None)
+    let open = invitations::list(&app.state, tid, None, true, None, None)
         .await
         .unwrap();
     assert!(open.items.is_empty());
     assert_eq!(
-        invitations::list(&app.state, tid, false, None, None)
+        invitations::list(&app.state, tid, None, false, None, None)
             .await
             .unwrap()
             .items

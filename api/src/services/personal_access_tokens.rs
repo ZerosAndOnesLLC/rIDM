@@ -20,7 +20,7 @@ use crate::models::{
     NewPersonalAccessToken, PAT_SCOPE_ACCOUNT, PersonalAccessToken, Tenant, User, UserStatus,
 };
 use crate::repos;
-use crate::services::admin_access::{self, PermissionSet};
+use crate::services::admin_access::{self, OrgScope, PermissionSet};
 use crate::services::users;
 use crate::state::AppState;
 
@@ -49,7 +49,8 @@ pub async fn available_scopes(
     tenant_id: Uuid,
     user_id: Uuid,
 ) -> AppResult<Vec<String>> {
-    let perms = admin_access::permissions_of_user(state, tenant_id, user_id).await?;
+    let perms =
+        admin_access::permissions_of_user(state, tenant_id, user_id, OrgScope::TenantWide).await?;
     let mut out = vec![PAT_SCOPE_ACCOUNT.to_string()];
     out.extend(perms.names().iter().cloned());
     Ok(out)
@@ -227,7 +228,9 @@ pub async fn authenticate(state: &AppState, token: &str) -> AppResult<Option<Aut
     if user.status != UserStatus::Active || user.is_locked_now() {
         return Ok(None);
     }
-    let held = admin_access::permissions_of_user(state, rec.tenant_id, rec.user_id).await?;
+    let held =
+        admin_access::permissions_of_user(state, rec.tenant_id, rec.user_id, OrgScope::TenantWide)
+            .await?;
     let permissions = PermissionSet::new(
         rec.scopes
             .iter()

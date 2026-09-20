@@ -120,6 +120,7 @@ pub async fn set_token_hash<'e>(
 pub async fn list<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
+    org_id: Option<Uuid>,
     open_only: bool,
     after: Option<Cursor>,
     limit: i64,
@@ -128,6 +129,9 @@ pub async fn list<'e>(
     qb.push(COLUMNS)
         .push(" FROM invitations WHERE tenant_id = ")
         .push_bind(tenant_id);
+    if let Some(org) = org_id {
+        qb.push(" AND org_id = ").push_bind(org);
+    }
     if open_only {
         qb.push(" AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > now()");
     }

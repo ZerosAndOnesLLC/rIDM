@@ -1,12 +1,12 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { Building2, ChevronsUpDown, LogOut, Menu, Monitor, Moon, Search, ShieldCheck, Sun, X } from "lucide-react";
+import { Briefcase, Building2, ChevronsUpDown, LogOut, Menu, Monitor, Moon, Search, ShieldCheck, Sun, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { Spinner } from "@/components/ui";
-import { NAV, PAGE_TITLES, allNavItems, consoleHref } from "@/lib/console/nav";
+import { NAV, PAGE_TITLES, allNavItems, consoleHref, navVisible } from "@/lib/console/nav";
 import { useConsole } from "@/lib/console/session";
 import { modKey, useShortcuts } from "@/lib/console/shortcuts";
 import { useConsoleTenant } from "@/lib/console/tenant";
@@ -36,7 +36,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
 }
 
 function Frame({ children }: { children: ReactNode }) {
-  const { me, signOut, can } = useConsole();
+  const { me, signOut, can, canInOrg } = useConsole();
   const tenant = useConsoleTenant();
   const router = useRouter();
   const pathname = usePathname();
@@ -46,7 +46,7 @@ function Frame({ children }: { children: ReactNode }) {
   const [drawer, setDrawer] = useState(false);
   const global = me?.scope === "global";
 
-  const items = allNavItems().filter((n) => can(n.permission) && (!n.global || global));
+  const items = allNavItems().filter((n) => navVisible(n, { can, canInOrg, global }));
   const current = items.find((n) => n.href === pathname) ?? items.find((n) => pathname.startsWith(n.href) && n.href !== "/console/");
 
   useShortcuts({
@@ -153,7 +153,7 @@ function Sidebar({
   me: ReturnType<typeof useConsole>["me"];
   onSignOut: () => void;
 }) {
-  const { can } = useConsole();
+  const { can, canInOrg, org } = useConsole();
   return (
     <>
       <div className="flex h-14 items-center gap-2.5 px-4">
@@ -187,11 +187,20 @@ function Sidebar({
             </span>
           </div>
         )}
+        {org && (
+          <div className="mt-2 flex items-center gap-2.5 rounded-[var(--radius)] border border-line bg-ground px-3 py-2">
+            <Briefcase className="size-4 shrink-0 text-muted" aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="block text-[0.6875rem] uppercase tracking-wide text-muted">Organization</span>
+              <span className="block truncate text-[0.875rem] font-medium text-ink">{org.display_name}</span>
+            </span>
+          </div>
+        )}
       </div>
 
       <nav aria-label="Console" className="console-nav flex-1 overflow-y-auto px-3 py-2">
         {NAV.map((group, gi) => {
-          const visible = group.items.filter((n) => can(n.permission) && (!n.global || global));
+          const visible = group.items.filter((n) => navVisible(n, { can, canInOrg, global }));
           if (visible.length === 0) return null;
           return (
             <div key={group.title ?? gi} className="mb-3">

@@ -118,7 +118,7 @@ what they allow is managed in one place.
 
 rIDM's own administration uses the same model. Every tenant carries a built-in
 resource server, `urn:ridm:admin`, whose permissions are the admin API's
-(`ridm:users:read`, `ridm:clients:write`, and so on), and five built-in roles
+(`ridm:users:read`, `ridm:clients:write`, and so on), and six built-in roles
 that hold them:
 
 | Role | Grants |
@@ -127,6 +127,7 @@ that hold them:
 | `ridm:admin` | everything except creating, deleting and importing tenants |
 | `ridm:user-manager` | users, invitations and groups; read roles, tenant settings and audit |
 | `ridm:client-manager` | clients, scopes, claim mappers and resource servers; read roles, tenant settings and audit |
+| `ridm:org-admin` | organizations, their members, domains and invitations; read roles — granted inside one organization it administers that one |
 | `ridm:viewer` | every read permission |
 
 Built-in roles cannot be renamed, deleted or given different permissions, but

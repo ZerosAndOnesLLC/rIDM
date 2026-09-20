@@ -4,7 +4,8 @@ Administration in rIDM is not a separate account system. An administrator is an
 ordinary user of some tenant whose roles grant permissions on a built-in resource
 server, `urn:ridm:admin`, and the admin API accepts an access token issued for that
 audience. This page covers the permissions, the built-in roles, how far a grant
-reaches, and the tokens automation uses.
+reaches, how an organization's own administrator fits in, and the tokens automation
+uses.
 
 ## Permissions
 
@@ -49,7 +50,7 @@ Wildcards only work on the granted side.
 
 ## Built-in roles
 
-Five roles are seeded in every tenant. They can be assigned, used as composites of
+Six roles are seeded in every tenant. They can be assigned, used as composites of
 other roles and attached to groups, but not renamed, deleted or given different
 permissions.
 
@@ -58,6 +59,7 @@ permissions.
 | `ridm:owner` | Every permission, including tenant lifecycle |
 | `ridm:admin` | Every permission except `ridm:tenants:create`, `ridm:tenants:delete` and `ridm:tenants:import` |
 | `ridm:user-manager` | `ridm:tenants:read`, `ridm:users:read`, `ridm:users:write`, `ridm:invitations:read`, `ridm:invitations:write`, `ridm:groups:read`, `ridm:groups:write`, `ridm:roles:read`, `ridm:audit:read`, `ridm:scim:read`, `ridm:scim:write` |
+| `ridm:org-admin` | `ridm:orgs:read`, `ridm:orgs:write`, `ridm:invitations:read`, `ridm:invitations:write`, `ridm:roles:read` — meant to be granted [inside one organization](#organization-administrators) |
 | `ridm:client-manager` | `ridm:tenants:read`, `ridm:clients:read`, `ridm:clients:write`, `ridm:scopes:read`, `ridm:scopes:write`, `ridm:mappers:read`, `ridm:mappers:write`, `ridm:resource-servers:read`, `ridm:resource-servers:write`, `ridm:roles:read`, `ridm:audit:read` |
 | `ridm:viewer` | Every `*:read` permission (not `ridm:tenants:export`) |
 
@@ -99,6 +101,50 @@ curl -s -X PUT -H "Authorization: Bearer $RIDM_TOKEN" \
 In the console: Users → the user → Roles → assign `ridm:admin`. They then sign in to
 the console through `acme`.
 
+## Organization administrators
+
+A role assignment may carry an organization (`role_assignments.org_id`, see
+[Organizations](../concepts/organizations.md)). Such a grant applies only to a session
+acting in that organization — the `org_id` claim the sign-in put on the token — and
+only to the admin routes of that one organization:
+
+- everything under `/admin/tenants/{slug}/organizations/{org}`: the organization
+  record, its members, its domains, the roles granted inside it, its invitations;
+- nothing else. An org-scoped grant never satisfies a tenant-wide check, so the users,
+  groups, clients, settings and audit routes stay closed, and so does the list of the
+  tenant's organizations.
+
+Three operations on the organization itself stay with the tenant's administrators,
+because they are the tenant's business rather than the organization's: creating an
+organization, deleting one, and changing an existing one's `slug` or `status`. Adding
+an existing user as a member is theirs too — an organization's own administrator adds
+people by inviting an email address
+(`POST /admin/tenants/{slug}/organizations/{org}/invitations`, which creates the
+membership when the invitation is accepted) or through a verified auto-join domain.
+Such an invitation may not carry tenant roles or groups; roles are granted inside the
+organization afterwards, and `GET …/{org}/grantable-roles` lists what the caller may
+grant there.
+
+To appoint one, grant `ridm:org-admin` (or any role) to a member within the
+organization:
+
+```bash
+curl -s -X PUT -H "Authorization: Bearer $RIDM_TOKEN" \
+  "https://id.example.com/admin/tenants/acme/organizations/$ORG_ID/members/$USER_ID/roles/$ROLE_ID"
+```
+
+In the console: Organizations → the organization → *Roles inside this organization*.
+They sign in to the console as usual; with one membership the organization is chosen
+silently, and the console then opens their organization instead of the tenant's pages.
+`GET /admin/me` reports it as `organization`, with `organization_permissions` beside
+the tenant-wide `permissions`.
+
+Two limits are worth knowing. A **personal access token** belongs to a user rather
+than to a sign-in, so it carries no organization and no org-scoped permission; org
+administrators work through the console or a browser-issued token. And the
+**MFA-for-administrators** policy counts them: a user who administers any organization
+is an administrator for `mfa.policy = required_for_admins`.
+
 ### No escalation through role management
 
 An administrator cannot hand out more than they hold. Assigning a role to a user or
@@ -106,7 +152,9 @@ group, adding a user to a group, adding a composite, granting an admin permissio
 role, and inviting someone into roles or groups are all refused with `403` ("cannot
 grant permissions you do not hold") when the grant would carry an admin permission the
 caller lacks. A user manager can therefore manage users but cannot make anyone an
-owner.
+owner. Inside an organization the same rule is measured against what the caller holds
+*there*: an organization's administrator can appoint a peer, but cannot grant a role
+that carries a tenant-wide admin permission.
 
 ## The admin token
 

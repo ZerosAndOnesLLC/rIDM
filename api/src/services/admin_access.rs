@@ -3,10 +3,16 @@
 //! The admin API is guarded by permissions named `ridm:<resource>:<action>`.
 //! They belong to a built-in resource server, [`ADMIN_AUDIENCE`], that every
 //! tenant has, and are granted to roles through ordinary permission
-//! assignments. Five built-in roles ([`BUILT_IN_ROLES`]) are seeded per tenant.
+//! assignments. Six built-in roles ([`BUILT_IN_ROLES`]) are seeded per tenant.
 //!
 //! Where a role lives decides its reach: roles in `master` act on every tenant
 //! (global administrators); roles in any other tenant act on that tenant only.
+//!
+//! How a role is *granted* decides its reach within a tenant. An assignment
+//! carrying an `org_id` (`role_assignments.org_id`) applies only to sessions
+//! acting in that organization, and only on the admin routes of that one
+//! organization — see [`crate::middleware::AdminCtx::require_org`].
+//! [`ORG_ADMIN_ROLE`] is the role meant to be granted that way.
 //!
 //! The catalogue here mirrors migration `20260915124323_admin_permission_model`;
 //! a contract test keeps the two identical. Custom roles may also be granted
@@ -34,6 +40,7 @@ pub const OWNER_ROLE: &str = "ridm:owner";
 pub const ADMIN_ROLE: &str = "ridm:admin";
 pub const USER_MANAGER_ROLE: &str = "ridm:user-manager";
 pub const CLIENT_MANAGER_ROLE: &str = "ridm:client-manager";
+pub const ORG_ADMIN_ROLE: &str = "ridm:org-admin";
 pub const VIEWER_ROLE: &str = "ridm:viewer";
 
 const PERMISSIONS_TTL: Duration = Duration::from_secs(60);
@@ -237,6 +244,17 @@ pub const BUILT_IN_ROLES: &[BuiltInRole] = &[
         ]),
     },
     BuiltInRole {
+        name: ORG_ADMIN_ROLE,
+        description: "Organization administrator: the members, roles, domains and invitations of the organizations it is granted in",
+        grants: Grants::Only(&[
+            "ridm:orgs:read",
+            "ridm:orgs:write",
+            "ridm:invitations:read",
+            "ridm:invitations:write",
+            "ridm:roles:read",
+        ]),
+    },
+    BuiltInRole {
         name: VIEWER_ROLE,
         description: "Viewer: read-only access to everything",
         grants: Grants::ReadOnly,
@@ -310,20 +328,32 @@ impl PermissionSet {
 /// built-in admin resource server reachable through the user's effective
 /// roles. Cached under the tenant's roles version token, so any role, group,
 /// assignment or grant change invalidates it at once.
+///
+/// `scope` decides which grants count; see [`OrgScope`].
 pub async fn permissions_of_user(
     state: &AppState,
     tenant_id: Uuid,
     user_id: Uuid,
+    scope: OrgScope,
 ) -> AppResult<Arc<PermissionSet>> {
     let version = roles::roles_version(state, tenant_id).await?;
-    let key = keys::admin_permissions(tenant_id, &version, user_id);
+    let key = keys::admin_permissions(tenant_id, &version, user_id, scope.cache_suffix());
     let db = state.db.clone();
     let state_for_roles = state.clone();
     let set = state
         .cache
         .get_or_load(&key, PERMISSIONS_TTL, || async move {
-            let effective =
-                roles::effective_roles(&state_for_roles, tenant_id, user_id, None).await?;
+            let effective = match scope {
+                OrgScope::TenantWide => {
+                    roles::effective_roles(&state_for_roles, tenant_id, user_id, None).await?
+                }
+                OrgScope::In(org) => {
+                    roles::effective_roles(&state_for_roles, tenant_id, user_id, Some(org)).await?
+                }
+                OrgScope::Anywhere => {
+                    roles::effective_roles_anywhere(&state_for_roles, tenant_id, user_id).await?
+                }
+            };
             if effective.is_empty() {
                 return Ok(Some(PermissionSet::default()));
             }
@@ -346,6 +376,31 @@ pub async fn permissions_of_user(
         })
         .await?;
     Ok(set.unwrap_or_default())
+}
+
+/// Which role grants count when resolving a user's admin permissions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrgScope {
+    /// Unscoped grants only: what a tenant-wide check may rely on. An
+    /// org-scoped grant can never satisfy one.
+    TenantWide,
+    /// Unscoped grants plus those scoped to this organization — the reach of
+    /// a session acting in it, consulted only by
+    /// [`crate::middleware::AdminCtx::require_org`].
+    In(Uuid),
+    /// Unscoped grants plus those scoped to any organization: "is this user an
+    /// administrator at all?", asked before a session has chosen one.
+    Anywhere,
+}
+
+impl OrgScope {
+    fn cache_suffix(self) -> Option<String> {
+        match self {
+            Self::TenantWide => None,
+            Self::In(org) => Some(org.to_string()),
+            Self::Anywhere => Some("any".into()),
+        }
+    }
 }
 
 /// Something an administrator is about to hand to a principal.
@@ -383,6 +438,32 @@ pub async fn permissions_of_grant(
         repos::resource_servers::permissions_for_roles(&mut *tx, tenant_id, rs.id, &all).await?;
     tx.commit().await?;
     Ok(names)
+}
+
+/// Admin permissions carried by each of `role_ids` (composites expanded), for
+/// a role picker that must not offer what the caller cannot grant.
+pub async fn permissions_per_role(
+    state: &AppState,
+    tenant_id: Uuid,
+    role_ids: &[Uuid],
+) -> AppResult<std::collections::HashMap<Uuid, Vec<String>>> {
+    let mut out: std::collections::HashMap<Uuid, Vec<String>> = std::collections::HashMap::new();
+    if role_ids.is_empty() {
+        return Ok(out);
+    }
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let Some(rs) =
+        repos::resource_servers::find_by_identifier(&mut *tx, tenant_id, ADMIN_AUDIENCE).await?
+    else {
+        return Ok(out);
+    };
+    let rows =
+        repos::resource_servers::permissions_per_role(&mut *tx, tenant_id, rs.id, role_ids).await?;
+    tx.commit().await?;
+    for (role_id, name) in rows {
+        out.entry(role_id).or_default().push(name);
+    }
+    Ok(out)
 }
 
 #[cfg(test)]

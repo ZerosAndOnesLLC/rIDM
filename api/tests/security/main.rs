@@ -7,6 +7,7 @@ mod common;
 mod bulk_import;
 mod custom_domains;
 mod mfa_policy;
+mod org_admin;
 mod outbound;
 mod resource_indicators;
 mod scim_membership;

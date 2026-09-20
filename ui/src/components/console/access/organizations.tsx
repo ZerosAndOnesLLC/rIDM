@@ -19,18 +19,21 @@ import {
   type OrganizationDomain,
 } from "@/lib/console/organizations";
 import { roleName, userHref } from "@/lib/console/users";
-import { useRolesAndGroups } from "../users/invite";
 import { CreateDialog, DeleteButton, ErrorLine, Split } from "./common";
 
 const P_WRITE = "ridm:orgs:write";
 
 export function OrganizationsPage({ tenant, selected }: { tenant: string; selected: string | null }) {
-  const { client, can } = useConsole();
+  const { client, can, confinedToOrg, org } = useConsole();
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState("");
   const q = useDebounced(search.trim(), 200);
+  // An administrator whose `ridm:orgs:read` comes from a grant inside one
+  // organization cannot list the tenant's others; the page opens theirs.
+  const confined = confinedToOrg("ridm:orgs:read") && !!org;
   const list = useQuery({
     queryKey: ["organizations", tenant, q],
+    enabled: !confined,
     queryFn: async () => {
       const { data, error } = await client.GET("/admin/tenants/{slug}/organizations", {
         params: { path: { slug: tenant }, query: q ? { search: q } : {} },
@@ -40,6 +43,18 @@ export function OrganizationsPage({ tenant, selected }: { tenant: string; select
     },
   });
   const items = list.data?.items ?? [];
+
+  if (confined) {
+    return (
+      <>
+        <PageHeader
+          title={org.display_name}
+          sub="The organization you administer. Its members, domains, roles and invitations are yours to manage."
+        />
+        <OrganizationDetailView key={org.id} tenant={tenant} id={org.id} />
+      </>
+    );
+  }
 
   return (
     <>
@@ -185,10 +200,14 @@ function CreateOrganization({
 }
 
 function OrganizationDetailView({ tenant, id }: { tenant: string; id: string }) {
-  const { client, can } = useConsole();
+  const { client, can, canInOrg, confinedToOrg, org } = useConsole();
   const qc = useQueryClient();
   const router = useRouter();
-  const editable = can(P_WRITE);
+  // Inside their own organization an org administrator writes as a tenant
+  // administrator does — except for the three things the tenant keeps.
+  const ownOrg = org?.id === id;
+  const editable = can(P_WRITE) || (ownOrg && canInOrg(P_WRITE));
+  const confined = ownOrg && confinedToOrg(P_WRITE);
   const query = useQuery({
     queryKey: ["organization", tenant, id],
     queryFn: async () => {
@@ -270,12 +289,13 @@ function OrganizationDetailView({ tenant, id }: { tenant: string; id: string }) 
             />
           )}
         </Field>
-        <Field label="Slug">
-          {(fid) => (
+        <Field label="Slug" hint={confined ? "The tenant's administrators change this." : undefined}>
+          {(fid, by) => (
             <TextInput
               id={fid}
+              aria-describedby={by}
               value={draft.slug}
-              disabled={!editable}
+              disabled={!editable || confined}
               onChange={(e) => update({ slug: e.target.value })}
             />
           )}
@@ -286,7 +306,7 @@ function OrganizationDetailView({ tenant, id }: { tenant: string; id: string }) 
               id={fid}
               aria-describedby={by}
               value={draft.status}
-              disabled={!editable}
+              disabled={!editable || confined}
               onChange={(e) => update({ status: e.target.value as OrganizationDetail["status"] })}
             >
               <option value="active">Active</option>
@@ -305,7 +325,8 @@ function OrganizationDetailView({ tenant, id }: { tenant: string; id: string }) 
           )}
         </Field>
       </Section>
-      <OrganizationMembers tenant={tenant} id={id} editable={editable} />
+      <OrganizationMembers tenant={tenant} id={id} editable={editable} confined={confined} />
+      <OrganizationInvitations tenant={tenant} id={id} />
       <OrganizationDomains
         tenant={tenant}
         id={id}
@@ -314,7 +335,7 @@ function OrganizationDetailView({ tenant, id }: { tenant: string; id: string }) 
         onChanged={() => setResetCount((n) => n + 1)}
       />
       <OrganizationRoles tenant={tenant} id={id} editable={editable} />
-      {editable && (
+      {editable && !confined && (
         <DeleteButton
           what="organization"
           pending={del.isPending}
@@ -331,10 +352,13 @@ function OrganizationMembers({
   tenant,
   id,
   editable,
+  confined,
 }: {
   tenant: string;
   id: string;
   editable: boolean;
+  /** An organization's own administrator adds members by invitation only. */
+  confined: boolean;
 }) {
   const { client } = useConsole();
   const qc = useQueryClient();
@@ -354,7 +378,7 @@ function OrganizationMembers({
   });
   const candidates = useQuery({
     queryKey: ["users", tenant, "pick", q],
-    enabled: adding && q.length >= 1,
+    enabled: adding && !confined && q.length >= 1,
     queryFn: async () => {
       const { data } = await client.GET("/admin/tenants/{slug}/users", {
         params: { path: { slug: tenant }, query: { search: q, limit: 10 } },
@@ -391,7 +415,7 @@ function OrganizationMembers({
     <Card
       title="Members"
       actions={
-        editable ? (
+        editable && !confined ? (
           <Button className="min-h-8 px-2.5 text-[0.8125rem]" onClick={() => setAdding(true)}>
             <UserRoundPlus className="size-3.5" aria-hidden />
             Add member
@@ -405,7 +429,7 @@ function OrganizationMembers({
         <ErrorLine error={members.error} />
       ) : members.data.length === 0 ? (
         <p className="text-[0.875rem] text-muted">
-          No members. A verified auto-join domain adds them as they sign in.
+          No members. An invitation or a verified auto-join domain adds them.
         </p>
       ) : (
         <ul className="divide-y divide-line">
@@ -440,6 +464,112 @@ function OrganizationMembers({
         placeholder="Search users…"
         empty={q.length < 1 ? "Type to search." : "No matching users."}
       />
+    </Card>
+  );
+}
+
+/**
+ * Invitations that carry this organization: accepting one creates the account
+ * and the membership at once. It is the only way an organization's own
+ * administrator adds people who do not arrive through an auto-join domain.
+ */
+function OrganizationInvitations({ tenant, id }: { tenant: string; id: string }) {
+  const { client, can, canInOrg, org } = useConsole();
+  const qc = useQueryClient();
+  // Org-scoped permissions count only for the organization the sign-in acts
+  // in; any other one is judged tenant-wide.
+  const ownOrg = org?.id === id;
+  const may = (permission: string) => (ownOrg ? canInOrg(permission) : can(permission));
+  const mayRead = may("ridm:invitations:read");
+  const mayWrite = may("ridm:invitations:write");
+  const [email, setEmail] = useState("");
+  const list = useQuery({
+    queryKey: ["organization", tenant, id, "invitations"],
+    enabled: mayRead,
+    queryFn: async () => {
+      const { data, error } = await client.GET(
+        "/admin/tenants/{slug}/organizations/{org}/invitations",
+        { params: { path: { slug: tenant, org: id }, query: { open_only: true } } },
+      );
+      if (error) throw new Error(error.detail ?? error.title);
+      return data;
+    },
+  });
+  const change = useMutation({
+    mutationFn: async (what: { invite?: string; revoke?: string }) => {
+      const r = what.invite
+        ? await client.POST("/admin/tenants/{slug}/organizations/{org}/invitations", {
+            params: { path: { slug: tenant, org: id } },
+            body: { email: what.invite, roles: [], groups: [], org_id: id, expires_days: null },
+          })
+        : await client.DELETE(
+            "/admin/tenants/{slug}/organizations/{org}/invitations/{invitation}",
+            { params: { path: { slug: tenant, org: id, invitation: what.revoke! } } },
+          );
+      if (r.error) throw new Error(r.error.detail ?? r.error.title);
+    },
+    onSuccess: async () => {
+      setEmail("");
+      await qc.invalidateQueries({ queryKey: ["organization", tenant, id, "invitations"] });
+    },
+  });
+  if (!mayRead) return null;
+  const items = list.data?.items ?? [];
+  return (
+    <Card title="Invitations" actions={<span className="text-[0.8125rem] text-muted">Open invitations</span>}>
+      {list.isPending ? (
+        <Spinner label="Loading invitations…" />
+      ) : list.isError ? (
+        <ErrorLine error={list.error} />
+      ) : items.length === 0 ? (
+        <p className="text-[0.875rem] text-muted">No open invitations.</p>
+      ) : (
+        <ul className="divide-y divide-line">
+          {items.map((i) => (
+            <li key={i.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
+              <span className="min-w-0 truncate text-ink">
+                {i.email}
+                <span className="ml-2 text-muted">
+                  expires {new Date(i.expires_at).toLocaleDateString()}
+                </span>
+              </span>
+              {mayWrite && (
+                <Button
+                  variant="danger"
+                  className="min-h-8 px-2.5 text-[0.8125rem]"
+                  disabled={change.isPending}
+                  onClick={() => change.mutate({ revoke: i.id })}
+                >
+                  Revoke
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {mayWrite && (
+        <form
+          className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (email.trim()) change.mutate({ invite: email.trim() });
+          }}
+        >
+          <TextInput
+            type="email"
+            aria-label="Email address to invite"
+            placeholder="person@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="min-w-56 flex-1"
+          />
+          <Button type="submit" variant="primary" disabled={!email.trim() || change.isPending}>
+            <UserRoundPlus className="size-4" aria-hidden />
+            Invite
+          </Button>
+        </form>
+      )}
+      <ErrorLine error={change.error} />
     </Card>
   );
 }
@@ -604,7 +734,21 @@ function OrganizationRoles({
 }) {
   const { client } = useConsole();
   const qc = useQueryClient();
-  const { roles } = useRolesAndGroups(tenant);
+  // The tenant's roles as this caller may grant them here: an organization's
+  // own administrator reads them without `ridm:roles:read` tenant-wide, and
+  // roles carrying more than they hold come back as not grantable.
+  const roles = useQuery({
+    queryKey: ["organization", tenant, id, "grantable-roles"],
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await client.GET(
+        "/admin/tenants/{slug}/organizations/{org}/grantable-roles",
+        { params: { path: { slug: tenant, org: id } } },
+      );
+      if (error) throw new Error(error.detail ?? error.title);
+      return data;
+    },
+  });
   const [user, setUser] = useState("");
   const [role, setRole] = useState("");
   const grants = useQuery({
@@ -717,11 +861,13 @@ function OrganizationRoles({
           </SelectInput>
           <SelectInput aria-label="Role to grant" value={role} onChange={(e) => setRole(e.target.value)}>
             <option value="">Choose a role…</option>
-            {(roles.data ?? []).map((r) => (
-              <option key={r.id} value={r.id}>
-                {roleName(r)}
-              </option>
-            ))}
+            {(roles.data ?? [])
+              .filter((r) => r.grantable)
+              .map((r) => (
+                <option key={r.id} value={r.id}>
+                  {roleName(r)}
+                </option>
+              ))}
           </SelectInput>
           <Button type="submit" variant="primary" disabled={!user || !role || change.isPending}>
             Grant

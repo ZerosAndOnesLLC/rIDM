@@ -1,13 +1,16 @@
 //! Phase 12.1: admin API for organizations, their members, their domains and
-//! the roles they grant.
+//! the roles they grant. Phase 12.2 adds the organization's own administrator
+//! (a role granted within it) and the invitations it may send.
 
 mod common;
 
 use common::TestApp;
-use common::admin::{admin_token, call, get_json, role_id, user_with_role};
+use common::admin::{admin_token, call, get_json, org_admin_token, role_id, user_with_role};
 use reqwest::Method;
 use ridm_api::models::Principal;
-use ridm_api::services::admin_access::{OWNER_ROLE, USER_MANAGER_ROLE, VIEWER_ROLE};
+use ridm_api::services::admin_access::{
+    ORG_ADMIN_ROLE, OWNER_ROLE, USER_MANAGER_ROLE, VIEWER_ROLE,
+};
 use ridm_api::services::{organizations, roles, users};
 use serde_json::json;
 use uuid::Uuid;
@@ -740,4 +743,313 @@ async fn organizations_are_tenant_scoped() {
         matches!(err, ridm_api::error::AppError::NotFound("organization")),
         "{err:?}"
     );
+}
+
+/// Phase 12.2: a role granted *within* an organization makes its holder that
+/// organization's administrator, and nothing more.
+#[tokio::test]
+async fn an_org_admin_runs_its_own_organization_and_no_other() {
+    let app = TestApp::spawn().await;
+    let tid = app.tenant.id;
+    let base = format!("/admin/tenants/{}/organizations", app.tenant.slug);
+    let owner = admin_token(&app, tid, OWNER_ROLE).await;
+
+    let (_, acme, _) = call(
+        &app,
+        Method::POST,
+        &base,
+        Some(&owner),
+        Some(&json!({"slug": "acme", "display_name": "Acme"})),
+    )
+    .await;
+    let (_, globex, _) = call(
+        &app,
+        Method::POST,
+        &base,
+        Some(&owner),
+        Some(&json!({"slug": "globex", "display_name": "Globex"})),
+    )
+    .await;
+    let acme_id = acme["id"].as_str().unwrap().to_string();
+    let globex_id = globex["id"].as_str().unwrap().to_string();
+
+    let acme_uuid: Uuid = acme_id.parse().unwrap();
+    let (admin_user, org_admin) = org_admin_token(&app, tid, acme_uuid, ORG_ADMIN_ROLE).await;
+
+    // Their own organization: read and change what belongs to it.
+    let (status, detail, _) = get_json(&app, &format!("{base}/{acme_id}"), Some(&org_admin)).await;
+    assert_eq!(status, 200, "{detail}");
+    assert_eq!(detail["member_count"], 1, "the administrator is a member");
+    let (status, patched, _) = call(
+        &app,
+        Method::PATCH,
+        &format!("{base}/{acme_id}"),
+        Some(&org_admin),
+        Some(&json!({"display_name": "Acme Ltd"})),
+    )
+    .await;
+    assert_eq!(status, 200, "{patched}");
+    assert_eq!(patched["display_name"], "Acme Ltd");
+
+    // The organization's identity and lifecycle stay with the tenant.
+    for body in [
+        json!({"slug": "acme-renamed"}),
+        json!({"status": "disabled"}),
+    ] {
+        let (status, err, _) = call(
+            &app,
+            Method::PATCH,
+            &format!("{base}/{acme_id}"),
+            Some(&org_admin),
+            Some(&body),
+        )
+        .await;
+        assert_eq!(status, 403, "{body} must be refused: {err}");
+    }
+    let (status, _, _) = get_json(&app, &base, Some(&org_admin)).await;
+    assert_eq!(status, 403, "listing every organization is tenant-wide");
+    let (status, _, _) = call(
+        &app,
+        Method::POST,
+        &base,
+        Some(&org_admin),
+        Some(&json!({"slug": "new-one", "display_name": "New"})),
+    )
+    .await;
+    assert_eq!(status, 403, "creating an organization is tenant-wide");
+    let (status, _, _) = call(
+        &app,
+        Method::DELETE,
+        &format!("{base}/{acme_id}"),
+        Some(&org_admin),
+        None,
+    )
+    .await;
+    assert_eq!(status, 403, "deleting an organization is tenant-wide");
+
+    // Another organization is out of reach, whatever the operation.
+    for (method, path) in [
+        (Method::GET, format!("{base}/{globex_id}")),
+        (Method::GET, format!("{base}/{globex_id}/members")),
+        (Method::GET, format!("{base}/{globex_id}/domains")),
+        (Method::GET, format!("{base}/{globex_id}/roles")),
+        (Method::GET, format!("{base}/{globex_id}/invitations")),
+    ] {
+        let (status, body, _) = call(&app, method.clone(), &path, Some(&org_admin), None).await;
+        assert_eq!(status, 403, "{method} {path}: {body}");
+    }
+
+    // Membership: an existing user may not be pulled in, but a member can be
+    // removed and the member list is theirs to see.
+    let stranger = user_with_role(&app, tid, None).await;
+    let (status, err, _) = call(
+        &app,
+        Method::PUT,
+        &format!("{base}/{acme_id}/members/{stranger}"),
+        Some(&org_admin),
+        None,
+    )
+    .await;
+    assert_eq!(status, 403, "{err}");
+    assert!(
+        err["detail"].as_str().unwrap().contains("by invitation"),
+        "{err}"
+    );
+    let (status, _, _) = call(
+        &app,
+        Method::PUT,
+        &format!("{base}/{acme_id}/members/{stranger}"),
+        Some(&owner),
+        None,
+    )
+    .await;
+    assert_eq!(status, 204);
+    let (status, members, _) =
+        get_json(&app, &format!("{base}/{acme_id}/members"), Some(&org_admin)).await;
+    assert_eq!(status, 200);
+    assert_eq!(members.as_array().unwrap().len(), 2, "{members}");
+    let (status, _, _) = call(
+        &app,
+        Method::DELETE,
+        &format!("{base}/{acme_id}/members/{stranger}"),
+        Some(&org_admin),
+        None,
+    )
+    .await;
+    assert_eq!(status, 204);
+
+    // Domains of their organization, including the verification attempt.
+    let (status, domain, _) = call(
+        &app,
+        Method::POST,
+        &format!("{base}/{acme_id}/domains"),
+        Some(&org_admin),
+        Some(&json!({"domain": "acme.example", "auto_join": true})),
+    )
+    .await;
+    assert_eq!(status, 201, "{domain}");
+    let domain_id = domain["id"].as_str().unwrap().to_string();
+    let (status, domains, _) =
+        get_json(&app, &format!("{base}/{acme_id}/domains"), Some(&org_admin)).await;
+    assert_eq!(status, 200);
+    assert_eq!(domains.as_array().unwrap().len(), 1);
+    let (status, _, _) = call(
+        &app,
+        Method::DELETE,
+        &format!("{base}/{acme_id}/domains/{domain_id}"),
+        Some(&org_admin),
+        None,
+    )
+    .await;
+    assert_eq!(status, 204);
+
+    // `/admin/me` names the organization and what may be done inside it.
+    let (status, me, _) = get_json(&app, "/admin/me", Some(&org_admin)).await;
+    assert_eq!(status, 200, "{me}");
+    assert_eq!(me["user_id"], admin_user.to_string());
+    assert_eq!(me["organization"]["id"], acme_id);
+    assert_eq!(me["organization"]["slug"], "acme");
+    assert!(
+        me["permissions"].as_array().unwrap().is_empty(),
+        "no tenant-wide permission: {me}"
+    );
+    let org_perms: Vec<&str> = me["organization_permissions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(org_perms.contains(&"ridm:orgs:write"), "{me}");
+}
+
+/// The only way an organization's administrator adds people: an invitation
+/// that carries the organization. They never see the tenant's other ones.
+#[tokio::test]
+async fn an_org_admin_invites_into_its_own_organization_only() {
+    let app = TestApp::spawn().await;
+    let tid = app.tenant.id;
+    let slug = app.tenant.slug.clone();
+    let base = format!("/admin/tenants/{slug}/organizations");
+    let owner = admin_token(&app, tid, OWNER_ROLE).await;
+
+    let (_, acme, _) = call(
+        &app,
+        Method::POST,
+        &base,
+        Some(&owner),
+        Some(&json!({"slug": "acme", "display_name": "Acme"})),
+    )
+    .await;
+    let (_, globex, _) = call(
+        &app,
+        Method::POST,
+        &base,
+        Some(&owner),
+        Some(&json!({"slug": "globex", "display_name": "Globex"})),
+    )
+    .await;
+    let acme_id = acme["id"].as_str().unwrap().to_string();
+    let globex_id = globex["id"].as_str().unwrap().to_string();
+    let (_, org_admin) = org_admin_token(&app, tid, acme_id.parse().unwrap(), ORG_ADMIN_ROLE).await;
+
+    // A tenant-wide invitation belonging to no organization, and one for the
+    // other organization: neither may show up in Acme's list.
+    for body in [
+        json!({"email": "tenant-wide@example.com"}),
+        json!({"email": "globex@example.com", "org_id": globex_id}),
+    ] {
+        let (status, inv, _) = call(
+            &app,
+            Method::POST,
+            &format!("/admin/tenants/{slug}/invitations"),
+            Some(&owner),
+            Some(&body),
+        )
+        .await;
+        assert_eq!(status, 201, "{inv}");
+    }
+
+    let (status, inv, _) = call(
+        &app,
+        Method::POST,
+        &format!("{base}/{acme_id}/invitations"),
+        Some(&org_admin),
+        Some(&json!({"email": "newcomer@example.com"})),
+    )
+    .await;
+    assert_eq!(status, 201, "{inv}");
+    assert_eq!(inv["org_id"], acme_id, "the path decides the organization");
+    let invitation_id = inv["id"].as_str().unwrap().to_string();
+
+    let (status, page, _) = get_json(
+        &app,
+        &format!("{base}/{acme_id}/invitations"),
+        Some(&org_admin),
+    )
+    .await;
+    assert_eq!(status, 200, "{page}");
+    let items = page["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1, "only this organization's: {page}");
+    assert_eq!(items[0]["email"], "newcomer@example.com");
+
+    // The tenant-wide invitation list stays out of reach.
+    let (status, _, _) = get_json(
+        &app,
+        &format!("/admin/tenants/{slug}/invitations"),
+        Some(&org_admin),
+    )
+    .await;
+    assert_eq!(status, 403);
+
+    // An organization's administrator may not attach tenant roles or groups.
+    let viewer_role = role_id(&app, tid, VIEWER_ROLE).await;
+    let (status, err, _) = call(
+        &app,
+        Method::POST,
+        &format!("{base}/{acme_id}/invitations"),
+        Some(&org_admin),
+        Some(&json!({"email": "escalate@example.com", "roles": [viewer_role]})),
+    )
+    .await;
+    assert_eq!(status, 403, "{err}");
+
+    // An org_id in the body that contradicts the path is refused outright.
+    let (status, err, _) = call(
+        &app,
+        Method::POST,
+        &format!("{base}/{acme_id}/invitations"),
+        Some(&org_admin),
+        Some(&json!({"email": "elsewhere@example.com", "org_id": globex_id})),
+    )
+    .await;
+    assert_eq!(status, 400, "{err}");
+
+    // Revoking: their own, yes; another organization's, not found.
+    let (_, other, _) = call(
+        &app,
+        Method::POST,
+        &format!("{base}/{globex_id}/invitations"),
+        Some(&owner),
+        Some(&json!({"email": "other@example.com"})),
+    )
+    .await;
+    let other_id = other["id"].as_str().unwrap().to_string();
+    let (status, _, _) = call(
+        &app,
+        Method::DELETE,
+        &format!("{base}/{acme_id}/invitations/{other_id}"),
+        Some(&org_admin),
+        None,
+    )
+    .await;
+    assert_eq!(status, 404, "another organization's invitation");
+    let (status, _, _) = call(
+        &app,
+        Method::DELETE,
+        &format!("{base}/{acme_id}/invitations/{invitation_id}"),
+        Some(&org_admin),
+        None,
+    )
+    .await;
+    assert_eq!(status, 204);
 }

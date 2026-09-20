@@ -11,6 +11,13 @@
 //! Tokens issued by `master` carry global scope; tokens from any other tenant
 //! may only act on that tenant. Handlers call [`AdminCtx::require`] with the
 //! target tenant and the permission they need.
+//!
+//! A token may also name the organization its sign-in acts in (`org_id`). Role
+//! grants scoped to that organization are resolved into a second permission
+//! set, which only [`AdminCtx::require_org`] consults — so an organization's
+//! administrator reaches the routes of that one organization and nothing
+//! else. Personal access tokens belong to a user rather than to a sign-in, so
+//! they never carry an organization.
 
 use std::sync::Arc;
 
@@ -26,7 +33,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::{MASTER_TENANT_ID, Tenant, UserStatus};
 use crate::oidc::bearer::Scheme;
 use crate::oidc::dpop;
-use crate::services::admin_access::{self, ADMIN_AUDIENCE, PermissionSet};
+use crate::services::admin_access::{self, ADMIN_AUDIENCE, OrgScope, PermissionSet};
 use crate::services::personal_access_tokens as pats;
 use crate::services::tokens::{self, VerifyOptions};
 use crate::services::{roles, tenants, users};
@@ -53,7 +60,13 @@ pub struct AdminCtx {
     pub tenant: Arc<Tenant>,
     pub scope: AdminScope,
     pub roles: Vec<String>,
+    /// Permissions from unscoped grants: what [`AdminCtx::require`] checks.
     pub permissions: Arc<PermissionSet>,
+    /// The organization this sign-in acts in, if any.
+    pub org_id: Option<Uuid>,
+    /// Permissions inside [`AdminCtx::org_id`]: the unscoped ones plus those
+    /// granted within that organization. Empty without an organization.
+    pub org_permissions: Arc<PermissionSet>,
     pub client_id: String,
     pub session_id: Option<Uuid>,
     pub jti: Option<String>,
@@ -88,6 +101,54 @@ impl AdminCtx {
         self.require_permission(permission)
     }
 
+    /// Does this administrator hold `permission` inside `org_id`, whether
+    /// tenant-wide or through a grant scoped to that organization?
+    pub fn has_in_org(&self, tenant_id: Uuid, org_id: Uuid, permission: &str) -> bool {
+        self.reaches(tenant_id)
+            && (self.permissions.allows(permission)
+                || (self.org_id == Some(org_id) && self.org_permissions.allows(permission)))
+    }
+
+    /// Fail with 403 unless the administrator holds `permission` for the
+    /// organization `org_id` of `tenant_id` — tenant-wide, or through a role
+    /// granted within that organization to the session this token came from.
+    ///
+    /// Only routes under `/organizations/{org}` call this; everything else
+    /// uses [`AdminCtx::require`], which org-scoped grants never satisfy.
+    pub fn require_org(&self, tenant_id: Uuid, org_id: Uuid, permission: &str) -> AppResult<()> {
+        if !self.reaches(tenant_id) {
+            return Err(AppError::Forbidden(
+                "this token is scoped to another tenant".into(),
+            ));
+        }
+        debug_assert!(
+            admin_access::is_known(permission),
+            "unknown admin permission `{permission}`"
+        );
+        if self.has_in_org(tenant_id, org_id, permission) {
+            Ok(())
+        } else {
+            Err(AppError::Forbidden(format!(
+                "missing permission `{permission}`"
+            )))
+        }
+    }
+
+    /// `Some(org)` when the administrator holds `permission` only through a
+    /// grant scoped to `org`, so their reach ends at that organization.
+    /// `None` when they hold it tenant-wide (or not at all).
+    ///
+    /// Handlers use it for the few operations an organization's own
+    /// administrator must not perform on it: renaming its slug, enabling or
+    /// disabling it, pulling an existing user into it.
+    pub fn confined_to_org(&self, permission: &str) -> Option<Uuid> {
+        if self.permissions.allows(permission) {
+            return None;
+        }
+        self.org_id
+            .filter(|_| self.org_permissions.allows(permission))
+    }
+
     /// Fail with 403 unless the administrator is global and holds `permission`
     /// (tenant lifecycle operations such as creating tenants).
     pub fn require_global(&self, permission: &str) -> AppResult<()> {
@@ -119,9 +180,29 @@ impl AdminCtx {
         &self,
         permissions: impl IntoIterator<Item = &'a str>,
     ) -> AppResult<()> {
+        self.can_grant(None, permissions)
+    }
+
+    /// As [`AdminCtx::require_can_grant`], for a grant that will itself be
+    /// scoped to `org_id`: what the administrator holds inside that
+    /// organization counts, since the grant reaches no further than they do.
+    pub fn require_can_grant_in_org<'a>(
+        &self,
+        org_id: Uuid,
+        permissions: impl IntoIterator<Item = &'a str>,
+    ) -> AppResult<()> {
+        self.can_grant(Some(org_id), permissions)
+    }
+
+    fn can_grant<'a>(
+        &self,
+        org_id: Option<Uuid>,
+        permissions: impl IntoIterator<Item = &'a str>,
+    ) -> AppResult<()> {
+        let in_org = org_id.is_some() && org_id == self.org_id;
         let missing: Vec<&str> = permissions
             .into_iter()
-            .filter(|p| !self.permissions.allows(p))
+            .filter(|p| !self.permissions.allows(p) && !(in_org && self.org_permissions.allows(p)))
             .collect();
         if missing.is_empty() {
             Ok(())
@@ -301,11 +382,27 @@ impl FromRequestParts<AppState> for AdminCtx {
             return Err(AppError::Forbidden("user account is not active".into()).into());
         }
 
-        let permissions = admin_access::permissions_of_user(state, tenant.id, user.id).await?;
-        if permissions.is_empty() {
+        let permissions =
+            admin_access::permissions_of_user(state, tenant.id, user.id, OrgScope::TenantWide)
+                .await?;
+        // The organization the sign-in acts in (Phase 12.1). Its grants are
+        // kept apart from the tenant-wide ones and only `require_org` sees
+        // them.
+        let org_id = claims
+            .get("org_id")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|s| Uuid::parse_str(s).ok());
+        let org_permissions = match org_id {
+            Some(org) => {
+                admin_access::permissions_of_user(state, tenant.id, user.id, OrgScope::In(org))
+                    .await?
+            }
+            None => Arc::new(PermissionSet::default()),
+        };
+        if permissions.is_empty() && org_permissions.is_empty() {
             return Err(AppError::Forbidden("no admin permissions".into()).into());
         }
-        let roles = roles::effective_role_names(state, tenant.id, user.id, None).await?;
+        let roles = roles::effective_role_names(state, tenant.id, user.id, org_id).await?;
         let scope = if tenant.id == MASTER_TENANT_ID {
             AdminScope::Global
         } else {
@@ -318,6 +415,8 @@ impl FromRequestParts<AppState> for AdminCtx {
             scope,
             roles,
             permissions,
+            org_id,
+            org_permissions,
             client_id: claims
                 .get("client_id")
                 .and_then(serde_json::Value::as_str)
@@ -357,6 +456,10 @@ impl AdminCtx {
             scope,
             roles,
             permissions: Arc::new(auth.permissions),
+            // A personal token belongs to the user, not to a sign-in, so it
+            // acts in no organization and carries no org-scoped grant.
+            org_id: None,
+            org_permissions: Arc::new(PermissionSet::default()),
             client_id: "pat".into(),
             session_id: None,
             jti: Some(format!("pat:{}", auth.token.id)),

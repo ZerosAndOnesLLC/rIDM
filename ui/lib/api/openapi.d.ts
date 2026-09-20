@@ -1058,6 +1058,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/tenants/{slug}/organizations/{org}/grantable-roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The tenant's roles as a picker for this organization's grants. An
+         *     organization's own administrator may read them here without holding
+         *     `ridm:roles:read` tenant-wide.
+         */
+        get: operations["organizations_grantable_roles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/tenants/{slug}/organizations/{org}/groups/{group_id}/roles/{role_id}": {
         parameters: {
             query?: never;
@@ -1073,6 +1094,52 @@ export interface paths {
         put: operations["organizations_assign_group_role"];
         post?: never;
         delete: operations["organizations_unassign_group_role"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/organizations/{org}/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Only this organization's invitations; the tenant's others are not shown,
+         *     so an organization's own administrator never sees them.
+         */
+        get: operations["organizations_invitations"];
+        put?: never;
+        /**
+         * The invitation carries this organization: accepting it creates the account
+         *     and the membership at once. Roles and groups are granted tenant-wide on
+         *     acceptance, so a caller confined to the organization may not attach any —
+         *     they grant roles within the organization afterwards.
+         */
+        post: operations["organizations_invite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/organizations/{org}/invitations/{invitation}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * The link stops working. An invitation of another organization is not found
+         *     here, whatever the caller may do elsewhere.
+         */
+        delete: operations["organizations_revoke_invitation"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3205,6 +3272,14 @@ export interface components {
             field: string;
             message: string;
         };
+        /**
+         * @description A tenant role, and whether this caller may grant it inside the
+         *     organization. Roles carrying admin permissions the caller does not hold
+         *     there are listed but not grantable.
+         */
+        GrantableRole: components["schemas"]["Role"] & {
+            grantable: boolean;
+        };
         Group: {
             attributes: unknown;
             /** Format: date-time */
@@ -3713,6 +3788,16 @@ export interface components {
             pending_rows: number;
         };
         Me: {
+            organization?: null | components["schemas"]["MeOrganization"];
+            /**
+             * @description What the caller may do inside `organization`: the tenant-wide
+             *     permissions plus anything granted within it. Empty without one.
+             */
+            organization_permissions: string[];
+            /**
+             * @description Tenant-wide permissions: what every route outside an organization
+             *     checks.
+             */
             permissions: string[];
             roles: string[];
             scope: components["schemas"]["AdminScope"];
@@ -3722,6 +3807,13 @@ export interface components {
             /** Format: uuid */
             user_id: string;
             username: string;
+        };
+        /** @description The organization the caller's sign-in acts in. */
+        MeOrganization: {
+            display_name: string;
+            /** Format: uuid */
+            id: string;
+            slug: string;
         };
         /** @enum {string} */
         MessageChannel: "email" | "sms";
@@ -11445,6 +11537,65 @@ export interface operations {
             };
         };
     };
+    organizations_grantable_roles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                org: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrantableRole"][];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     organizations_assign_group_role: {
         parameters: {
             query?: never;
@@ -11515,6 +11666,192 @@ export interface operations {
                 org: string;
                 group_id: string;
                 role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    organizations_invitations: {
+        parameters: {
+            query?: {
+                /** @description Only invitations that can still be accepted. */
+                open_only?: boolean;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                org: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_Invitation"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    organizations_invite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                org: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewInvitation"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Invitation"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    organizations_revoke_invitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                org: string;
+                invitation: string;
             };
             cookie?: never;
         };

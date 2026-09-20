@@ -13,8 +13,8 @@ use common::{TestApp, create_tenant};
 use reqwest::Method;
 use ridm_api::models::MASTER_TENANT_ID;
 use ridm_api::services::admin_access::{
-    ADMIN_ROLE, BUILT_IN_ROLES, CLIENT_MANAGER_ROLE, OWNER_ROLE, PermissionSet, USER_MANAGER_ROLE,
-    VIEWER_ROLE,
+    ADMIN_ROLE, BUILT_IN_ROLES, CLIENT_MANAGER_ROLE, ORG_ADMIN_ROLE, OWNER_ROLE, PermissionSet,
+    USER_MANAGER_ROLE, VIEWER_ROLE,
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -130,7 +130,15 @@ fn operations() -> Vec<Operation> {
                 body.push_str(l);
                 body.push('\n');
             }
-            let needs = if let Some(i) = body.find("admin.require(") {
+            // `admin.require_org(tenant, org, P)` is the same tenant-wide
+            // requirement plus an org-scoped alternative, which a token
+            // without an organization cannot use: every role here is judged
+            // by the permission, exactly as with `require`.
+            let needs = if let Some(i) = body.find("admin.require_org(") {
+                let args = &body[i + "admin.require_org(".len()..];
+                let perm = args.split(',').nth(2).unwrap().split(')').next().unwrap();
+                Needs::Permission(resolve(perm, &consts))
+            } else if let Some(i) = body.find("admin.require(") {
                 let args = &body[i + "admin.require(".len()..];
                 let perm = args.split(',').nth(1).unwrap().split(')').next().unwrap();
                 Needs::Permission(resolve(perm, &consts))
@@ -244,6 +252,7 @@ async fn every_built_in_role_is_checked_against_every_admin_operation() {
         ADMIN_ROLE,
         USER_MANAGER_ROLE,
         CLIENT_MANAGER_ROLE,
+        ORG_ADMIN_ROLE,
         VIEWER_ROLE,
     ] {
         tokens.insert(role, admin_token(&app, app.tenant.id, role).await);

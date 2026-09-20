@@ -5,7 +5,10 @@ Organizations group a tenant's users into customers, business units or teams;
 they differ from tenants. This page is how to run them.
 
 Everything here needs `ridm:orgs:read` to look and `ridm:orgs:write` to change.
-Owners, administrators and user managers hold both; viewers only read.
+Owners, administrators and user managers hold both; viewers only read. Those
+permissions can also be granted *inside* one organization, which makes their
+holder [that organization's administrator](#organization-administrators) and
+nobody else's.
 
 ## In the console
 
@@ -20,8 +23,13 @@ slug. Choosing one opens its detail, which saves as you type:
 | Description | for administrators |
 
 Below the fields: **Members** (add with the user picker, remove, the primary
-organization marked), **Email domains** (add, verify, turn auto-join on or off),
-and **Roles inside this organization**.
+organization marked), **Invitations** (invite an email address into the
+organization, revoke an open one), **Email domains** (add, verify, turn auto-join
+on or off), and **Roles inside this organization**.
+
+An organization's own administrator sees the same page opened on their
+organization, without the list, the *New organization* button, the delete button,
+the slug and status fields, and the *Add member* picker.
 
 ## The admin API
 
@@ -37,10 +45,15 @@ PUT    /admin/tenants/{slug}/organizations/{org}/members/{user_id}
 DELETE /admin/tenants/{slug}/organizations/{org}/members/{user_id}
 
 GET    /admin/tenants/{slug}/organizations/{org}/roles
+GET    /admin/tenants/{slug}/organizations/{org}/grantable-roles   # with `grantable` per role
 PUT    /admin/tenants/{slug}/organizations/{org}/members/{user_id}/roles/{role_id}
 DELETE /admin/tenants/{slug}/organizations/{org}/members/{user_id}/roles/{role_id}
 PUT    /admin/tenants/{slug}/organizations/{org}/groups/{group_id}/roles/{role_id}
 DELETE /admin/tenants/{slug}/organizations/{org}/groups/{group_id}/roles/{role_id}
+
+GET    /admin/tenants/{slug}/organizations/{org}/invitations    # ?open_only= &cursor= &limit=
+POST   /admin/tenants/{slug}/organizations/{org}/invitations    # {email, expires_days?}
+DELETE /admin/tenants/{slug}/organizations/{org}/invitations/{invitation}
 
 GET    /admin/tenants/{slug}/organizations/{org}/domains
 POST   /admin/tenants/{slug}/organizations/{org}/domains        # {domain, auto_join}
@@ -107,6 +120,41 @@ grants that hung off it.
 `GET …/organizations/{org}/roles` lists the organization's grants; each row names
 a `role_id` and either a `user_id` or a `group_id`. A group grant reaches every
 member of the group and of its descendants, while they act in this organization.
+
+## Organization administrators
+
+Granting a role **inside** an organization makes its holder an administrator of
+that organization alone. `ridm:org-admin` is the built-in role for it
+(`ridm:orgs:read`, `ridm:orgs:write`, `ridm:invitations:read`,
+`ridm:invitations:write`, `ridm:roles:read`), but any role works: the reach comes
+from the grant, not the role.
+
+```bash
+ROLE=$(curl -fsS "$API/admin/tenants/acme/organizations/$ORG/grantable-roles" \
+  -H "authorization: Bearer $TOKEN" | jq -r '.[] | select(.name=="ridm:org-admin") | .id')
+curl -fsS -X PUT \
+  "$API/admin/tenants/acme/organizations/$ORG/members/$USER_ID/roles/$ROLE" \
+  -H "authorization: Bearer $TOKEN"
+```
+
+What they may do is everything on this page **for that organization**: read and
+rename it, manage members, domains, invitations and the roles granted inside it.
+What they may not do:
+
+| Refused | Why |
+|---------|-----|
+| `GET /organizations`, `POST /organizations`, `DELETE /organizations/{org}` | an organization's existence is the tenant's business |
+| `PATCH` with `slug` or `status` | the identity others may have stored, and the lifecycle |
+| `PUT /organizations/{org}/members/{user_id}` | they add people by invitation, or through a verified auto-join domain |
+| an invitation carrying `roles` or `groups` | those are granted tenant-wide on acceptance |
+| any route outside `/organizations/{org}` | users, groups, clients, settings, audit — all tenant-wide |
+| granting a role that carries an admin permission they do not hold here | the same no-escalation rule as everywhere else |
+
+Their permissions come from the session's organization, so the token must carry
+the `org_id` claim: they sign in normally (one membership is chosen silently) and
+`GET /admin/me` reports `organization` and `organization_permissions`. A personal
+access token belongs to the user rather than to a sign-in, carries no
+organization, and therefore holds none of this.
 
 ## What members see
 

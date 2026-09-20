@@ -10,7 +10,7 @@ use ridm_api::models::{NewUser, Principal, Tenant};
 use ridm_api::repos;
 use ridm_api::services::admin_access::ADMIN_AUDIENCE;
 use ridm_api::services::tokens::{self, AccessTokenRequest, TokenClient};
-use ridm_api::services::{roles, tenants, users};
+use ridm_api::services::{organizations, roles, tenants, users};
 use ridm_core::events::Actor;
 use serde_json::Value;
 use uuid::Uuid;
@@ -66,6 +66,8 @@ pub struct TokenOpts<'a> {
     pub audiences: &'a [&'a str],
     pub session_id: Option<Uuid>,
     pub ttl: Duration,
+    /// The organization the sign-in acts in (the `org_id` claim).
+    pub org_id: Option<Uuid>,
 }
 
 impl Default for TokenOpts<'_> {
@@ -74,6 +76,7 @@ impl Default for TokenOpts<'_> {
             audiences: &[ADMIN_AUDIENCE],
             session_id: None,
             ttl: Duration::from_secs(300),
+            org_id: None,
         }
     }
 }
@@ -81,7 +84,7 @@ impl Default for TokenOpts<'_> {
 /// Issue an admin-audience access token for `user_id` from `tenant`'s keys.
 pub async fn token(app: &TestApp, tenant: &Tenant, user_id: Uuid, opts: TokenOpts<'_>) -> String {
     let user = users::get(&app.state, tenant.id, user_id).await.unwrap();
-    let role_list = roles::effective_roles(&app.state, tenant.id, user_id, None)
+    let role_list = roles::effective_roles(&app.state, tenant.id, user_id, opts.org_id)
         .await
         .unwrap();
     let mut client = TokenClient::public("admin-ui");
@@ -98,7 +101,7 @@ pub async fn token(app: &TestApp, tenant: &Tenant, user_id: Uuid, opts: TokenOpt
             roles: &role_list,
             groups: &[],
             session_id: opts.session_id,
-            org_id: None,
+            org_id: opts.org_id,
             auth_time: None,
             amr: &["pwd".into()],
             acr: None,
@@ -109,6 +112,44 @@ pub async fn token(app: &TestApp, tenant: &Tenant, user_id: Uuid, opts: TokenOpt
     .await
     .unwrap()
     .token
+}
+
+/// A user of `tenant_id` who is a member of `org_id` and holds `role` there
+/// and nowhere else, plus a token for a sign-in acting in that organization:
+/// an organization's own administrator.
+pub async fn org_admin_token(
+    app: &TestApp,
+    tenant_id: Uuid,
+    org_id: Uuid,
+    role: &str,
+) -> (Uuid, String) {
+    let tenant = tenants::get(&app.state, tenant_id).await.unwrap();
+    let user = user_with_role(app, tenant_id, None).await;
+    organizations::add_member(&app.state, tenant_id, Actor::System, org_id, user)
+        .await
+        .unwrap();
+    let rid = role_id(app, tenant_id, role).await;
+    organizations::assign_role(
+        &app.state,
+        tenant_id,
+        Actor::System,
+        org_id,
+        rid,
+        Principal::User { id: user },
+    )
+    .await
+    .unwrap();
+    let token = token(
+        app,
+        &tenant,
+        user,
+        TokenOpts {
+            org_id: Some(org_id),
+            ..Default::default()
+        },
+    )
+    .await;
+    (user, token)
 }
 
 /// A user in `tenant_id` holding `role`, plus a token for them.
