@@ -575,6 +575,72 @@ async fn auto_join_needs_a_verified_domain_and_a_verified_address() {
 }
 
 #[tokio::test]
+async fn deleting_an_organization_releases_what_points_at_it() {
+    let app = TestApp::spawn().await;
+    let tid = app.tenant.id;
+    let base = format!("/admin/tenants/{}/organizations", app.tenant.slug);
+    let owner = admin_token(&app, tid, OWNER_ROLE).await;
+    let alice = user_with_role(&app, tid, None).await;
+
+    let (_, org, _) = call(
+        &app,
+        Method::POST,
+        &base,
+        Some(&owner),
+        Some(&json!({"slug": "acme", "display_name": "Acme"})),
+    )
+    .await;
+    let org_id = org["id"].as_str().unwrap().to_string();
+    let org_uuid: Uuid = org_id.parse().unwrap();
+
+    // A member (whose primary organization it becomes), an org-scoped grant and
+    // an invitation all reference it.
+    call(
+        &app,
+        Method::PUT,
+        &format!("{base}/{org_id}/members/{alice}"),
+        Some(&owner),
+        None,
+    )
+    .await;
+    let role = role_id(&app, tid, VIEWER_ROLE).await;
+    call(
+        &app,
+        Method::PUT,
+        &format!("{base}/{org_id}/members/{alice}/roles/{role}"),
+        Some(&owner),
+        None,
+    )
+    .await;
+    assert_eq!(
+        users::get(&app.state, tid, alice).await.unwrap().org_id,
+        Some(org_uuid)
+    );
+
+    // The composite foreign keys must release only org_id: nulling tenant_id
+    // as well would break the delete against a NOT NULL column.
+    let (status, err, _) = call(
+        &app,
+        Method::DELETE,
+        &format!("{base}/{org_id}"),
+        Some(&owner),
+        None,
+    )
+    .await;
+    assert_eq!(status, 204, "{err}");
+    let after = users::get(&app.state, tid, alice).await.unwrap();
+    assert_eq!(after.org_id, None, "the member keeps their account");
+    assert!(
+        roles::effective_roles(&app.state, tid, alice, Some(org_uuid))
+            .await
+            .unwrap()
+            .iter()
+            .all(|r| r.id != role),
+        "the org-scoped grant went with the organization"
+    );
+}
+
+#[tokio::test]
 async fn a_viewer_reads_and_cannot_write() {
     let app = TestApp::spawn().await;
     let tid = app.tenant.id;

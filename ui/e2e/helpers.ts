@@ -206,6 +206,18 @@ export async function loginWithPassword(page: Page, state: State, extra: Record<
 }
 
 /**
+ * Drop the tenant's roles version, so role assignments, group membership and
+ * organization membership written by SQL are re-resolved on the next request.
+ */
+export function clearRolesVersion(tid: string = tenantId()) {
+  try {
+    execFileSync("redis-cli", ["-u", REDIS_URL, "del", `ridm:t:${tid}:roles:ver`]);
+  } catch (e) {
+    console.warn("redis-cli unavailable; roles cache not cleared:", String(e).split("\n")[0]);
+  }
+}
+
+/**
  * Give a `master` user the global owner role straight in the database, then
  * drop the tenant's roles version so the API re-resolves their permissions.
  */
@@ -217,11 +229,7 @@ export function promoteToOwner(email: string) {
   tenantSql(
     `INSERT INTO role_assignments (tenant_id, role_id, user_id) VALUES ('${tid}', '${rid}', '${uid}') ON CONFLICT DO NOTHING`,
   );
-  try {
-    execFileSync("redis-cli", ["-u", REDIS_URL, "del", `ridm:t:${tid}:roles:ver`]);
-  } catch (e) {
-    console.warn("redis-cli unavailable; roles cache not cleared:", String(e).split("\n")[0]);
-  }
+  clearRolesVersion(tid);
 }
 
 /** Sign into the console through the tenant's login page; lands on the overview. */
