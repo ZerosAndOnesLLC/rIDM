@@ -88,6 +88,14 @@ pub const CATALOGUE: &[PermissionDef] = &[
         "ridm:groups:write",
         "Create, change and delete groups; manage membership"
     ),
+    perm!(
+        "ridm:orgs:read",
+        "View organizations, their members and domains"
+    ),
+    perm!(
+        "ridm:orgs:write",
+        "Create, change and delete organizations; manage membership, domains and org-scoped role grants"
+    ),
     perm!("ridm:roles:read", "View roles, composites and assignments"),
     perm!(
         "ridm:roles:write",
@@ -203,6 +211,8 @@ pub const BUILT_IN_ROLES: &[BuiltInRole] = &[
             "ridm:invitations:write",
             "ridm:groups:read",
             "ridm:groups:write",
+            "ridm:orgs:read",
+            "ridm:orgs:write",
             "ridm:roles:read",
             "ridm:audit:read",
             "ridm:scim:read",
@@ -312,7 +322,8 @@ pub async fn permissions_of_user(
     let set = state
         .cache
         .get_or_load(&key, PERMISSIONS_TTL, || async move {
-            let effective = roles::effective_roles(&state_for_roles, tenant_id, user_id).await?;
+            let effective =
+                roles::effective_roles(&state_for_roles, tenant_id, user_id, None).await?;
             if effective.is_empty() {
                 return Ok(Some(PermissionSet::default()));
             }

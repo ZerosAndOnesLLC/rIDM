@@ -14,6 +14,7 @@ export const STAGE_PAGE: Record<FlowStage, string> = {
   mfa: "mfa",
   profile: "login",
   terms: "login",
+  organization: "login",
   consent: "consent",
   done: "login",
 };

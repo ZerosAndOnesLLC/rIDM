@@ -83,6 +83,7 @@ async fn account_token(fx: &Fx, user_id: Uuid, recent: bool) -> String {
             roles: &[],
             groups: &[],
             session_id: Some(session.id),
+            org_id: None,
             auth_time: Some(auth_time),
             amr: &["pwd".into()],
             acr: None,

@@ -3,7 +3,9 @@
 Users are the people (and service accounts) who sign in to a tenant. Groups
 organise them, roles say what they may do, and permissions attach meaning to
 roles for a particular API. All four belong to one tenant and are invisible to
-every other.
+every other. A tenant can also group its users into
+[organizations](organizations.md), which carry membership, their own role grants
+and email domains.
 
 ## Users
 

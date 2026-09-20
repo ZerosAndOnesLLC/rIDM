@@ -33,6 +33,7 @@ export function AccountShell({ children }: { children: ReactNode }) {
 const PAGES = [
   { href: "/account/", key: "account.nav_profile" },
   { href: "/account/security/", key: "account.nav_security" },
+  { href: "/account/organizations/", key: "account.nav_orgs" },
   { href: "/account/apps/", key: "account.nav_apps" },
   { href: "/account/data/", key: "account.nav_data" },
 ] as const;

@@ -293,7 +293,7 @@ async fn get_one(
     admin.require(tenant.id, P_READ)?;
     let u = load(&state, tenant.id, user).await?;
     let roles_direct = direct_roles(&state, tenant.id, user).await?;
-    let effective = roles::effective_roles(&state, tenant.id, user).await?;
+    let effective = roles::effective_roles(&state, tenant.id, user, None).await?;
     let groups = groups::groups_of_user(&state, tenant.id, user, false).await?;
     Ok(Json(UserDetail {
         password: PasswordSummary::from(&u),
@@ -635,7 +635,7 @@ async fn user_roles(
     load(&state, tenant.id, user).await?;
     Ok(Json(UserRoles {
         direct: direct_roles(&state, tenant.id, user).await?,
-        effective: roles::effective_roles(&state, tenant.id, user)
+        effective: roles::effective_roles(&state, tenant.id, user, None)
             .await?
             .to_vec(),
     }))
@@ -670,7 +670,7 @@ async fn assign_role(
     .await?;
     Ok(Json(UserRoles {
         direct: direct_roles(&state, tenant.id, user).await?,
-        effective: roles::effective_roles(&state, tenant.id, user)
+        effective: roles::effective_roles(&state, tenant.id, user, None)
             .await?
             .to_vec(),
     }))

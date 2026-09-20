@@ -93,6 +93,7 @@ pub fn router() -> Router<AppState> {
         .route("/t/{slug}/flows/{id}/passkey/finish", post(passkey_finish))
         .route("/t/{slug}/flows/{id}/profile", post(profile))
         .route("/t/{slug}/flows/{id}/terms", post(terms))
+        .route("/t/{slug}/flows/{id}/organization", post(organization))
         .route("/t/{slug}/flows/{id}/consent", post(consent))
         .route("/t/{slug}/flows/{id}/cancel", post(cancel))
         .route("/t/{slug}/flows/{id}/finish", get(finish))
@@ -297,6 +298,31 @@ async fn terms(
         return e.into_response();
     }
     match flows::terms_step(&state, &tenant.tenant, flow, body.accepted).await {
+        Ok(flow) => respond_state(&state, &tenant, &flow).await,
+        Err(e) => e.into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct OrganizationBody {
+    csrf: String,
+    org_id: Uuid,
+}
+
+async fn organization(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    axum::Json(body): axum::Json<OrganizationBody>,
+) -> Response {
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    match flows::organization_step(&state, &tenant.tenant, flow, body.org_id).await {
         Ok(flow) => respond_state(&state, &tenant, &flow).await,
         Err(e) => e.into_response(),
     }

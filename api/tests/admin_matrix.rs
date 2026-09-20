@@ -33,6 +33,10 @@ const SOURCES: &[(&str, &str)] = &[
     ("keys", include_str!("../src/routes/admin/keys.rs")),
     ("mappers", include_str!("../src/routes/admin/mappers.rs")),
     (
+        "organizations",
+        include_str!("../src/routes/admin/organizations.rs"),
+    ),
+    (
         "messaging",
         include_str!("../src/routes/admin/messaging.rs"),
     ),

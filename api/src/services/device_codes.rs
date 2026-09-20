@@ -47,6 +47,9 @@ pub struct Approval {
     pub auth_time: DateTime<Utc>,
     pub amr: Vec<String>,
     pub acr: Option<String>,
+    /// Organization the approving session acts in.
+    #[serde(default)]
+    pub org_id: Option<Uuid>,
     pub scopes: Vec<String>,
 }
 
@@ -270,6 +273,7 @@ pub async fn approve(
         auth_time: session.auth_time,
         amr: session.amr.clone(),
         acr: session.acr.clone(),
+        org_id: session.org_id,
         scopes: scopes.to_vec(),
     });
     store(state, &key, &rec, true).await?;

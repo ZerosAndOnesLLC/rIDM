@@ -213,6 +213,16 @@ async fn listing_is_cursor_paginated_for_global_admins() {
     // There are at least master + the app tenant; add two more.
     create_tenant(&app.state.db).await;
     create_tenant(&app.state.db).await;
+    // `tenants` is the one table every test binary shares, and they run in
+    // parallel: what matters is that paging covers everything that existed
+    // when it started, not that the table stood still while it ran.
+    let before: Vec<String> = sqlx::query_scalar::<_, uuid::Uuid>("SELECT id FROM tenants")
+        .fetch_all(&app.state.db)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|id| id.to_string())
+        .collect();
     let mut seen = vec![];
     let mut cursor: Option<String> = None;
     loop {
@@ -230,15 +240,13 @@ async fn listing_is_cursor_paginated_for_global_admins() {
             None => break,
         }
     }
-    let total: i64 = sqlx::query_scalar("SELECT count(*) FROM tenants")
-        .fetch_one(&app.state.db)
-        .await
-        .unwrap();
-    assert_eq!(seen.len() as i64, total, "every tenant exactly once");
+    for id in &before {
+        assert!(seen.contains(id), "tenant {id} never appeared in a page");
+    }
     let mut dedup = seen.clone();
     dedup.sort();
     dedup.dedup();
-    assert_eq!(dedup.len(), seen.len());
+    assert_eq!(dedup.len(), seen.len(), "every tenant exactly once");
     let (status, body, _) = get_json(&app, "/admin/tenants?cursor=garbage", Some(&t)).await;
     assert_eq!(status, 400, "{body}");
 }

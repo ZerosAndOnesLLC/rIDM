@@ -90,6 +90,8 @@ impl ClaimMapper {
 /// Claims that mappers may never set; the token service owns them.
 pub const PROTECTED_CLAIMS: &[&str] = &[
     "iss",
+    // The organization comes from the session, never from a mapper.
+    "org_id",
     "sub",
     "aud",
     "exp",

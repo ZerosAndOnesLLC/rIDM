@@ -39,6 +39,10 @@ pub struct AuthRequest {
     /// device code the flow's finish approves instead of issuing a code.
     #[serde(default)]
     pub device_code: Option<String>,
+    /// `organization`: the slug or id of the organization the client asks the
+    /// session to act in. A member is put there without being asked.
+    #[serde(default)]
+    pub organization: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,6 +104,9 @@ pub enum FlowStage {
     Profile,
     /// Terms of service must be accepted.
     Terms,
+    /// The user belongs to several organizations and must choose one for this
+    /// session.
+    Organization,
     /// Authenticated; consent for `pending_scopes` is required.
     Consent,
     /// Everything done; `GET /flows/{id}/finish` completes the authorization.
@@ -127,6 +134,10 @@ pub struct LoginFlow {
     /// Method that authenticated the user in this flow (`pwd`, `otp`, ...).
     #[serde(default)]
     pub amr: Vec<String>,
+    /// The organization this session acts in, once chosen (or settled from a
+    /// single membership, the request, or the session it resumes).
+    #[serde(default)]
+    pub org_id: Option<Uuid>,
     /// The browser presented a live trusted-device cookie for this user.
     #[serde(default)]
     pub trusted_device: bool,

@@ -187,10 +187,13 @@ struct Subject {
     groups: Vec<Group>,
 }
 
+/// Loads the user with the roles they hold in `org_id` (org-scoped grants
+/// apply only there) plus their unscoped ones.
 async fn load_subject(
     state: &AppState,
     tenant_id: Uuid,
     user_id: Uuid,
+    org_id: Option<Uuid>,
 ) -> Result<Subject, OAuthError> {
     let user = users::get(state, tenant_id, user_id)
         .await
@@ -201,7 +204,7 @@ async fn load_subject(
             "user is not active",
         ));
     }
-    let roles = roles::effective_roles(state, tenant_id, user_id)
+    let roles = roles::effective_roles(state, tenant_id, user_id, org_id)
         .await?
         .to_vec();
     let groups = groups::groups_of_user(state, tenant_id, user_id, true).await?;
@@ -430,6 +433,9 @@ struct Issue<'a> {
     auth_time: Option<chrono::DateTime<Utc>>,
     amr: Vec<String>,
     acr: Option<String>,
+    /// Organization the sign-in acts in: the `org_id` claim, and the scope
+    /// org-scoped roles are resolved in.
+    org_id: Option<Uuid>,
     nonce: Option<String>,
     with_refresh: Option<Uuid>, // family to continue, if rotating
     issue_refresh: bool,
@@ -482,6 +488,7 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
             roles: roles_v,
             groups: groups_v,
             session_id: i.session_id,
+            org_id: i.org_id,
             auth_time: i.auth_time,
             amr: &i.amr,
             acr: i.acr.as_deref(),
@@ -503,6 +510,7 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
                     roles: roles_v,
                     groups: groups_v,
                     session_id: i.session_id,
+                    org_id: i.org_id,
                     auth_time: i.auth_time.unwrap_or_else(Utc::now),
                     nonce: i.nonce.as_deref(),
                     amr: &i.amr,
@@ -537,6 +545,7 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
                 auth_time: i.auth_time,
                 amr: &i.amr,
                 acr: i.acr.as_deref(),
+                org_id: i.org_id,
                 // Public clients' refresh tokens are bound to the proof key
                 // (RFC 9449 §5); confidential clients are bound by their credentials.
                 dpop_jkt: if i.client.is_public() {
@@ -694,7 +703,7 @@ async fn authorization_code(
         ));
     }
 
-    let subject = load_subject(state, tenant.id, record.user_id).await?;
+    let subject = load_subject(state, tenant.id, record.user_id, record.org_id).await?;
     let role_ids: Vec<Uuid> = subject.roles.iter().map(|r| r.id).collect();
     let extra = parse_resources(params)?;
     // RFC 8707 §2.2: resources named at /authorize bound the grant; the token
@@ -723,6 +732,7 @@ async fn authorization_code(
             scopes: &record.scopes,
             audience,
             session_id: Some(record.session_id),
+            org_id: record.org_id,
             auth_time: Some(record.auth_time),
             amr: record.amr.clone(),
             acr: record.acr.clone(),
@@ -765,7 +775,7 @@ async fn device_code(
             Some(Poll::Expired) => return Err(OAuthError::code(OAuthErrorCode::ExpiredToken)),
             Some(Poll::Approved(record, approval)) => (record, approval),
         };
-    let subject = load_subject(state, tenant.id, approval.user_id).await?;
+    let subject = load_subject(state, tenant.id, approval.user_id, approval.org_id).await?;
     let role_ids: Vec<Uuid> = subject.roles.iter().map(|r| r.id).collect();
     let extra = parse_resources(params)?;
     let requested_aud: Vec<String> = if extra.is_empty() {
@@ -783,6 +793,7 @@ async fn device_code(
             scopes: &approval.scopes,
             audience,
             session_id: Some(approval.session_id),
+            org_id: approval.org_id,
             auth_time: Some(approval.auth_time),
             amr: approval.amr.clone(),
             acr: approval.acr.clone(),
@@ -826,7 +837,7 @@ async fn refresh_token(
     .await?;
     let scopes: Vec<String> = requested_scopes.unwrap_or_else(|| rotated.record.scopes.clone());
     let subject = match rotated.record.user_id {
-        Some(uid) => Some(load_subject(state, tenant.id, uid).await?),
+        Some(uid) => Some(load_subject(state, tenant.id, uid, rotated.record.org_id).await?),
         None => None,
     };
     let role_ids: Vec<Uuid> = subject
@@ -850,6 +861,7 @@ async fn refresh_token(
             scopes: &scopes,
             audience,
             session_id: rotated.record.session_id,
+            org_id: rotated.record.org_id,
             // OIDC Core §12.2: the refreshed ID token repeats the original
             // authentication context.
             auth_time: rotated.record.auth_time,
@@ -905,7 +917,7 @@ async fn client_credentials(
     .await?;
     let requested = checked.scopes;
     let subject = match client.service_account_user_id {
-        Some(uid) => Some(load_subject(state, tenant.id, uid).await?),
+        Some(uid) => Some(load_subject(state, tenant.id, uid, None).await?),
         None => None,
     };
     let role_ids: Vec<Uuid> = subject
@@ -928,6 +940,8 @@ async fn client_credentials(
             scopes: &requested,
             audience,
             session_id: None,
+            // No user, so no organization.
+            org_id: None,
             auth_time: None,
             amr: vec![],
             acr: None,
@@ -1076,7 +1090,18 @@ async fn token_exchange(
     };
 
     let subject = match tokens::subject_user_id(state, tenant, &subject_map).await? {
-        Some(uid) => Some(load_subject(state, tenant.id, uid).await?),
+        Some(uid) => Some(
+            load_subject(
+                state,
+                tenant.id,
+                uid,
+                subject_map
+                    .get("org_id")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| Uuid::parse_str(s).ok()),
+            )
+            .await?,
+        ),
         None => None,
     };
     let role_ids: Vec<Uuid> = subject
@@ -1149,6 +1174,11 @@ async fn token_exchange(
             auth_time: None,
             amr,
             acr: subject_claims["acr"].as_str().map(str::to_string),
+            // The delegated token acts where the subject token acted.
+            org_id: subject_claims
+                .get("org_id")
+                .and_then(|v| v.as_str())
+                .and_then(|s| Uuid::parse_str(s).ok()),
             nonce: None,
             with_refresh: None,
             issue_refresh: false,

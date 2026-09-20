@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::models::RefreshToken;
 
 const COLUMNS: &str = "id, tenant_id, family_id, client_id, user_id, session_id, token_hash, scopes, \
-    audiences, auth_time, amr, acr, expires_at, dpop_jkt, consumed_at, revoked_at, created_at";
+    audiences, auth_time, amr, acr, org_id, expires_at, dpop_jkt, consumed_at, revoked_at, created_at";
 
 /// Insert a token row as assembled by the service and return it as stored.
 pub async fn insert<'e>(
@@ -16,8 +16,8 @@ pub async fn insert<'e>(
 ) -> Result<RefreshToken, sqlx::Error> {
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "INSERT INTO refresh_tokens (id, tenant_id, family_id, client_id, user_id, session_id, \
-         token_hash, scopes, audiences, auth_time, amr, acr, expires_at, dpop_jkt) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING ",
+         token_hash, scopes, audiences, auth_time, amr, acr, org_id, expires_at, dpop_jkt) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING ",
     );
     qb.push(COLUMNS);
     sqlx::query_as::<_, RefreshToken>(qb.sql())
@@ -33,6 +33,7 @@ pub async fn insert<'e>(
         .bind(t.auth_time)
         .bind(&t.amr)
         .bind(t.acr.as_deref())
+        .bind(t.org_id)
         .bind(t.expires_at)
         .bind(t.dpop_jkt.as_deref())
         .fetch_one(exec)

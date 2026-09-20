@@ -22,8 +22,18 @@ pub fn roles_version(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:roles:ver")
 }
 
-pub fn effective_roles(tenant_id: Uuid, version: &str, user_id: Uuid) -> String {
-    format!("{PREFIX}:t:{tenant_id}:roles:{version}:user:{user_id}")
+/// Effective roles of a user in one organization context (`None` = unscoped
+/// grants only), under the tenant's roles version.
+pub fn effective_roles(
+    tenant_id: Uuid,
+    version: &str,
+    user_id: Uuid,
+    org_id: Option<Uuid>,
+) -> String {
+    match org_id {
+        Some(org) => format!("{PREFIX}:t:{tenant_id}:roles:{version}:user:{user_id}:org:{org}"),
+        None => format!("{PREFIX}:t:{tenant_id}:roles:{version}:user:{user_id}"),
+    }
 }
 
 /// Admin permissions of a user, derived from effective roles (same version token).
@@ -290,6 +300,12 @@ pub fn resource_server_permissions(
 pub fn user_groups(tenant_id: Uuid, version: &str, user_id: Uuid, effective: bool) -> String {
     let kind = if effective { "eff" } else { "direct" };
     format!("{PREFIX}:t:{tenant_id}:groups:{version}:{kind}:user:{user_id}")
+}
+
+/// Organizations a user belongs to, under the roles version (membership
+/// changes bump it, as org-scoped role grants hang off the same graph).
+pub fn user_organizations(tenant_id: Uuid, version: &str, user_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:orgs:{version}:user:{user_id}")
 }
 
 /// Tenant document keyed by its custom domain (the request host).

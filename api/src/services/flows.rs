@@ -23,8 +23,8 @@ use crate::services::login_flows::{self, FlowStage, LoginFlow};
 use crate::services::password::{self, SetPasswordOptions, VerifyOutcome};
 use crate::services::sessions::{self, NewSession, SsoSession};
 use crate::services::{
-    admin_access, clients, consents, locale, notifications, otp_factors, passkeys, profile_schema,
-    roles, totp, trusted_devices, users,
+    admin_access, clients, consents, locale, notifications, organizations, otp_factors, passkeys,
+    profile_schema, roles, totp, trusted_devices, users,
 };
 use crate::state::AppState;
 use webauthn_rs::prelude::{
@@ -63,8 +63,18 @@ pub struct PublicFlow {
     pub captcha: Option<CaptchaChallenge>,
     /// Mfa stage: what the user can verify with, or whether they must enrol first.
     pub mfa: Option<MfaInfo>,
+    /// Organization stage: the organizations the user may act in.
+    pub organizations: Vec<PublicOrganization>,
     /// Upstream providers offered on the login page ("Continue with ...").
     pub identity_providers: Vec<crate::models::PublicIdentityProvider>,
+}
+
+/// An organization offered at the `organization` stage.
+#[derive(Debug, Clone, Serialize)]
+pub struct PublicOrganization {
+    pub id: Uuid,
+    pub slug: String,
+    pub display_name: String,
 }
 
 /// Second-factor state of the signed-in user, shown at the `mfa` stage.
@@ -321,6 +331,19 @@ pub async fn public_state(
         attempts: flow.attempts,
         captcha: captcha_required(state, tenant, flow).await?,
         mfa,
+        organizations: if flow.stage == FlowStage::Organization {
+            selectable_organizations(state, tenant.id, flow.user_id)
+                .await?
+                .into_iter()
+                .map(|o| PublicOrganization {
+                    id: o.id,
+                    slug: o.slug,
+                    display_name: o.display_name,
+                })
+                .collect()
+        } else {
+            vec![]
+        },
         identity_providers: crate::services::identity_providers::offered(state, tenant.id).await?,
     })
 }
@@ -343,6 +366,86 @@ async fn missing_required(
         })
         .cloned()
         .collect())
+}
+
+/// The organizations a user may sign in as a member of: their memberships,
+/// minus the disabled ones.
+async fn selectable_organizations(
+    state: &AppState,
+    tenant_id: Uuid,
+    user_id: Option<Uuid>,
+) -> AppResult<Vec<crate::models::Organization>> {
+    let Some(user_id) = user_id else {
+        return Ok(vec![]);
+    };
+    Ok(organizations::of_user(state, tenant_id, user_id)
+        .await?
+        .into_iter()
+        .filter(|o| o.status == crate::models::OrganizationStatus::Active)
+        .collect())
+}
+
+/// Records the organization on the flow and on the session behind it, so every
+/// token issued through this sign-in carries it.
+async fn bind_organization(
+    state: &AppState,
+    tenant: &Tenant,
+    flow: &mut LoginFlow,
+    org_id: Uuid,
+) -> AppResult<()> {
+    if let Some(sid) = flow.session_id
+        && let Some(mut session) =
+            sessions::get(state, tenant.id, sid, &tenant.settings.session).await?
+    {
+        sessions::bind_organization(state, &mut session, org_id).await?;
+    }
+    flow.org_id = Some(org_id);
+    Ok(())
+}
+
+/// Which organization this session acts in. One membership settles itself, as
+/// does an `organization` request parameter naming one the user belongs to;
+/// several unnamed memberships need the user. Returns true when the flow must
+/// stop and ask.
+async fn organization_pending(
+    state: &AppState,
+    tenant: &Tenant,
+    flow: &mut LoginFlow,
+    user_id: Uuid,
+) -> AppResult<bool> {
+    if flow.org_id.is_some() {
+        return Ok(false);
+    }
+    // A session that already acts in an organization is not asked again.
+    if let Some(sid) = flow.session_id
+        && let Some(session) =
+            sessions::get(state, tenant.id, sid, &tenant.settings.session).await?
+        && let Some(org_id) = session.org_id
+    {
+        flow.org_id = Some(org_id);
+        return Ok(false);
+    }
+    let orgs = selectable_organizations(state, tenant.id, Some(user_id)).await?;
+    if orgs.is_empty() {
+        return Ok(false);
+    }
+    if let [only] = orgs.as_slice() {
+        bind_organization(state, tenant, flow, only.id).await?;
+        return Ok(false);
+    }
+    if let Some(requested) = flow.request.organization.as_deref() {
+        let wanted = requested.trim();
+        if let Some(org) = orgs
+            .iter()
+            .find(|o| o.slug == wanted || o.id.to_string() == wanted)
+        {
+            bind_organization(state, tenant, flow, org.id).await?;
+            return Ok(false);
+        }
+        // The request named an organization this user is not a member of.
+        // Asking is better than silently acting somewhere else.
+    }
+    Ok(true)
 }
 
 /// Recompute the stage after the user is authenticated. `must_change_password`
@@ -372,6 +475,10 @@ pub async fn advance(
     }
     if tenant.settings.registration.require_terms && user.terms_accepted_at.is_none() {
         flow.stage = FlowStage::Terms;
+        return Ok(());
+    }
+    if organization_pending(state, tenant, flow, user_id).await? {
+        flow.stage = FlowStage::Organization;
         return Ok(());
     }
     let client = client_of(state, flow).await?;
@@ -735,6 +842,36 @@ pub async fn terms_step(
     Ok(flow)
 }
 
+/// `POST /flows/{id}/organization`
+pub async fn organization_step(
+    state: &AppState,
+    tenant: &Tenant,
+    mut flow: LoginFlow,
+    org_id: Uuid,
+) -> AppResult<LoginFlow> {
+    if flow.stage != FlowStage::Organization {
+        return Err(AppError::BadRequest(
+            "flow is not at the organization step".into(),
+        ));
+    }
+    let user_id = flow.user_id.ok_or(AppError::Unauthorized)?;
+    // Only a live membership of an organization that is not disabled, and only
+    // one this user holds: the choice comes from the browser.
+    if !selectable_organizations(state, tenant.id, Some(user_id))
+        .await?
+        .iter()
+        .any(|o| o.id == org_id)
+    {
+        return Err(AppError::BadRequest(
+            "not a member of that organization".into(),
+        ));
+    }
+    bind_organization(state, tenant, &mut flow, org_id).await?;
+    advance(state, tenant, &mut flow, false).await?;
+    login_flows::save(state, &flow).await?;
+    Ok(flow)
+}
+
 /// `POST /flows/{id}/consent`: approve (all pending or a subset that must
 /// include every non-optional scope) or deny.
 pub async fn consent_step(
@@ -889,7 +1026,7 @@ pub async fn policy_requires_mfa(
         MfaPolicy::Required => true,
         MfaPolicy::Optional => false,
         MfaPolicy::RequiredForRoles { roles } => {
-            let held = roles::effective_role_names(state, tenant.id, user.id).await?;
+            let held = roles::effective_role_names(state, tenant.id, user.id, None).await?;
             roles.iter().any(|r| held.iter().any(|h| h == r))
         }
         MfaPolicy::RequiredForAdmins => {
@@ -1498,6 +1635,10 @@ async fn open_session(
     {
         sessions::bind_device(state, &mut session, d.id).await?;
     }
+    // A verified address at a verified auto-join domain joins its organization
+    // as the session opens, so enabling a domain reaches the users a tenant
+    // already has. Before the stage is computed, so the new membership counts.
+    organizations::ensure_auto_join(state, tenant.id, user).await?;
     flow.user_id = Some(user_id);
     flow.session_id = Some(session.id);
     flow.amr = amr;

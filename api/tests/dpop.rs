@@ -299,6 +299,7 @@ async fn bound_user_token_as(
             roles: &[],
             groups: &[],
             session_id: None,
+            org_id: None,
             auth_time: None,
             amr: &["pwd".into()],
             acr: None,
@@ -397,6 +398,7 @@ async fn resources_demand_the_proof_for_bound_tokens() {
             roles: &[],
             groups: &[],
             session_id: None,
+            org_id: None,
             auth_time: None,
             amr: &[],
             acr: None,
@@ -540,6 +542,7 @@ async fn a_bound_refresh_token_needs_the_same_key() {
             auth_time: None,
             amr: &[],
             acr: None,
+            org_id: None,
         },
     )
     .await

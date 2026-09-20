@@ -305,7 +305,7 @@ impl FromRequestParts<AppState> for AdminCtx {
         if permissions.is_empty() {
             return Err(AppError::Forbidden("no admin permissions".into()).into());
         }
-        let roles = roles::effective_role_names(state, tenant.id, user.id).await?;
+        let roles = roles::effective_role_names(state, tenant.id, user.id, None).await?;
         let scope = if tenant.id == MASTER_TENANT_ID {
             AdminScope::Global
         } else {
@@ -344,7 +344,7 @@ impl AdminCtx {
                 AppError::Forbidden("the token carries no admin permissions".into()).into(),
             );
         }
-        let roles = roles::effective_role_names(state, auth.tenant.id, auth.user.id).await?;
+        let roles = roles::effective_role_names(state, auth.tenant.id, auth.user.id, None).await?;
         let scope = if auth.tenant.id == MASTER_TENANT_ID {
             AdminScope::Global
         } else {

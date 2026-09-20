@@ -10,6 +10,7 @@ export type FlowStage =
   | "mfa"
   | "profile"
   | "terms"
+  | "organization"
   | "consent"
   | "done";
 
@@ -84,10 +85,18 @@ export interface PublicFlow {
   captcha: CaptchaChallenge | null;
   /** Present at the `mfa` stage. */
   mfa: MfaInfo | null;
+  /** Offered at the `organization` stage. */
+  organizations: PublicOrganization[];
   /** Present once the stage is `done`. */
   finish_url?: string;
   /** Upstream providers offered as "Continue with …" buttons. */
   identity_providers: PublicIdp[];
+}
+
+export interface PublicOrganization {
+  id: string;
+  slug: string;
+  display_name: string;
 }
 
 export interface PublicIdp {

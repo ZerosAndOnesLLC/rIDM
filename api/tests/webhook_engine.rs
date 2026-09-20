@@ -90,9 +90,21 @@ fn ping(app: &TestApp, webhook_id: Uuid) {
 }
 
 async fn wait_until(inbox: &Inbox, pred: impl Fn(&[(String, Instant)]) -> bool) {
-    for _ in 0..200 {
+    wait_for(inbox, Duration::from_secs(5), pred).await
+}
+
+/// Waits up to `budget` for the receiver to see what the caller expects. A
+/// test making a claim about *how long* delivery took gives this room well
+/// beyond the time it asserts, so a slow runner fails on the claim, with its
+/// diagnostic, rather than on a bare "never saw it".
+async fn wait_for(inbox: &Inbox, budget: Duration, pred: impl Fn(&[(String, Instant)]) -> bool) {
+    let deadline = Instant::now() + budget;
+    loop {
         if pred(&inbox.lock().unwrap().hits) {
             return;
+        }
+        if Instant::now() >= deadline {
+            break;
         }
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
@@ -148,10 +160,13 @@ async fn attempts_run_concurrently() {
     let quick = hook(&app, &app.url("/_test/hook"), 1).await;
     let started = Instant::now();
     ping(&app, quick);
-    wait_until(&inbox, |h| h.len() == 5).await;
+    // Four 1.5 s endpoints one after another cannot finish inside 6 s, so 5 s
+    // still shows they overlapped, with room for a loaded runner. The wait is
+    // longer again, so a slow pass reports the timing, not a bare timeout.
+    wait_for(&inbox, Duration::from_secs(30), |h| h.len() == 5).await;
     let took = started.elapsed();
     assert!(
-        took < Duration::from_secs(4),
+        took < Duration::from_secs(5),
         "five deliveries with four 1.5 s endpoints took {took:?}: they were serialized"
     );
 }

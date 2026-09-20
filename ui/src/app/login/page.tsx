@@ -15,7 +15,7 @@ import { assertPasskey, passkeysSupported } from "@/lib/passkeys";
 import { useTenant } from "@/lib/tenant";
 import type { AttributeDef, Method, PasskeyRequestOptions, PublicFlow } from "@/lib/types";
 
-const ACCEPTS = ["authenticate", "password_change", "profile", "terms", "done"] as const;
+const ACCEPTS = ["authenticate", "password_change", "profile", "terms", "organization", "done"] as const;
 
 export default function Page() {
   return (
@@ -68,6 +68,7 @@ function PreviewForm({ tenant }: { tenant: string | null }) {
     attempts: 0,
     captcha: null,
     mfa: null,
+    organizations: [],
     identity_providers: [],
   };
   const post: Post = <T,>() => new Promise<T>(() => {});
@@ -92,10 +93,70 @@ function LivePage({ p }: { p: ReturnType<typeof usePageParams> }) {
         <Profile flow={f.flow} post={f.post} />
       ) : f.flow.stage === "terms" ? (
         <Terms flow={f.flow} post={f.post} />
+      ) : f.flow.stage === "organization" ? (
+        <Organization flow={f.flow} post={f.post} />
       ) : (
         <Spinner label={t("common.loading")} />
       )}
     </AuthShell>
+  );
+}
+
+function Organization({ flow, post }: { flow: PublicFlow; post: Post }) {
+  const { t } = useI18n();
+  const errorText = useErrorText();
+  const [chosen, setChosen] = useState(flow.organizations[0]?.id ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await post("organization", { org_id: chosen });
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-4">
+      <Title sub={t("organization.description")}>{t("organization.title")}</Title>
+      {error && <Alert tone="error">{error}</Alert>}
+      <fieldset className="flex flex-col gap-2">
+        <legend className="sr-only">{t("organization.title")}</legend>
+        {flow.organizations.map((org) => (
+          <label
+            key={org.id}
+            className="flex min-h-11 cursor-pointer items-center gap-3 rounded-[var(--radius)] border border-line px-3 py-2 hover:bg-paper has-checked:border-accent"
+          >
+            <input
+              type="radio"
+              name="organization"
+              value={org.id}
+              checked={chosen === org.id}
+              onChange={() => setChosen(org.id)}
+              className="size-4 accent-[var(--accent)]"
+            />
+            <span className="flex flex-col">
+              <span className="text-ink">{org.display_name}</span>
+              <span className="text-[0.8125rem] text-muted">{org.slug}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      <Button type="submit" busy={busy} disabled={!chosen}>
+        {t("organization.continue")}
+      </Button>
+      <button
+        type="button"
+        onClick={() => void post("cancel", {}).catch((e: unknown) => setError(errorText(e)))}
+        className="self-center text-[0.8125rem] text-muted hover:text-ink hover:underline underline-offset-4"
+      >
+        {t("common.cancel")}
+      </button>
+    </form>
   );
 }
 

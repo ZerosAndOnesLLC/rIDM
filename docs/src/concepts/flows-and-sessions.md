@@ -46,7 +46,9 @@ connected by a short-lived **login flow**.
 
 A flow passes through the stages that apply to it: `authenticate` (or
 `register`), `verify_email`, `password_change`, `mfa`, `profile`, `terms`,
-`consent`, and finally `done`. The API decides the next stage; the page only renders it.
+`organization` (only when the user belongs to more than one and the request
+named none — see [Organizations](organizations.md)), `consent`, and finally
+`done`. The API decides the next stage; the page only renders it.
 
 ### Why it works this way
 

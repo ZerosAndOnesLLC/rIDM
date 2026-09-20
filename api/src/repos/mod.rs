@@ -13,6 +13,7 @@ pub mod invitations;
 pub mod ip_rules;
 pub mod login_attempts;
 pub mod messages;
+pub mod organizations;
 pub mod password_history;
 pub mod personal_access_tokens;
 pub mod profile_schema;

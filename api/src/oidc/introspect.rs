@@ -172,6 +172,7 @@ async fn handle(
         "jti",
         "sid",
         "tid",
+        "org_id",
         "roles",
         "permissions",
         "cnf",

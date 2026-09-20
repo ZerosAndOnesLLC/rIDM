@@ -192,6 +192,7 @@ async fn token(fx: &Fx, user_id: Uuid, age_secs: i64) -> (String, Uuid) {
             roles: &[],
             groups: &[],
             session_id: Some(session.id),
+            org_id: None,
             auth_time: Some(auth_time),
             amr: &["pwd".into()],
             acr: None,

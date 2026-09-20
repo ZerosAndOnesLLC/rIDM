@@ -14,6 +14,17 @@ release renames that heading to the version and date.
 
 ## [Unreleased]
 
+### Added
+
+- Organizations within a tenant: membership (a user may belong to several, one
+  of them primary), role grants scoped to an organization, email domains
+  verified by DNS TXT record with auto-join, an organization step in the login
+  flow, and an `org_id` claim in access and ID tokens taken from the session, so
+  one user can act in different organizations in different sessions. New
+  `ridm:orgs:read` and `ridm:orgs:write` permissions (user managers hold both),
+  a console page, and a read-only list in the account console. A tenant with no
+  organizations is unaffected, and no token gains a claim.
+
 ## [0.1.0] - 2026-09-19
 
 The first release.

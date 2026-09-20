@@ -381,7 +381,7 @@ async fn opaque_access_tokens_work_wherever_a_jwt_does() {
 async fn direct_token(fx: &Fx, user_id: Uuid, audience: &str, format: AccessTokenFormat) -> String {
     let tenant = tenants::get(&fx.app.state, fx.tid()).await.unwrap();
     let user = users::get(&fx.app.state, fx.tid(), user_id).await.unwrap();
-    let role_list = roles::effective_roles(&fx.app.state, fx.tid(), user_id)
+    let role_list = roles::effective_roles(&fx.app.state, fx.tid(), user_id, None)
         .await
         .unwrap();
     let client = TokenClient {
@@ -399,6 +399,7 @@ async fn direct_token(fx: &Fx, user_id: Uuid, audience: &str, format: AccessToke
             roles: &role_list,
             groups: &[],
             session_id: None,
+            org_id: None,
             auth_time: None,
             amr: &["pwd".into()],
             acr: None,

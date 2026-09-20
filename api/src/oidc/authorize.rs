@@ -479,6 +479,7 @@ pub async fn validate(
         })
         .unwrap_or_default();
     let login_hint = one("login_hint")?.map(str::to_string);
+    let organization = one("organization")?.map(str::to_string);
     let claims = match one("claims")? {
         Some(raw) => {
             if !is_oidc {
@@ -563,6 +564,7 @@ pub async fn validate(
             claims,
             skip_consent: !client.require_consent,
             device_code: None,
+            organization,
         },
         client: std::sync::Arc::new(client.clone()),
     })
@@ -650,6 +652,8 @@ async fn decide(
                 csrf: String::new(),
                 attempts: 0,
                 amr: s.amr.clone(),
+                // This flow continues a session that may already act in one.
+                org_id: s.org_id,
                 trusted_device: false,
                 remember_device: false,
                 created_at: now,
@@ -686,6 +690,7 @@ async fn decide(
                 csrf: String::new(),
                 attempts: 0,
                 amr: vec![],
+                org_id: None,
                 trusted_device: false,
                 remember_device: false,
                 created_at: now,
@@ -733,6 +738,7 @@ async fn decide(
                 csrf: String::new(),
                 attempts: 0,
                 amr: vec![],
+                org_id: session.org_id,
                 trusted_device: false,
                 remember_device: false,
                 created_at: now,
@@ -770,6 +776,7 @@ pub async fn issue_code(
             auth_time: session.auth_time,
             amr: session.amr.clone(),
             acr: session.acr.clone(),
+            org_id: session.org_id,
             claims: req.claims.clone(),
             issued_at: Utc::now(),
         },

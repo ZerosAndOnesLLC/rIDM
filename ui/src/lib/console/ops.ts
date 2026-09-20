@@ -28,6 +28,8 @@ export const EVENT_NAMES = [
   "client.created", "client.deleted", "client.secret_rotated", "client.updated",
   "consent.granted", "consent.revoked", "device.revoked", "device.trusted",
   "group.created", "group.deleted", "group.member_added", "group.member_removed", "group.updated",
+  "organization.created", "organization.deleted", "organization.domain_added", "organization.domain_removed",
+  "organization.domain_verified", "organization.member_added", "organization.member_removed", "organization.updated",
   "invitation.accepted", "invitation.created", "invitation.revoked",
   "login.failed", "login.new_device", "login.passwordless_sent", "login.succeeded",
   "master_key.rotated", "mfa.changed",

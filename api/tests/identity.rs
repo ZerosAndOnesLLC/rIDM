@@ -522,7 +522,7 @@ async fn effective_roles_resolve_groups_ancestors_and_composites() {
 
     // Nothing yet, and the empty result is cached.
     assert!(
-        roles::effective_roles(st, tid, alice.id)
+        roles::effective_roles(st, tid, alice.id, None)
             .await
             .unwrap()
             .is_empty()
@@ -559,7 +559,7 @@ async fn effective_roles_resolve_groups_ancestors_and_composites() {
         .await
         .unwrap();
 
-    let names = roles::effective_role_names(st, tid, alice.id)
+    let names = roles::effective_role_names(st, tid, alice.id, None)
         .await
         .unwrap();
     assert_eq!(
@@ -571,7 +571,7 @@ async fn effective_roles_resolve_groups_ancestors_and_composites() {
     roles::remove_composite(st, tid, Actor::System, editor.id, viewer.id)
         .await
         .unwrap();
-    let names = roles::effective_role_names(st, tid, alice.id)
+    let names = roles::effective_role_names(st, tid, alice.id, None)
         .await
         .unwrap();
     assert_eq!(names, vec!["admin", "direct", "editor", "group-role"]);
@@ -580,7 +580,7 @@ async fn effective_roles_resolve_groups_ancestors_and_composites() {
         .await
         .unwrap();
     assert_eq!(
-        roles::effective_role_names(st, tid, alice.id)
+        roles::effective_role_names(st, tid, alice.id, None)
             .await
             .unwrap(),
         vec!["direct"]
@@ -596,7 +596,7 @@ async fn effective_roles_resolve_groups_ancestors_and_composites() {
     .await
     .unwrap();
     assert!(
-        roles::effective_roles(st, tid, alice.id)
+        roles::effective_roles(st, tid, alice.id, None)
             .await
             .unwrap()
             .is_empty()

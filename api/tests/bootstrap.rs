@@ -59,7 +59,7 @@ async fn bootstrap_is_idempotent_and_creates_a_global_owner() {
     assert_eq!(admin.email.as_deref(), Some("root@example.com"));
     assert!(admin.email_verified);
     assert!(admin.must_change_password);
-    let names = roles::effective_role_names(&app.state, MASTER_TENANT_ID, admin.id)
+    let names = roles::effective_role_names(&app.state, MASTER_TENANT_ID, admin.id, None)
         .await
         .unwrap();
     assert_eq!(names, vec![GLOBAL_OWNER_ROLE]);

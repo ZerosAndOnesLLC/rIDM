@@ -95,7 +95,7 @@ async fn fixture(alg: SigningAlg) -> Fx {
     groups::add_member(&app.state, tid, Actor::System, group.id, user.id)
         .await
         .unwrap();
-    let roles = roles::effective_roles(&app.state, tid, user.id)
+    let roles = roles::effective_roles(&app.state, tid, user.id, None)
         .await
         .unwrap()
         .to_vec();
@@ -148,6 +148,7 @@ async fn access_and_id_tokens_sign_and_verify_for_every_algorithm() {
                 roles: &fx.roles,
                 groups: &fx.groups,
                 session_id: None,
+                org_id: None,
                 auth_time: None,
                 amr: &["pwd".into()],
                 acr: None,
@@ -188,6 +189,7 @@ async fn access_and_id_tokens_sign_and_verify_for_every_algorithm() {
                 roles: &fx.roles,
                 groups: &fx.groups,
                 session_id: None,
+                org_id: None,
                 auth_time: chrono::Utc::now(),
                 nonce: Some("n-0S6_WzA2Mj"),
                 amr: &["pwd".into()],
@@ -307,6 +309,7 @@ async fn expired_tokens_and_revoked_keys_are_rejected() {
             roles: &[],
             groups: &[],
             session_id: None,
+            org_id: None,
             auth_time: None,
             amr: &[],
             acr: None,
@@ -357,6 +360,7 @@ async fn expired_tokens_and_revoked_keys_are_rejected() {
             roles: &[],
             groups: &[],
             session_id: None,
+            org_id: None,
             auth_time: None,
             amr: &[],
             acr: None,
@@ -483,6 +487,7 @@ async fn mappers_and_encrypted_id_tokens() {
             roles: &fx.roles,
             groups: &fx.groups,
             session_id: None,
+            org_id: None,
             auth_time: None,
             amr: &[],
             acr: None,
@@ -509,6 +514,7 @@ async fn mappers_and_encrypted_id_tokens() {
             roles: &fx.roles,
             groups: &fx.groups,
             session_id: None,
+            org_id: None,
             auth_time: chrono::Utc::now(),
             nonce: None,
             amr: &[],
@@ -563,6 +569,7 @@ async fn access_token_expiry_is_capped_at_not_after() {
                     roles: &[],
                     groups: &[],
                     session_id: None,
+                    org_id: None,
                     auth_time: None,
                     amr: &[],
                     acr: None,

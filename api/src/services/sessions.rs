@@ -34,6 +34,9 @@ pub struct SsoSession {
     /// Trusted device this session was opened from, if any.
     #[serde(default)]
     pub device_id: Option<Uuid>,
+    /// Organization this session acts in; the source of the `org_id` claim.
+    #[serde(default)]
+    pub org_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub last_seen_at: DateTime<Utc>,
     /// Absolute end of life.
@@ -159,6 +162,7 @@ pub async fn create(
         ip: req.ip,
         user_agent: req.user_agent,
         device_id: None,
+        org_id: None,
         created_at: now,
         last_seen_at: now,
         expires_at: now + chrono::Duration::seconds(req.policy.absolute_timeout_secs as i64),
@@ -294,6 +298,24 @@ pub async fn refresh_auth(
     session.acr = acr;
     store(state, session).await?;
     mirror_touch(state, session).await
+}
+
+/// Record the organization this session acts in. Tokens issued through the
+/// session carry it as `org_id`.
+pub async fn bind_organization(
+    state: &AppState,
+    session: &mut SsoSession,
+    org_id: Uuid,
+) -> AppResult<()> {
+    if session.org_id == Some(org_id) {
+        return Ok(());
+    }
+    session.org_id = Some(org_id);
+    store(state, session).await?;
+    let mut tx = db::tenant_tx(&state.db, session.tenant_id).await?;
+    repos::sessions::set_organization(&mut *tx, session.tenant_id, session.id, org_id).await?;
+    tx.commit().await?;
+    Ok(())
 }
 
 /// Attach the trusted device the browser presented (or just registered).
