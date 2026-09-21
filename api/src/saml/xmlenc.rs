@@ -363,7 +363,7 @@ mod tests {
 
     #[test]
     fn xmlsec1_decrypts_what_we_encrypt() {
-        use crate::saml::testkit::{rsa_key_pem, scratch, xmlsec1};
+        use crate::saml::testkit::{rsa_key_pem, scratch, xmlsec1, xmlsec1_lax};
         let Some(tool) = xmlsec1() else {
             eprintln!("xmlsec1 not installed; interop not checked");
             return;
@@ -378,7 +378,9 @@ mod tests {
                 let file = dir.join("enc.xml");
                 std::fs::write(&file, el.to_string()).unwrap();
                 let out = std::process::Command::new(&tool)
-                    .args(["--decrypt", "--lax-key-search", "--privkey-pem"])
+                    .arg("--decrypt")
+                    .args(xmlsec1_lax())
+                    .arg("--privkey-pem")
                     .arg(&key)
                     .arg(&file)
                     .output()

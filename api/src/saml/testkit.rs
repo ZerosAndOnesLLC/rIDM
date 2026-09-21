@@ -55,6 +55,21 @@ pub fn xmlsec1() -> Option<std::path::PathBuf> {
     found.then(|| "xmlsec1".into())
 }
 
+/// `--lax-key-search` where it exists: xmlsec1 1.3 searches keys strictly by
+/// default and needs it; 1.2 (Ubuntu's) is lax already and refuses the flag.
+pub fn xmlsec1_lax() -> Vec<&'static str> {
+    let version = std::process::Command::new("xmlsec1")
+        .arg("--version")
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default();
+    if version.contains(" 1.2.") {
+        vec![]
+    } else {
+        vec!["--lax-key-search"]
+    }
+}
+
 /// A scratch directory for files handed to `xmlsec1`.
 pub fn scratch(name: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("ridm-saml-{name}-{}", uuid::Uuid::new_v4()));

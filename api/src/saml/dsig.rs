@@ -365,7 +365,7 @@ mod tests {
 
     #[test]
     fn xmlsec1_verifies_our_signatures_and_we_verify_its() {
-        use crate::saml::testkit::{rsa_key_pem, scratch, xmlsec1};
+        use crate::saml::testkit::{rsa_key_pem, scratch, xmlsec1, xmlsec1_lax};
         let Some(tool) = xmlsec1() else {
             eprintln!("xmlsec1 not installed; interop not checked");
             return;
@@ -383,7 +383,9 @@ mod tests {
         let ours = dir.join("ours.xml");
         std::fs::write(&ours, &wrapped).unwrap();
         let out = std::process::Command::new(&tool)
-            .args(["--verify", "--lax-key-search", "--pubkey-cert-pem"])
+            .arg("--verify")
+            .args(xmlsec1_lax())
+            .arg("--pubkey-cert-pem")
             .arg(&cert)
             .arg("--id-attr:ID")
             .arg(&id_node)
@@ -418,7 +420,9 @@ mod tests {
         std::fs::write(&tmpl, template).unwrap();
         std::fs::write(&key, rsa_key_pem()).unwrap();
         let out = std::process::Command::new(&tool)
-            .args(["--sign", "--lax-key-search", "--privkey-pem"])
+            .arg("--sign")
+            .args(xmlsec1_lax())
+            .arg("--privkey-pem")
             .arg(&key)
             .arg("--id-attr:ID")
             .arg(&id_node)

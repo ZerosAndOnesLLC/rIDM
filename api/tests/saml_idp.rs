@@ -457,6 +457,16 @@ async fn the_response_verifies_with_xmlsec1_too() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("idp.pem"), certs[0].to_pem()).unwrap();
     std::fs::write(dir.join("response.xml"), &xml).unwrap();
+    // xmlsec1 1.3 searches keys strictly unless told; 1.2 refuses the flag.
+    let version = std::process::Command::new("xmlsec1")
+        .arg("--version")
+        .output()
+        .unwrap();
+    let lax: Vec<&str> = if String::from_utf8_lossy(&version.stdout).contains(" 1.2.") {
+        vec![]
+    } else {
+        vec!["--lax-key-search"]
+    };
     // Response first; then the assertion on its own, as an SP checking
     // only the assertion would.
     for node in ["Response", "Assertion"] {
@@ -466,7 +476,9 @@ async fn the_response_verifies_with_xmlsec1_too() {
             ns::ASSERTION
         };
         let out = std::process::Command::new("xmlsec1")
-            .args(["--verify", "--lax-key-search", "--pubkey-cert-pem"])
+            .arg("--verify")
+            .args(lax.iter())
+            .arg("--pubkey-cert-pem")
             .arg(dir.join("idp.pem"))
             .arg("--id-attr:ID")
             .arg(format!("{ns_uri}:{node}"))
