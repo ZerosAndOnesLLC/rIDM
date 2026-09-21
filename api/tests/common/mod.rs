@@ -373,6 +373,9 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
         breach_check_url: None,
         smtp: None,
         bootstrap: None,
+        // Tests that exercise the risk policy set the geo headers they need
+        // through `spawn_configured`; no database file is ever read.
+        geoip: ridm_api::config::GeoIpConfig::default(),
     }
 }
 

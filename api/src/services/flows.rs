@@ -17,14 +17,17 @@ use zeroize::Zeroizing;
 use crate::db;
 use crate::error::{AppError, AppResult, FieldError};
 use crate::middleware::TenantCtx;
-use crate::models::{AttributeDef, Client, MfaPolicy, Tenant, User, UserStatus};
+use crate::models::{
+    AttributeDef, Client, MfaPolicy, RiskAssessment, Tenant, TrustedDevice, User, UserStatus,
+};
 use crate::repos;
+use crate::services::geoip::Location;
 use crate::services::login_flows::{self, FlowStage, LoginFlow};
 use crate::services::password::{self, SetPasswordOptions, VerifyOutcome};
 use crate::services::sessions::{self, NewSession, SsoSession};
 use crate::services::{
     admin_access, clients, consents, locale, notifications, organizations, otp_factors, passkeys,
-    profile_schema, roles, totp, trusted_devices, users,
+    profile_schema, risk, roles, totp, trusted_devices, users,
 };
 use crate::state::AppState;
 use webauthn_rs::prelude::{
@@ -509,6 +512,10 @@ pub enum AuthStep {
     },
     /// Wrong credentials; the flow (with its attempt counter) was saved.
     Rejected { flow: Box<LoginFlow>, locked: bool },
+    /// The credentials were right, but the tenant's risk policy refused the
+    /// sign-in. The flow is gone and no session was opened; the browser goes
+    /// back to the client with `access_denied`.
+    Blocked { redirect_to: String },
 }
 
 /// Inputs of a password authentication attempt.
@@ -525,6 +532,8 @@ pub struct PasswordAttempt {
     pub device_secret: Option<String>,
     /// "Remember this device" was ticked.
     pub remember_device: bool,
+    /// Where the request came from, for the risk policy.
+    pub location: Option<Location>,
 }
 
 /// `POST /flows/{id}/password`
@@ -543,6 +552,7 @@ pub async fn password_step(
         captcha_token,
         device_secret,
         remember_device,
+        location,
     } = attempt;
     if flow.stage != FlowStage::Authenticate {
         return Err(AppError::BadRequest(
@@ -621,6 +631,20 @@ pub async fn password_step(
     match verdict {
         Ok(must_change) => {
             let user = user.expect("user present");
+            let ctx = RequestContext {
+                ip: ip.clone(),
+                user_agent,
+                existing_session,
+                device_secret,
+                remember_device,
+                location,
+            };
+            // Scored before anything is written: a refused sign-in leaves no
+            // session, no flow and no successful attempt behind it.
+            let assessment = assess(state, &tenant.tenant, &user, &ctx).await?;
+            if assessment.risk.is_blocked() {
+                return refuse(state, &tenant.tenant, &flow, &user, &assessment.risk, &ctx).await;
+            }
             let mut tx = db::tenant_tx(&state.db, tid).await?;
             repos::users::record_login_success(&mut *tx, tid, user.id).await?;
             repos::login_attempts::record(&mut *tx, tid, &identifier, ip.as_deref(), true, None)
@@ -635,13 +659,8 @@ pub async fn password_step(
                 &mut flow,
                 &user,
                 vec!["pwd".into()],
-                RequestContext {
-                    ip: ip.clone(),
-                    user_agent,
-                    existing_session,
-                    device_secret,
-                    remember_device,
-                },
+                ctx,
+                assessment,
             )
             .await?;
             advance(state, &tenant.tenant, &mut flow, must_change).await?;
@@ -922,11 +941,16 @@ pub enum ConsentOutcome {
 
 /// Client-facing error redirect used by cancel and consent denial.
 pub fn denial_redirect(flow: &LoginFlow) -> String {
+    error_redirect(flow, "the user denied the request")
+}
+
+/// `access_denied` back to the client, with a reason the client may show.
+fn error_redirect(flow: &LoginFlow, description: &str) -> String {
     let mut u = url::Url::parse(&flow.request.redirect_uri).expect("validated redirect uri");
     {
         let mut q = u.query_pairs_mut();
         q.append_pair("error", "access_denied");
-        q.append_pair("error_description", "the user denied the request");
+        q.append_pair("error_description", description);
         if let Some(s) = &flow.request.state {
             q.append_pair("state", s);
         }
@@ -960,6 +984,101 @@ pub struct RequestContext {
     pub device_secret: Option<String>,
     /// "Remember this device" was ticked.
     pub remember_device: bool,
+    /// Where the address is, for the risk policy's location signals; `None`
+    /// when the deployment has no geo source or it knows nothing about this
+    /// address.
+    pub location: Option<Location>,
+}
+
+/// What a sign-in is judged on, worked out before any session exists so that
+/// a refused sign-in leaves nothing behind.
+pub struct Assessment {
+    /// The browser's trusted-device cookie, if it holds a live one.
+    pub trusted: Option<TrustedDevice>,
+    /// The user has signed in before, but never from this browser.
+    pub new_browser: bool,
+    pub risk: RiskAssessment,
+}
+
+/// Verify the device cookie, recognise the browser and score the sign-in.
+/// Nothing here writes anything: the caller decides whether this sign-in
+/// happens at all.
+async fn assess(
+    state: &AppState,
+    tenant: &Tenant,
+    user: &User,
+    ctx: &RequestContext,
+) -> AppResult<Assessment> {
+    let trusted = match &ctx.device_secret {
+        Some(secret) => {
+            trusted_devices::verify_secret(state, tenant, user.id, secret, ctx.ip.as_deref())
+                .await?
+        }
+        None => None,
+    };
+    let new_browser = trusted.is_none()
+        && is_new_browser(state, tenant.id, user.id, ctx.user_agent.as_deref(), None).await?;
+    let risk = risk::evaluate(
+        state,
+        tenant,
+        user.id,
+        &risk::Inputs {
+            ip: ctx.ip.as_deref(),
+            location: ctx.location.as_ref(),
+            new_device: new_browser,
+        },
+    )
+    .await?;
+    Ok(Assessment {
+        trusted,
+        new_browser,
+        risk,
+    })
+}
+
+/// A sign-in the risk policy refused: the credentials were right, but this
+/// attempt is not allowed to become a session. The flow is discarded and the
+/// browser is sent back to the client with `access_denied`.
+async fn refuse(
+    state: &AppState,
+    tenant: &Tenant,
+    flow: &LoginFlow,
+    user: &User,
+    assessment: &RiskAssessment,
+    ctx: &RequestContext,
+) -> AppResult<AuthStep> {
+    let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
+    repos::login_attempts::record(
+        &mut *tx,
+        tenant.id,
+        &user.username,
+        ctx.ip.as_deref(),
+        false,
+        Some("risk_blocked"),
+    )
+    .await?;
+    tx.commit().await?;
+    metrics::counter!("ridm_logins_total", "method" => "risk", "outcome" => "blocked").increment(1);
+    risk::announce(
+        state,
+        tenant.id,
+        user.id,
+        assessment,
+        ctx.ip.clone(),
+        ctx.user_agent.clone(),
+    );
+    tracing::info!(
+        tenant_id = %tenant.id,
+        user_id = %user.id,
+        score = assessment.score,
+        signals = ?assessment.signal_names(),
+        "sign-in refused by the risk policy"
+    );
+    deny_device(state, flow).await?;
+    login_flows::delete(state, flow.tenant_id, flow.id).await?;
+    Ok(AuthStep::Blocked {
+        redirect_to: error_redirect(flow, "the sign-in was refused"),
+    })
 }
 
 /// Is `acr` an authentication context class that means "a second factor
@@ -988,7 +1107,9 @@ pub fn requested_mfa_class(acr_values: &[String]) -> Option<&str> {
 /// Whether the flow must pass a second factor before continuing.
 ///
 /// A step-up the client asked for (an `acr_values` class ending in `:mfa`)
-/// is always honoured, even on a trusted device. Policy-driven MFA is
+/// is always honoured, even on a trusted device, and so is one the risk
+/// policy demanded when this sign-in was scored: the device cookie says
+/// which browser this is, not who is holding it. Policy-driven MFA is
 /// skipped on a trusted device: `required` asks everyone (enrolling first
 /// when needed); `required_for_roles` asks holders of any listed role
 /// (direct, through groups or composites) and `required_for_admins` asks
@@ -1003,7 +1124,7 @@ pub async fn mfa_required(
     if flow.amr.iter().any(|m| m == "mfa") {
         return Ok(false);
     }
-    if requested_mfa_class(&flow.request.acr_values).is_some() {
+    if requested_mfa_class(&flow.request.acr_values).is_some() || flow.risk_step_up {
         return Ok(true);
     }
     if flow.trusted_device {
@@ -1045,8 +1166,29 @@ pub async fn policy_requires_mfa(
     Ok(required || totp::has_second_factor(state, tenant.id, user.id).await?)
 }
 
+/// What a live SSO session still owes before anything may be issued on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Owed {
+    /// Nothing: the session may be used as it is.
+    Nothing,
+    /// This step, first.
+    Step(FlowStage),
+    /// The risk policy refused to let this session be used from here. There
+    /// is nothing the browser can do about it in this request.
+    Blocked,
+}
+
+impl Owed {
+    pub fn step(self) -> Option<FlowStage> {
+        match self {
+            Self::Step(s) => Some(s),
+            _ => None,
+        }
+    }
+}
+
 /// The step a live SSO session still owes before anything may be issued on
-/// it, or `None` when it is complete.
+/// it, or [`Owed::Nothing`] when it is complete.
 ///
 /// A flow opens the session as soon as the first factor passes and then
 /// walks the remaining steps, so a browser that abandons the flow holds a
@@ -1057,30 +1199,72 @@ pub async fn policy_requires_mfa(
 /// A trusted device (the browser's device cookie, exactly as the flow reads
 /// it) waives policy MFA the same way it does in the flow. A user who is
 /// gone or no longer active owes a fresh sign-in (`Authenticate`).
+///
+/// The risk policy is asked here too, because a session that opened from a
+/// safe place can be reused from anywhere: a silent sign-in from a new
+/// country steps up to the second factor, and one the policy blocks cannot
+/// be used at all. The session itself is the browser's history, so the
+/// device signal never fires on this path — location and velocity do.
 pub async fn unfinished_stage(
     state: &AppState,
     tenant: &Tenant,
     session: &SsoSession,
     headers: &axum::http::HeaderMap,
-) -> AppResult<Option<FlowStage>> {
+    origin: (Option<&str>, Option<&Location>),
+) -> AppResult<Owed> {
     let user = match users::get(state, tenant.id, session.user_id).await {
         Ok(u) if matches!(u.status, UserStatus::Active | UserStatus::Pending) => u,
-        Ok(_) | Err(AppError::NotFound(_)) => return Ok(Some(FlowStage::Authenticate)),
+        Ok(_) | Err(AppError::NotFound(_)) => return Ok(Owed::Step(FlowStage::Authenticate)),
         Err(e) => return Err(e),
     };
     if user.must_change_password && tenant.settings.auth.password {
-        return Ok(Some(FlowStage::PasswordChange));
+        return Ok(Owed::Step(FlowStage::PasswordChange));
     }
-    if session.amr.iter().any(|m| m == "mfa") || !policy_requires_mfa(state, tenant, &user).await? {
-        return Ok(None);
+    let (ip, location) = origin;
+    let risk = risk::evaluate(
+        state,
+        tenant,
+        user.id,
+        &risk::Inputs {
+            ip,
+            location,
+            new_device: false,
+        },
+    )
+    .await?;
+    if risk.is_blocked() {
+        risk::announce(
+            state,
+            tenant.id,
+            user.id,
+            &risk,
+            ip.map(str::to_string),
+            None,
+        );
+        return Ok(Owed::Blocked);
+    }
+    let stepped_up = session.amr.iter().any(|m| m == "mfa");
+    if risk.steps_up() && !stepped_up {
+        risk::announce(
+            state,
+            tenant.id,
+            user.id,
+            &risk,
+            ip.map(str::to_string),
+            None,
+        );
+        return Ok(Owed::Step(FlowStage::Mfa));
+    }
+    if stepped_up || !policy_requires_mfa(state, tenant, &user).await? {
+        return Ok(Owed::Nothing);
     }
     if trusted_devices::is_trusted(state, tenant, user.id, headers, None)
         .await?
         .is_some()
     {
-        return Ok(None);
+        return Ok(Owed::Nothing);
     }
-    Ok(Some(FlowStage::Mfa))
+    Ok(Owed::Step(FlowStage::Mfa))
 }
 
 /// Outcome of a second-factor step.
@@ -1568,21 +1752,22 @@ async fn open_session(
     user: &User,
     amr: Vec<String>,
     ctx: RequestContext,
+    assessment: Assessment,
 ) -> AppResult<SsoSession> {
     let user_id = user.id;
     let RequestContext {
         ip,
         user_agent,
         existing_session,
-        device_secret,
+        device_secret: _,
         remember_device,
+        location,
     } = ctx;
-    let trusted = match device_secret {
-        Some(secret) => {
-            trusted_devices::verify_secret(state, tenant, user_id, &secret, ip.as_deref()).await?
-        }
-        None => None,
-    };
+    let Assessment {
+        trusted,
+        new_browser,
+        risk,
+    } = assessment;
     // A first factor that is itself multi-factor (a passkey with user
     // verification) asserts the MFA class straight away.
     let acr = Some(if amr.iter().any(|m| m == "mfa") {
@@ -1610,10 +1795,7 @@ async fn open_session(
             )
             .await?;
             // A returning user on an unrecognised browser: tell them.
-            if trusted.is_none()
-                && is_new_browser(state, tenant.id, user_id, user_agent.as_deref(), session.id)
-                    .await?
-            {
+            if new_browser {
                 state.events.publish(
                     Event::new(
                         Some(tenant.id),
@@ -1642,6 +1824,17 @@ async fn open_session(
     {
         sessions::bind_device(state, &mut session, d.id).await?;
     }
+    // This sign-in was allowed, so where it came from becomes part of what
+    // the next one is judged against.
+    risk::record_location(state, tenant, user_id, location.as_ref()).await?;
+    risk::announce(
+        state,
+        tenant.id,
+        user_id,
+        &risk,
+        ip.clone(),
+        user_agent.clone(),
+    );
     // A verified address at a verified auto-join domain joins its organization
     // as the session opens, so enabling a domain reaches the users a tenant
     // already has. Before the stage is computed, so the new membership counts.
@@ -1650,26 +1843,36 @@ async fn open_session(
     flow.session_id = Some(session.id);
     flow.amr = amr;
     flow.trusted_device = trusted.is_some();
+    flow.risk_step_up = risk.steps_up();
     // Already trusted: nothing to register at the end of the flow.
     flow.remember_device = remember_device && trusted.is_none();
     Ok(session)
 }
 
 /// True when the user has signed in before but never from this browser.
-/// Without a user agent nothing can be compared, so no notice is sent.
+/// Without a user agent nothing can be compared, so nothing is claimed.
+///
+/// `exclude_session` leaves one session out of the comparison; asked before
+/// a session exists, there is nothing to leave out.
 async fn is_new_browser(
     state: &AppState,
     tenant_id: Uuid,
     user_id: Uuid,
     user_agent: Option<&str>,
-    exclude_session: Uuid,
+    exclude_session: Option<Uuid>,
 ) -> AppResult<bool> {
     let Some(ua) = user_agent else {
         return Ok(false);
     };
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    let (any_before, same_browser) =
-        repos::sessions::browser_history(&mut *tx, tenant_id, user_id, ua, exclude_session).await?;
+    let (any_before, same_browser) = repos::sessions::browser_history(
+        &mut *tx,
+        tenant_id,
+        user_id,
+        ua,
+        exclude_session.unwrap_or(Uuid::nil()),
+    )
+    .await?;
     tx.commit().await?;
     Ok(any_before && !same_browser)
 }
@@ -1687,6 +1890,12 @@ pub async fn complete_authentication(
 ) -> AppResult<AuthStep> {
     let ip = ctx.ip.clone();
     let tid = tenant.id();
+    // Scored before anything is written: a refused sign-in leaves no session,
+    // no flow and no successful attempt behind it.
+    let assessment = assess(state, &tenant.tenant, user, &ctx).await?;
+    if assessment.risk.is_blocked() {
+        return refuse(state, &tenant.tenant, &flow, user, &assessment.risk, &ctx).await;
+    }
     let mut tx = db::tenant_tx(&state.db, tid).await?;
     repos::users::record_login_success(&mut *tx, tid, user.id).await?;
     repos::login_attempts::record(&mut *tx, tid, &user.username, ip.as_deref(), true, None).await?;
@@ -1697,7 +1906,16 @@ pub async fn complete_authentication(
         "outcome" => "success"
     )
     .increment(1);
-    let session = open_session(state, &tenant.tenant, &mut flow, user, amr.clone(), ctx).await?;
+    let session = open_session(
+        state,
+        &tenant.tenant,
+        &mut flow,
+        user,
+        amr.clone(),
+        ctx,
+        assessment,
+    )
+    .await?;
     advance(state, &tenant.tenant, &mut flow, must_change_password).await?;
     login_flows::save(state, &flow).await?;
     state.events.publish(

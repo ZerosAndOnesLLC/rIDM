@@ -50,6 +50,12 @@ A flow passes through the stages that apply to it: `authenticate` (or
 named none — see [Organizations](organizations.md)), `consent`, and finally
 `done`. The API decides the next stage; the page only renders it.
 
+A tenant with [adaptive authentication](../admin/adaptive-auth.md) on scores
+each sign-in as its first factor passes. A score past the step-up threshold
+adds the `mfa` stage even where the MFA policy would not; a score past the
+block threshold ends the flow there and then — no session is opened, the flow
+is discarded, and the browser goes back to the client with `access_denied`.
+
 ### Why it works this way
 
 - **The UI can be any static host.** The pages are a static export with no

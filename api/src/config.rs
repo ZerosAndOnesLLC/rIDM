@@ -136,6 +136,45 @@ pub struct Config {
     /// migrations when both email and password are set; a no-op once a global
     /// admin exists.
     pub bootstrap: Option<BootstrapConfig>,
+    /// Where the risk policy's location signals get a country from.
+    pub geoip: GeoIpConfig,
+}
+
+/// Geo-IP sources for risk-based adaptive authentication, in the order they
+/// are consulted. Neither is required: a deployment with no source simply
+/// raises no location signals.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeoIpConfig {
+    /// Headers a trusted proxy or CDN sets, first one present wins. Only read
+    /// when the request came through a [`Config::trusted_proxies`] peer, so
+    /// nothing a client sends itself is believed.
+    pub country_headers: Vec<String>,
+    pub latitude_headers: Vec<String>,
+    pub longitude_headers: Vec<String>,
+    /// A MaxMind DB (`GEOIP_DB`), read into memory at startup. A City
+    /// database also yields coordinates, which is what impossible travel
+    /// needs; a Country database yields the country alone.
+    pub db_path: Option<PathBuf>,
+}
+
+impl Default for GeoIpConfig {
+    fn default() -> Self {
+        Self {
+            country_headers: ["cloudfront-viewer-country", "cf-ipcountry", "x-geo-country"]
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect(),
+            latitude_headers: ["cloudfront-viewer-latitude", "x-geo-latitude"]
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect(),
+            longitude_headers: ["cloudfront-viewer-longitude", "x-geo-longitude"]
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect(),
+            db_path: None,
+        }
+    }
 }
 
 /// Rate limiting switches that belong to the deployment rather than a tenant.
@@ -424,6 +463,25 @@ impl Config {
             }
         };
 
+        let header_list = |name: &'static str, fallback: Vec<String>| match optional(name) {
+            Some(raw) => raw
+                .split(',')
+                .map(|s| s.trim().to_ascii_lowercase())
+                .filter(|s| !s.is_empty())
+                .collect(),
+            None => fallback,
+        };
+        let geo_defaults = GeoIpConfig::default();
+        let geoip = GeoIpConfig {
+            country_headers: header_list("GEOIP_COUNTRY_HEADERS", geo_defaults.country_headers),
+            latitude_headers: header_list("GEOIP_LATITUDE_HEADERS", geo_defaults.latitude_headers),
+            longitude_headers: header_list(
+                "GEOIP_LONGITUDE_HEADERS",
+                geo_defaults.longitude_headers,
+            ),
+            db_path: optional("GEOIP_DB").map(PathBuf::from),
+        };
+
         Ok(Self {
             database_url,
             database_read_url,
@@ -458,6 +516,7 @@ impl Config {
             breach_check_url,
             smtp,
             bootstrap,
+            geoip,
         })
     }
 

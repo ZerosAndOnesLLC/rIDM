@@ -54,6 +54,7 @@ export function isValidSlug(v: string): boolean {
 export const SECTIONS: { id: string; label: string }[] = [
   { id: "general", label: "General" },
   { id: "signin", label: "Sign-in" },
+  { id: "risk", label: "Adaptive auth" },
   { id: "profile", label: "Profile attributes" },
   { id: "passwords", label: "Passwords & lockout" },
   { id: "ratelimits", label: "Rate limits" },

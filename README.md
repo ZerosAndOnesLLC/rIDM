@@ -141,6 +141,27 @@ single-use, good for ten minutes and five attempts; a passed code records `amr` 
 (plus `sms` for a text message). Removing a user's last second factor, by the user or
 an administrator, also removes their recovery codes.
 
+Risk-based adaptive authentication scores each sign-in against the user's own history
+and lets the tenant decide what an unusual one costs. Four signals, each with a weight a
+tenant sets: a **new device** (no trusted-device cookie and no earlier session from this
+browser), a **new country**, **impossible travel** (the distance from the last known
+location cannot be covered in the time since, above `impossible_travel_kmh`) and
+**velocity** (failed sign-ins from the address within a window). The sum meets two
+thresholds: `step_up_at` demands the second factor for that sign-in whatever
+`settings.mfa` says — and a trusted-device cookie may not waive it — while `block_at`
+refuses the sign-in outright: no session is opened, the flow is discarded, a waiting
+device code is denied, and the browser returns to the client with `access_denied`. Either
+threshold at `0` switches that outcome off, and the whole policy is off by default. Both
+outcomes are audited (`risk.step_up`, `risk.blocked`, with the score, the signals and the
+country) and counted (`ridm_risk_decisions_total`). Sign-ins are scored when a first
+factor passes *and* when a live session is reused at `/authorize` or a device approval, so
+a silent sign-in from somewhere new is judged like any other; a first-ever sign-in raises
+nothing, which is what keeps enabling the policy from stepping up everybody at once. An
+allowed sign-in records its country (with coordinates when known) as history. Location
+comes from a CDN or proxy header (`GEOIP_COUNTRY_HEADERS`, believed only behind
+`TRUSTED_PROXIES`) or a MaxMind DB file the deployment supplies (`GEOIP_DB`); with neither,
+the device and velocity signals still work and no location signal is ever raised.
+
 Locale is negotiated per request: the OIDC `ui_locales` parameter, then the user's
 stored locale, then the tenant default, constrained to the tenant's supported list
 (exact tag or same language). The flow state carries the result as `locale`, `dir`
@@ -218,6 +239,8 @@ in [`.env.example`](.env.example). The essentials:
 | `LOG_FORMAT`, `RUST_LOG` | `json` or `pretty`; tracing filter |
 | `DOCS_ENABLED` | Serve Swagger UI at `/docs` (off in production) |
 | `BREACH_CHECK_URL` | Have I Been Pwned compatible range endpoint for the breached-password check (default `https://api.pwnedpasswords.com/range/`; `off` for air-gapped installs) |
+| `GEOIP_COUNTRY_HEADERS`, `GEOIP_LATITUDE_HEADERS`, `GEOIP_LONGITUDE_HEADERS` | Headers a CDN or proxy sets with the client's country and point, first present wins, read only when the peer is a `TRUSTED_PROXIES` one (default: the CloudFront and Cloudflare names) |
+| `GEOIP_DB` | MaxMind DB file (GeoLite2/GeoIP2, City or Country) for the adaptive-auth location signals when no trusted header answered; no data is bundled |
 | `RATE_LIMITS` | Master switch for request ceilings (default `true`; off only for tests and local experiments) |
 | `RATE_LIMIT_IP_PER_MINUTE` | Requests per minute one client address may make to every limited endpoint of every tenant together (default 6000; 0 = off). Per-tenant ceilings are in tenant settings |
 | `HSTS_MAX_AGE` | `Strict-Transport-Security` max-age in seconds, sent when `PUBLIC_URL` is https (default two years; 0 = off) |
@@ -1245,7 +1268,7 @@ typed client reads from).
 Pages so far: **Tenants** (`/console/tenants/`: every tenant for global administrators,
 filter, "New tenant" dialog that lands on the new tenant's settings) and **Settings**
 (`/console/settings/`: every tenant setting on one page, grouped as general, sign-in,
-passwords and lockout, rate limits, sessions and tokens, branding, locale and notices,
+adaptive auth, passwords and lockout, rate limits, sessions and tokens, branding, locale and notices,
 keys, discovery and audit, plus a delete-tenant zone for global owners; the CAPTCHA
 toggles sit under passwords and lockout, and when dynamic registration is set to
 `initial_access_token` the keys, discovery and audit group lists, issues and revokes the

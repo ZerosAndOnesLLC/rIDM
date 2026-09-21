@@ -32,6 +32,7 @@ shipped, they do not change. The main families:
 | `session.*`, `device.*` | `session.created`, `session.revoked`, `device.trusted`, `device.revoked` |
 | `token.*` | `token.revoked`, `token.refresh_reuse_detected` |
 | `mfa.*` | `mfa.changed` |
+| `risk.*` | `risk.step_up`, `risk.blocked` ([adaptive authentication](../admin/adaptive-auth.md)) |
 | `client.*`, `consent.*`, `authorization.*` | `client.created`, `client.secret_rotated`, `consent.granted`, `authorization.granted` |
 | `group.*`, `role.*`, `permission.*` | `group.member_added`, `role.assigned`, `role.composite_added`, `permission.granted` |
 | `resource_server.*`, `scope.*`, `claim_mapper.*` | configuration changes |

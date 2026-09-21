@@ -14,10 +14,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
-use crate::middleware::client_ip;
 use crate::middleware::{Json, TenantCtx};
 use crate::services::login_flows::{self, AuthRequest, FlowStage, LoginFlow, ResponseMode};
-use crate::services::{broker, clients, device_codes, flows, sessions};
+use crate::services::{broker, clients, device_codes, flows, geoip, sessions};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -59,7 +58,8 @@ async fn handle(
     peer: std::net::SocketAddr,
     user_code: &str,
 ) -> AppResult<VerifyResponse> {
-    let ip = client_ip(state, headers, Some(peer));
+    let origin = geoip::Origin::of_request(state, headers, Some(peer));
+    let ip = origin.ip_string();
     let (device_hash, rec) =
         device_codes::find_by_user_code(state, tenant.id(), user_code, ip.as_deref())
             .await?
@@ -93,7 +93,7 @@ async fn handle(
             claims: None,
             skip_consent: !client.require_consent,
             organization: None,
-            device_code: Some(device_hash),
+            device_code: Some(device_hash.clone()),
         },
         stage: FlowStage::Authenticate,
         session_id: None,
@@ -105,6 +105,7 @@ async fn handle(
         amr: vec![],
         org_id: None,
         trusted_device: false,
+        risk_step_up: false,
         remember_device: false,
         created_at: now,
         expires_at: now,
@@ -115,12 +116,27 @@ async fn handle(
     // longer active signs in again, and a password change the session still
     // owes comes first.
     if let Some(session) = sessions::from_request(state, &tenant.tenant, headers).await? {
-        let owed = flows::unfinished_stage(state, &tenant.tenant, &session, headers).await?;
-        if owed != Some(FlowStage::Authenticate) {
+        let owed = flows::unfinished_stage(
+            state,
+            &tenant.tenant,
+            &session,
+            headers,
+            (ip.as_deref(), origin.location.as_ref()),
+        )
+        .await?;
+        // The risk policy refused this session from here: the device is told
+        // no rather than left polling for an approval that cannot come.
+        if owed == flows::Owed::Blocked {
+            device_codes::deny(state, tenant.id(), &device_hash).await?;
+            return Err(AppError::Forbidden("the sign-in was refused".into()));
+        }
+        if owed.step() != Some(FlowStage::Authenticate) {
             flow.session_id = Some(session.id);
             flow.user_id = Some(session.user_id);
             flow.amr = session.amr.clone();
-            let must_change_password = owed == Some(FlowStage::PasswordChange);
+            // Whatever asked for a second step, the flow owes it.
+            flow.risk_step_up = owed.step() == Some(FlowStage::Mfa);
+            let must_change_password = owed.step() == Some(FlowStage::PasswordChange);
             flows::advance(state, &tenant.tenant, &mut flow, must_change_password).await?;
         }
     }

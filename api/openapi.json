@@ -24731,6 +24731,98 @@
           }
         }
       },
+      "RiskPolicy": {
+        "type": "object",
+        "description": "Risk-based adaptive authentication.\n\nEvery signal a sign-in raises contributes its weight; the sum is measured\nagainst two thresholds, so a tenant decides both how much each signal\ncounts and how much is too much. `step_up_at` demands the second factor\nfor that sign-in even where the MFA policy would not, and `block_at`\nrefuses it outright. A threshold of 0 switches that outcome off, which is\nhow a tenant runs the policy in step-up-only mode.\n\nNothing here has any effect while `enabled` is false, which is the default:\na deployment that upgrades into this release signs its users in exactly as\nbefore until an administrator turns it on.",
+        "properties": {
+          "block_at": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Score at or above which the sign-in is refused (0 = never block).",
+            "default": 100,
+            "minimum": 0
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "impossible_travel_kmh": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Travel faster than this between two sign-ins is impossible. Only\nreachable when the geo source yields coordinates.",
+            "default": 900,
+            "minimum": 0
+          },
+          "step_up_at": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Score at or above which the sign-in must pass a second factor\n(0 = never step up).",
+            "default": 50,
+            "minimum": 0
+          },
+          "velocity_max_failures": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Failures from the address within the window that raise the signal\n(0 = off).",
+            "default": 10,
+            "minimum": 0
+          },
+          "velocity_window_minutes": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Window the velocity signal counts failed sign-ins from one address in.",
+            "default": 15,
+            "minimum": 0
+          },
+          "weights": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RiskWeights"
+              }
+            ],
+            "default": {
+              "impossible_travel": 60,
+              "new_country": 50,
+              "new_device": 20,
+              "velocity": 40
+            }
+          }
+        }
+      },
+      "RiskWeights": {
+        "type": "object",
+        "description": "What each signal contributes to the score. With the defaults, a new\ncountry alone steps up, a new country on a new browser steps up, and\nimpossible travel on a new browser from a new country blocks.",
+        "properties": {
+          "impossible_travel": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The distance from the last known location cannot be covered in the\ntime since it was seen.",
+            "default": 60,
+            "minimum": 0
+          },
+          "new_country": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The user has never signed in from this country.",
+            "default": 50,
+            "minimum": 0
+          },
+          "new_device": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The browser has no trusted-device cookie and no earlier session.",
+            "default": 20,
+            "minimum": 0
+          },
+          "velocity": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The address is behind an unusual number of recent failures.",
+            "default": 40,
+            "minimum": 0
+          }
+        }
+      },
       "Role": {
         "type": "object",
         "required": [
@@ -26195,6 +26287,28 @@
               "require_email_verification": true,
               "require_terms": false,
               "terms_url": null
+            }
+          },
+          "risk": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RiskPolicy",
+                "description": "Risk-based adaptive authentication (Phase 12.3), off until enabled."
+              }
+            ],
+            "default": {
+              "block_at": 100,
+              "enabled": false,
+              "impossible_travel_kmh": 900,
+              "step_up_at": 50,
+              "velocity_max_failures": 10,
+              "velocity_window_minutes": 15,
+              "weights": {
+                "impossible_travel": 60,
+                "new_country": 50,
+                "new_device": 20,
+                "velocity": 40
+              }
             }
           },
           "session": {

@@ -35,6 +35,9 @@ pub struct AppState {
     /// The UI this node serves itself (embedded UI mode); `None` when the
     /// build has none or `UI_URL` points elsewhere.
     pub ui: Option<crate::routes::ui::EmbeddedUi>,
+    /// MaxMind database backing the risk policy's location signals; empty
+    /// unless `GEOIP_DB` names a readable file.
+    pub geoip: crate::services::geoip::GeoDatabase,
 }
 
 impl AppState {
@@ -64,6 +67,7 @@ impl AppState {
             }
         });
         let ui = crate::routes::ui::EmbeddedUi::from_build(&config);
+        let geoip = crate::services::geoip::GeoDatabase::from_config(&config.geoip);
         Self {
             config: Arc::new(config),
             db_read: db.clone(),
@@ -77,6 +81,7 @@ impl AppState {
             breach,
             audit_sink,
             ui,
+            geoip,
         }
     }
 }

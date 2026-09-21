@@ -37,6 +37,7 @@ const TENANT_TABLES: &[&str] = &[
     "invitations",
     "sso_sessions",
     "trusted_devices",
+    "user_login_locations",
 ];
 
 /// Create a throwaway database (needs a superuser/CREATEDB admin URL) and

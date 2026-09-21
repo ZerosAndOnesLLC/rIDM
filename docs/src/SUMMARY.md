@@ -35,6 +35,7 @@
 - [Administrator access](admin/access.md)
 - [Organizations](admin/organizations.md)
 - [MFA policy](admin/mfa-policy.md)
+- [Adaptive authentication](admin/adaptive-auth.md)
 - [Email, SMS and templates](admin/messaging.md)
 - [SCIM provisioning](admin/scim.md)
 - [Webhooks and the audit log](admin/webhooks-audit.md)

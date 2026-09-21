@@ -35,6 +35,31 @@ release renames that heading to the version and date.
   roles they may grant there. `GET /admin/me` gained `organization` and
   `organization_permissions`, the console opens such an administrator on their
   own organization, and the MFA-for-administrators policy counts them.
+- Risk-based adaptive authentication (`settings.risk`, off by default): four
+  signals — new device, new country, impossible travel and failure velocity —
+  each with a tenant-set weight, scored against two thresholds. `step_up_at`
+  demands a second factor for that sign-in whatever the MFA policy says, and
+  not even a trusted device waives it; `block_at` refuses the sign-in, opening
+  no session, discarding the flow, denying a waiting device code and returning
+  `access_denied` to the client. Either threshold at `0` switches that outcome
+  off. Sign-ins are scored when a first factor passes and when a live session
+  is reused at `/authorize` or a device approval; an allowed one records the
+  country it came from as history. New `risk.step_up` and `risk.blocked` audit
+  events (with the score, the signals and the country), a
+  `ridm_risk_decisions_total` counter, and an Adaptive auth section in the
+  console. Location comes from trusted-proxy headers
+  (`GEOIP_COUNTRY_HEADERS`, `GEOIP_LATITUDE_HEADERS`,
+  `GEOIP_LONGITUDE_HEADERS`) or a MaxMind DB file the deployment supplies
+  (`GEOIP_DB`); with neither, the device and velocity signals still work.
+
+### Fixed
+
+- The legacy password verifier took its iteration count from the stored hash
+  and allowed up to ten million rounds, which is about 25 seconds of CPU for
+  PBKDF2-SHA512: an imported or crafted hash turned every sign-in attempt
+  against that account into a worker held hostage. The ceiling is now a
+  million, above every corpus rIDM imports from, and a hash beyond it is
+  refused rather than computed. Found by the `jwt_decode` fuzz target.
 
 ## [0.1.0] - 2026-09-19
 

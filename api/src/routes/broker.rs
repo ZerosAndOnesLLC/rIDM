@@ -13,10 +13,9 @@ use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
 use crate::middleware::TenantCtx;
-use crate::middleware::client_ip;
 use crate::models::Tenant;
 use crate::services::broker::{self, BrokerError, CallbackParams, Mode, Outcome};
-use crate::services::{flows, identity_providers, sessions, trusted_devices};
+use crate::services::{flows, geoip, identity_providers, sessions, trusted_devices};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -150,8 +149,10 @@ async fn finish(
         Ok(i) => i,
         Err(e) => return e.into_response(),
     };
+    let origin = geoip::Origin::of_request(&state, &headers, Some(peer));
+    let (ip, location) = (origin.ip_string(), origin.location);
     let ctx = flows::RequestContext {
-        ip: client_ip(&state, &headers, Some(peer)),
+        ip,
         user_agent: headers
             .get(header::USER_AGENT)
             .and_then(|v| v.to_str().ok())
@@ -162,6 +163,7 @@ async fn finish(
             .flatten(),
         device_secret: trusted_devices::secret_from_headers(&state, &tenant.tenant, &headers),
         remember_device: false,
+        location,
     };
     match broker::callback(&state, &tenant, &idp, params, ctx).await {
         Ok(Outcome::Authenticated { session, flow }) => {
@@ -180,6 +182,7 @@ async fn finish(
             }
             res
         }
+        Ok(Outcome::Blocked { redirect_to }) => redirect(&redirect_to),
         Ok(Outcome::Linked { return_to }) => redirect(&return_page(
             &state,
             &tenant.tenant,

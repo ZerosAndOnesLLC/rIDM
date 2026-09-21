@@ -27,5 +27,6 @@ pub mod sessions;
 pub mod signing_keys;
 pub mod tenants;
 pub mod trusted_devices;
+pub mod user_login_locations;
 pub mod users;
 pub mod webhooks;

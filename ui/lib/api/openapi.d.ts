@@ -4839,6 +4839,98 @@ export interface components {
             /** Format: int64 */
             revoked: number;
         };
+        /**
+         * @description Risk-based adaptive authentication.
+         *
+         *     Every signal a sign-in raises contributes its weight; the sum is measured
+         *     against two thresholds, so a tenant decides both how much each signal
+         *     counts and how much is too much. `step_up_at` demands the second factor
+         *     for that sign-in even where the MFA policy would not, and `block_at`
+         *     refuses it outright. A threshold of 0 switches that outcome off, which is
+         *     how a tenant runs the policy in step-up-only mode.
+         *
+         *     Nothing here has any effect while `enabled` is false, which is the default:
+         *     a deployment that upgrades into this release signs its users in exactly as
+         *     before until an administrator turns it on.
+         */
+        RiskPolicy: {
+            /**
+             * Format: int32
+             * @description Score at or above which the sign-in is refused (0 = never block).
+             * @default 100
+             */
+            block_at: number;
+            /** @default false */
+            enabled: boolean;
+            /**
+             * Format: int32
+             * @description Travel faster than this between two sign-ins is impossible. Only
+             *     reachable when the geo source yields coordinates.
+             * @default 900
+             */
+            impossible_travel_kmh: number;
+            /**
+             * Format: int32
+             * @description Score at or above which the sign-in must pass a second factor
+             *     (0 = never step up).
+             * @default 50
+             */
+            step_up_at: number;
+            /**
+             * Format: int32
+             * @description Failures from the address within the window that raise the signal
+             *     (0 = off).
+             * @default 10
+             */
+            velocity_max_failures: number;
+            /**
+             * Format: int32
+             * @description Window the velocity signal counts failed sign-ins from one address in.
+             * @default 15
+             */
+            velocity_window_minutes: number;
+            /**
+             * @default {
+             *       "impossible_travel": 60,
+             *       "new_country": 50,
+             *       "new_device": 20,
+             *       "velocity": 40
+             *     }
+             */
+            weights: components["schemas"]["RiskWeights"];
+        };
+        /**
+         * @description What each signal contributes to the score. With the defaults, a new
+         *     country alone steps up, a new country on a new browser steps up, and
+         *     impossible travel on a new browser from a new country blocks.
+         */
+        RiskWeights: {
+            /**
+             * Format: int32
+             * @description The distance from the last known location cannot be covered in the
+             *     time since it was seen.
+             * @default 60
+             */
+            impossible_travel: number;
+            /**
+             * Format: int32
+             * @description The user has never signed in from this country.
+             * @default 50
+             */
+            new_country: number;
+            /**
+             * Format: int32
+             * @description The browser has no trusted-device cookie and no earlier session.
+             * @default 20
+             */
+            new_device: number;
+            /**
+             * Format: int32
+             * @description The address is behind an unusual number of recent failures.
+             * @default 40
+             */
+            velocity: number;
+        };
         Role: {
             /** @description Seeded by a migration (the `ridm:*` admin roles); cannot be renamed or deleted. */
             built_in: boolean;
@@ -5422,6 +5514,23 @@ export interface components {
              *     }
              */
             registration: components["schemas"]["RegistrationPolicy"];
+            /**
+             * @default {
+             *       "block_at": 100,
+             *       "enabled": false,
+             *       "impossible_travel_kmh": 900,
+             *       "step_up_at": 50,
+             *       "velocity_max_failures": 10,
+             *       "velocity_window_minutes": 15,
+             *       "weights": {
+             *         "impossible_travel": 60,
+             *         "new_country": 50,
+             *         "new_device": 20,
+             *         "velocity": 40
+             *       }
+             *     }
+             */
+            risk: components["schemas"]["RiskPolicy"];
             /**
              * @default {
              *       "absolute_timeout_secs": 43200,

@@ -337,7 +337,7 @@ commonly do, and where it goes:
 | adds a fixed value | A `hardcoded` mapper |
 | builds a string from user fields | A `template` mapper (Handlebars over `user`, `tenant`, `client`, `roles`, `groups`) |
 | requires MFA for some users | `settings.mfa`: `required_for_roles` or `required_for_admins` |
-| blocks sign-in by email domain, IP or country | `registration.allowed_email_domains` for sign-up; [IP rules](../admin/security-controls.md) for addresses; no country rules |
+| blocks sign-in by email domain, IP or country | `registration.allowed_email_domains` for sign-up; [IP rules](../admin/security-controls.md) for addresses; country is a risk signal, not a rule ([adaptive authentication](../admin/adaptive-auth.md)) |
 | notifies another system after sign-in or sign-up | [Webhooks](../admin/webhooks-audit.md) on `login.*` and `user.*` events (after the fact, not in the flow) |
 | calls an external API to decide, enriches the profile from one, or redirects mid-flow | Not supported |
 

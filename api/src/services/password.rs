@@ -236,6 +236,18 @@ pub mod legacy {
         pbkdf2_check(password, salt.as_bytes(), rounds, &expected, derive)
     }
 
+    /// The most iterations a legacy hash may ask for.
+    ///
+    /// The count comes from the hash itself, so an imported (or crafted) one
+    /// decides how much work every verification of that account costs, and
+    /// PBKDF2-SHA512 at ten million rounds takes about 25 seconds of CPU —
+    /// enough for one sign-in attempt to hold a worker hostage. A million is
+    /// well above what the corpora rIDM imports from use (Django's own
+    /// default is 720k, Keycloak's 210k) and is bounded at roughly two and a
+    /// half seconds. Found by the `jwt_decode` fuzz target, which feeds the
+    /// legacy verifier its own input.
+    const MAX_PBKDF2_ROUNDS: u32 = 1_000_000;
+
     fn pbkdf2_check(
         password: &[u8],
         salt: &[u8],
@@ -243,7 +255,8 @@ pub mod legacy {
         expected: &[u8],
         derive: Pbkdf2Fn,
     ) -> Result<bool, ProviderError> {
-        if rounds == 0 || rounds > 10_000_000 || expected.is_empty() || expected.len() > 512 {
+        if rounds == 0 || rounds > MAX_PBKDF2_ROUNDS || expected.is_empty() || expected.len() > 512
+        {
             return Err(ProviderError::Rejected(
                 "pbkdf2 parameters out of range".into(),
             ));

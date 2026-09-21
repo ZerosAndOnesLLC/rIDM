@@ -10,7 +10,7 @@
 //! a redirect into the UI with a login flow (authentication or consent
 //! needed), or an error.
 
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 
 use axum::Router;
 use axum::extract::{ConnectInfo, RawQuery, State};
@@ -23,13 +23,14 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::error::{AppError, OAuthError, OAuthErrorCode};
-use crate::middleware::{TenantCtx, client_ip_addr};
+use crate::middleware::TenantCtx;
 use crate::models::{Client, ClientStatus, grants};
 use crate::oidc::{pkce, redirect_uri};
 use crate::services::auth_codes::{self, AuthCode};
+use crate::services::flows::Owed;
 use crate::services::login_flows::{self, AuthRequest, FlowStage, LoginFlow, ResponseMode};
 use crate::services::sessions::{self, SsoSession};
-use crate::services::{clients, consents, flows, ip_rules, scopes};
+use crate::services::{clients, consents, flows, geoip, ip_rules, scopes};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -81,8 +82,8 @@ async fn authorize_get(
     RawQuery(raw): RawQuery,
 ) -> Response {
     let params = RawParams::parse(raw.as_deref().unwrap_or_default());
-    let ip = client_ip_addr(&state, &headers, Some(peer));
-    handle(&state, &tenant, &headers, params, ip).await
+    let origin = geoip::Origin::of_request(&state, &headers, Some(peer));
+    handle(&state, &tenant, &headers, params, origin).await
 }
 
 async fn authorize_post(
@@ -104,8 +105,8 @@ async fn authorize_post(
         );
     }
     let params = RawParams::parse(&body);
-    let ip = client_ip_addr(&state, &headers, Some(peer));
-    handle(&state, &tenant, &headers, params, ip).await
+    let origin = geoip::Origin::of_request(&state, &headers, Some(peer));
+    handle(&state, &tenant, &headers, params, origin).await
 }
 
 /// How an error must be delivered.
@@ -141,7 +142,7 @@ async fn handle(
     tenant: &TenantCtx,
     headers: &HeaderMap,
     params: RawParams,
-    ip: Option<IpAddr>,
+    origin: geoip::Origin,
 ) -> Response {
     // Pushed request: `client_id` + `request_uri` only (RFC 9126 §4).
     if let Ok(Some(uri)) = params.one("request_uri")
@@ -149,7 +150,14 @@ async fn handle(
     {
         return match crate::oidc::par::take(state, tenant, &params, uri).await {
             Ok((client, request)) => {
-                finish_decision(state, tenant, headers, Validated { client, request }, ip).await
+                finish_decision(
+                    state,
+                    tenant,
+                    headers,
+                    Validated { client, request },
+                    origin,
+                )
+                .await
             }
             Err(Failure::Page(code, desc)) => error_page(StatusCode::BAD_REQUEST, code, &desc),
             Err(Failure::Internal(e)) => e.into_response(),
@@ -193,7 +201,7 @@ async fn handle(
     )
     .await
     {
-        Ok(v) => finish_decision(state, tenant, headers, v, ip).await,
+        Ok(v) => finish_decision(state, tenant, headers, v, origin).await,
         Err(Failure::Redirect(e)) => {
             error_redirect(
                 state,
@@ -226,18 +234,18 @@ async fn finish_decision(
     tenant: &TenantCtx,
     headers: &HeaderMap,
     v: Validated,
-    ip: Option<IpAddr>,
+    origin: geoip::Origin,
 ) -> Response {
     // The client's own IP rules (the tenant's were checked by the guard). A
     // refused address sees a page rather than a redirect to the client.
-    if let Err(e) = ip_rules::require_client(state, tenant.id(), v.client.id, ip).await {
+    if let Err(e) = ip_rules::require_client(state, tenant.id(), v.client.id, origin.ip).await {
         return error_page(e.status(), "access_denied", &e.to_string());
     }
     let client = v.client.clone();
     let redirect = v.request.redirect_uri.clone();
     let mode = v.request.response_mode;
     let state_param = v.request.state.clone();
-    match decide(state, tenant, headers, v).await {
+    match decide(state, tenant, headers, v, origin).await {
         Ok(r) => r,
         Err(Failure::Redirect(e)) => {
             error_redirect(
@@ -577,6 +585,7 @@ async fn decide(
     tenant: &TenantCtx,
     headers: &HeaderMap,
     v: Validated,
+    origin: geoip::Origin,
 ) -> Result<Response, Failure> {
     let req = &v.request;
     let prompt_none = req.prompt.iter().any(|p| p == "none");
@@ -612,23 +621,40 @@ async fn decide(
     // stands now, not what the client asked for.
     let owed = match session.as_ref() {
         Some(s) if !needs_auth => {
-            flows::unfinished_stage(state, &tenant.tenant, s, headers).await?
+            flows::unfinished_stage(
+                state,
+                &tenant.tenant,
+                s,
+                headers,
+                (origin.ip_string().as_deref(), origin.location.as_ref()),
+            )
+            .await?
         }
-        _ => None,
+        _ => Owed::Nothing,
     };
-    if owed == Some(FlowStage::Authenticate) {
+    // The risk policy refused this session from here. Signing in again would
+    // be refused for the same reason, so the client is told instead.
+    if owed == Owed::Blocked {
+        return Err(Failure::Redirect(OAuthError::code(
+            OAuthErrorCode::AccessDenied,
+        )));
+    }
+    if owed.step() == Some(FlowStage::Authenticate) {
         needs_auth = true;
     }
 
     // Step-up: a fresh session that only lacks the requested MFA class goes
     // straight to the second factor, no password again. An owed step goes
     // the same way, to its own stage.
-    let resume = owed.filter(|s| *s != FlowStage::Authenticate).or_else(|| {
-        session
-            .as_ref()
-            .filter(|s| !acr_ok(s))
-            .map(|_| FlowStage::Mfa)
-    });
+    let resume = owed
+        .step()
+        .filter(|s| *s != FlowStage::Authenticate)
+        .or_else(|| {
+            session
+                .as_ref()
+                .filter(|s| !acr_ok(s))
+                .map(|_| FlowStage::Mfa)
+        });
     if !needs_auth
         && let Some(stage) = resume
         && let Some(s) = session.as_ref()
@@ -655,6 +681,10 @@ async fn decide(
                 // This flow continues a session that may already act in one.
                 org_id: s.org_id,
                 trusted_device: false,
+                // Whatever asked for the second step here — the policy, the
+                // client's `acr_values` or the risk score — the flow owes it,
+                // and a trusted-device cookie may not waive it.
+                risk_step_up: stage == FlowStage::Mfa,
                 remember_device: false,
                 created_at: now,
                 expires_at: now,
@@ -692,6 +722,7 @@ async fn decide(
                 amr: vec![],
                 org_id: None,
                 trusted_device: false,
+                risk_step_up: false,
                 remember_device: false,
                 created_at: now,
                 expires_at: now,
@@ -740,6 +771,7 @@ async fn decide(
                 amr: vec![],
                 org_id: session.org_id,
                 trusted_device: false,
+                risk_step_up: false,
                 remember_device: false,
                 created_at: now,
                 expires_at: now,
