@@ -96,7 +96,7 @@ fn certificate(field: &str, pem: &str) -> AppResult<Certificate> {
 }
 
 /// Check the input and turn it into the two rows.
-fn resolve(
+pub(crate) fn resolve(
     tenant_id: Uuid,
     client_row_id: Uuid,
     public_id: Option<String>,
@@ -283,6 +283,37 @@ fn resolve(
         updated_at: now,
     };
     Ok((client, sp))
+}
+
+/// The input that reproduces a registered SP, every field spelled out
+/// (the tenant document's form).
+pub fn to_input(client: &Client, sp: &SamlServiceProvider) -> SamlSpInput {
+    SamlSpInput {
+        name: client.name.clone(),
+        description: client.description.clone(),
+        logo_uri: client.logo_uri.clone(),
+        client_uri: client.client_uri.clone(),
+        client_id: Some(client.client_id.clone()),
+        allowed_scopes: Some(client.allowed_scopes.clone()),
+        require_consent: Some(client.require_consent),
+        entity_id: sp.entity_id.clone(),
+        acs_urls: sp.acs_urls.clone(),
+        slo_url: sp.slo_url.clone(),
+        slo_binding: Some(sp.slo_binding),
+        name_id_format: Some(sp.name_id_format),
+        signing_certificates: sp.signing_certificates.clone(),
+        encryption_certificate: sp.encryption_certificate.clone(),
+        require_signed_requests: Some(sp.require_signed_requests),
+        sign_response: Some(sp.sign_response),
+        sign_assertion: Some(sp.sign_assertion),
+        encrypt_assertion: Some(sp.encrypt_assertion),
+        data_encryption: Some(sp.data_encryption),
+        key_transport: Some(sp.key_transport),
+        allow_idp_initiated: Some(sp.allow_idp_initiated),
+        default_relay_state: sp.default_relay_state.clone(),
+        attributes: Some(sp.attributes.0.clone()),
+        assertion_ttl_secs: Some(sp.assertion_ttl_secs),
+    }
 }
 
 /// Cache entries an SP write must evict.

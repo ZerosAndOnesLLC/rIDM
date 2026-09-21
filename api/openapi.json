@@ -26732,6 +26732,28 @@
           }
         }
       },
+      "SamlSpDoc": {
+        "allOf": [
+          {
+            "type": "object"
+          },
+          {
+            "type": "object",
+            "required": [
+              "client_id"
+            ],
+            "properties": {
+              "client_id": {
+                "type": "string"
+              },
+              "status": {
+                "$ref": "#/components/schemas/ClientStatus"
+              }
+            }
+          }
+        ],
+        "description": "A SAML service provider: its registration as `POST /saml/service-providers`\ntakes it, keyed by the public client id, plus `status`."
+      },
       "SamlSpInput": {
         "type": "object",
         "description": "A service provider as the admin API reads and writes it: the client's\nown fields and the SAML settings side by side.",
@@ -27921,6 +27943,13 @@
             "items": {
               "$ref": "#/components/schemas/RoleDoc"
             }
+          },
+          "saml_service_providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SamlSpDoc"
+            },
+            "description": "SAML service providers (`saml` clients), which `clients` leaves out."
           },
           "scopes": {
             "type": "array",

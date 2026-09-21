@@ -26,6 +26,7 @@ use crate::models::{
 };
 use crate::services::admin_access::{self, Grant};
 use crate::services::messaging::TemplateBody;
+use crate::services::saml_sps::{self, SamlSpInput};
 use crate::services::tenants::TenantUpdate;
 use crate::services::{
     admin_console, claim_mappers, clients, groups, identity_providers, ip_rules,
@@ -66,6 +67,9 @@ pub struct TenantConfig {
     /// Upstream providers without their client secrets (set those after an import).
     #[serde(default)]
     pub identity_providers: Vec<IdentityProviderDoc>,
+    /// SAML service providers (`saml` clients), which `clients` leaves out.
+    #[serde(default)]
+    pub saml_service_providers: Vec<SamlSpDoc>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
@@ -136,6 +140,28 @@ pub struct ClientDoc {
 
 fn default_status() -> ClientStatus {
     ClientStatus::Active
+}
+
+/// A SAML service provider: its registration as `POST /saml/service-providers`
+/// takes it, keyed by the public client id, plus `status`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct SamlSpDoc {
+    pub client_id: String,
+    #[serde(default = "default_status")]
+    pub status: ClientStatus,
+    #[serde(flatten)]
+    #[schema(value_type = Object)]
+    pub settings: serde_json::Map<String, Value>,
+}
+
+/// A registration as a document: every field, `null`s dropped, without the
+/// key.
+fn saml_settings(input: &SamlSpInput) -> AppResult<serde_json::Map<String, Value>> {
+    let mut v = serde_json::to_value(input)?;
+    let map = v.as_object_mut().expect("input serializes to an object");
+    map.remove("client_id");
+    map.retain(|_, v| !v.is_null());
+    Ok(map.clone())
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
@@ -376,12 +402,22 @@ pub async fn export(state: &AppState, tenant: &Tenant) -> AppResult<TenantConfig
     scopes_out.sort_by(|a, b| a.name.cmp(&b.name));
 
     let mut clients_out = vec![];
+    let mut saml_out = vec![];
     for (id, public_id) in &all_clients {
         // The console's client is built in and follows `UI_URL`, not the document.
         if admin_console::is_builtin_client(public_id) {
             continue;
         }
         let c = clients::get(state, tid, *id).await?;
+        if c.client_type == crate::models::ClientType::Saml {
+            let sp = saml_sps::get(state, tid, c.id).await?;
+            saml_out.push(SamlSpDoc {
+                client_id: c.client_id.clone(),
+                status: c.status,
+                settings: saml_settings(&saml_sps::to_input(&sp.client, &sp.saml))?,
+            });
+            continue;
+        }
         clients_out.push(ClientDoc {
             client_id: c.client_id.clone(),
             status: c.status,
@@ -390,6 +426,7 @@ pub async fn export(state: &AppState, tenant: &Tenant) -> AppResult<TenantConfig
         });
     }
     clients_out.sort_by(|a, b| a.client_id.cmp(&b.client_id));
+    saml_out.sort_by(|a, b| a.client_id.cmp(&b.client_id));
 
     let mut roles_out = vec![];
     for r in role_all.iter().filter(|r| !r.built_in) {
@@ -552,6 +589,7 @@ pub async fn export(state: &AppState, tenant: &Tenant) -> AppResult<TenantConfig
         webhooks: webhooks_out,
         ip_rules: ip_rules_out,
         identity_providers: idps_out,
+        saml_service_providers: saml_out,
     })
 }
 
@@ -720,6 +758,18 @@ fn normalize(tenant_id: Uuid, mut doc: TenantConfig) -> AppResult<TenantConfig> 
         let (resolved, _) = clients::resolve(tenant_id, new_client)?;
         c.metadata = client_metadata(&resolved)?;
     }
+    for sp in &mut doc.saml_service_providers {
+        let mut input = Value::Object(sp.settings.clone());
+        input["client_id"] = Value::String(sp.client_id.clone());
+        let input: SamlSpInput = serde_json::from_value(input).map_err(|e| {
+            AppError::BadRequest(format!("saml_service_providers: `{}`: {e}", sp.client_id))
+        })?;
+        let (client, saml) =
+            saml_sps::resolve(tenant_id, Uuid::nil(), None, input).map_err(|e| {
+                AppError::BadRequest(format!("saml_service_providers: `{}`: {e}", sp.client_id))
+            })?;
+        sp.settings = saml_settings(&saml_sps::to_input(&client, &saml))?;
+    }
     for r in &mut doc.ip_rules {
         r.cidr = ip_rules::normalize_cidr(&r.cidr)?;
     }
@@ -800,6 +850,14 @@ pub async fn plan(
         &desired.clients,
         |c| c.client_id.clone(),
         |c| !admin_console::is_builtin_client(&c.client_id),
+    )?;
+    diff_collection(
+        &mut plan,
+        "saml_service_provider",
+        &current.saml_service_providers,
+        &desired.saml_service_providers,
+        |c| c.client_id.clone(),
+        |_| true,
     )?;
     diff_collection(
         &mut plan,
@@ -1460,6 +1518,35 @@ pub async fn apply(
         ctx.note("client", &key, r);
     }
 
+    // SAML service providers (after clients: client ids are one namespace).
+    for sp in &desired.saml_service_providers {
+        let key = sp.client_id.clone();
+        let create = ctx.wants("saml_service_provider", &key, Op::Create);
+        let update = ctx.wants("saml_service_provider", &key, Op::Update);
+        if !create && !update {
+            continue;
+        }
+        let mut input = Value::Object(sp.settings.clone());
+        input["client_id"] = Value::String(key.clone());
+        let r = async {
+            let input: SamlSpInput =
+                serde_json::from_value(input).map_err(|e| AppError::BadRequest(e.to_string()))?;
+            let view = if create {
+                saml_sps::create(state, tid, ctx.actor.clone(), input).await?
+            } else {
+                let id = ctx.client_id_of(&key).await?;
+                saml_sps::replace(state, tid, ctx.actor.clone(), id, input).await?
+            };
+            if view.client.status != sp.status {
+                clients::set_status(state, tid, ctx.actor.clone(), view.client.id, sp.status)
+                    .await?;
+            }
+            Ok(())
+        }
+        .await;
+        ctx.note("saml_service_provider", &key, r);
+    }
+
     // Roles: rows first (composites may reference each other), then links.
     for role in &desired.roles {
         let key = role_ref(&role.name, role.client.as_deref());
@@ -2023,6 +2110,14 @@ pub async fn apply(
             }
             .await;
             ctx.note("client", &key, r);
+        }
+        for key in ctx.deletes("saml_service_provider") {
+            let r = async {
+                let id = ctx.client_id_of(&key).await?;
+                clients::delete(state, tid, ctx.actor.clone(), id).await
+            }
+            .await;
+            ctx.note("saml_service_provider", &key, r);
         }
         for key in ctx.deletes("scope") {
             let r = async {

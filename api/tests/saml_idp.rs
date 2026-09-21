@@ -1358,3 +1358,95 @@ async fn slo_binding_post_and_unknown_answers() {
     .unwrap();
     assert_eq!(http.get(url).send().await.unwrap().status(), 400);
 }
+
+#[tokio::test]
+async fn service_providers_travel_in_the_tenant_document() {
+    let fx = fixture().await;
+    let token = admin_token(&fx.app, fx.tenant.id, OWNER_ROLE).await;
+    register(
+        &fx,
+        SamlSpInput {
+            client_id: Some("wiki".into()),
+            signing_certificates: vec![sp_key().1.to_pem()],
+            name_id_format: Some(NameIdFormat::Email),
+            attributes: Some(vec![SamlAttribute {
+                claim: "groups".into(),
+                name: "memberOf".into(),
+                name_format: ridm_api::models::AttributeNameFormat::Basic,
+                friendly_name: None,
+            }]),
+            ..sp_input("https://wiki.example")
+        },
+    )
+    .await;
+    let (s, doc, _) = call(
+        &fx.app,
+        Method::GET,
+        &format!("/admin/tenants/{}/export", fx.tenant.slug),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(s, 200);
+    let sps = doc["saml_service_providers"].as_array().unwrap();
+    assert_eq!(sps.len(), 1, "{doc}");
+    assert_eq!(sps[0]["client_id"], "wiki");
+    assert_eq!(sps[0]["entity_id"], "https://wiki.example");
+    assert_eq!(sps[0]["name_id_format"], "email");
+    assert!(
+        !doc["clients"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["client_id"] == "wiki"),
+        "a SAML SP is not listed as an OIDC client"
+    );
+
+    // Into a fresh tenant, then again: the second plan is empty.
+    let b = common::create_tenant(&fx.app.state.db).await;
+    let tb = admin_token(&fx.app, b.id, OWNER_ROLE).await;
+    let import = format!("/admin/tenants/{}/import", b.slug);
+    let (s, report, _) = call(&fx.app, Method::POST, &import, Some(&tb), Some(&doc)).await;
+    assert_eq!(s, 200, "{report}");
+    assert_eq!(report["errors"], json!([]), "{report}");
+    assert!(
+        report["changes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["resource"] == "saml_service_provider" && c["op"] == "create")
+    );
+    let (s, again, _) = call(
+        &fx.app,
+        Method::POST,
+        &format!("{import}?dry_run=true"),
+        Some(&tb),
+        Some(&doc),
+    )
+    .await;
+    assert_eq!(s, 200);
+    assert!(
+        !again["changes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["resource"] == "saml_service_provider"),
+        "{again}"
+    );
+
+    // A SAML client in the `clients` section is refused.
+    let mut wrong = doc.clone();
+    wrong["clients"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"client_id": "stray", "name": "Stray", "client_type": "saml"}));
+    let (s, _, _) = call(
+        &fx.app,
+        Method::POST,
+        &format!("{import}?dry_run=true"),
+        Some(&tb),
+        Some(&wrong),
+    )
+    .await;
+    assert_eq!(s, 400);
+}

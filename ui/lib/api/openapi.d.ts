@@ -5459,6 +5459,14 @@ export interface components {
             updated_at: string;
         };
         /**
+         * @description A SAML service provider: its registration as `POST /saml/service-providers`
+         *     takes it, keyed by the public client id, plus `status`.
+         */
+        SamlSpDoc: Record<string, never> & {
+            client_id: string;
+            status?: components["schemas"]["ClientStatus"];
+        };
+        /**
          * @description A service provider as the admin API reads and writes it: the client's
          *     own fields and the SAML settings side by side.
          */
@@ -5871,6 +5879,8 @@ export interface components {
             profile_schema?: components["schemas"]["ProfileSchema"];
             resource_servers?: components["schemas"]["ResourceServerDoc"][];
             roles?: components["schemas"]["RoleDoc"][];
+            /** @description SAML service providers (`saml` clients), which `clients` leaves out. */
+            saml_service_providers?: components["schemas"]["SamlSpDoc"][];
             scopes?: components["schemas"]["ScopeDoc"][];
             tenant: components["schemas"]["TenantSection"];
             webhooks?: components["schemas"]["WebhookDoc"][];
