@@ -34,6 +34,7 @@ shipped, they do not change. The main families:
 | `token.*` | `token.revoked`, `token.refresh_reuse_detected` |
 | `mfa.*` | `mfa.changed` |
 | `risk.*` | `risk.step_up`, `risk.blocked` ([adaptive authentication](../admin/adaptive-auth.md)) |
+| `audit.*` | `audit.chain_broken` ([the scheduled check](../admin/webhooks-audit.md#the-scheduled-check)) |
 | `impersonation.*` | `impersonation.requested`, `impersonation.started`, `impersonation.ended` ([impersonation](../admin/impersonation.md)) |
 | `client.*`, `consent.*`, `authorization.*` | `client.created`, `client.secret_rotated`, `consent.granted`, `authorization.granted` |
 | `group.*`, `role.*`, `permission.*` | `group.member_added`, `role.assigned`, `role.composite_added`, `permission.granted` |

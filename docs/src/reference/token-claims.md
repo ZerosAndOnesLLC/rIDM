@@ -33,6 +33,7 @@ Access tokens are JWTs unless the client is registered with `access_token_format
 | `jti` | always | a UUIDv7; revocation denylists it until `exp` |
 | `tid` | always | the tenant's UUID. A relying party serving several tenants of one deployment keys on it |
 | `org_id` | the sign-in acts in an organization | the organization's UUID (see [Organizations](../concepts/organizations.md)). It comes from the session, so the same user signing in to another organization gets another value; no mapper can write it |
+| `features` | the `features` scope was granted | the tenant's [feature flags](../admin/feature-flags.md) that are on for the sign-in's organization, sorted (`[]` when none); no mapper can write it |
 | `scope` | always | the granted scopes, space-separated (see [Scopes in the token](#scopes-in-the-token)) |
 | `roles` | a user subject | names of the user's effective roles: direct, inherited through groups and their ancestors, and expanded composites; a `roles` claim mapper replaces it |
 | `groups` | a user subject | names (not paths) of the user's groups, including ancestor groups; a `groups` claim mapper replaces it |
@@ -87,6 +88,7 @@ Issued from the token endpoint when the scope includes `openid` and there is a u
 | `auth_time` | always | when the user authenticated; a token minted from a refresh token repeats the original value (OIDC Core §12.2) |
 | `tid` | always | the tenant's UUID |
 | `org_id` | the sign-in acts in an organization | as in the access token |
+| `features` | the `features` scope was granted | as in the access token |
 | `nonce` | the authorization request had one | echoed |
 | `sid` | a browser session exists | the session's UUID, the value back- and front-channel logout name |
 | `amr`, `acr` | as in the access token | refresh-derived ID tokens repeat the original values |
@@ -112,6 +114,8 @@ Each scope releases the claims named in its `claims` list, which administrators 
 | `email` | `email`, `email_verified` |
 | `phone` | `phone_number`, `phone_number_verified` |
 | `address` | `address` |
+
+`features` is seeded with no `claims`: it adds the `features` claim to the access and ID tokens (above), not to userinfo.
 
 A claim name is resolved against the user as follows: `preferred_username` is the username, `email`/`email_verified` and `phone_number`/`phone_number_verified` come from the user's contact fields (only when the user has that address or number), `locale` and `updated_at` from the record, `address` from the profile attribute `address` when it is a JSON object. Any other name is a top-level user field of that name (`username`, `email`, `phone`, `locale`, …) or else the profile attribute of that name; `attributes.<name>` names the profile attribute explicitly. A claim with no value for the user is left out. Protected claims and `roles`, `groups` and `permissions` are never released this way. A custom scope with a `claims` list releases those claims the same way.
 

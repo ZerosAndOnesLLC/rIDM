@@ -36,7 +36,7 @@ Content-Type: application/json
 - `settings` is optional: anything left out takes the defaults below.
 
 A new tenant is seeded with the standard scopes (`openid`, `profile`, `email`,
-`phone`, `address`, `offline_access`), the `urn:ridm:admin` and `urn:ridm:account`
+`phone`, `address`, `offline_access`, `features`), the `urn:ridm:admin` and `urn:ridm:account`
 resource servers, the six built-in admin roles, and the two built-in console clients
 (`ridm-admin-console`, `ridm-account-console`). Its first signing key is made on first
 use. It has no users: invite or create an administrator for it next (see
@@ -107,7 +107,7 @@ loading. The top-level keys:
 | `dcr` | Dynamic client registration: `disabled`, `open` or `initial_access_token` | [Registering clients](clients.md#dynamic-client-registration) |
 | `audit` | Audit log retention | [below](#audit) |
 | `custom_domain` | The tenant's own issuer host | [Custom domains](custom-domains.md) |
-| `features` | Free-form feature flags | [below](#features) |
+| `features` | Feature flags applications read | [Feature flags](feature-flags.md) |
 
 ### password
 
@@ -284,12 +284,13 @@ See [Webhooks and the audit log](webhooks-audit.md).
 
 ### features
 
-A map of flag name to boolean, default `{}`. rIDM itself does not read these flags;
-they are for the deployment or its applications to consult. Edit them under
-Settings → General.
+A map of flag name to flag, default `{}`: each with `enabled`, an optional
+`description` and optional per-organization values. rIDM itself doesn't act on them;
+applications read them through the `features` scope or `GET /t/{slug}/features`. Edit
+them on the console's Feature flags page. See [Feature flags](feature-flags.md).
 
 ```json
-{ "features": { "beta_dashboard": true } }
+{ "features": { "beta_dashboard": { "enabled": true, "organizations": { "globex": false } } } }
 ```
 
 ### custom_domain

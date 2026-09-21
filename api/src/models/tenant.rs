@@ -69,8 +69,11 @@ pub struct TenantSettings {
     pub rate_limits: RateLimitPolicy,
     /// Custom issuer host (Phase 9.3). `None` means `{PUBLIC_URL}/t/{slug}`.
     pub custom_domain: Option<String>,
-    /// Feature flags: free-form keys the deployment or its clients consult.
-    pub features: std::collections::BTreeMap<String, bool>,
+    /// Feature flags: switches the deployment and its applications consult,
+    /// each on or off for the tenant and optionally per organization. An
+    /// application reads the ones that are on through the `features` scope.
+    #[schema(value_type = std::collections::BTreeMap<String, FeatureFlag>)]
+    pub features: std::collections::BTreeMap<String, FeatureFlag>,
 }
 
 /// Self-service rights of the account console.
@@ -97,6 +100,52 @@ impl Default for AccountPolicy {
             personal_tokens: true,
             personal_token_max_days: 365,
         }
+    }
+}
+
+/// One feature flag. Stored documents from before descriptions and
+/// organizations existed held a bare `true`/`false`, which still loads.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, utoipa::ToSchema)]
+pub struct FeatureFlag {
+    /// The tenant-wide value.
+    pub enabled: bool,
+    /// What the flag switches, for the people who toggle it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Values for particular organizations, by organization slug; they win
+    /// over `enabled` for users signed in to that organization.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub organizations: std::collections::BTreeMap<String, bool>,
+}
+
+impl<'de> Deserialize<'de> for FeatureFlag {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Full {
+            enabled: bool,
+            #[serde(default)]
+            description: Option<String>,
+            #[serde(default)]
+            organizations: std::collections::BTreeMap<String, bool>,
+        }
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Stored {
+            Bare(bool),
+            Full(Full),
+        }
+        Ok(match Stored::deserialize(d)? {
+            Stored::Bare(enabled) => Self {
+                enabled,
+                ..Self::default()
+            },
+            Stored::Full(f) => Self {
+                enabled: f.enabled,
+                description: f.description,
+                organizations: f.organizations,
+            },
+        })
     }
 }
 

@@ -3307,6 +3307,23 @@ export interface components {
         };
         /** @enum {string} */
         Exposure: "id_token" | "userinfo" | "access_token";
+        /**
+         * @description One feature flag. Stored documents from before descriptions and
+         *     organizations existed held a bare `true`/`false`, which still loads.
+         */
+        FeatureFlag: {
+            /** @description What the flag switches, for the people who toggle it. */
+            description?: string | null;
+            /** @description The tenant-wide value. */
+            enabled: boolean;
+            /**
+             * @description Values for particular organizations, by organization slug; they win
+             *     over `enabled` for users signed in to that organization.
+             */
+            organizations?: {
+                [key: string]: boolean;
+            };
+        };
         FieldChange: {
             field: string;
             from: unknown;
@@ -5530,11 +5547,13 @@ export interface components {
              */
             discovery: components["schemas"]["DiscoverySettings"];
             /**
-             * @description Feature flags: free-form keys the deployment or its clients consult.
+             * @description Feature flags: switches the deployment and its applications consult,
+             *     each on or off for the tenant and optionally per organization. An
+             *     application reads the ones that are on through the `features` scope.
              * @default {}
              */
             features: {
-                [key: string]: boolean;
+                [key: string]: components["schemas"]["FeatureFlag"];
             };
             /**
              * @default {

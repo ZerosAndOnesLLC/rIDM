@@ -69,6 +69,36 @@ release renames that heading to the version and date.
   stored in a new audit column `impersonator_id`. The column is covered by the hash
   chain only when set, so existing rows still verify. The audit API can filter on
   it, and the CSV export has it as a new last column.
+- Audit chain verification you can run yourself: `ridm audit verify --file`
+  checks a JSON export offline with the chain algorithm (now in `ridm-core`),
+  streaming it. `--head` pins the hash the export must end on, and `--after`
+  the hash it must follow, so consecutive exports prove one chain. `ridm audit
+  verify` asks the server and `ridm audit export` streams a chain to disk. The
+  verify endpoint gained `last_hash` and `scheduled`.
+- A daily `audit_verify` job checks every chain that grew, from its last
+  verified checkpoint. A break is stored, logged, counted
+  (`ridm_audit_chain_breaks_total`, `ridm_audit_chains_broken`) and recorded
+  once as the new `audit.chain_broken` event in that tenant's chain.
+- Feature flags have their own console page (key, description, on/off, and
+  per-organization values by slug), and applications can read them: the new
+  standard `features` scope adds a `features` claim (the flags on for the
+  sign-in's organization) to access and ID tokens, and `GET /t/{slug}/features`
+  answers live for any access token of the tenant. `settings.features` values
+  are now `{enabled, description, organizations}`; a bare boolean still loads
+  and is still accepted.
+
+### Changed
+
+- The audit export sink (`AUDIT_SINK_URL`) ships from the database instead
+  of an in-memory queue. It keeps a cursor per chain and advances it only
+  once the receiver accepts the rows, backing off up to a minute on failure,
+  so a receiver outage or a restart no longer loses rows. Delivery is at
+  least once, so deduplicate on the row's `id`. A newly configured
+  destination starts at the chains' current heads. HTTP batches are one chain
+  each, in order, and are signed with `X-RIDM-Signature` when
+  `AUDIT_SINK_SECRET` is set. `syslog+tls://` (RFC 5425) and
+  `AUDIT_SINK_CA_FILE` are new. `ridm_audit_sink_dropped_total` is gone;
+  watch `ridm_audit_sink_lag_rows` instead.
 
 ### Fixed
 

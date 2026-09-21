@@ -59,7 +59,7 @@ own `client_id` as its audience.
 ## Scopes: what the user agreed to
 
 Scopes are the OAuth vocabulary for delegation: `openid`, `profile`, `email`,
-`phone`, `address`, `offline_access`, plus any the tenant defines. A client may
+`phone`, `address`, `offline_access`, `features` ([feature flags](../admin/feature-flags.md)), plus any the tenant defines. A client may
 only request scopes in its `allowed_scopes`, and with consent required the user
 approves them on the consent screen, where each scope's `description` is shown.
 The granted scopes appear space-separated in the token's `scope` claim.

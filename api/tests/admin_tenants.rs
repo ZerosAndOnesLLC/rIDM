@@ -97,7 +97,7 @@ async fn global_owner_manages_the_tenant_lifecycle() {
         "sibling kept"
     );
     assert_eq!(patched["settings"]["password"]["require_uppercase"], true);
-    assert_eq!(patched["settings"]["features"]["beta"], true);
+    assert_eq!(patched["settings"]["features"]["beta"]["enabled"], true);
     assert_eq!(patched["settings"]["branding"]["primary_color"], "#123456");
     // `null` clears; the public branding endpoint sees the change (cache evicted).
     let (status, patched, _) = call(

@@ -20607,6 +20607,36 @@
           "access_token"
         ]
       },
+      "FeatureFlag": {
+        "type": "object",
+        "description": "One feature flag. Stored documents from before descriptions and\norganizations existed held a bare `true`/`false`, which still loads.",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the flag switches, for the people who toggle it."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "The tenant-wide value."
+          },
+          "organizations": {
+            "type": "object",
+            "description": "Values for particular organizations, by organization slug; they win\nover `enabled` for users signed in to that organization.",
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "FieldChange": {
         "type": "object",
         "required": [
@@ -26479,10 +26509,10 @@
           },
           "features": {
             "type": "object",
-            "description": "Feature flags: free-form keys the deployment or its clients consult.",
+            "description": "Feature flags: switches the deployment and its applications consult,\neach on or off for the tenant and optionally per organization. An\napplication reads the ones that are on through the `features` scope.",
             "default": {},
             "additionalProperties": {
-              "type": "boolean"
+              "$ref": "#/components/schemas/FeatureFlag"
             },
             "propertyNames": {
               "type": "string"

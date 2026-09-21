@@ -9,6 +9,8 @@ test.describe("operations", () => {
   // specs' emails (verification links), so drop it whatever happened.
   test.afterAll(() => {
     tenantSql(`DELETE FROM message_templates WHERE body_text LIKE '%from ${suffix}%'`);
+    // And a flag a failed run left behind.
+    tenantSql(`UPDATE tenants SET settings = settings #- '{features,e2e-flag-${suffix}}' WHERE slug = '${TENANT}'`);
   });
 
   test("keys: timeline, new pending key, activate, retire, revoke", async ({ page }) => {
@@ -143,5 +145,37 @@ test.describe("operations", () => {
     await page.getByRole("navigation", { name: "Messaging sections" }).getByRole("link", { name: "Delivery log" }).click();
     await expect(page.getByText(`test-${suffix}@example.com`)).toBeVisible({ timeout: 15_000 });
     await expectAccessible(page);
+  });
+
+  test("feature flags: add, switch, override per organization, remove", async ({ page }) => {
+    const key = `e2e-flag-${suffix}`;
+    await consoleLogin(page, loadState());
+    await page.goto(`/console/features/?tenant=${TENANT}`);
+    await expect(page.getByRole("heading", { name: "Feature flags", level: 1 })).toBeVisible({ timeout: 15_000 });
+    await page.getByLabel("New flag").fill("Not Valid");
+    await expect(page.getByText("Lowercase letters, digits")).toBeVisible();
+    await page.getByLabel("New flag").fill(key);
+    await page.getByLabel("Description (optional)").fill("Made by the e2e suite");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    const card = page.locator("section").filter({ has: page.getByText(key, { exact: true }) }).last();
+    await expect(card.getByText("Off", { exact: true })).toBeVisible();
+    await card.getByRole("switch", { name: "On for everyone" }).click();
+    await card.getByLabel(`Organization slug for ${key}`).fill("e2e-org");
+    await card.getByRole("button", { name: "Turn off for it" }).click();
+    await expect(card.getByRole("switch", { name: "e2e-org" })).toBeVisible();
+    await expect(page.getByText("Saved")).toBeVisible({ timeout: 10_000 });
+    await expectAccessible(page);
+
+    // Stored: a reload shows the same, and so does the tenant's document.
+    await page.reload();
+    const again = page.locator("section").filter({ has: page.getByText(key, { exact: true }) }).last();
+    await expect(again.getByText("On", { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(again.getByRole("switch", { name: "e2e-org" })).not.toBeChecked();
+    expect(tenantSql(`SELECT settings->'features'->'${key}'->'organizations'->>'e2e-org' FROM tenants WHERE slug = '${TENANT}'`)).toBe("false");
+
+    await again.getByRole("button", { name: `Remove ${key}` }).click();
+    await expect(page.getByText(key, { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Saved")).toBeVisible({ timeout: 10_000 });
+    await expect.poll(() => tenantSql(`SELECT settings->'features' ? '${key}' FROM tenants WHERE slug = '${TENANT}'`), { timeout: 10_000 }).toBe("f");
   });
 });

@@ -13,7 +13,8 @@
 //! This module only delivers. What to deliver comes from the database, driven
 //! by [`crate::jobs::audit_sink`]: a row is shipped once it is recorded,
 //! whatever happens to the node, and delivery is at least once — a receiver
-//! deduplicates on the row's `id` (or its chain and `seq`).
+//! deduplicates on the row's `id` (not on `seq`, which a restored database
+//! reuses).
 
 use std::io::BufReader;
 use std::path::Path;

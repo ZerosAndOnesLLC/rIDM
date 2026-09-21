@@ -47,7 +47,7 @@ The document is configuration, not data or credentials. It never contains:
 - **Users** and everything attached to them: credentials, sessions, trusted devices, consents, personal access tokens, linked identities, role assignments to users and group memberships. Move users with the bulk user [import and export](../admin/users.md).
 - **Provider credentials**: the email and SMS delivery settings and the CAPTCHA provider, which hold secrets.
 - **Signing keys** (each tenant has its own), SCIM provisioning tokens, dynamic registration initial access tokens, invitations and the audit log.
-- **Built-in objects**: the `ridm-admin-console` and `ridm-account-console` clients, the built-in `ridm:*` roles, and the built-in resource servers `urn:ridm:admin` and `urn:ridm:account`. Exports leave them out, an import naming a built-in client is refused, and pruning never deletes them. The standard scopes (`openid`, `profile`, `email`, `phone`, `address`, `offline_access`) are exported so their descriptions can be tuned, but pruning never deletes them either.
+- **Built-in objects**: the `ridm-admin-console` and `ridm-account-console` clients, the built-in `ridm:*` roles, and the built-in resource servers `urn:ridm:admin` and `urn:ridm:account`. Exports leave them out, an import naming a built-in client is refused, and pruning never deletes them. The standard scopes (`openid`, `profile`, `email`, `phone`, `address`, `offline_access`, `features`) are exported so their descriptions can be tuned, but pruning never deletes them either.
 
 ## Sections
 
@@ -85,7 +85,7 @@ The tenant's status (active or disabled) is not part of the document.
 | `account` | `self_deletion` (`true`), `deletion_retention_days` (30), `personal_tokens` (`true`), `personal_token_max_days` (365, 0 = no limit) |
 | `rate_limits` | `enabled` (`true`), `window_secs` (60), `token_per_ip` (600), `token_per_client` (1200), `authorize_per_ip` (300), `flows_per_ip` (600), `tenant_total` (0, off) |
 | `custom_domain` | `null`, or a host name |
-| `features` | `{}`: free-form boolean flags |
+| `features` | `{}`: flag name to `{enabled, description, organizations}` (a bare boolean is accepted); see [Feature flags](../admin/feature-flags.md) |
 
 What each setting does is described in [Tenants and tenant settings](../admin/tenants.md).
 

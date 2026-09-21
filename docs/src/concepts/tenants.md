@@ -87,8 +87,8 @@ possible.
 
 Creating a tenant seeds it with everything it needs to work at once:
 
-- the standard scopes `openid`, `profile`, `email`, `phone`, `address` and
-  `offline_access`;
+- the standard scopes `openid`, `profile`, `email`, `phone`, `address`,
+  `offline_access` and `features`;
 - the built-in resource server `urn:ridm:admin`, carrying the catalogue of
   `ridm:*` admin permissions, and six built-in roles that hold them
   (`ridm:owner`, `ridm:admin`, `ridm:user-manager`, `ridm:client-manager`,

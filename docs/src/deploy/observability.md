@@ -43,8 +43,8 @@ Worth alerting on:
 | `audit: could not record event` | error | An audit row was not written |
 | `audit: event bus lagged, events not recorded` | warn | The in-process event bus overflowed and audit rows were skipped |
 | `audit: creating partitions failed` | error | The `audit_retention` job could not create next months' audit partitions; rows fall into the default partition (see [Postgres and Valkey](postgres-valkey.md#audit-partitions-under-the-two-role-setup)) |
-| `audit sink queue full; row dropped` | warn | The export sink fell behind |
-| `audit sink delivery failed; rows dropped` | warn | A sink batch failed after its attempts |
+| `audit sink delivery failed; will retry` | warn | The export sink's receiver refused or could not be reached; the rows are sent again after a backoff |
+| `audit chain does not verify` | error | The scheduled check found a tenant's audit chain broken (see [the scheduled check](../admin/webhooks-audit.md#the-scheduled-check)) |
 | `webhook delivery dead-lettered` | warn | A webhook exhausted its retries |
 | slow statement warnings from `sqlx` | warn | A query took more than 250 ms |
 
@@ -84,8 +84,10 @@ Scrape every node: counters are per process.
 | `ridm_cleanup_rows_total` | counter | `table` | Rows deleted by the cleanup job |
 | `ridm_audit_events_total` | counter | | Audit rows written |
 | `ridm_audit_sink_rows_total` | counter | | Audit rows shipped to the sink |
-| `ridm_audit_sink_failures_total` | counter | | Sink batches that failed after their retries |
-| `ridm_audit_sink_dropped_total` | counter | | Audit rows dropped because the sink queue was full |
+| `ridm_audit_sink_failures_total` | counter | | Sink deliveries that failed (they are retried) |
+| `ridm_audit_sink_lag_rows` | gauge | | Audit rows recorded but not yet shipped, over every chain |
+| `ridm_audit_chain_breaks_total` | counter | | Audit chains the scheduled check found newly broken |
+| `ridm_audit_chains_broken` | gauge | | Audit chains currently known broken |
 
 Every `_seconds` histogram uses buckets from 1 ms to 10 s (0.001, 0.0025, 0.005, 0.01,
 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10). A metric appears only after its first
@@ -142,20 +144,15 @@ Rows are recorded asynchronously from an in-process event bus. If that bus overf
 events are skipped with the warning above. Compare `ridm_audit_events_total` with your
 expectations after incidents.
 
-To keep a copy off the host, set `AUDIT_SINK_URL`. Each node ships the rows it records,
-exactly as stored (with chain sequence and hash):
+To keep a copy off the host, set `AUDIT_SINK_URL`. One node at a time ships rows from
+the database, exactly as stored (with chain sequence and hash), and records per chain
+how far it got. A receiver that is down delays rows but loses none: they go out when it
+is back. See [Shipping to an external system](../admin/webhooks-audit.md#shipping-to-an-external-system)
+for the transports (`https://`, `syslog://`, `syslog+tcp://`, `syslog+tls://`), signing
+and delivery semantics.
 
-| `AUDIT_SINK_URL` | Delivery |
-|------------------|----------|
-| `https://...` (or `http://...`) | `POST` of a JSON array of up to 100 rows, sent when 100 have accumulated or a second after the first; `Authorization: Bearer <AUDIT_SINK_TOKEN>` when that is set; 10-second timeout; three attempts with backoff, then the batch is dropped and counted in `ridm_audit_sink_failures_total` |
-| `syslog://host:514` or `syslog+udp://host:514` | One RFC 5424 message per row over UDP: `<134>1 <time> <host> ridm - <event name> - <row as JSON>` |
-| `syslog+tcp://host:514` | The same over TCP |
-
-The sink never slows the audit writer. Rows wait in a bounded queue of 10,000 per node;
-when the destination falls behind, new rows are dropped and counted in
-`ridm_audit_sink_dropped_total`. The database copy is unaffected, so a gap in the sink
-can be filled from `audit_events`. Alert on `ridm_audit_sink_dropped_total` and
-`ridm_audit_sink_failures_total` increasing.
+Alert on `ridm_audit_sink_lag_rows` growing and on `ridm_audit_chains_broken` above
+`0`.
 
 ## Background job status
 

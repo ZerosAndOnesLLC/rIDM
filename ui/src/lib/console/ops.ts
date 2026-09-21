@@ -24,7 +24,7 @@ export function href(page: string, tenant: string, params: Record<string, string
 
 /** Every event name the server emits (mirrors `ridm_core::events::EventKind::name`). */
 export const EVENT_NAMES = [
-  "authorization.granted", "claim_mapper.created", "claim_mapper.deleted", "claim_mapper.updated",
+  "audit.chain_broken", "authorization.granted", "claim_mapper.created", "claim_mapper.deleted", "claim_mapper.updated",
   "client.created", "client.deleted", "client.secret_rotated", "client.updated",
   "consent.granted", "consent.revoked", "device.revoked", "device.trusted",
   "group.created", "group.deleted", "group.member_added", "group.member_removed", "group.updated",

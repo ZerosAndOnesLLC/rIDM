@@ -28,7 +28,7 @@ use crate::models::{
     TokenKind, User,
 };
 use crate::services::claims::{ClaimContext, apply_mappers, profile_claims, scope_claims};
-use crate::services::{jwe, keys, opaque_tokens, profile_schema, scopes};
+use crate::services::{features, jwe, keys, opaque_tokens, profile_schema, scopes};
 use crate::state::AppState;
 
 const MATERIAL_L1_TTL: Duration = Duration::from_secs(300);
@@ -374,6 +374,10 @@ pub async fn issue_access_token(
     if let Some(org) = req.org_id {
         claims.insert("org_id".into(), json!(org));
     }
+    if req.scopes.iter().any(|s| s == features::SCOPE) {
+        let on = features::enabled_for(state, req.tenant, req.org_id).await?;
+        claims.insert("features".into(), json!(on));
+    }
     if req.user.is_some() {
         // A `roles` or `groups` mapper reshapes these (a client's roles only,
         // group paths); its output stands. Mappers of any other kind cannot
@@ -471,6 +475,10 @@ pub async fn issue_id_token(state: &AppState, req: IdTokenRequest<'_>) -> AppRes
     claims.insert("tid".into(), json!(req.tenant.id));
     if let Some(org) = req.org_id {
         claims.insert("org_id".into(), json!(org));
+    }
+    if req.scopes.iter().any(|s| s == features::SCOPE) {
+        let on = features::enabled_for(state, req.tenant, req.org_id).await?;
+        claims.insert("features".into(), json!(on));
     }
     if let Some(n) = req.nonce {
         claims.insert("nonce".into(), json!(n));

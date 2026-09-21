@@ -80,6 +80,7 @@ fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
         .merge(routes::verification::router())
         .merge(routes::recovery::router());
     let oauth_tokens = Router::new()
+        .merge(routes::features::router())
         .merge(oidc::token::router())
         .merge(oidc::device::router())
         .merge(oidc::userinfo::router())

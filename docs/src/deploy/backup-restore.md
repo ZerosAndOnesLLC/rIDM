@@ -235,7 +235,9 @@ gone, and some of that matters more than the rest:
   and a changed password are back to their earlier state. Re-apply them before letting
   traffic in. If you ship the audit log off the host with `AUDIT_SINK_URL`, the sink
   holds the events that happened after the backup and is the list to work from; the
-  database's own audit log ends at the backup.
+  database's own audit log ends at the backup. The restored chains continue from the
+  backup's `seq` numbers, so the sink will send new rows under numbers it already sent
+  for the lost ones: a receiver that deduplicates must do so on the row's `id`.
 - **Users sign in again.** Browser sessions went with Valkey. Refresh tokens issued or
   rotated after the backup are unknown to the restored database, so those clients sign
   in again too.

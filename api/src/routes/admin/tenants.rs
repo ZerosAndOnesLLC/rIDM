@@ -114,6 +114,15 @@ async fn update(
             // the variant and leaves nothing of `required_for_roles` behind.
             drop_on_variant_change(&mut doc, &patch, "mfa", "mode");
             merge_patch(&mut doc, &patch);
+            // A flag may still be written as a bare `true`/`false`, the shape
+            // it had before descriptions and organizations.
+            if let Some(flags) = doc.get_mut("features").and_then(|f| f.as_object_mut()) {
+                for flag in flags.values_mut() {
+                    if let Some(on) = flag.as_bool() {
+                        *flag = serde_json::json!({ "enabled": on });
+                    }
+                }
+            }
             let settings: TenantSettings = serde_json::from_value(doc.clone())
                 .map_err(|e| AppError::BadRequest(format!("invalid settings: {e}")))?;
             // Stored documents tolerate unknown members (forward compatibility),
