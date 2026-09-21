@@ -103,6 +103,11 @@ fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
             Category::Flows,
             Style::Html,
         ))
+        .merge(limited(
+            routes::impersonation::router(),
+            Category::Flows,
+            Style::Html,
+        ))
         .merge(oidc::discovery::router())
         .merge(limited(
             oidc::authorize::router(),
@@ -131,6 +136,7 @@ fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
         .layer(axum::middleware::from_fn(
             middleware::http_metrics::http_metrics,
         ))
+        .layer(axum::middleware::from_fn(middleware::acting::acting_scope))
         .layer(telemetry::http_trace_layer())
         .with_state(state)
 }

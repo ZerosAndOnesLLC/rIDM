@@ -51,6 +51,24 @@ release renames that heading to the version and date.
   (`GEOIP_COUNTRY_HEADERS`, `GEOIP_LATITUDE_HEADERS`,
   `GEOIP_LONGITUDE_HEADERS`) or a MaxMind DB file the deployment supplies
   (`GEOIP_DB`); with neither, the device and velocity signals still work.
+- Admin impersonation (`settings.impersonation`, off by default): an
+  administrator holding the new `ridm:users:impersonate` permission (built-in
+  `ridm:owner` only) asks `POST /admin/tenants/{slug}/users/{user}/impersonate`
+  with a reason for a one-time, 60-second link. Opening it gives that browser an
+  SSO session as the user that lasts at most `max_minutes`. Every access and ID token
+  minted from the session names the administrator in `act` (`{sub, iss}`) and
+  expires with it, and the admin API refuses any token carrying `act`. The
+  session owes none of the user's MFA, password-change or risk steps. The
+  account API refuses everything that needs a recent sign-in, plus consent
+  withdrawal, with the new `urn:ridm:error:impersonation-forbidden`, and no consent
+  can be given. Users holding any admin permission can't be impersonated.
+  The account console shows a banner with **End impersonation**, which ends
+  the session and puts back the browser's own. New `impersonation.requested`,
+  `impersonation.started` and `impersonation.ended` events. Every other event
+  raised during the session carries the administrator as `impersonator`,
+  stored in a new audit column `impersonator_id`. The column is covered by the hash
+  chain only when set, so existing rows still verify. The audit API can filter on
+  it, and the CSV export has it as a new last column.
 
 ### Fixed
 

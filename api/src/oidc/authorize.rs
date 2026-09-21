@@ -30,7 +30,7 @@ use crate::services::auth_codes::{self, AuthCode};
 use crate::services::flows::Owed;
 use crate::services::login_flows::{self, AuthRequest, FlowStage, LoginFlow, ResponseMode};
 use crate::services::sessions::{self, SsoSession};
-use crate::services::{clients, consents, flows, geoip, ip_rules, scopes};
+use crate::services::{clients, consents, flows, geoip, impersonation, ip_rules, scopes};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -755,6 +755,14 @@ async fn decide(
                 OAuthErrorCode::ConsentRequired,
             )));
         }
+        // Only the user may consent; an administrator signed in as them is
+        // sent back rather than shown a page they could not submit.
+        if session.impersonator.is_some() {
+            return Err(Failure::Redirect(OAuthError::new(
+                OAuthErrorCode::AccessDenied,
+                "the user has not consented to this client, and consent cannot be given while impersonating them",
+            )));
+        }
         let flow = login_flows::create(
             state,
             LoginFlow {
@@ -809,6 +817,7 @@ pub async fn issue_code(
             amr: session.amr.clone(),
             acr: session.acr.clone(),
             org_id: session.org_id,
+            acting: impersonation::acting(state, session).await?,
             claims: req.claims.clone(),
             issued_at: Utc::now(),
         },

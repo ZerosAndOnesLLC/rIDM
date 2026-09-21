@@ -57,7 +57,10 @@ impl EventBus {
         self.tx.receiver_count()
     }
 
-    pub fn publish_with_origin(&self, event: Event, origin: Origin) {
+    pub fn publish_with_origin(&self, mut event: Event, origin: Origin) {
+        if origin == Origin::Local && event.impersonator.is_none() {
+            event.impersonator = super::acting::current();
+        }
         let name = event.name();
         let envelope = Envelope {
             origin,

@@ -42,6 +42,8 @@ async fn revoke_app(
     ctx: AccountCtx,
     Path(AppPath { client_id }): Path<AppPath>,
 ) -> AppResult<StatusCode> {
+    // Consent is the user's to give and to take back.
+    ctx.forbid_impersonation()?;
     if !account::revoke_app(&state, ctx.tenant.id, ctx.user.id, client_id).await? {
         return Err(AppError::NotFound("consent"));
     }

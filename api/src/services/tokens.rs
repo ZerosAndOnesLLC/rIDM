@@ -204,6 +204,9 @@ pub struct IdTokenRequest<'a> {
     pub access_token: Option<&'a str>,
     /// Authorization code (for `c_hash`, hybrid-less: only when returned with a code).
     pub code: Option<&'a str>,
+    /// The administrator behind an impersonated sign-in (`act`), so a
+    /// relying party can tell from the ID token too.
+    pub act: Option<Value>,
 }
 
 pub struct IssuedToken {
@@ -303,7 +306,7 @@ pub async fn sign(
         .map_err(|e| AppError::Internal(format!("jwt sign: {e}")))
 }
 
-fn issuer(state: &AppState, tenant: &Tenant) -> String {
+pub fn issuer(state: &AppState, tenant: &Tenant) -> String {
     match &tenant.settings.custom_domain {
         Some(host) => format!("https://{host}"),
         None => state.config.issuer_for(&tenant.slug),
@@ -486,6 +489,9 @@ pub async fn issue_id_token(state: &AppState, req: IdTokenRequest<'_>) -> AppRes
     }
     if let Some(code) = req.code {
         claims.insert("c_hash".into(), json!(half_hash(key.alg, code)));
+    }
+    if let Some(act) = req.act {
+        claims.insert("act".into(), act);
     }
 
     let jws = sign(state, &key, "JWT", &claims).await?;

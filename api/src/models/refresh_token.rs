@@ -24,6 +24,11 @@ pub struct RefreshToken {
     /// Organization the sign-in this family descends from acted in; every
     /// token minted from it repeats it as `org_id`.
     pub org_id: Option<Uuid>,
+    /// The administrator behind the sign-in this family descends from, when
+    /// it was an impersonation: every token minted from it repeats this
+    /// `act` claim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub act: Option<serde_json::Value>,
     pub expires_at: DateTime<Utc>,
     /// DPoP key thumbprint the token is bound to (public clients, RFC 9449 §5).
     pub dpop_jkt: Option<String>,

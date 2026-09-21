@@ -912,6 +912,15 @@ pub async fn consent_step(
             redirect_to: denial_redirect(&flow),
         });
     }
+    // Consent is the user's to give; an administrator signed in as them
+    // may only use what the user already agreed to.
+    if let Some(sid) = flow.session_id
+        && sessions::get(state, tenant.id, sid, &tenant.settings.session)
+            .await?
+            .is_some_and(|s| s.impersonator.is_some())
+    {
+        return Err(AppError::ImpersonationForbidden);
+    }
     let client = client_of(state, &flow).await?;
     let granted = granted.unwrap_or_else(|| flow.pending_scopes.clone());
     // `openid` can never be dropped; anything not requested is ignored.
@@ -1217,6 +1226,12 @@ pub async fn unfinished_stage(
         Ok(_) | Err(AppError::NotFound(_)) => return Ok(Owed::Step(FlowStage::Authenticate)),
         Err(e) => return Err(e),
     };
+    // An administrator's session as the user owes none of the user's steps:
+    // they could not pass them, and the policy judges the user's own
+    // sign-ins. Opening it was checked and audited instead.
+    if session.impersonator.is_some() {
+        return Ok(Owed::Nothing);
+    }
     if user.must_change_password && tenant.settings.auth.password {
         return Ok(Owed::Step(FlowStage::PasswordChange));
     }

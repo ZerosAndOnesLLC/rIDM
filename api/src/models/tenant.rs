@@ -63,6 +63,8 @@ pub struct TenantSettings {
     pub audit: crate::models::AuditPolicy,
     /// What users may do to their own account from the account console.
     pub account: AccountPolicy,
+    /// Administrators signing in as users (Phase 12.4), off until enabled.
+    pub impersonation: ImpersonationPolicy,
     /// Request ceilings on the OAuth and sign-in endpoints.
     pub rate_limits: RateLimitPolicy,
     /// Custom issuer host (Phase 9.3). `None` means `{PUBLIC_URL}/t/{slug}`.
@@ -94,6 +96,30 @@ impl Default for AccountPolicy {
             deletion_retention_days: 30,
             personal_tokens: true,
             personal_token_max_days: 365,
+        }
+    }
+}
+
+/// Whether administrators holding `ridm:users:impersonate` may sign in as
+/// this tenant's users, and for how long at a time.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(default)]
+pub struct ImpersonationPolicy {
+    pub enabled: bool,
+    /// The longest an impersonated session lives, in minutes (1–480). It
+    /// never outlives the tenant's absolute session timeout either.
+    pub max_minutes: u32,
+}
+
+impl ImpersonationPolicy {
+    pub const MAX_MINUTES: u32 = 480;
+}
+
+impl Default for ImpersonationPolicy {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_minutes: 60,
         }
     }
 }

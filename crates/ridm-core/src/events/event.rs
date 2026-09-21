@@ -29,6 +29,11 @@ pub struct Event {
     pub ip: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_agent: Option<String>,
+    /// The administrator behind the event when it happened in a session they
+    /// opened as the user (impersonation). Filled from the request's
+    /// [`super::acting`] slot when the event is published.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub impersonator: Option<Uuid>,
     pub kind: EventKind,
 }
 
@@ -41,6 +46,7 @@ impl Event {
             actor,
             ip: None,
             user_agent: None,
+            impersonator: None,
             kind,
         }
     }
@@ -274,6 +280,30 @@ pub enum EventKind {
         score: u32,
         signals: Vec<String>,
         country: Option<String>,
+    },
+
+    // Impersonation
+    /// An administrator asked to sign in as a user; the ticket is not yet
+    /// redeemed, so no session exists.
+    ImpersonationRequested {
+        user_id: Uuid,
+        reason: String,
+    },
+    /// The ticket was redeemed: a session as the user, opened by the
+    /// administrator the event's actor names.
+    ImpersonationStarted {
+        user_id: Uuid,
+        session_id: Uuid,
+        impersonator_id: Uuid,
+        impersonator_tenant_id: Uuid,
+        reason: String,
+    },
+    /// The session was ended before its time ran out, by the administrator or
+    /// by anyone who revoked it. One that runs out simply expires.
+    ImpersonationEnded {
+        user_id: Uuid,
+        session_id: Uuid,
+        impersonator_id: Uuid,
     },
 
     // Security notices
@@ -524,6 +554,9 @@ impl EventKind {
             Self::TermsAccepted { .. } => "user.terms_accepted",
             Self::RiskStepUp { .. } => "risk.step_up",
             Self::RiskBlocked { .. } => "risk.blocked",
+            Self::ImpersonationRequested { .. } => "impersonation.requested",
+            Self::ImpersonationStarted { .. } => "impersonation.started",
+            Self::ImpersonationEnded { .. } => "impersonation.ended",
             Self::NewDeviceLogin { .. } => "login.new_device",
             Self::EmailChanged { .. } => "user.email_changed",
             Self::MfaChanged { .. } => "mfa.changed",

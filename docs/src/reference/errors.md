@@ -148,6 +148,7 @@ Content-Type: application/problem+json
 | `urn:ridm:error:unauthorized` | 401 | no token, or a token that is not acceptable |
 | `urn:ridm:error:forbidden` | 403 | authenticated but not allowed: a missing permission, a token scoped to another tenant, an inactive account, a refused IP address, a wrong CSRF token |
 | `urn:ridm:error:reauthentication-required` | 403 | a security change needs a recent sign-in (below) |
+| `urn:ridm:error:impersonation-forbidden` | 403 | something only the user may do (a credential, consent, the account itself), asked by an [impersonated](../admin/impersonation.md) session or a token naming an actor |
 | `urn:ridm:error:not-found` | 404 | the resource (or tenant) does not exist or is not visible to the caller |
 | `urn:ridm:error:conflict` | 409 | a uniqueness violation (`already exists`) or a conflicting state |
 | `urn:ridm:error:rate-limited` | 429 | a rate limit refused the request; `Retry-After` is set |

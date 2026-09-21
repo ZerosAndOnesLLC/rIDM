@@ -141,6 +141,7 @@ async fn password_reset_by_email_token() {
             amr: &[],
             acr: None,
             org_id: None,
+            act: None,
         },
     )
     .await

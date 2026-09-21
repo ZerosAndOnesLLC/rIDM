@@ -50,6 +50,9 @@ pub struct Approval {
     /// Organization the approving session acts in.
     #[serde(default)]
     pub org_id: Option<Uuid>,
+    /// The administrator behind an impersonated approving session, for `act`.
+    #[serde(default)]
+    pub acting: Option<crate::services::impersonation::Acting>,
     pub scopes: Vec<String>,
 }
 
@@ -263,6 +266,7 @@ pub async fn approve(
     scopes: &[String],
 ) -> AppResult<DeviceRecord> {
     let key = keys::device_code(tenant_id, device_hash);
+    let acting = crate::services::impersonation::acting(state, session).await?;
     let mut rec = load(state, &key)
         .await?
         .filter(|r| matches!(r.status, Status::Pending) && !r.is_expired(Utc::now()))
@@ -274,6 +278,7 @@ pub async fn approve(
         amr: session.amr.clone(),
         acr: session.acr.clone(),
         org_id: session.org_id,
+        acting,
         scopes: scopes.to_vec(),
     });
     store(state, &key, &rec, true).await?;

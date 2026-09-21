@@ -92,6 +92,7 @@ loading. The top-level keys:
 | `mfa` | When a second factor is demanded | [MFA policy](mfa-policy.md) |
 | `mfa_methods` | Which second factors users may enrol | [MFA policy](mfa-policy.md) |
 | `risk` | Scoring sign-ins, and what an unusual one costs | [Adaptive authentication](adaptive-auth.md) |
+| `impersonation` | Whether administrators may sign in as users, and for how long | [Impersonation](impersonation.md) |
 | `auth` | Which first-factor sign-in methods are offered | [below](#auth) |
 | `registration` | Self-registration | [below](#registration) |
 | `lockout` | Brute-force lockout | [below](#lockout) |

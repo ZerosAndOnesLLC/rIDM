@@ -35,6 +35,9 @@ those of the event's `kind` document (next to `type`).
 | `mfa.changed` | `user_id`, `change` |
 | `risk.step_up` | `user_id`, `score`, `signals`, `country` |
 | `risk.blocked` | `user_id`, `score`, `signals`, `country` |
+| `impersonation.requested` | `user_id`, `reason` |
+| `impersonation.started` | `user_id`, `session_id`, `impersonator_id`, `impersonator_tenant_id`, `reason` |
+| `impersonation.ended` | `user_id`, `session_id`, `impersonator_id` |
 | `device.trusted`, `device.revoked` | `user_id`, `device_id` |
 | `session.created`, `session.revoked` | `session_id`, `user_id` |
 | `authorization.granted` | `user_id`, `client_id`, `scopes` |
@@ -161,6 +164,8 @@ X-Api-Key: …
 | `X-RIDM-Signature` | `t=<timestamp>,v1=<hex HMAC-SHA256>` |
 
 `event.actor.type` is `user`, `client`, `admin` or `system` (the last without an `id`).
+`event.impersonator` names the administrator when the event happened in a session they
+opened as the user ([impersonation](impersonation.md)).
 `event.ip` and `event.user_agent` appear when the event was raised by a request that
 recorded them, such as sign-in attempts. `attempt` counts from 1 and restarts at 1 after
 a manual redelivery. Payloads carry ids, not full records: fetch the current state from
@@ -297,6 +302,7 @@ Every event in the catalogue is appended to its tenant's chain as a row with:
 | `name` | the dotted event name |
 | `actor_type`, `actor_id` | `user`, `client`, `admin` or `system`; a SCIM token acts as `client` |
 | `subject_id` | the main entity: the first of `user_id`, `client_id`, `role_id`, `group_id`, `invitation_id`, `key_id`, `mapper_id`, `resource_server_id`, `scope_id`, `session_id` in the payload |
+| `impersonator_id` | the administrator behind the event, when it happened in a session they opened as the user ([impersonation](impersonation.md)) |
 | `ip`, `user_agent` | when the event came from a request that recorded them |
 | `payload` | the event's `kind` document |
 | `prev_hash`, `hash` | the chain links, lowercase hex |
@@ -322,8 +328,8 @@ curl -G https://id.example.com/admin/tenants/acme/audit \
 |-----------|---------|
 | `from`, `to` | RFC 3339 bounds on `occurred_at` |
 | `name` | exact event name, or a prefix when it ends with `.` or `*` |
-| `actor_id`, `subject_id` | exact match |
-| `user_id` | rows where the user is the actor or the subject |
+| `actor_id`, `subject_id`, `impersonator_id` | exact match |
+| `user_id` | rows where the user is the actor, the subject or the impersonator |
 | `limit` | page size, 50 by default, at most 500 |
 | `cursor` | the previous page's `next_cursor` |
 
@@ -346,7 +352,8 @@ id|chain|seq|occurred_at|name|actor_type|actor_id|subject_id|ip|user_agent|paylo
 
 with `chain` the tenant id (the nil UUID for the global chain), `occurred_at` in RFC 3339
 UTC with exactly six fractional digits and a `Z`, absent values as empty strings, and
-`payload` as compact JSON with its keys sorted. The first row of a chain has no
+`payload` as compact JSON with its keys sorted. A row with an `impersonator_id` has
+`|impersonator:<uuid>` appended; rows without one hash as they always did. The first row of a chain has no
 `prev_hash`. Writers of one chain are serialised with a Postgres advisory lock, so `seq`
 has no gaps.
 

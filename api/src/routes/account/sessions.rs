@@ -35,18 +35,25 @@ pub struct AccountSession {
     pub created_at: DateTime<Utc>,
     pub last_seen_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
+    /// The administrator (their username) who opened this session as the
+    /// user. The session's address and browser are theirs, so neither is
+    /// shown.
+    pub impersonated_by: Option<String>,
 }
 
 impl AccountSession {
     fn from(s: SsoSession, current: Option<Uuid>) -> Self {
+        let impersonated_by = s.impersonator.map(|i| i.username);
+        let hidden = impersonated_by.is_some();
         Self {
             id: s.id,
             current: Some(s.id) == current,
             auth_time: s.auth_time,
             amr: s.amr,
             acr: s.acr,
-            ip: s.ip,
-            user_agent: s.user_agent,
+            ip: s.ip.filter(|_| !hidden),
+            user_agent: s.user_agent.filter(|_| !hidden),
+            impersonated_by,
             created_at: s.created_at,
             last_seen_at: s.last_seen_at,
             expires_at: s.expires_at.min(s.idle_expires_at),

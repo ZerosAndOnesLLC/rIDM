@@ -162,6 +162,16 @@ comes from a CDN or proxy header (`GEOIP_COUNTRY_HEADERS`, believed only behind
 `TRUSTED_PROXIES`) or a MaxMind DB file the deployment supplies (`GEOIP_DB`); with neither,
 the device and velocity signals still work and no location signal is ever raised.
 
+Administrators can sign in as a user to see what they see (impersonation), where a tenant
+turns it on (`settings.impersonation`, off by default). It takes the
+`ridm:users:impersonate` permission (built-in owners only) and a reason. The result is a
+one-time link that opens a session as the user, lasting at most `max_minutes`. Every token
+from that session names the administrator in an `act` claim, and the admin API refuses such
+tokens. Users with any admin permission can't be impersonated. The session can't change the
+user's credentials, give or withdraw consent, mint personal tokens or delete the account.
+Every event it raises records the administrator (`impersonator_id` in the audit log), and
+the account console shows a banner to end it.
+
 Locale is negotiated per request: the OIDC `ui_locales` parameter, then the user's
 stored locale, then the tenant default, constrained to the tenant's supported list
 (exact tag or same language). The flow state carries the result as `locale`, `dir`

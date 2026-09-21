@@ -351,6 +351,15 @@ impl FromRequestParts<AppState> for AdminCtx {
             other => other.into(),
         })?;
         require_binding(state, &tenant, scheme, &token, &claims, parts).await?;
+        // Administration is done as oneself. A token that acts for someone
+        // else (an impersonated session, a token exchange) never reaches it,
+        // even should its subject be granted an admin role meanwhile.
+        if claims.get("act").is_some() {
+            return Err(AppError::Forbidden(
+                "a delegated or impersonated token cannot use the admin API".into(),
+            )
+            .into());
+        }
 
         // The session the token was issued in must still be alive, so signing
         // out ends admin access before the token expires.
@@ -358,12 +367,17 @@ impl FromRequestParts<AppState> for AdminCtx {
             .get("sid")
             .and_then(serde_json::Value::as_str)
             .and_then(|s| Uuid::parse_str(s).ok());
-        if let Some(sid) = session_id
-            && crate::services::sessions::get(state, tenant.id, sid, &tenant.settings.session)
-                .await?
-                .is_none()
-        {
-            return Err(AdminRejection::invalid());
+        if let Some(sid) = session_id {
+            let session =
+                crate::services::sessions::get(state, tenant.id, sid, &tenant.settings.session)
+                    .await?
+                    .ok_or_else(AdminRejection::invalid)?;
+            if session.impersonator.is_some() {
+                return Err(AppError::Forbidden(
+                    "a delegated or impersonated token cannot use the admin API".into(),
+                )
+                .into());
+            }
         }
 
         let user_id = tokens::subject_user_id(state, &tenant, &claims)

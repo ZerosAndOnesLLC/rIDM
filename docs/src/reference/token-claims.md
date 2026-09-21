@@ -42,7 +42,7 @@ Access tokens are JWTs unless the client is registered with `access_token_format
 | `amr` | the token came from an authentication | authentication methods (below) |
 | `acr` | the session has a class | `urn:ridm:acr:single`, `urn:ridm:acr:mfa`, or the `*:mfa` class the client asked for |
 | `cnf` | a DPoP proof bound the token | `{"jkt": "<RFC 7638 thumbprint of the proof key>"}` (RFC 9449 §6.1) |
-| `act` | token exchange with an `actor_token` | `{"sub", "client_id"}` of the acting party, nesting any previous `act` (RFC 8693 §4.1) |
+| `act` | token exchange with an `actor_token`, or a sign-in an administrator opened as the user | token exchange: `{"sub", "client_id"}` of the acting party, nesting any previous `act` (RFC 8693 §4.1). [Impersonation](../admin/impersonation.md): `{"sub", "iss"}` of the administrator. The admin API refuses any token carrying it |
 | profile attributes | the attribute lists `access_token` in its `visible_in` and the user has a value | one claim per attribute, named after it (see [Profile attributes](#profile-attributes)) |
 
 A `client_credentials` token for a client with a service account is issued for that account's user, so it carries `roles`, `groups` and `permissions` like any user token. A token exchanged under RFC 8693 keeps the subject token's `sub`, `sid`, `amr` and `acr`, and never outlives it.
@@ -90,6 +90,7 @@ Issued from the token endpoint when the scope includes `openid` and there is a u
 | `nonce` | the authorization request had one | echoed |
 | `sid` | a browser session exists | the session's UUID, the value back- and front-channel logout name |
 | `amr`, `acr` | as in the access token | refresh-derived ID tokens repeat the original values |
+| `act` | an administrator opened the session as the user | as in the access token ([impersonation](../admin/impersonation.md)) |
 | `at_hash` | always (an access token is always issued alongside) | left half of the hash of the access token, using the hash of the signing algorithm (SHA-256 for `RS256`/`ES256`, SHA-384 for `RS384`, SHA-512 for `RS512` and `EdDSA`) |
 
 The claims released by the granted scopes (below) are **not** in the ID token by default: an access token is always issued with it, so they are read from `/userinfo` (OIDC Core §5.4). A client that wants them in the ID token as well sets `id_token_scope_claims`. Profile attributes listing `id_token` in `visible_in`, and claim mappers with `id` in `include_in`, add claims to the ID token either way.

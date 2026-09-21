@@ -8,6 +8,7 @@ import { BrandingSection } from "@/components/console/settings/branding";
 import { SettingsContext, type SettingsEditor } from "@/components/console/settings/context";
 import { DangerZone } from "@/components/console/settings/danger";
 import { GeneralSection } from "@/components/console/settings/general";
+import { ImpersonationSection } from "@/components/console/settings/impersonation";
 import { LocaleSection } from "@/components/console/settings/locale";
 import { PasswordsSection } from "@/components/console/settings/passwords";
 import { ProfileSchemaSection } from "@/components/console/settings/profile";
@@ -136,6 +137,7 @@ export default function SettingsPage() {
           <PasswordsSection />
           <RateLimitsSection />
           <SessionsSection />
+          <ImpersonationSection />
           <BrandingSection />
           <LocaleSection />
           <AdvancedSection />

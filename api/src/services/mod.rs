@@ -24,6 +24,7 @@ pub mod flows;
 pub mod geoip;
 pub mod groups;
 pub mod identity_providers;
+pub mod impersonation;
 pub mod invitations;
 pub mod ip_rules;
 pub mod jwe;

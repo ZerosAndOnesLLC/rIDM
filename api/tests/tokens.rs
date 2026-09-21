@@ -196,6 +196,7 @@ async fn access_and_id_tokens_sign_and_verify_for_every_algorithm() {
                 acr: Some("urn:ridm:acr:1"),
                 access_token: Some(&at.token),
                 code: Some("SplxlOBeZQQYbYS6WxSbIA"),
+                act: None,
             },
         )
         .await
@@ -521,6 +522,7 @@ async fn mappers_and_encrypted_id_tokens() {
             acr: None,
             access_token: None,
             code: None,
+            act: None,
         },
     )
     .await

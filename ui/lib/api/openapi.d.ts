@@ -167,7 +167,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * `?from=&to=&name=&actor_id=&subject_id=&user_id=&cursor=&limit=`; `name`
+         * `?from=&to=&name=&actor_id=&subject_id=&impersonator_id=&user_id=&cursor=&limit=`; `name`
          *     matches exactly, or as a prefix when it ends with `.` or `*`.
          */
         get: operations["audit_list"];
@@ -1796,6 +1796,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/tenants/{slug}/users/{user}/impersonate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in as the user: a one-time URL that opens a session as them in the
+         *     browser that follows it. The tenant must allow impersonation, the user
+         *     must be active and hold no admin permission, and every token from the
+         *     session names the caller in `act`.
+         */
+        post: operations["users_impersonate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/tenants/{slug}/users/{user}/password": {
         parameters: {
             query?: never;
@@ -2626,6 +2648,15 @@ export interface components {
             trusted_devices: components["schemas"]["TrustedDevice"][];
             user: components["schemas"]["User"];
         };
+        AccountImpersonation: {
+            /**
+             * Format: date-time
+             * @description When the session ends by itself.
+             */
+            expires_at: string;
+            /** @description The administrator's username (in their own tenant). */
+            impersonator: string;
+        };
         AccountMe: {
             /** @description Authentication context class of the session (`urn:ridm:acr:mfa` after a second step). */
             acr?: string | null;
@@ -2640,6 +2671,7 @@ export interface components {
             email_verified: boolean;
             /** Format: uuid */
             id: string;
+            impersonation?: null | components["schemas"]["AccountImpersonation"];
             phone?: string | null;
             phone_verified: boolean;
             tenant: components["schemas"]["AccountTenant"];
@@ -2694,6 +2726,12 @@ export interface components {
             expires_at: string;
             /** Format: uuid */
             id: string;
+            /**
+             * @description The administrator (their username) who opened this session as the
+             *     user. The session's address and browser are theirs, so neither is
+             *     shown.
+             */
+            impersonated_by?: string | null;
             ip?: string | null;
             /** Format: date-time */
             last_seen_at: string;
@@ -2800,6 +2838,12 @@ export interface components {
             hash: string;
             /** Format: uuid */
             id: string;
+            /**
+             * Format: uuid
+             * @description The administrator behind the event, when it happened in a session
+             *     they opened as a user (impersonation).
+             */
+            impersonator_id?: string | null;
             ip?: string | null;
             /** @description Dotted event name (`user.created`). */
             name: string;
@@ -3518,6 +3562,48 @@ export interface components {
              * @default null
              */
             username: string | null;
+        };
+        ImpersonateBody: {
+            /**
+             * @description Why: recorded with every audit event of the impersonation (1–500
+             *     characters).
+             */
+            reason: string;
+        };
+        /**
+         * @description Whether administrators holding `ridm:users:impersonate` may sign in as
+         *     this tenant's users, and for how long at a time.
+         */
+        ImpersonationPolicy: {
+            /** @default false */
+            enabled: boolean;
+            /**
+             * Format: int32
+             * @description The longest an impersonated session lives, in minutes (1–480). It
+             *     never outlives the tenant's absolute session timeout either.
+             * @default 60
+             */
+            max_minutes: number;
+        };
+        ImpersonationTicket: {
+            /** Format: date-time */
+            expires_at: string;
+            /**
+             * @description Open this in a browser to become the user there. It works once, and
+             *     only until `expires_at`.
+             */
+            url: string;
+        };
+        /** @description The administrator behind an impersonated session. */
+        Impersonator: {
+            /**
+             * Format: uuid
+             * @description The administrator's own tenant (`master` for a global administrator).
+             */
+            tenant_id: string;
+            /** Format: uuid */
+            user_id: string;
+            username: string;
         };
         ImportError: {
             error: string;
@@ -4301,6 +4387,12 @@ export interface components {
                 hash: string;
                 /** Format: uuid */
                 id: string;
+                /**
+                 * Format: uuid
+                 * @description The administrator behind the event, when it happened in a session
+                 *     they opened as a user (impersonation).
+                 */
+                impersonator_id?: string | null;
                 ip?: string | null;
                 /** @description Dotted event name (`user.created`). */
                 name: string;
@@ -5240,6 +5332,7 @@ export interface components {
              * @description Sliding end of life.
              */
             idle_expires_at: string;
+            impersonator?: null | components["schemas"]["Impersonator"];
             ip?: string | null;
             /** Format: date-time */
             last_seen_at: string;
@@ -5427,6 +5520,13 @@ export interface components {
             features: {
                 [key: string]: boolean;
             };
+            /**
+             * @default {
+             *       "enabled": false,
+             *       "max_minutes": 60
+             *     }
+             */
+            impersonation: components["schemas"]["ImpersonationPolicy"];
             /**
              * @default {
              *       "default_alg": "RS256",
@@ -5823,6 +5923,8 @@ export interface operations {
                 name?: string;
                 actor_id?: string;
                 subject_id?: string;
+                /** @description Rows an administrator caused while impersonating someone. */
+                impersonator_id?: string;
                 user_id?: string;
                 cursor?: string;
                 limit?: number;
@@ -5887,6 +5989,8 @@ export interface operations {
                 name?: string;
                 actor_id?: string;
                 subject_id?: string;
+                /** @description Rows an administrator caused while impersonating someone. */
+                impersonator_id?: string;
                 user_id?: string;
                 /** @description json (default) or csv */
                 format?: string;
@@ -6483,6 +6587,8 @@ export interface operations {
                 name?: string;
                 actor_id?: string;
                 subject_id?: string;
+                /** @description Rows an administrator caused while impersonating someone. */
+                impersonator_id?: string;
                 user_id?: string;
                 cursor?: string;
                 limit?: number;
@@ -6550,6 +6656,8 @@ export interface operations {
                 name?: string;
                 actor_id?: string;
                 subject_id?: string;
+                /** @description Rows an administrator caused while impersonating someone. */
+                impersonator_id?: string;
                 user_id?: string;
                 /** @description json (default) or csv */
                 format?: string;
@@ -14639,6 +14747,8 @@ export interface operations {
                 name?: string;
                 actor_id?: string;
                 subject_id?: string;
+                /** @description Rows an administrator caused while impersonating someone. */
+                impersonator_id?: string;
                 user_id?: string;
                 cursor?: string;
                 limit?: number;
@@ -15458,6 +15568,78 @@ export interface operations {
             };
             /** @description Not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    users_impersonate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                user: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImpersonateBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpersonationTicket"];
+                };
+            };
+            /** @description No reason, or the caller themselves */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing, impersonation off, or the user is an administrator */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The user is not active */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

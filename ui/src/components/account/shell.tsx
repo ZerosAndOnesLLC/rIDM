@@ -1,12 +1,13 @@
 "use client";
 
-import { LogOut, ShieldCheck } from "lucide-react";
+import { LogOut, ShieldCheck, UserRoundCog } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useI18n } from "@/i18n/provider";
 import { Alert, Button, Spinner, TextField } from "@/components/ui";
-import { useAccount } from "@/lib/account/session";
+import { accountStore, useAccount } from "@/lib/account/session";
+import { tenantBase } from "@/lib/api";
 import { AuthError, isValidSlug, lastTenant } from "@/lib/console/auth";
 
 /**
@@ -66,11 +67,39 @@ function Nav() {
   );
 }
 
+/**
+ * An administrator is signed in as the user: say so on every page, and offer
+ * the way out. Ending is a plain form post to the tenant, so the browser's
+ * own session cookie comes back with the answer.
+ */
+function ImpersonationBanner() {
+  const { me, slug } = useAccount();
+  const { t, locale } = useI18n();
+  if (!me?.impersonation) return null;
+  const when = new Intl.DateTimeFormat(locale, { timeStyle: "short" }).format(new Date(me.impersonation.expires_at));
+  return (
+    <div role="status" className="border-b border-line bg-[color-mix(in_oklab,var(--accent)_14%,var(--paper))]">
+      <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
+        <p className="flex min-w-0 items-center gap-2 text-[0.875rem] text-ink">
+          <UserRoundCog className="size-4 shrink-0 text-link" aria-hidden />
+          <span>{t("account.impersonation_banner", { admin: me.impersonation.impersonator, user: me.email ?? me.username, when })}</span>
+        </p>
+        <form method="post" action={`${tenantBase(slug)}/impersonation/end`} onSubmit={() => accountStore.end(null)}>
+          <button type="submit" className="inline-flex min-h-9 items-center rounded-[var(--radius)] bg-accent px-3 text-[0.8125rem] font-medium text-accent-ink hover:brightness-110">
+            {t("account.impersonation_end")}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function Frame({ children }: { children: ReactNode }) {
   const { me, signOut } = useAccount();
   const { t } = useI18n();
   return (
     <div className="min-h-screen bg-ground">
+      <ImpersonationBanner />
       <header className="border-b border-line bg-paper">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-2.5">
@@ -105,8 +134,22 @@ function SignIn() {
   const { t } = useI18n();
   const params = useSearchParams();
   const [tenant, setTenant] = useState(() => params.get("tenant") ?? lastTenant() ?? "");
-  const [busy, setBusy] = useState(false);
+  const impersonating = params.get("impersonate") === "1" && isValidSlug(tenant);
+  const [busy, setBusy] = useState(impersonating);
   const [problem, setProblem] = useState<string | null>(null);
+
+  // An administrator's browser, just given a session as the user: sign in
+  // through it at once. Coming back lands on the plain console page, so this
+  // happens once per arrival.
+  const started = useRef(false);
+  useEffect(() => {
+    if (!impersonating || started.current) return;
+    started.current = true;
+    signIn(tenant, "/account/").catch((err: unknown) => {
+      setProblem(err instanceof AuthError ? err.message : t("account.sign_in_failed"));
+      setBusy(false);
+    });
+  }, [impersonating, signIn, tenant, t]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();

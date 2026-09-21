@@ -15,6 +15,7 @@ import { STATUS_LABELS, TABS, TAB_LABELS, describeAgent, roleName, statusTone, u
 import { RevealModal, type Revealed } from "../clients/reveal";
 import { AttributeField, JsonInput } from "./attributes";
 import { LinkedIdentities } from "./identities";
+import { ImpersonateAction } from "./impersonate";
 import { PersonalTokens } from "./tokens";
 import { useRolesAndGroups } from "./invite";
 
@@ -92,7 +93,9 @@ export function UserDetail({ tenant, id, tab }: { tenant: string; id: string; ta
           </span>
         }
         actions={
-          editable ? (
+          <>
+            <ImpersonateAction tenant={tenant} userId={u.id} username={u.username} active={u.status === "active"} />
+            {editable && (
             <>
               {locked && (
                 <Button disabled={act.isPending} onClick={() => act.mutate("unlock")}>
@@ -107,7 +110,8 @@ export function UserDetail({ tenant, id, tab }: { tenant: string; id: string; ta
                 <Trash2 className="size-4" aria-hidden />
               </IconButton>
             </>
-          ) : undefined
+            )}
+          </>
         }
       />
       {act.isError && (
@@ -508,6 +512,11 @@ function SessionsTab({ tenant, id, editable }: { tenant: string; id: string; edi
                 <span>
                   <span className="font-medium text-ink">{describeAgent(s.user_agent)}</span>
                   <span className="ms-2 text-muted">{s.ip ?? ""}</span>
+                  {s.impersonator && (
+                    <span className="ms-2">
+                      <Badge tone="accent">Impersonated by {s.impersonator.username}</Badge>
+                    </span>
+                  )}
                   <span className="block text-[0.8125rem] text-muted">
                     Signed in {formatDate("en", s.auth_time)} · {s.amr.join(", ")} · last seen {formatDate("en", s.last_seen_at)} · ends {formatDate("en", s.expires_at)}
                   </span>

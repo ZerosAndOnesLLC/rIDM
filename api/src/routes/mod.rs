@@ -5,6 +5,7 @@ pub mod broker;
 pub mod device;
 pub mod flows;
 pub mod health;
+pub mod impersonation;
 pub mod invitations;
 pub mod jwks;
 pub mod recovery;

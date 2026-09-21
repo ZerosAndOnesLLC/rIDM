@@ -58,9 +58,10 @@ fn subject_of(payload: &Value) -> Option<Uuid> {
 
 /// The bytes the chain hash covers. Field order is fixed; the payload is
 /// serialized with sorted keys (serde_json's default map), so the same row
-/// always hashes the same way.
+/// always hashes the same way. The impersonator is appended only when there
+/// is one, so rows written before it existed hash exactly as they did.
 fn canonical(row: &AuditEvent) -> Vec<u8> {
-    format!(
+    let mut bytes = format!(
         "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
         row.id,
         repos::audit::chain_id(row.tenant_id),
@@ -75,7 +76,11 @@ fn canonical(row: &AuditEvent) -> Vec<u8> {
         row.user_agent.clone().unwrap_or_default(),
         row.payload,
     )
-    .into_bytes()
+    .into_bytes();
+    if let Some(imp) = row.impersonator_id {
+        bytes.extend_from_slice(format!("|impersonator:{imp}").as_bytes());
+    }
+    bytes
 }
 
 fn hash_of(prev: Option<&[u8]>, row: &AuditEvent) -> Vec<u8> {
@@ -107,6 +112,7 @@ pub async fn record(state: &AppState, event: &Event) -> AppResult<AuditEvent> {
         actor_type: actor_type.to_string(),
         actor_id,
         subject_id: subject_of(&payload),
+        impersonator_id: event.impersonator,
         ip: event.ip.clone(),
         user_agent: event.user_agent.clone(),
         payload,
@@ -303,7 +309,9 @@ pub enum ExportFormat {
     Csv,
 }
 
-const CSV_HEADER: [&str; 12] = [
+/// New columns go at the end, so a reader written for an older export keeps
+/// finding every column where it was.
+const CSV_HEADER: [&str; 13] = [
     "seq",
     "id",
     "occurred_at",
@@ -316,6 +324,7 @@ const CSV_HEADER: [&str; 12] = [
     "payload",
     "prev_hash",
     "hash",
+    "impersonator_id",
 ];
 
 fn csv_chunk(rows: &[AuditEvent], with_header: bool) -> AppResult<Vec<u8>> {
@@ -340,6 +349,7 @@ fn csv_chunk(rows: &[AuditEvent], with_header: bool) -> AppResult<Vec<u8>> {
             r.payload.to_string(),
             r.prev_hash.as_ref().map(hex::encode).unwrap_or_default(),
             hex::encode(&r.hash),
+            r.impersonator_id.map(|u| u.to_string()).unwrap_or_default(),
         ])
         .map_err(io)?;
     }

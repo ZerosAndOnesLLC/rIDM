@@ -61,6 +61,7 @@ async fn confirm(
     contact: Contact,
     code: &str,
 ) -> AppResult<Json<Profile>> {
+    ctx.forbid_impersonation()?;
     match contact_changes::confirm(state, &ctx.tenant, &ctx.user, contact, code).await? {
         Some(user) => Ok(Json(profile::view(state, ctx, &user).await?)),
         None => Err(AppError::Validation(vec![FieldError {

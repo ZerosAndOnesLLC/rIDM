@@ -6,7 +6,8 @@
 //! account console's client is the usual source). The subject must be a live
 //! user of that tenant; the token only ever acts on that user's own account.
 //! Security changes additionally need a recent sign-in, see
-//! [`AccountCtx::require_recent_auth`].
+//! [`AccountCtx::require_recent_auth`], and are refused outright to an
+//! administrator signed in as the user ([`AccountCtx::forbid_impersonation`]).
 
 use std::sync::Arc;
 
@@ -23,6 +24,7 @@ use crate::models::{PAT_SCOPE_ACCOUNT, Tenant, User, UserStatus};
 use crate::services::account_console::ACCOUNT_AUDIENCE;
 use crate::services::flows::is_mfa_acr;
 use crate::services::personal_access_tokens as pats;
+use crate::services::sessions::Impersonator;
 use crate::services::tokens::{self, VerifyOptions};
 use crate::services::{tenants, users};
 use crate::state::AppState;
@@ -41,6 +43,12 @@ pub struct AccountCtx {
     pub acr: Option<String>,
     pub amr: Vec<String>,
     pub client_id: String,
+    /// The administrator who opened the session behind this token as the
+    /// user, when it is an impersonation.
+    pub impersonator: Option<Impersonator>,
+    /// The token names an acting party (`act`): an impersonation, or a
+    /// token exchanged for the user by someone else.
+    pub delegated: bool,
 }
 
 impl AccountCtx {
@@ -48,11 +56,26 @@ impl AccountCtx {
         Actor::User { id: self.user.id }
     }
 
+    /// Fail unless the user themselves is behind this call: credentials,
+    /// account deletion, linked identities and personal tokens are theirs
+    /// alone, whoever else may look at the account.
+    pub fn forbid_impersonation(&self) -> AppResult<()> {
+        if self.delegated || self.impersonator.is_some() {
+            Err(AppError::ImpersonationForbidden)
+        } else {
+            Ok(())
+        }
+    }
+
     /// Did the sign-in behind this token happen within the last
     /// [`RECENT_AUTH_SECS`], and with a second factor when `needs_mfa`?
     /// Otherwise the client re-authorizes with `max_age=0` (and an MFA
     /// `acr_values`) and comes back.
+    ///
+    /// Every security change asks this, so it refuses an impersonated
+    /// session first: its sign-in is always recent, and never the user's.
     pub fn require_recent_auth(&self, needs_mfa: bool) -> AppResult<()> {
+        self.forbid_impersonation()?;
         let recent = self
             .auth_time
             .is_some_and(|t| (Utc::now() - t).num_seconds() <= RECENT_AUTH_SECS);
@@ -113,6 +136,8 @@ impl FromRequestParts<AppState> for AccountCtx {
                 acr: None,
                 amr: vec!["pat".into()],
                 client_id: "pat".into(),
+                impersonator: None,
+                delegated: false,
             });
         }
         let tenant_id = tokens::access_token_tenant_hint(state, &token)
@@ -146,13 +171,20 @@ impl FromRequestParts<AppState> for AccountCtx {
             .get("sid")
             .and_then(serde_json::Value::as_str)
             .and_then(|s| Uuid::parse_str(s).ok());
-        if let Some(sid) = session_id
-            && crate::services::sessions::get(state, tenant.id, sid, &tenant.settings.session)
-                .await?
-                .is_none()
-        {
-            return Err(AdminRejection::invalid());
+        let mut impersonator = None;
+        if let Some(sid) = session_id {
+            let session =
+                crate::services::sessions::get(state, tenant.id, sid, &tenant.settings.session)
+                    .await?
+                    .ok_or_else(AdminRejection::invalid)?;
+            impersonator = session.impersonator;
         }
+        if let Some(imp) = &impersonator {
+            ridm_core::events::acting::set(imp.user_id);
+        }
+        // Someone other than the user is behind a token naming an actor,
+        // whether or not its session says so (token exchange has none).
+        let delegated = impersonator.is_some() || claims.get("act").is_some();
         let user_id = tokens::subject_user_id(state, &tenant, &claims)
             .await?
             .ok_or_else(|| AppError::Forbidden("account access requires a user subject".into()))?;
@@ -190,6 +222,8 @@ impl FromRequestParts<AppState> for AccountCtx {
             acr,
             amr,
             client_id,
+            impersonator,
+            delegated,
         })
     }
 }
