@@ -5,11 +5,11 @@
 
 use chrono::{DateTime, Duration, Utc};
 use futures::stream::{self, Stream};
+use ridm_core::audit_chain::{self, CanonicalRow, Verifier};
 use ridm_core::events::Envelope;
-use ridm_core::events::{Actor, Event};
+use ridm_core::events::{Actor, Event, EventSink as _};
 use serde::Serialize;
 use serde_json::Value;
-use sha2::{Digest as _, Sha256};
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::error::{RecvError, TryRecvError};
 use uuid::Uuid;
@@ -56,38 +56,27 @@ fn subject_of(payload: &Value) -> Option<Uuid> {
         .and_then(|s| Uuid::parse_str(s).ok())
 }
 
-/// The bytes the chain hash covers. Field order is fixed; the payload is
-/// serialized with sorted keys (serde_json's default map), so the same row
-/// always hashes the same way. The impersonator is appended only when there
-/// is one, so rows written before it existed hash exactly as they did.
-fn canonical(row: &AuditEvent) -> Vec<u8> {
-    let mut bytes = format!(
-        "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
-        row.id,
-        repos::audit::chain_id(row.tenant_id),
-        row.seq,
-        row.occurred_at
-            .to_rfc3339_opts(chrono::SecondsFormat::Micros, true),
-        row.name,
-        row.actor_type,
-        row.actor_id.map(|u| u.to_string()).unwrap_or_default(),
-        row.subject_id.map(|u| u.to_string()).unwrap_or_default(),
-        row.ip.clone().unwrap_or_default(),
-        row.user_agent.clone().unwrap_or_default(),
-        row.payload,
-    )
-    .into_bytes();
-    if let Some(imp) = row.impersonator_id {
-        bytes.extend_from_slice(format!("|impersonator:{imp}").as_bytes());
+/// The fields of a row its hash covers ([`ridm_core::audit_chain`] holds the
+/// algorithm, so an export can be checked without this server).
+pub fn canonical_view(row: &AuditEvent) -> CanonicalRow<'_> {
+    CanonicalRow {
+        id: row.id,
+        tenant_id: row.tenant_id,
+        seq: row.seq,
+        occurred_at: row.occurred_at,
+        name: &row.name,
+        actor_type: &row.actor_type,
+        actor_id: row.actor_id,
+        subject_id: row.subject_id,
+        impersonator_id: row.impersonator_id,
+        ip: row.ip.as_deref(),
+        user_agent: row.user_agent.as_deref(),
+        payload: &row.payload,
     }
-    bytes
 }
 
 fn hash_of(prev: Option<&[u8]>, row: &AuditEvent) -> Vec<u8> {
-    let mut h = Sha256::new();
-    h.update(prev.unwrap_or(&[]));
-    h.update(canonical(row));
-    h.finalize().to_vec()
+    audit_chain::hash(prev, &canonical_view(row))
 }
 
 /// Append one event to its chain.
@@ -121,6 +110,7 @@ pub async fn record(state: &AppState, event: &Event) -> AppResult<AuditEvent> {
     };
     row.hash = hash_of(row.prev_hash.as_deref(), &row);
     repos::audit::insert(&mut *tx, &row).await?;
+    repos::audit_chains::advance_head(&mut *tx, chain, row.tenant_id, row.seq, &row.hash).await?;
     tx.commit().await?;
     Ok(row)
 }
@@ -134,11 +124,8 @@ pub fn spawn_writer(state: AppState) -> tokio::task::JoinHandle<()> {
         loop {
             match rx.recv().await {
                 Ok(envelope) => match record(&state, &envelope.event).await {
-                    Ok(row) => {
+                    Ok(_) => {
                         metrics::counter!("ridm_audit_events_total").increment(1);
-                        if let Some(sink) = &state.audit_sink {
-                            sink.offer(row);
-                        }
                     }
                     Err(err) => {
                         tracing::error!(
@@ -161,8 +148,8 @@ pub fn spawn_writer(state: AppState) -> tokio::task::JoinHandle<()> {
 /// `ridm-api rotate-master-key`, `ridm bootstrap`). A server records through
 /// [`spawn_writer`]; a command exits as soon as it has acted, before a
 /// background task would get to the events, so it subscribes before acting
-/// and writes what was published before it exits. Rows go to the database
-/// only: the external audit sink ships asynchronously and would not finish.
+/// and writes what was published before it exits. The export sink ships
+/// the rows later, from the database, like any others.
 pub struct CommandRecorder {
     rx: broadcast::Receiver<Envelope>,
 }
@@ -237,11 +224,70 @@ pub struct Verification {
     pub valid: bool,
     pub first_seq: Option<i64>,
     pub last_seq: Option<i64>,
+    /// Hash of the newest row checked (lowercase hex): keep it, and a later
+    /// `ridm audit verify --head` proves an export still ends where it did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_hash: Option<String>,
     /// Chain position of the first row whose hash or link does not match.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub broken_at_seq: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// The daily verification job's progress on this chain.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scheduled: Option<ScheduledVerification>,
+}
+
+/// What the `audit_verify` job last established about a chain.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct ScheduledVerification {
+    /// The chain is intact up to here.
+    pub verified_seq: Option<i64>,
+    pub verified_at: Option<DateTime<Utc>>,
+    /// Where the job found the chain broken, while it stays broken.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub broken_at_seq: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub broken_reason: Option<String>,
+}
+
+/// Where a walk ended.
+struct Walk {
+    verifier: Verifier,
+    broken: Option<audit_chain::Break>,
+}
+
+/// Walk `chain` oldest first from after `from` (a row already known good),
+/// or from its oldest retained row.
+async fn walk(state: &AppState, chain: Uuid, from: Option<(i64, Vec<u8>)>) -> AppResult<Walk> {
+    let (mut verifier, mut after) = match from {
+        Some((seq, hash)) => (Verifier::after(chain, seq, hash), Some(seq)),
+        None => (Verifier::new(), None),
+    };
+    loop {
+        let mut tx = db::bypass_tx(&state.db).await?;
+        let rows =
+            repos::audit::chain_page(&mut *tx, chain, &AuditFilter::default(), after, EXPORT_PAGE)
+                .await?;
+        tx.commit().await?;
+        for row in &rows {
+            if let Err(b) =
+                verifier.check(&canonical_view(row), row.prev_hash.as_deref(), &row.hash)
+            {
+                return Ok(Walk {
+                    verifier,
+                    broken: Some(b),
+                });
+            }
+        }
+        after = rows.last().map(|r| r.seq);
+        if (rows.len() as i64) < EXPORT_PAGE {
+            return Ok(Walk {
+                verifier,
+                broken: None,
+            });
+        }
+    }
 }
 
 /// Walk the chain from the oldest retained row and recompute every hash.
@@ -249,57 +295,159 @@ pub struct Verification {
 /// every link must match.
 pub async fn verify(state: &AppState, tenant_id: Option<Uuid>) -> AppResult<Verification> {
     let chain = repos::audit::chain_id(tenant_id);
-    let mut out = Verification {
-        checked: 0,
-        valid: true,
-        first_seq: None,
-        last_seq: None,
-        broken_at_seq: None,
-        reason: None,
-    };
+    let w = walk(state, chain, None).await?;
+    let mut tx = db::bypass_tx(&state.db).await?;
+    let known = repos::audit_chains::state(&mut *tx, chain).await?;
+    tx.commit().await?;
+    let v = &w.verifier;
+    Ok(Verification {
+        checked: v.checked,
+        valid: w.broken.is_none(),
+        first_seq: v.first_seq.or(w.broken.as_ref().map(|b| b.seq)),
+        last_seq: v.last_seq,
+        last_hash: v.last_hash.as_ref().map(hex::encode),
+        broken_at_seq: w.broken.as_ref().map(|b| b.seq),
+        reason: w.broken.map(|b| b.reason),
+        scheduled: known.map(|k| ScheduledVerification {
+            verified_seq: k.verified_seq,
+            verified_at: k.verified_at,
+            broken_at_seq: k.broken_at_seq,
+            broken_reason: k.broken_reason,
+        }),
+    })
+}
+
+/// One pass of the `audit_verify` job: walk every chain that grew since it
+/// was last found intact, from that checkpoint on. A break is recorded on
+/// the chain, logged, counted and — the first time it is seen at that row —
+/// published as `audit.chain_broken`, which lands in the broken chain itself
+/// and reaches the tenant's webhooks. Returns the rows checked.
+///
+/// Rows at or before a checkpoint are not rehashed on every pass (that is
+/// what keeps the job cheap on a large log); the checkpoint row itself is,
+/// so a rewrite that reaches it is caught, and the verify endpoint and
+/// `ridm audit verify` always walk the whole retained chain.
+pub async fn verify_pending(state: &AppState) -> AppResult<u64> {
+    const PAGE: i64 = 200;
+    let mut checked = 0;
     let mut after = None;
-    let mut prev: Option<(i64, Vec<u8>)> = None;
     loop {
         let mut tx = db::bypass_tx(&state.db).await?;
-        let rows =
-            repos::audit::chain_page(&mut *tx, chain, &AuditFilter::default(), after, EXPORT_PAGE)
-                .await?;
+        let chains = repos::audit_chains::unverified(&mut *tx, after, PAGE).await?;
         tx.commit().await?;
-        if rows.is_empty() {
-            break;
+        for c in &chains {
+            checked += verify_one(state, c).await?.checked;
         }
-        for row in &rows {
-            out.checked += 1;
-            if out.first_seq.is_none() {
-                out.first_seq = Some(row.seq);
-            }
-            out.last_seq = Some(row.seq);
-            let problem = match &prev {
-                Some((seq, hash)) if row.seq != seq + 1 => {
-                    Some(format!("gap in chain after seq {seq}"))
-                }
-                Some((_, hash)) if row.prev_hash.as_deref() != Some(hash.as_slice()) => {
-                    Some("prev_hash does not link to the previous row".into())
-                }
-                _ if hash_of(row.prev_hash.as_deref(), row) != row.hash => {
-                    Some("row hash does not match its contents".into())
-                }
-                _ => None,
-            };
-            if let Some(reason) = problem {
-                out.valid = false;
-                out.broken_at_seq = Some(row.seq);
-                out.reason = Some(reason);
-                return Ok(out);
-            }
-            prev = Some((row.seq, row.hash.clone()));
-        }
-        after = rows.last().map(|r| r.seq);
-        if (rows.len() as i64) < EXPORT_PAGE {
+        after = chains.last().map(|c| c.chain_id);
+        if (chains.len() as i64) < PAGE {
             break;
         }
     }
-    Ok(out)
+    let mut tx = db::bypass_tx(&state.db).await?;
+    let broken = repos::audit_chains::broken_count(&mut *tx).await?;
+    tx.commit().await?;
+    metrics::gauge!("ridm_audit_chains_broken").set(broken as f64);
+    Ok(checked)
+}
+
+/// What one scheduled check of a chain found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChainCheck {
+    pub checked: u64,
+    /// Where the chain is broken, when it is.
+    pub broken_at_seq: Option<i64>,
+}
+
+/// The scheduled check of one chain (`None`: the global chain), from its
+/// last verified checkpoint on.
+pub async fn verify_chain(state: &AppState, tenant_id: Option<Uuid>) -> AppResult<ChainCheck> {
+    let chain = repos::audit::chain_id(tenant_id);
+    let mut tx = db::bypass_tx(&state.db).await?;
+    let known = repos::audit_chains::verification_of(&mut *tx, chain).await?;
+    tx.commit().await?;
+    match known {
+        Some(c) => verify_one(state, &c).await,
+        None => Ok(ChainCheck {
+            checked: 0,
+            broken_at_seq: None,
+        }),
+    }
+}
+
+async fn verify_one(
+    state: &AppState,
+    c: &repos::audit_chains::Unverified,
+) -> AppResult<ChainCheck> {
+    // Start at the checkpoint row itself when it is still retained, so its
+    // hash is checked against the one recorded for it.
+    let from = match (c.verified_seq, &c.verified_hash, c.broken_at_seq) {
+        (Some(seq), Some(hash), None) => checkpoint_intact(state, c.chain_id, seq, hash).await?,
+        _ => None,
+    };
+    let w = match from {
+        Some(Err(b)) => Walk {
+            verifier: Verifier::new(),
+            broken: Some(b),
+        },
+        Some(Ok(start)) => walk(state, c.chain_id, Some(start)).await?,
+        None => walk(state, c.chain_id, None).await?,
+    };
+    let checked = w.verifier.checked;
+    let mut tx = db::bypass_tx(&state.db).await?;
+    let Some(b) = w.broken else {
+        if let (Some(seq), Some(hash)) = (w.verifier.last_seq, &w.verifier.last_hash) {
+            repos::audit_chains::set_verified(&mut *tx, c.chain_id, seq, hash).await?;
+        }
+        tx.commit().await?;
+        return Ok(ChainCheck {
+            checked,
+            broken_at_seq: None,
+        });
+    };
+    let new = repos::audit_chains::set_broken(&mut *tx, c.chain_id, b.seq, &b.reason).await?;
+    tx.commit().await?;
+    tracing::error!(chain = %c.chain_id, seq = b.seq, reason = %b.reason, "audit chain does not verify");
+    if new {
+        metrics::counter!("ridm_audit_chain_breaks_total").increment(1);
+        state.events.publish(Event::new(
+            c.tenant_id,
+            Actor::System,
+            ridm_core::events::EventKind::AuditChainBroken {
+                seq: b.seq,
+                reason: b.reason,
+            },
+        ));
+    }
+    Ok(ChainCheck {
+        checked,
+        broken_at_seq: Some(b.seq),
+    })
+}
+
+/// `Some(Ok(checkpoint))` when the checkpoint row is retained and still
+/// hashes to what was recorded for it, `Some(Err(..))` when it does not, and
+/// `None` when retention has purged it (the walk then starts at the oldest
+/// row).
+async fn checkpoint_intact(
+    state: &AppState,
+    chain: Uuid,
+    seq: i64,
+    hash: &[u8],
+) -> AppResult<Option<Result<(i64, Vec<u8>), audit_chain::Break>>> {
+    let mut tx = db::bypass_tx(&state.db).await?;
+    let rows = repos::audit::chain_page(&mut *tx, chain, &AuditFilter::default(), Some(seq - 1), 1)
+        .await?;
+    tx.commit().await?;
+    let Some(row) = rows.into_iter().next().filter(|r| r.seq == seq) else {
+        return Ok(None);
+    };
+    if row.hash != hash || hash_of(row.prev_hash.as_deref(), &row) != row.hash {
+        return Ok(Some(Err(audit_chain::Break {
+            seq,
+            reason: "the last verified row has changed since it was verified".into(),
+        })));
+    }
+    Ok(Some(Ok((seq, row.hash))))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, utoipa::ToSchema)]

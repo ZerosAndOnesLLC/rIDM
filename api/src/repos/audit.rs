@@ -13,7 +13,7 @@ const COLUMNS: &str = "id, tenant_id, seq, occurred_at, recorded_at, name, actor
 
 /// Nil uuid stands for the global chain.
 pub fn chain_id(tenant_id: Option<Uuid>) -> Uuid {
-    tenant_id.unwrap_or(Uuid::nil())
+    ridm_core::audit_chain::chain_id(tenant_id)
 }
 
 /// Serialize writers of one chain for the transaction.

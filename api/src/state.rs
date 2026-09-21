@@ -30,7 +30,8 @@ pub struct AppState {
     pub senders: Arc<dyn crate::messaging::SenderFactory>,
     /// Breached-password lookups; `None` when the deployment switched them off.
     pub breach: Option<Arc<dyn ridm_core::providers::BreachChecker>>,
-    /// External destination every audit row is also shipped to.
+    /// External destination every audit row is also shipped to, by
+    /// [`crate::jobs::audit_sink`].
     pub audit_sink: Option<crate::services::audit_sink::AuditSink>,
     /// The UI this node serves itself (embedded UI mode); `None` when the
     /// build has none or `UI_URL` points elsewhere.
@@ -52,12 +53,17 @@ impl AppState {
                 as Arc<dyn ridm_core::providers::BreachChecker>
         });
         let audit_sink = config.audit_sink_url.as_ref().and_then(|url| {
-            match crate::services::audit_sink::AuditSink::spawn(
+            match crate::services::audit_sink::AuditSink::new(
                 url,
                 config
                     .audit_sink_token
                     .as_ref()
                     .map(|t| t.expose().to_string()),
+                config
+                    .audit_sink_secret
+                    .as_ref()
+                    .map(|t| t.expose().to_string()),
+                config.audit_sink_ca_file.as_deref(),
             ) {
                 Ok(sink) => Some(sink),
                 Err(err) => {

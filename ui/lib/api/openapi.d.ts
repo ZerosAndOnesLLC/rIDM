@@ -5115,6 +5115,22 @@ export interface components {
          * @enum {string}
          */
         RsaBits: "B2048" | "B3072" | "B4096";
+        /** @description What the `audit_verify` job last established about a chain. */
+        ScheduledVerification: {
+            /**
+             * Format: int64
+             * @description Where the job found the chain broken, while it stays broken.
+             */
+            broken_at_seq?: number | null;
+            broken_reason?: string | null;
+            /** Format: date-time */
+            verified_at?: string | null;
+            /**
+             * Format: int64
+             * @description The chain is intact up to here.
+             */
+            verified_seq?: number | null;
+        };
         /** @description A bearer token a provisioning system uses against `/scim/v2/{tenant}`. */
         ScimToken: {
             /** Format: date-time */
@@ -5817,9 +5833,15 @@ export interface components {
             checked: number;
             /** Format: int64 */
             first_seq?: number | null;
+            /**
+             * @description Hash of the newest row checked (lowercase hex): keep it, and a later
+             *     `ridm audit verify --head` proves an export still ends where it did.
+             */
+            last_hash?: string | null;
             /** Format: int64 */
             last_seq?: number | null;
             reason?: string | null;
+            scheduled?: null | components["schemas"]["ScheduledVerification"];
             valid: boolean;
         };
         Webhook: {

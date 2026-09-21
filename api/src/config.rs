@@ -116,9 +116,14 @@ pub struct Config {
     pub otel_service_name: String,
     /// Bearer token `/metrics` demands; open when unset.
     pub metrics_token: Option<SecretString>,
-    /// Where audit rows are also shipped (`https://`, `syslog://`, `syslog+tcp://`).
+    /// Where audit rows are also shipped (`https://`, `syslog://`,
+    /// `syslog+tcp://`, `syslog+tls://`).
     pub audit_sink_url: Option<Url>,
     pub audit_sink_token: Option<SecretString>,
+    /// Key an HTTP(S) sink's batches are signed with (`X-RIDM-Signature`).
+    pub audit_sink_secret: Option<SecretString>,
+    /// PEM certificates to trust for the sink instead of the system's roots.
+    pub audit_sink_ca_file: Option<PathBuf>,
     pub tls: Option<TlsConfig>,
     pub db_pool_min: u32,
     pub db_pool_max: u32,
@@ -360,11 +365,15 @@ impl Config {
                     Url::parse(&v).map_err(|e| e.to_string()).and_then(|u| {
                         if !matches!(
                             u.scheme(),
-                            "http" | "https" | "syslog" | "syslog+udp" | "syslog+tcp"
+                            "http" | "https" | "syslog" | "syslog+udp" | "syslog+tcp" | "syslog+tls"
                         ) {
                             return Err(
-                                "scheme must be http(s), syslog, syslog+udp or syslog+tcp".into()
+                                "scheme must be http(s), syslog, syslog+udp, syslog+tcp or syslog+tls"
+                                    .into(),
                             );
+                        }
+                        if u.scheme().starts_with("syslog") && u.host_str().is_none() {
+                            return Err("a syslog sink needs a host".into());
                         }
                         Ok(u)
                     })
@@ -372,6 +381,8 @@ impl Config {
             })
             .transpose()?;
         let audit_sink_token = secret!("AUDIT_SINK_TOKEN")?.map(SecretString::new);
+        let audit_sink_secret = secret!("AUDIT_SINK_SECRET")?.map(SecretString::new);
+        let audit_sink_ca_file = optional("AUDIT_SINK_CA_FILE").map(PathBuf::from);
         if retention_days == 0 {
             return Err(ConfigError::Invalid {
                 name: "RETENTION_DAYS",
@@ -507,6 +518,8 @@ impl Config {
             metrics_token,
             audit_sink_url,
             audit_sink_token,
+            audit_sink_secret,
+            audit_sink_ca_file,
             tls,
             db_pool_min,
             db_pool_max,

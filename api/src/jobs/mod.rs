@@ -1,4 +1,6 @@
 pub mod audit_retention;
+pub mod audit_sink;
+pub mod audit_verify;
 pub mod cleanup;
 pub mod key_rotation;
 pub mod leader;

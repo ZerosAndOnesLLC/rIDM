@@ -11,7 +11,8 @@ use crate::state::AppState;
 
 /// Spawn the background jobs. The returned handles are aborted on shutdown.
 pub fn spawn_all(state: AppState) -> Vec<tokio::task::JoinHandle<()>> {
-    vec![
+    let sink = crate::jobs::audit_sink::spawn(state.clone());
+    let mut jobs = vec![
         spawn_periodic(
             state.clone(),
             "key_rotation",
@@ -23,6 +24,12 @@ pub fn spawn_all(state: AppState) -> Vec<tokio::task::JoinHandle<()>> {
             "audit_retention",
             Duration::from_secs(24 * 3600),
             |s| async move { crate::jobs::audit_retention::run_once(&s).await.map(|_| ()) },
+        ),
+        spawn_periodic(
+            state.clone(),
+            "audit_verify",
+            Duration::from_secs(24 * 3600),
+            |s| async move { crate::jobs::audit_verify::run_once(&s).await.map(|_| ()) },
         ),
         spawn_periodic(
             state.clone(),
@@ -56,7 +63,9 @@ pub fn spawn_all(state: AppState) -> Vec<tokio::task::JoinHandle<()>> {
             Duration::from_secs(3600),
             |s| async move { crate::jobs::cleanup::run_once(&s).await.map(|_| ()) },
         ),
-    ]
+    ];
+    jobs.extend(sink);
+    jobs
 }
 
 fn spawn_periodic<F, Fut>(

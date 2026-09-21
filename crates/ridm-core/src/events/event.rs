@@ -372,6 +372,12 @@ pub enum EventKind {
     MasterKeyRotated {
         new_version: u32,
     },
+    /// The scheduled verification found the chain this event is recorded in
+    /// broken at `seq`: a row there was changed, removed or put out of order.
+    AuditChainBroken {
+        seq: i64,
+        reason: String,
+    },
 
     // Scopes, claim mappers, resource servers and permissions
     ScopeCreated {
@@ -570,6 +576,7 @@ impl EventKind {
             Self::SigningKeyCreated { .. } => "signing_key.created",
             Self::SigningKeyStatusChanged { .. } => "signing_key.status_changed",
             Self::MasterKeyRotated { .. } => "master_key.rotated",
+            Self::AuditChainBroken { .. } => "audit.chain_broken",
             Self::ScopeCreated { .. } => "scope.created",
             Self::ScopeUpdated { .. } => "scope.updated",
             Self::ScopeDeleted { .. } => "scope.deleted",

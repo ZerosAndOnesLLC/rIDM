@@ -9,7 +9,10 @@
 //!   HSM, SaaS mailers) implement the same traits behind cargo features.
 //! * [`events`]: the typed internal event bus that feeds audit, webhooks,
 //!   notifications and cache invalidation from a single emit point.
+//! * [`audit_chain`]: the audit log's hash chain, so a tool can check an
+//!   export without trusting the server that wrote it.
 
+pub mod audit_chain;
 pub mod events;
 pub mod providers;
 #[cfg(feature = "test-support")]

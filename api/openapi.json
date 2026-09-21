@@ -25351,6 +25351,41 @@
           "B4096"
         ]
       },
+      "ScheduledVerification": {
+        "type": "object",
+        "description": "What the `audit_verify` job last established about a chain.",
+        "properties": {
+          "broken_at_seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Where the job found the chain broken, while it stays broken."
+          },
+          "broken_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verified_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "verified_seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The chain is intact up to here."
+          }
+        }
+      },
       "ScimToken": {
         "type": "object",
         "description": "A bearer token a provisioning system uses against `/scim/v2/{tenant}`.",
@@ -27186,6 +27221,13 @@
             ],
             "format": "int64"
           },
+          "last_hash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Hash of the newest row checked (lowercase hex): keep it, and a later\n`ridm audit verify --head` proves an export still ends where it did."
+          },
           "last_seq": {
             "type": [
               "integer",
@@ -27197,6 +27239,17 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "scheduled": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScheduledVerification",
+                "description": "The daily verification job's progress on this chain."
+              }
             ]
           },
           "valid": {

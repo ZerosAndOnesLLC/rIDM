@@ -97,6 +97,58 @@ pub enum Command {
         #[command(subcommand)]
         command: ClientCommand,
     },
+    /// The audit log: check its hash chain, download it.
+    Audit {
+        #[command(subcommand)]
+        command: AuditCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AuditCommand {
+    /// Check an audit hash chain: a JSON export offline (`--file`), trusting
+    /// nothing but the file, or else the server's copy of the tenant's chain.
+    Verify {
+        /// A JSON export (`ridm audit export`) to check here (`-` for stdin).
+        #[arg(short = 'f', long, value_name = "FILE")]
+        file: Option<String>,
+        /// The hash the chain must end on: a `last_hash` you kept from an
+        /// earlier check, proving nothing was cut off or rewritten since.
+        #[arg(long, value_name = "HEX")]
+        head: Option<String>,
+        /// The hash the file's first row must follow: the `last_hash` of the
+        /// previous export, so consecutive exports prove one unbroken chain.
+        #[arg(long, value_name = "HEX", requires = "file")]
+        after: Option<String>,
+        /// The global chain instead of the tenant's (global administrators).
+        #[arg(long, conflicts_with = "file")]
+        global: bool,
+    },
+    /// Download a chain oldest first, with its hashes, to a file or stdout.
+    Export {
+        /// File to write (default: stdout).
+        #[arg(short = 'o', long, value_name = "FILE")]
+        out: Option<PathBuf>,
+        /// `json` can be checked with `ridm audit verify --file`; `csv` is for
+        /// spreadsheets.
+        #[arg(long, value_enum, default_value = "json")]
+        format: AuditFormat,
+        /// The global chain instead of the tenant's (global administrators).
+        #[arg(long)]
+        global: bool,
+        /// Only rows at or after this instant (RFC 3339).
+        #[arg(long, value_name = "TIME")]
+        from: Option<String>,
+        /// Only rows before this instant (RFC 3339).
+        #[arg(long, value_name = "TIME")]
+        to: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum AuditFormat {
+    Json,
+    Csv,
 }
 
 #[derive(Debug, Args)]

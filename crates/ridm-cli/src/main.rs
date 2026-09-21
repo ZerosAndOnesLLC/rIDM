@@ -60,5 +60,6 @@ async fn run(cli: Cli) -> Result<()> {
         Command::MasterKey { command } => commands::keys::master(&mut ctx, command).await,
         Command::User { command } => commands::users::run(&mut ctx, command).await,
         Command::Client { command } => commands::clients::run(&mut ctx, command).await,
+        Command::Audit { command } => commands::audit::run(&mut ctx, command).await,
     }
 }
