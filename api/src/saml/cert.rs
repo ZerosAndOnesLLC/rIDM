@@ -204,11 +204,12 @@ mod tests {
         let pkcs8 = rsa_pkcs8();
         let der = self_signed(&pkcs8, "rIDM test", 10).unwrap();
         let cert = Certificate::from_der(der).unwrap();
-        assert!(cert.subject.contains("rIDM test"), "{}", cert.subject);
+        // Messages that print the certificate would log key-derived data.
+        assert!(cert.subject.contains("rIDM test"));
         assert!(cert.not_after > Utc::now() + chrono::Duration::days(3000));
         let pem = cert.to_pem();
-        assert_eq!(Certificate::parse(&pem).unwrap(), cert);
-        assert_eq!(Certificate::parse(&cert.to_base64()).unwrap(), cert);
+        assert!(Certificate::parse(&pem).unwrap() == cert);
+        assert!(Certificate::parse(&cert.to_base64()).unwrap() == cert);
 
         let kp = aws_lc_rs::rsa::KeyPair::from_pkcs8(&pkcs8).unwrap();
         let mut sig = vec![0u8; kp.public_modulus_len()];
