@@ -92,11 +92,10 @@ pub struct SamlAttribute {
 }
 
 /// The SAML side of a `saml` client.
-#[derive(Debug, Clone, Serialize, sqlx::FromRow, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct SamlServiceProvider {
     /// The client's row id.
     pub client_id: Uuid,
-    #[serde(skip)]
     pub tenant_id: Uuid,
     pub entity_id: String,
     /// HTTP-POST assertion consumer services; the position is the index

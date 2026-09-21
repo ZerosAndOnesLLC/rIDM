@@ -587,6 +587,7 @@ pub async fn validate(
             skip_consent: !client.require_consent,
             device_code: None,
             organization,
+            saml: None,
         },
         client: std::sync::Arc::new(client.clone()),
     })
@@ -594,7 +595,7 @@ pub async fn validate(
 
 /// With a validated request, decide between issuing a code, starting a flow,
 /// or reporting `login_required` / `consent_required` for `prompt=none`.
-async fn decide(
+pub(crate) async fn decide(
     state: &AppState,
     tenant: &TenantCtx,
     headers: &HeaderMap,
@@ -814,6 +815,9 @@ pub async fn issue_code(
     req: &AuthRequest,
     session: &SsoSession,
 ) -> Result<Response, AppError> {
+    if req.saml.is_some() {
+        return crate::services::saml_idp::respond(state, tenant, client, req, session).await;
+    }
     let code = auth_codes::issue(
         state,
         &AuthCode {

@@ -218,13 +218,20 @@ async fn decide(
         if let Some(s) = &session {
             outcome = logout::end_session(state, &tenant.tenant, s.id).await?;
         }
-        return Ok(finish(
+        let target = final_target(
             state,
             tenant,
             post_logout.as_deref(),
             state_param.as_deref(),
-            &outcome,
-        ));
+        );
+        let target = crate::services::saml_idp::logout_through(
+            state,
+            &tenant.tenant,
+            std::mem::take(&mut outcome.saml_participants),
+            target,
+        )
+        .await?;
+        return Ok(finish(state, tenant, &target, &outcome));
     }
 
     // Otherwise ask the user through the UI.
@@ -253,15 +260,15 @@ async fn decide(
     Ok(res)
 }
 
-/// Final response: clear the cookie and go to the RP (or the UI's signed-out page).
-fn finish(
+/// Where a finished logout goes: the RP's registered URI (with `state`),
+/// or the UI's signed-out page.
+fn final_target(
     state: &AppState,
     tenant: &TenantCtx,
     post_logout: Option<&str>,
     state_param: Option<&str>,
-    outcome: &logout::LogoutOutcome,
-) -> Response {
-    let target = match post_logout {
+) -> String {
+    match post_logout {
         Some(uri) => {
             let mut u = url::Url::parse(uri).expect("validated uri");
             if let Some(s) = state_param {
@@ -274,7 +281,18 @@ fn finish(
             "logout",
             &[("tenant", tenant.slug()), ("done", "1")],
         ),
-    };
+    }
+}
+
+/// Final response: clear the cookie and go to `target` (through the
+/// session's SAML SPs when it had any).
+fn finish(
+    state: &AppState,
+    tenant: &TenantCtx,
+    target: &str,
+    outcome: &logout::LogoutOutcome,
+) -> Response {
+    let target = target.to_string();
     let mut res = if outcome.frontchannel_logout_uris.is_empty() {
         Redirect::to(&target).into_response()
     } else {
@@ -386,19 +404,22 @@ async fn confirm(
             Err(e) => return e.into_response(),
         }
     }
-    let target = match &flow.post_logout_redirect_uri {
-        Some(uri) => {
-            let mut u = url::Url::parse(uri).expect("validated uri");
-            if let Some(s) = &flow.state {
-                u.query_pairs_mut().append_pair("state", s);
-            }
-            u.to_string()
-        }
-        None => state.ui_page(
-            &tenant.tenant,
-            "logout",
-            &[("tenant", tenant.slug()), ("done", "1")],
-        ),
+    let target = final_target(
+        &state,
+        &tenant,
+        flow.post_logout_redirect_uri.as_deref(),
+        flow.state.as_deref(),
+    );
+    let target = match crate::services::saml_idp::logout_through(
+        &state,
+        &tenant.tenant,
+        std::mem::take(&mut outcome.saml_participants),
+        target,
+    )
+    .await
+    {
+        Ok(t) => t,
+        Err(e) => return e.into_response(),
     };
     let mut res = axum::Json(serde_json::json!({
         "redirect_to": target,

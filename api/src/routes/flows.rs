@@ -840,7 +840,7 @@ async fn cancel(
     if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
         return e.into_response();
     }
-    match flows::cancel(&state, &flow).await {
+    match flows::cancel(&state, &tenant.tenant, &flow).await {
         Ok(redirect_to) => no_store(
             axum::Json(json!({"stage": "cancelled", "redirect_to": redirect_to})).into_response(),
         ),

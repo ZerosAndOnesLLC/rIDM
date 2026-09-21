@@ -35,6 +35,7 @@ use crate::state::AppState;
         (name = "scopes", description = "OAuth scopes"),
         (name = "mappers", description = "Claim mappers"),
         (name = "keys", description = "Signing keys and master-key rotation"),
+        (name = "saml", description = "rIDM as a SAML 2.0 identity provider: service providers and the SAML signing keys"),
         (name = "invitations", description = "Invitations"),
         (name = "messaging", description = "Email and SMS delivery, templates, delivery log"),
         (name = "audit", description = "Audit log"),
@@ -84,6 +85,7 @@ pub fn admin_router() -> OpenApiRouter<AppState> {
         .merge(admin::stats_router())
         .merge(admin::mappers_router())
         .merge(admin::keys_router())
+        .merge(admin::saml_router())
         .merge(admin::invitations_router())
         .merge(admin::messaging_router())
         .merge(admin::audit_router())

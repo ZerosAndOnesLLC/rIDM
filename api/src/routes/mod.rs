@@ -10,6 +10,7 @@ pub mod impersonation;
 pub mod invitations;
 pub mod jwks;
 pub mod recovery;
+pub mod saml;
 pub mod scim;
 pub mod ui;
 pub mod verification;

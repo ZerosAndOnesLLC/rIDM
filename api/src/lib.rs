@@ -117,6 +117,11 @@ fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
             Category::Authorize,
             Style::Html,
         ))
+        .merge(limited(
+            routes::saml::router(),
+            Category::Authorize,
+            Style::Html,
+        ))
         .merge(limited(oauth_json, Category::Authorize, Style::OAuth))
         .merge(limited(oauth_tokens, Category::Token, Style::OAuth))
         .merge(oidc::end_session::router())

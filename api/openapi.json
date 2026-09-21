@@ -11472,6 +11472,755 @@
         ]
       }
     },
+    "/admin/tenants/{slug}/saml": {
+      "get": {
+        "tags": [
+          "saml"
+        ],
+        "operationId": "saml_idp",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdpView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/saml/keys": {
+      "post": {
+        "tags": [
+          "saml"
+        ],
+        "summary": "Start a rollover: a new key, listed in metadata at once but not signing.",
+        "operationId": "saml_add_key",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SamlKeyView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A pending key exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/saml/keys/{key}": {
+      "delete": {
+        "tags": [
+          "saml"
+        ],
+        "summary": "Remove a pending or retiring key from metadata.",
+        "operationId": "saml_delete_key",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The active key cannot be deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/saml/keys/{key}/activate": {
+      "post": {
+        "tags": [
+          "saml"
+        ],
+        "summary": "Sign with this key from now on; the active one before it is kept in\nmetadata as `retiring` until deleted.",
+        "operationId": "saml_activate_key",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/saml/service-providers": {
+      "get": {
+        "tags": [
+          "saml"
+        ],
+        "operationId": "saml_list",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SamlSpView"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "saml"
+        ],
+        "operationId": "saml_create",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SamlSpInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SamlSpView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The entity ID or client id is taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/saml/service-providers/metadata": {
+      "post": {
+        "tags": [
+          "saml"
+        ],
+        "summary": "Read an SP's metadata into a registration to review; nothing is saved.",
+        "operationId": "saml_import_metadata",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MetadataBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SamlSpInput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not usable SP metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/saml/service-providers/{sp}": {
+      "get": {
+        "tags": [
+          "saml"
+        ],
+        "operationId": "saml_get_one",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sp",
+            "in": "path",
+            "description": "The client's row id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SamlSpView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "saml"
+        ],
+        "summary": "Replace the SP's settings (the public client id and status are kept).",
+        "operationId": "saml_replace",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sp",
+            "in": "path",
+            "description": "The client's row id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SamlSpInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SamlSpView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The entity ID is taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "saml"
+        ],
+        "operationId": "saml_delete",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sp",
+            "in": "path",
+            "description": "The client's row id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/admin/tenants/{slug}/scim/tokens": {
       "get": {
         "tags": [
@@ -19313,6 +20062,15 @@
           }
         }
       },
+      "AttributeNameFormat": {
+        "type": "string",
+        "description": "`NameFormat` of a released attribute.",
+        "enum": [
+          "basic",
+          "uri",
+          "unspecified"
+        ]
+      },
       "AttributeType": {
         "type": "string",
         "enum": [
@@ -20111,7 +20869,8 @@
           "web",
           "native",
           "machine",
-          "device"
+          "device",
+          "saml"
         ]
       },
       "ClientView": {
@@ -20443,6 +21202,16 @@
             "$ref": "#/components/schemas/PasswordSummary"
           }
         }
+      },
+      "DataEncryption": {
+        "type": "string",
+        "description": "The block cipher for the content.",
+        "enum": [
+          "aes256-gcm",
+          "aes128-gcm",
+          "aes256-cbc",
+          "aes128-cbc"
+        ]
       },
       "DayStats": {
         "type": "object",
@@ -21582,6 +22351,42 @@
         },
         "additionalProperties": false
       },
+      "IdpView": {
+        "type": "object",
+        "description": "The IdP side: what to give an SP, and the signing keys.",
+        "required": [
+          "entity_id",
+          "sso_url",
+          "slo_url",
+          "metadata_url",
+          "init_url",
+          "keys"
+        ],
+        "properties": {
+          "entity_id": {
+            "type": "string"
+          },
+          "init_url": {
+            "type": "string",
+            "description": "IdP-initiated sign-in: add `?sp=<entity ID or client id>`."
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SamlKeyView"
+            }
+          },
+          "metadata_url": {
+            "type": "string"
+          },
+          "slo_url": {
+            "type": "string"
+          },
+          "sso_url": {
+            "type": "string"
+          }
+        }
+      },
       "ImpersonateBody": {
         "type": "object",
         "required": [
@@ -22098,6 +22903,14 @@
           "revoked"
         ]
       },
+      "KeyTransport": {
+        "type": "string",
+        "description": "How the content key travels.",
+        "enum": [
+          "rsa-oaep-mgf1p",
+          "rsa-oaep-sha256"
+        ]
+      },
       "LinkPolicy": {
         "type": "string",
         "description": "What happens when an upstream identity signs in for the first time and\na local account with the same email address exists.",
@@ -22503,6 +23316,19 @@
           }
         }
       },
+      "MetadataBody": {
+        "type": "object",
+        "required": [
+          "metadata"
+        ],
+        "properties": {
+          "metadata": {
+            "type": "string",
+            "description": "The SP's metadata document (XML)."
+          }
+        },
+        "additionalProperties": false
+      },
       "MfaMethods": {
         "type": "object",
         "description": "Which second-step methods users may enrol. Passkeys are offered as a\nsecond step whenever `AuthMethods::passkey` is on.",
@@ -22646,6 +23472,16 @@
             "minimum": 0
           }
         }
+      },
+      "NameIdFormat": {
+        "type": "string",
+        "description": "The subject identifier an SP receives.",
+        "enum": [
+          "persistent",
+          "transient",
+          "email",
+          "unspecified"
+        ]
       },
       "NewClaimMapper": {
         "type": "object",
@@ -25700,6 +26536,414 @@
           "B4096"
         ]
       },
+      "SamlAttribute": {
+        "type": "object",
+        "description": "One released attribute: the value of a claim, under the SP's name.",
+        "required": [
+          "claim",
+          "name"
+        ],
+        "properties": {
+          "claim": {
+            "type": "string",
+            "description": "A claim the client's scopes, the profile schema or a claim mapper\nproduce (`email`, `name`, `groups`, `roles`, ...)."
+          },
+          "friendly_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "The attribute's `Name`, e.g. `urn:oid:0.9.2342.19200300.100.1.3`."
+          },
+          "name_format": {
+            "$ref": "#/components/schemas/AttributeNameFormat"
+          }
+        }
+      },
+      "SamlKeyStatus": {
+        "type": "string",
+        "description": "Lifecycle of a SAML signing key: `pending` (in metadata, not signing)\n→ `active` (signing) → `retiring` (in metadata, not signing) → deleted.",
+        "enum": [
+          "pending",
+          "active",
+          "retiring"
+        ]
+      },
+      "SamlKeyView": {
+        "type": "object",
+        "description": "A key as metadata and the console show it.",
+        "required": [
+          "id",
+          "status",
+          "certificate",
+          "sha256_fingerprint",
+          "not_after",
+          "created_at"
+        ],
+        "properties": {
+          "activated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "certificate": {
+            "type": "string",
+            "description": "base64 DER."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "not_after": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sha256_fingerprint": {
+            "type": "string",
+            "description": "SHA-256 of the certificate, hex with colons, as SP consoles show it."
+          },
+          "status": {
+            "$ref": "#/components/schemas/SamlKeyStatus"
+          }
+        }
+      },
+      "SamlServiceProvider": {
+        "type": "object",
+        "description": "The SAML side of a `saml` client.",
+        "required": [
+          "client_id",
+          "tenant_id",
+          "entity_id",
+          "acs_urls",
+          "slo_binding",
+          "name_id_format",
+          "signing_certificates",
+          "require_signed_requests",
+          "sign_response",
+          "sign_assertion",
+          "encrypt_assertion",
+          "data_encryption",
+          "key_transport",
+          "allow_idp_initiated",
+          "attributes",
+          "assertion_ttl_secs",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "acs_urls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "HTTP-POST assertion consumer services; the position is the index\nand the first is the default."
+          },
+          "allow_idp_initiated": {
+            "type": "boolean"
+          },
+          "assertion_ttl_secs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "attributes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SamlAttribute"
+            }
+          },
+          "client_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The client's row id."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "data_encryption": {
+            "$ref": "#/components/schemas/DataEncryption"
+          },
+          "default_relay_state": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "encrypt_assertion": {
+            "type": "boolean"
+          },
+          "encryption_certificate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "base64 DER certificate assertions are encrypted to."
+          },
+          "entity_id": {
+            "type": "string"
+          },
+          "key_transport": {
+            "$ref": "#/components/schemas/KeyTransport"
+          },
+          "name_id_format": {
+            "$ref": "#/components/schemas/NameIdFormat"
+          },
+          "require_signed_requests": {
+            "type": "boolean"
+          },
+          "sign_assertion": {
+            "type": "boolean"
+          },
+          "sign_response": {
+            "type": "boolean"
+          },
+          "signing_certificates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "base64 DER certificates the SP signs requests with."
+          },
+          "slo_binding": {
+            "$ref": "#/components/schemas/SloBinding"
+          },
+          "slo_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SamlSpInput": {
+        "type": "object",
+        "description": "A service provider as the admin API reads and writes it: the client's\nown fields and the SAML settings side by side.",
+        "properties": {
+          "acs_urls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "allow_idp_initiated": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "allowed_scopes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Scopes whose claims may be released as attributes.",
+            "default": null
+          },
+          "assertion_ttl_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "default": null
+          },
+          "attributes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/SamlAttribute"
+            },
+            "default": null
+          },
+          "client_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The public client id; generated when absent.",
+            "default": null
+          },
+          "client_uri": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "data_encryption": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DataEncryption"
+              }
+            ],
+            "default": null
+          },
+          "default_relay_state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "encrypt_assertion": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "encryption_certificate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "entity_id": {
+            "type": "string",
+            "default": ""
+          },
+          "key_transport": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/KeyTransport"
+              }
+            ],
+            "default": null
+          },
+          "logo_uri": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "name": {
+            "type": "string",
+            "default": ""
+          },
+          "name_id_format": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NameIdFormat"
+              }
+            ],
+            "default": null
+          },
+          "require_consent": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Ask the user before releasing attributes. Off by default: SAML SPs\nare enterprise applications an administrator connected.",
+            "default": null
+          },
+          "require_signed_requests": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "sign_assertion": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "sign_response": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "signing_certificates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "PEM or base64 DER.",
+            "default": []
+          },
+          "slo_binding": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SloBinding"
+              }
+            ],
+            "default": null
+          },
+          "slo_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "additionalProperties": false
+      },
+      "SamlSpView": {
+        "type": "object",
+        "description": "A registered SP.",
+        "required": [
+          "client",
+          "saml"
+        ],
+        "properties": {
+          "client": {
+            "$ref": "#/components/schemas/Client"
+          },
+          "saml": {
+            "$ref": "#/components/schemas/SamlServiceProvider"
+          }
+        }
+      },
       "ScheduledVerification": {
         "type": "object",
         "description": "What the `audit_verify` job last established about a chain.",
@@ -26156,6 +27400,14 @@
             "format": "date-time"
           }
         }
+      },
+      "SloBinding": {
+        "type": "string",
+        "description": "Binding rIDM uses to send an SP its logout messages.",
+        "enum": [
+          "redirect",
+          "post"
+        ]
       },
       "SmsProviderConfig": {
         "type": "object",
@@ -27910,6 +29162,10 @@
     {
       "name": "keys",
       "description": "Signing keys and master-key rotation"
+    },
+    {
+      "name": "saml",
+      "description": "rIDM as a SAML 2.0 identity provider: service providers and the SAML signing keys"
     },
     {
       "name": "invitations",

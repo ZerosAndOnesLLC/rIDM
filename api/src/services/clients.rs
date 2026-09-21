@@ -49,7 +49,7 @@ fn random_secret() -> Zeroizing<String> {
     Zeroizing::new(format!("{SECRET_PREFIX}{}", URL_SAFE_NO_PAD.encode(bytes)))
 }
 
-fn random_client_id() -> String {
+pub(crate) fn random_client_id() -> String {
     let mut bytes = [0u8; 12];
     rand::fill(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes).replace(['-', '_'], "0")
@@ -64,7 +64,7 @@ pub fn is_valid_client_id(s: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b':' | b'-'))
 }
 
-fn validate_uri(field: &str, uri: &str, client_type: ClientType) -> AppResult<()> {
+pub(crate) fn validate_uri(field: &str, uri: &str, client_type: ClientType) -> AppResult<()> {
     let parsed = url::Url::parse(uri)
         .map_err(|_| AppError::BadRequest(format!("{field}: `{uri}` is not a valid URL")))?;
     if parsed.fragment().is_some() {
@@ -689,6 +689,9 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
         return Err(AppError::Forbidden(
             "the admin console client is built in and cannot be deleted".into(),
         ));
+    }
+    if client.client_type == ClientType::Saml {
+        super::saml_sps::forget(state, tenant_id, id).await?;
     }
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let ok = repos::clients::delete(&mut *tx, tenant_id, id).await?;
