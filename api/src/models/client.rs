@@ -78,19 +78,60 @@ pub enum ClientStatus {
     Disabled,
 }
 
-/// Grant types (RFC 6749 §4, RFC 8628, RFC 8693).
+/// How a CIBA client learns the user decided (CIBA Core §5). Push is not
+/// offered: it puts the tokens themselves on an outbound call.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema,
+)]
+#[sqlx(type_name = "text", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+pub enum BackchannelDeliveryMode {
+    /// The client polls the token endpoint.
+    Poll,
+    /// rIDM calls the client's notification endpoint, then the client
+    /// collects the tokens from the token endpoint.
+    Ping,
+}
+
+impl BackchannelDeliveryMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Poll => "poll",
+            Self::Ping => "ping",
+        }
+    }
+}
+
+/// A security profile the client is held to.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema,
+)]
+#[sqlx(type_name = "text", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+pub enum SecurityProfile {
+    #[default]
+    None,
+    /// FAPI 2.0 Security Profile: `private_key_jwt`, PAR, PKCE S256,
+    /// DPoP-bound tokens, HTTPS redirects, ES256/EdDSA signatures, no
+    /// refresh token rotation.
+    Fapi2,
+}
+
+/// Grant types (RFC 6749 §4, RFC 8628, RFC 8693, OpenID CIBA Core).
 pub mod grants {
     pub const AUTHORIZATION_CODE: &str = "authorization_code";
     pub const REFRESH_TOKEN: &str = "refresh_token";
     pub const CLIENT_CREDENTIALS: &str = "client_credentials";
     pub const DEVICE_CODE: &str = "urn:ietf:params:oauth:grant-type:device_code";
     pub const TOKEN_EXCHANGE: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
-    pub const ALL: [&str; 5] = [
+    pub const CIBA: &str = "urn:openid:params:grant-type:ciba";
+    pub const ALL: [&str; 6] = [
         AUTHORIZATION_CODE,
         REFRESH_TOKEN,
         CLIENT_CREDENTIALS,
         DEVICE_CODE,
         TOKEN_EXCHANGE,
+        CIBA,
     ];
 }
 
@@ -163,6 +204,14 @@ pub struct Client {
     /// Every access token must be sender-constrained with a DPoP proof
     /// (RFC 9449 §5.2 `dpop_bound_access_tokens`).
     pub dpop_bound_access_tokens: bool,
+    /// CIBA delivery mode; set exactly when the client may use the CIBA grant.
+    pub backchannel_token_delivery_mode: Option<BackchannelDeliveryMode>,
+    /// Where a `ping` client is told a request was decided.
+    pub backchannel_client_notification_endpoint: Option<String>,
+    pub security_profile: SecurityProfile,
+    /// Authorization requests must come through PAR (RFC 9126 §6); always
+    /// so under the FAPI 2.0 profile.
+    pub require_pushed_authorization_requests: bool,
     pub service_account_user_id: Option<Uuid>,
     #[serde(skip)]
     pub registration_access_token_hash: Option<Vec<u8>>,
@@ -182,6 +231,15 @@ impl Client {
 
     pub fn allows_grant(&self, grant: &str) -> bool {
         self.allowed_grants.iter().any(|g| g == grant)
+    }
+
+    pub fn is_fapi2(&self) -> bool {
+        self.security_profile == SecurityProfile::Fapi2
+    }
+
+    /// Only pushed authorization requests are accepted.
+    pub fn requires_par(&self) -> bool {
+        self.require_pushed_authorization_requests || self.is_fapi2()
     }
 
     /// Whether tokens of this client may name `identifier` as an audience.
@@ -239,4 +297,8 @@ pub struct NewClient {
     pub backchannel_logout_uri: Option<String>,
     pub frontchannel_logout_uri: Option<String>,
     pub dpop_bound_access_tokens: Option<bool>,
+    pub backchannel_token_delivery_mode: Option<BackchannelDeliveryMode>,
+    pub backchannel_client_notification_endpoint: Option<String>,
+    pub security_profile: Option<SecurityProfile>,
+    pub require_pushed_authorization_requests: Option<bool>,
 }

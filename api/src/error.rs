@@ -227,6 +227,9 @@ pub enum OAuthErrorCode {
     InvalidDpopProof,
     UseDpopNonce,
     InvalidTarget,
+    /// CIBA Core §13: the login hint names nobody who can be asked.
+    UnknownUserId,
+    InvalidBindingMessage,
 }
 
 impl OAuthErrorCode {
@@ -261,6 +264,8 @@ impl OAuthErrorCode {
             Self::InvalidDpopProof => "invalid_dpop_proof",
             Self::UseDpopNonce => "use_dpop_nonce",
             Self::InvalidTarget => "invalid_target",
+            Self::UnknownUserId => "unknown_user_id",
+            Self::InvalidBindingMessage => "invalid_binding_message",
         }
     }
 

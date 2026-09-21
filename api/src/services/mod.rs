@@ -10,6 +10,7 @@ pub mod breach;
 pub mod broker;
 pub mod bulk_users;
 pub mod captcha;
+pub mod ciba;
 pub mod claim_mappers;
 pub mod claims;
 pub mod client_keys;

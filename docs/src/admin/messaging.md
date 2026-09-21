@@ -125,7 +125,7 @@ The console has a test button beside each form.
 
 ## Templates
 
-rIDM sends messages for nine events:
+rIDM sends messages for ten events:
 
 | Event | Sent when | Email | SMS |
 |-------|-----------|:-----:|:---:|
@@ -138,8 +138,9 @@ rIDM sends messages for nine events:
 | `password_changed` | security notice | yes | |
 | `mfa_changed` | security notice | yes | |
 | `email_changed` | security notice, sent to the previous address | yes | |
+| `backchannel_request` | an application asks, over the back channel, to sign the user in ([CIBA](ciba-fapi.md)); sent whatever `settings.notifications` says | yes | yes |
 
-Every email event has a built-in English template; the three marked for SMS have
+Every email event has a built-in English template; the four marked for SMS have
 built-in SMS templates too. An event with no template for the channel cannot be sent on
 that channel.
 
@@ -189,14 +190,15 @@ refused with `400`.
 |----------|--------------|
 | `tenant.display_name`, `tenant.slug` | every event |
 | `user.username` | every event except `invitation` |
-| `link` | `verify_email`, `password_reset`, `magic_link`, `invitation` |
+| `link` | `verify_email`, `password_reset`, `magic_link`, `invitation`, `backchannel_request` (the account console's approvals page) |
 | `code` | `otp` |
-| `expires_minutes` | `verify_email`, `password_reset`, `magic_link`, `otp` |
+| `expires_minutes` | `verify_email`, `password_reset`, `magic_link`, `otp`, `backchannel_request` |
 | `expires_days`, `inviter` | `invitation` |
-| `when` | the four security notices (`YYYY-MM-DD HH:MM UTC`) |
+| `when` | the four security notices and `backchannel_request` (`YYYY-MM-DD HH:MM UTC`) |
 | `ip`, `user_agent` | `new_device` |
 | `change` | `mfa_changed` (for example "TOTP enrolled") |
 | `new_email` | `email_changed` |
+| `client_name`, `binding_message` | `backchannel_request` (`binding_message` is empty when the application sent none) |
 
 ### Preview
 
@@ -271,8 +273,8 @@ through the tenant's messaging settings:
 | `email_changed` | `true` | the email address changes; sent to the previous address, which is the one that can still object |
 
 A notice goes to the account's email address. An account with no email but a verified
-phone gets the `new_device` notice by SMS; the other notices have no SMS template and
-are skipped. Sending a notice never fails the action that triggered it: a failure is
+phone gets the `new_device` notice (and a `backchannel_request`) by SMS; the other
+notices have no SMS template and are skipped. Sending a notice never fails the action that triggered it: a failure is
 logged and the notice is dropped. Switch notices off in the console under Settings →
 Locale & notices, or with a merge patch:
 

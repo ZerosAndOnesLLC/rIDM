@@ -4,7 +4,7 @@ rIDM answers errors in the format each protocol expects, so a client library wri
 
 | Where | Format |
 |-------|--------|
-| OAuth 2.0 / OIDC endpoints (`/token`, `/par`, `/device_authorization`, `/introspect`, `/revoke`, `/register`) | RFC 6749 §5.2 JSON: `{"error", "error_description"?}` |
+| OAuth 2.0 / OIDC endpoints (`/token`, `/par`, `/device_authorization`, `/bc-authorize`, `/introspect`, `/revoke`, `/register`) | RFC 6749 §5.2 JSON: `{"error", "error_description"?}` |
 | `/authorize` | an HTML page, or a redirect to the client with `error` |
 | `/userinfo`, and the resource side of `ridm-auth` | RFC 6750 `WWW-Authenticate` challenge plus a JSON body |
 | Admin API, account API, flow API and the other browser endpoints | RFC 9457 `application/problem+json` |
@@ -29,17 +29,19 @@ Cache-Control: no-store
 | `error` | Status | Typical cause |
 |---------|--------|---------------|
 | `invalid_request` | 400 | missing or repeated parameter; `/token` body not `application/x-www-form-urlencoded` |
-| `invalid_client` | 401 | unknown client, wrong secret or assertion, a method other than the registered one; a public client at `/introspect` |
+| `invalid_client` | 401 | unknown client, wrong secret or assertion, a method other than the registered one; a public client at `/introspect`; under FAPI 2.0, an assertion not signed with PS256/ES256/EdDSA or whose `aud` is not the issuer |
 | `invalid_grant` | 400 | code or refresh token invalid, expired, used, or issued to another client; PKCE verifier mismatch; user no longer active; a code whose browser session was signed out before it was exchanged; a refresh token without `offline_access` whose session has ended (its family is revoked); bad token-exchange subject or actor token |
 | `unauthorized_client` | 400 | the client is not allowed this grant type |
 | `unsupported_grant_type` | 400 | a grant type rIDM does not know |
 | `invalid_scope` | 400 | a scope the client may not request; a scope bound to a resource server the client may not target; a refresh `scope` naming a scope the original grant did not carry (checked before the refresh token is spent, so it stays usable); `openid`/`offline_access` with `client_credentials` |
 | `invalid_target` | 400 | an unknown `resource`/`audience`, or one the client is not allowed (RFC 8707); at code exchange, a `resource` the authorization request did not name; on refresh, a `resource` outside the original grant's audiences (checked before the token is spent); audiences whose resource servers need different signing algorithms in one request |
-| `invalid_dpop_proof` | 400 | malformed, replayed, stale or mismatched `DPoP` proof, or none from a client that must present one (RFC 9449) |
-| `authorization_pending` | 400 | device grant: the user has not approved yet (RFC 8628) |
-| `slow_down` | 400 | device grant: polling faster than the interval |
-| `expired_token` | 400 | device grant: the device code expired |
-| `access_denied` | 400 | device grant: the user denied; dynamic registration disabled (`403`); a forbidden operation |
+| `invalid_dpop_proof` | 400 | malformed, replayed, stale or mismatched `DPoP` proof, or none from a client that must present one (RFC 9449); under FAPI 2.0, a proof not signed with PS256/ES256/EdDSA |
+| `authorization_pending` | 400 | device or CIBA grant: the user has not approved yet (RFC 8628, CIBA Core §11) |
+| `slow_down` | 400 | device or CIBA grant: polling faster than the interval |
+| `expired_token` | 400 | device or CIBA grant: the device code or `auth_req_id` expired |
+| `access_denied` | 400 | device or CIBA grant: the user denied; `/bc-authorize`: five requests already wait on the user; dynamic registration disabled (`403`); a forbidden operation |
+| `unknown_user_id` | 400 | `/bc-authorize`: the hint names no active, unlocked user (CIBA Core §13) |
+| `invalid_binding_message` | 400 | `/bc-authorize`: `binding_message` longer than 64 characters or holding anything but letters, digits, spaces and `-_.:#` |
 | `temporarily_unavailable` | 503 | a dependency (for example the IP-rule store) could not be read |
 | `server_error` | 500 | an internal failure; details are logged, never returned |
 

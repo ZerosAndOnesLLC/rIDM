@@ -345,6 +345,21 @@ pub enum EventKind {
         client_id: Uuid,
         scopes: Vec<String>,
     },
+    /// A client asked, over the back channel (CIBA), for the user to sign
+    /// in; `request_id` is the request's row, never its `auth_req_id`.
+    BackchannelRequested {
+        request_id: Uuid,
+        client_id: Uuid,
+        user_id: Uuid,
+        scopes: Vec<String>,
+        binding_message: Option<String>,
+    },
+    /// The user refused a backchannel request.
+    BackchannelDenied {
+        request_id: Uuid,
+        client_id: Uuid,
+        user_id: Uuid,
+    },
 
     // Tokens
     RefreshTokenReuseDetected {
@@ -571,6 +586,8 @@ impl EventKind {
             Self::SessionCreated { .. } => "session.created",
             Self::SessionRevoked { .. } => "session.revoked",
             Self::AuthorizationGranted { .. } => "authorization.granted",
+            Self::BackchannelRequested { .. } => "backchannel.requested",
+            Self::BackchannelDenied { .. } => "backchannel.denied",
             Self::RefreshTokenReuseDetected { .. } => "token.refresh_reuse_detected",
             Self::TokensRevoked { .. } => "token.revoked",
             Self::SigningKeyCreated { .. } => "signing_key.created",

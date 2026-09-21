@@ -11,6 +11,7 @@
 //! | `password_changed` | `user.username`, `when` |
 //! | `mfa_changed` | `user.username`, `when`, `change` |
 //! | `email_changed` | `user.username`, `when`, `new_email` |
+//! | `backchannel_request` | `user.username`, `when`, `client_name`, `binding_message`, `link`, `expires_minutes` |
 //!
 //! Every message also gets `tenant.display_name` and `tenant.slug` ([`tenant`],
 //! added by [`crate::messaging::send`]).
@@ -54,6 +55,22 @@ pub fn email_changed(new_email: &str) -> Value {
     json!({"new_email": new_email})
 }
 
+/// The event-specific part of `backchannel_request`: who asks, the text
+/// their device shows (empty when none), and where to answer.
+pub fn backchannel_request(
+    client_name: &str,
+    binding_message: Option<&str>,
+    link: &str,
+    expires_minutes: u64,
+) -> Value {
+    json!({
+        "client_name": client_name,
+        "binding_message": binding_message.unwrap_or_default(),
+        "link": link,
+        "expires_minutes": expires_minutes,
+    })
+}
+
 /// A security notification (`new_device`, `password_changed`, `mfa_changed`,
 /// `email_changed`): the event's own fields plus `user` and `when`.
 pub fn notification(username: &str, when: &str, mut fields: Value) -> Value {
@@ -80,6 +97,16 @@ pub fn sample(event: &str, t: &Tenant) -> Option<Value> {
         "password_changed" => notification(USER, WHEN, json!({})),
         "mfa_changed" => notification(USER, WHEN, mfa_changed("authenticator app added")),
         "email_changed" => notification(USER, WHEN, email_changed("new@example.com")),
+        "backchannel_request" => notification(
+            USER,
+            WHEN,
+            backchannel_request(
+                "Sample Bank",
+                Some("K7 R2"),
+                "https://example.com/account/approvals/?request=sample",
+                10,
+            ),
+        ),
         _ => return None,
     };
     vars["tenant"] = tenant(t);

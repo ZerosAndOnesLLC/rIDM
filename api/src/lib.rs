@@ -83,6 +83,7 @@ fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
         .merge(routes::features::router())
         .merge(oidc::token::router())
         .merge(oidc::device::router())
+        .merge(oidc::ciba::router())
         .merge(oidc::userinfo::router())
         .merge(oidc::introspect::router())
         .merge(oidc::revoke::router());

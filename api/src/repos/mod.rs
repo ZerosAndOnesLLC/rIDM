@@ -1,5 +1,6 @@
 pub mod audit;
 pub mod audit_chains;
+pub mod ciba_requests;
 pub mod claim_mappers;
 pub mod cleanup;
 pub mod clients;

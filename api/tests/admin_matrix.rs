@@ -1,6 +1,8 @@
 //! Phase 5.13: the permission matrix (every built-in role × every admin
 //! operation) and tenant isolation v2 (every tenant-scoped operation called
-//! across tenants). Both are derived from the route sources: each handler's
+//! across tenants); Phase 12.7 adds organization isolation (every operation
+//! called by an organization's administrator, in and out of their
+//! organization). All are derived from the route sources: each handler's
 //! `#[utoipa::path]` gives method and path, its first `admin.require*` call
 //! the permission it needs, so a new endpoint is covered the moment it exists.
 
@@ -72,6 +74,9 @@ struct Operation {
     path: String,
     handler: String,
     needs: Needs,
+    /// Checked with `admin.require_org`: a grant inside the path's
+    /// organization satisfies it as well.
+    org_scoped: bool,
 }
 
 fn constants(src: &str) -> BTreeMap<String, String> {
@@ -134,6 +139,7 @@ fn operations() -> Vec<Operation> {
             // requirement plus an org-scoped alternative, which a token
             // without an organization cannot use: every role here is judged
             // by the permission, exactly as with `require`.
+            let org_scoped = body.contains("admin.require_org(");
             let needs = if let Some(i) = body.find("admin.require_org(") {
                 let args = &body[i + "admin.require_org(".len()..];
                 let perm = args.split(',').nth(2).unwrap().split(')').next().unwrap();
@@ -154,6 +160,7 @@ fn operations() -> Vec<Operation> {
                 path,
                 handler,
                 needs,
+                org_scoped,
             });
         }
     }
@@ -207,12 +214,18 @@ fn body_for(op: &Operation) -> Option<Value> {
 }
 
 fn concrete_path(op: &Operation, slug: &str) -> String {
+    concrete_path_in(op, slug, None)
+}
+
+/// [`concrete_path`] with `{org}` naming `org` rather than a random id.
+fn concrete_path_in(op: &Operation, slug: &str, org: Option<Uuid>) -> String {
     let mut out = String::new();
     for seg in op.path.split('/') {
         out.push('/');
         match seg {
             "" => out.pop().map(|_| ()).unwrap_or(()),
             "{slug}" => out.push_str(slug),
+            "{org}" if org.is_some() => out.push_str(&org.unwrap().to_string()),
             "{client}" => out.push_str("no-such-client"),
             "{channel}" => out.push_str("email"),
             "{event}" => out.push_str("otp"),
@@ -359,4 +372,126 @@ async fn every_tenant_scoped_operation_is_confined_to_the_admins_tenant() {
         failures.join("\n")
     );
     assert!(checks >= 120, "{checks} checks");
+}
+
+/// Call `op` at `path` with `token`: `None` when the answer is the expected
+/// one (anything but 401/403 when `allowed`, else 403), else what went wrong.
+async fn judge(
+    app: &TestApp,
+    token: &str,
+    op: &Operation,
+    path: &str,
+    body: Option<&Value>,
+    allowed: bool,
+    why: &str,
+) -> Option<String> {
+    let (status, resp, _) = call(app, op.method.clone(), path, Some(token), body).await;
+    let ok = if allowed {
+        status != 401 && status != 403
+    } else {
+        status == 403
+    };
+    (!ok).then(|| {
+        format!(
+            "{} {path} ({}) {why}: expected {}, got {status} {resp}",
+            op.method,
+            op.handler,
+            if allowed { "allowed" } else { "403" }
+        )
+    })
+}
+
+/// Phase 12.7: an organization's administrator (`ridm:org-admin` granted
+/// inside Acme, signed in acting in Acme) against every admin operation.
+/// Every tenant-wide operation is refused; every organization-scoped one is
+/// refused for Globex, and allowed for Acme exactly when the role carries
+/// its permission. A new route that forgets `require_org`, or checks the
+/// wrong organization, fails here.
+#[tokio::test]
+async fn every_operation_confines_an_org_admin_to_its_organization() {
+    use common::admin::org_admin_token;
+    let app = TestApp::spawn().await;
+    let tid = app.tenant.id;
+    let slug = app.tenant.slug.clone();
+    let owner = admin_token(&app, tid, OWNER_ROLE).await;
+    let mut orgs = vec![];
+    for org in ["acme", "globex"] {
+        let (status, body, _) = call(
+            &app,
+            Method::POST,
+            &format!("/admin/tenants/{slug}/organizations"),
+            Some(&owner),
+            Some(&json!({"slug": org, "display_name": org})),
+        )
+        .await;
+        assert_eq!(status, 201, "{body}");
+        orgs.push(body["id"].as_str().unwrap().parse::<Uuid>().unwrap());
+    }
+    let (acme, globex) = (orgs[0], orgs[1]);
+    let (_, org_admin) = org_admin_token(&app, tid, acme, ORG_ADMIN_ROLE).await;
+    let role = role_permissions(ORG_ADMIN_ROLE);
+
+    let ops = operations();
+    assert!(
+        ops.iter().filter(|o| o.org_scoped).count() >= 15,
+        "the organization routes were not recognised"
+    );
+    let mut checks = 0;
+    let mut failures = vec![];
+    for op in &ops {
+        if op.needs == Needs::Any {
+            continue;
+        }
+        let body = body_for(op);
+        // Operations an organization's own administrator is refused even
+        // though the role's permission would allow them (Phase 12.2: members
+        // arrive by invitation only).
+        const CONFINED: &[&str] = &["add_member"];
+        let own_ok = matches!(&op.needs, Needs::Permission(p) if role.allows(p))
+            && !CONFINED.contains(&op.handler.as_str());
+        if op.org_scoped && op.path.contains("{org}") {
+            for (path, allowed, why) in [
+                (
+                    concrete_path_in(op, &slug, Some(globex)),
+                    false,
+                    "in another organization",
+                ),
+                (
+                    concrete_path_in(op, &slug, Some(acme)),
+                    own_ok,
+                    "in its own organization",
+                ),
+            ] {
+                checks += 1;
+                if let Some(f) =
+                    judge(&app, &org_admin, op, &path, body.as_ref(), allowed, why).await
+                {
+                    failures.push(f);
+                }
+            }
+        } else {
+            checks += 1;
+            let path = concrete_path_in(op, &slug, Some(acme));
+            if let Some(f) = judge(
+                &app,
+                &org_admin,
+                op,
+                &path,
+                body.as_ref(),
+                false,
+                "tenant-wide",
+            )
+            .await
+            {
+                failures.push(f);
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} of {checks} checks failed:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+    assert!(checks >= 150, "{checks} checks");
 }

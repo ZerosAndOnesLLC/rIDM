@@ -47,7 +47,9 @@ async fn deliver(
     let (channel, recipient) = match to.or(user.email.as_deref()) {
         Some(email) => (MessageChannel::Email, email.to_string()),
         None => match user.phone.as_deref().filter(|_| user.phone_verified) {
-            Some(phone) if event == "new_device" => (MessageChannel::Sms, phone.to_string()),
+            Some(phone) if matches!(event, "new_device" | "backchannel_request") => {
+                (MessageChannel::Sms, phone.to_string())
+            }
             _ => {
                 tracing::debug!(user = %user.id, event, "notification skipped: no contact address");
                 return;
@@ -139,6 +141,29 @@ pub async fn mfa_changed(state: &AppState, tenant_id: Uuid, user_id: Uuid, chang
         "mfa_changed",
         None,
         messaging::vars::mfa_changed(change),
+    )
+    .await;
+}
+
+/// A client asks, over the back channel (CIBA), for the user's approval:
+/// tell them where to answer. Not a tenant option like the notices above —
+/// without it nobody learns there is anything to approve.
+pub async fn backchannel_request(
+    state: &AppState,
+    tenant: &Tenant,
+    user: &User,
+    client_name: &str,
+    binding_message: Option<&str>,
+    link: &str,
+    expires_minutes: u64,
+) {
+    deliver(
+        state,
+        tenant,
+        user,
+        "backchannel_request",
+        None,
+        messaging::vars::backchannel_request(client_name, binding_message, link, expires_minutes),
     )
     .await;
 }

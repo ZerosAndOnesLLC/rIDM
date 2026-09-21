@@ -188,6 +188,20 @@ async fn handle(
         Err(Failure::Internal(e)) => return e.into_response(),
         Err(Failure::Redirect(_)) => unreachable!("redirect resolution never redirects"),
     };
+    // RFC 9126 §6 (and FAPI 2.0 §5.3.2.2): this client's requests come
+    // through PAR, never straight to `/authorize`.
+    if client.requires_par() {
+        return error_redirect(
+            state,
+            tenant,
+            &client,
+            &redirect,
+            response_mode,
+            OAuthError::invalid_request("this client must use pushed authorization requests")
+                .with_state(state_param),
+        )
+        .await;
+    }
 
     // Phase 2: everything else. Errors go back to the client.
     match validate(
@@ -431,7 +445,7 @@ pub async fn validate(
             ));
         }
         (None, None) => {
-            if client.require_pkce || client.is_public() {
+            if client.require_pkce || client.is_public() || client.is_fapi2() {
                 return Err(invalid("code_challenge is required (PKCE)"));
             }
         }
@@ -864,9 +878,13 @@ pub async fn deliver_to_client(
     if !mode.is_jarm() {
         return Ok(deliver(redirect_uri, mode, &params));
     }
-    let key =
-        crate::services::keys::ensure_active(state, tenant.id(), &tenant.tenant.settings.keys)
-            .await?;
+    let policy = &tenant.tenant.settings.keys;
+    let key = if client.is_fapi2() {
+        let alg = crate::oidc::fapi::signing_alg(&tenant.tenant);
+        crate::services::keys::ensure_active_alg(state, tenant.id(), policy, alg).await?
+    } else {
+        crate::services::keys::ensure_active(state, tenant.id(), policy).await?
+    };
     let mut claims = serde_json::Map::new();
     claims.insert("iss".into(), serde_json::json!(tenant.issuer(state)));
     claims.insert("aud".into(), serde_json::json!(client.client_id));

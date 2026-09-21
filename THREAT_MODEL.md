@@ -94,6 +94,10 @@ Both are game over by construction, and the mitigation is operational.
 | Trading a sender-constrained token for a looser one | Exchanging a subject token that carries `cnf.jkt` requires a proof of the same key |
 | Forged request objects | Request objects must be signed; `none` is not offered |
 | Mix-up between providers when brokering | The upstream's issuer and audience are verified, and its state is bound to the local flow |
+| A client pushing unwanted backchannel (CIBA) sign-in requests at a user | Only confidential clients with the CIBA grant may ask; at most five requests wait on one user; the user must approve on their own, signed-in account console, never from the notice alone; an impersonated session cannot answer |
+| Phishing through the CIBA notice | The binding message is limited to 64 letters, digits, spaces and `-_.:#` (no links, markup or line breaks); the notice links to the tenant's own account console, never carries the `auth_req_id`, and the request is answerable only by the user it names |
+| Collecting someone else's CIBA grant | The `auth_req_id` is 256 random bits, stored hashed, bound to the requesting client, and handed over once; ping callbacks go through the outbound SSRF guard |
+| Downgrade of a high-assurance client | A client under the FAPI 2.0 profile is refused, at registration and on every request, anything weaker than the profile: no request outside PAR, no missing PKCE or DPoP, no RSA-PKCS1 or HMAC signatures, no client assertion addressed to anything but the issuer |
 
 ### Multi-tenancy and authorization
 
@@ -202,14 +206,12 @@ Recorded rather than hidden; each is either scheduled or a deliberate trade-off.
   optional in RFC 9449 and would tighten binding further.
 - **The `claims` request parameter is not implemented.** Discovery says so. Scopes cover
   the same claims.
-- **Role-scoped administration stops at the tenant.** Organization-scoped administrators
-  are Phase 12.
-- **Risk-based authentication is not implemented.** New device, new country and
-  impossible travel signals are Phase 12.
+- **No mutual-TLS client authentication or certificate-bound tokens (RFC 8705).** DPoP is
+  the only sender constraint, including for FAPI 2.0 clients; mTLS is Phase 13.
+- **CIBA requests cannot be signed and take no user code.** Both are optional in CIBA
+  Core; a client asking for either at registration is refused.
 - **No hardware security module or cloud key management backend.** The
   `KeyEncryptor` interface exists for it; backends are Phase 13.
-- **Fuzzing is not yet continuous.** A bounded `cargo-fuzz` run per pull request and a
-  long weekly run are Phase 9.13.
 
 ## 8. Reporting
 

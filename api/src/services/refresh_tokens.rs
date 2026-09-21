@@ -144,6 +144,25 @@ pub async fn rotate(
     resources: &[String],
     scopes: Option<&[String]>,
 ) -> Result<Issued, OAuthError> {
+    redeem(
+        state, tenant_id, client_id, presented, dpop_jkt, resources, scopes, true,
+    )
+    .await
+}
+
+/// [`rotate`], or with `rotate` false (a FAPI 2.0 client) every check of it
+/// with the presented token left live and handed back as it is.
+#[allow(clippy::too_many_arguments)]
+pub async fn redeem(
+    state: &AppState,
+    tenant_id: Uuid,
+    client_id: &str,
+    presented: &str,
+    dpop_jkt: Option<&str>,
+    resources: &[String],
+    scopes: Option<&[String]>,
+    rotate: bool,
+) -> Result<Issued, OAuthError> {
     if !presented.starts_with(PREFIX) || presented.len() > 256 {
         return Err(OAuthError::new(
             OAuthErrorCode::InvalidGrant,
@@ -249,6 +268,13 @@ pub async fn rotate(
         }
     }
 
+    if !rotate {
+        tx.commit().await?;
+        return Ok(Issued {
+            token: Zeroizing::new(presented.to_string()),
+            record: current,
+        });
+    }
     repos::refresh_tokens::mark_consumed(&mut *tx, tenant_id, current.id).await?;
     let req = IssueRequest {
         client_id,

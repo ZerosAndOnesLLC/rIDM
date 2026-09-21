@@ -719,3 +719,120 @@ async fn revoking_it_from_the_admin_api_also_records_the_end() {
     assert_eq!(ended[0].0["impersonator_id"], fx.owner.to_string());
     assert_eq!(ended[0].2, "system", "not ended from inside the session");
 }
+
+/// Phase 12.7: the whole trail of one impersonation, read back from the
+/// chain. Everything recorded from `impersonation.started` until the session
+/// ends names the administrator; nothing after it does,
+/// though the same administrator keeps working; and the chain, with the
+/// `impersonator_id` rows folded into their hashes, still verifies.
+#[tokio::test]
+async fn the_trail_names_the_administrator_from_start_to_end_and_the_chain_holds() {
+    let fx = fixture(true).await;
+    let http = browser();
+    impersonate(&fx, &http).await;
+    let tokens = tokens_via(&fx, &http).await;
+    assert!(payload(tokens["access_token"].as_str().unwrap())["act"].is_object());
+    let (session, _, _) = impersonated_session(&fx.app, fx.ada).await;
+    let bearer = account_token(&fx, fx.ada, Some(session), None).await;
+    let (status, _) = account_call(
+        &fx,
+        Method::PATCH,
+        "/profile",
+        &bearer,
+        Some(json!({"locale": "en"})),
+    )
+    .await;
+    assert_eq!(status, 200);
+    // Ended by the administrator from the admin API.
+    let (status, _, _) = call(
+        &fx.app,
+        Method::DELETE,
+        &format!(
+            "/admin/tenants/{}/users/{}/sessions/{session}",
+            fx.app.tenant.slug, fx.ada
+        ),
+        Some(&fx.owner_token),
+        None,
+    )
+    .await;
+    assert_eq!(status, 204);
+    assert!(!audit(&fx.app, "impersonation.ended").await.is_empty());
+    // The same administrator, as themselves, afterwards.
+    let (status, body, _) = call(
+        &fx.app,
+        Method::PATCH,
+        &format!("/admin/tenants/{}/users/{}", fx.app.tenant.slug, fx.ada),
+        Some(&fx.owner_token),
+        Some(&json!({"locale": "de"})),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+
+    // Read the chain in order once the writer has caught up.
+    let mut rows: Vec<(i64, String, Option<Uuid>)> = vec![];
+    for _ in 0..100 {
+        let mut tx = db::bypass_tx(&fx.app.state.db).await.unwrap();
+        rows = sqlx::query_as(
+            "SELECT seq, name, impersonator_id FROM audit_events \
+             WHERE tenant_id = $1 ORDER BY seq",
+        )
+        .bind(fx.app.tenant.id)
+        .fetch_all(&mut *tx)
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        if rows.iter().filter(|r| r.1 == "user.updated").count() >= 1
+            && rows.iter().any(|r| r.1 == "impersonation.ended")
+            && rows
+                .iter()
+                .rev()
+                .take_while(|r| r.1 != "impersonation.ended")
+                .any(|r| r.1 == "user.updated")
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    let start = rows
+        .iter()
+        .position(|r| r.1 == "impersonation.started")
+        .expect("started");
+    let end = rows
+        .iter()
+        .position(|r| r.1 == "impersonation.ended")
+        .expect("ended");
+    assert!(start < end);
+    // The end itself was recorded outside the session (the administrator
+    // revoked it from the admin API), so it is not part of the window.
+    let during = &rows[start..end];
+    assert!(
+        during.iter().any(|r| r.1 == "authorization.granted"),
+        "{during:?}"
+    );
+    for (seq, name, by) in during {
+        assert_eq!(*by, Some(fx.owner), "#{seq} {name} inside the session");
+    }
+    let after = &rows[end + 1..];
+    assert!(after.iter().any(|r| r.1 == "user.updated"), "{after:?}");
+    for (seq, name, by) in after {
+        assert_eq!(*by, None, "#{seq} {name} after the session");
+    }
+    // Before it, the request itself is the administrator's own act.
+    let requested = rows
+        .iter()
+        .find(|r| r.1 == "impersonation.requested")
+        .unwrap();
+    assert_eq!(requested.2, None);
+
+    let (status, verification, _) = call(
+        &fx.app,
+        Method::GET,
+        &format!("/admin/tenants/{}/audit/verify", fx.app.tenant.slug),
+        Some(&fx.owner_token),
+        None,
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(verification["valid"], true, "{verification}");
+    assert!(verification["checked"].as_u64().unwrap() >= rows.len() as u64);
+}

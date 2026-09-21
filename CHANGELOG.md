@@ -86,6 +86,28 @@ release renames that heading to the version and date.
   answers live for any access token of the tenant. `settings.features` values
   are now `{enabled, description, organizations}`; a bare boolean still loads
   and is still accepted.
+- Backchannel sign-in (OpenID CIBA Core 1.0): `POST /t/{slug}/bc-authorize`
+  takes a `login_hint` (username or email) or an `id_token_hint`, an optional
+  `binding_message` and `requested_expiry`, and answers an `auth_req_id`; the
+  client collects the tokens with the new `urn:openid:params:grant-type:ciba`
+  grant, polling or after rIDM pings its notification endpoint
+  (`backchannel_token_delivery_mode` `poll` or `ping`, per client; push is not
+  offered). The user is emailed or texted a link to the account console's new
+  **Requests** page, where they approve or deny; an approval is remembered as
+  consent. At most five requests wait on one user. New
+  `backchannel_request` message template, `backchannel.requested` and
+  `backchannel.denied` events, `unknown_user_id` and `invalid_binding_message`
+  errors, and the CIBA discovery metadata.
+- The FAPI 2.0 Security Profile per client (`security_profile: fapi2`):
+  registration refuses anything outside the profile, `/authorize` accepts only
+  pushed requests, PKCE and DPoP-bound tokens are compulsory, client
+  assertions must be PS256/ES256/EdDSA with the issuer as a string `aud`,
+  request objects and DPoP proofs PS256/ES256/EdDSA, tokens and JARM responses
+  are signed with ES256 or EdDSA even when the tenant defaults to RSA, and
+  refresh tokens are not rotated. mTLS is not offered yet, so DPoP is the only
+  sender constraint.
+- `require_pushed_authorization_requests` per client, for PAR without the rest
+  of the profile.
 
 ### Changed
 
@@ -102,6 +124,8 @@ release renames that heading to the version and date.
 
 ### Fixed
 
+- Dynamic registration accepted `require_pushed_authorization_requests` and
+  dropped it; it is now stored and enforced.
 - The legacy password verifier took its iteration count from the stored hash
   and allowed up to ten million rounds, which is about 25 seconds of CPU for
   PBKDF2-SHA512: an imported or crafted hash turned every sign-in attempt

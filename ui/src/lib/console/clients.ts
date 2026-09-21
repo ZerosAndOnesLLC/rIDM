@@ -22,7 +22,10 @@ export const GRANT_LABELS: Record<string, string> = {
   client_credentials: "Client credentials",
   "urn:ietf:params:oauth:grant-type:device_code": "Device code",
   "urn:ietf:params:oauth:grant-type:token-exchange": "Token exchange",
+  "urn:openid:params:grant-type:ciba": "Backchannel (CIBA)",
 };
+
+export const CIBA_GRANT = "urn:openid:params:grant-type:ciba";
 export const ALL_GRANTS = Object.keys(GRANT_LABELS);
 
 /** Scopes every tenant carries; the default `allowed_scopes` of interactive clients. */

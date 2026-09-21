@@ -2117,6 +2117,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/t/{slug}/account/backchannel-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["account_list_requests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/backchannel-requests/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve the request: the client receives tokens for the scopes it asked
+         *     for, as if the user had signed in to it, and the grant is remembered as
+         *     consent (so it shows, and can be withdrawn, under connected apps).
+         */
+        post: operations["account_approve_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t/{slug}/account/backchannel-requests/{id}/deny": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deny the request: the client's next token request is refused with
+         *     `access_denied`.
+         */
+        post: operations["account_deny_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/t/{slug}/account/devices": {
         parameters: {
             query?: never;
@@ -2893,6 +2950,12 @@ export interface components {
             /** @default false */
             sms_otp: boolean;
         };
+        /**
+         * @description How a CIBA client learns the user decided (CIBA Core §5). Push is not
+         *     offered: it puts the tokens themselves on an outbound call.
+         * @enum {string}
+         */
+        BackchannelDeliveryMode: "poll" | "ping";
         Branding: {
             /** @default null */
             background_color: string | null;
@@ -3001,7 +3064,10 @@ export interface components {
             allowed_audiences: string[];
             allowed_grants: string[];
             allowed_scopes: string[];
+            /** @description Where a `ping` client is told a request was decided. */
+            backchannel_client_notification_endpoint?: string | null;
             backchannel_logout_uri?: string | null;
+            backchannel_token_delivery_mode?: null | components["schemas"]["BackchannelDeliveryMode"];
             client_id: string;
             client_type: components["schemas"]["ClientType"];
             client_uri?: string | null;
@@ -3038,7 +3104,13 @@ export interface components {
             refresh_token_ttl_secs?: number | null;
             require_consent: boolean;
             require_pkce: boolean;
+            /**
+             * @description Authorization requests must come through PAR (RFC 9126 §6); always
+             *     so under the FAPI 2.0 profile.
+             */
+            require_pushed_authorization_requests: boolean;
             sector_identifier_uri?: string | null;
+            security_profile: components["schemas"]["SecurityProfile"];
             /** Format: uuid */
             service_account_user_id?: string | null;
             status: components["schemas"]["ClientStatus"];
@@ -4020,7 +4092,11 @@ export interface components {
             /** @default null */
             allowed_scopes: string[] | null;
             /** @default null */
+            backchannel_client_notification_endpoint: string | null;
+            /** @default null */
             backchannel_logout_uri: string | null;
+            /** @default null */
+            backchannel_token_delivery_mode: null | components["schemas"]["BackchannelDeliveryMode"];
             /**
              * @description Generated when absent.
              * @default null
@@ -4072,7 +4148,11 @@ export interface components {
             /** @default null */
             require_pkce: boolean | null;
             /** @default null */
+            require_pushed_authorization_requests: boolean | null;
+            /** @default null */
             sector_identifier_uri: string | null;
+            /** @default null */
+            security_profile: null | components["schemas"]["SecurityProfile"];
             /** @default null */
             subject_type: null | components["schemas"]["ClientSubjectType"];
             /** @default null */
@@ -4645,6 +4725,26 @@ export interface components {
         PendingChanges: {
             email?: string | null;
             phone?: string | null;
+        };
+        /** @description A request waiting on the user, as their account console shows it. */
+        PendingRequest: {
+            /** @description The text the client shows on its own device, to compare. */
+            binding_message?: string | null;
+            /**
+             * Format: uuid
+             * @description The client's row id.
+             */
+            client_id: string;
+            client_name: string;
+            client_uri?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: uuid */
+            id: string;
+            logo_uri?: string | null;
+            scopes: string[];
         };
         Permission: {
             /** Format: date-time */
@@ -5242,6 +5342,11 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /**
+         * @description A security profile the client is held to.
+         * @enum {string}
+         */
+        SecurityProfile: "none" | "fapi2";
         /** @description Where a code went, as told to the user (masked). */
         Sent: {
             destination: string;
@@ -17007,6 +17112,137 @@ export interface operations {
                 };
             };
             /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_list_requests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingRequest"][];
+                };
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_approve_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                /** @description The request's id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An impersonated session, or a token without a live sign-in session (a personal access token), cannot approve */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such pending request */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    account_deny_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                /** @description The request's id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid account token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An impersonated session cannot answer */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such pending request */
             404: {
                 headers: {
                     [name: string]: unknown;

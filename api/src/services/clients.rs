@@ -19,8 +19,9 @@ use crate::cache::keys as cache_keys;
 use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    AccessTokenFormat, Client, ClientSecretHash, ClientStatus, ClientSubjectType, ClientType,
-    NewClient, NewUser, STANDARD_SCOPES, TokenEndpointAuthMethod, User, grants,
+    AccessTokenFormat, BackchannelDeliveryMode, Client, ClientSecretHash, ClientStatus,
+    ClientSubjectType, ClientType, NewClient, NewUser, STANDARD_SCOPES, SecurityProfile,
+    TokenEndpointAuthMethod, User, grants,
 };
 use crate::repos;
 use crate::state::AppState;
@@ -90,6 +91,92 @@ fn validate_uri(field: &str, uri: &str, client_type: ClientType) -> AppResult<()
             "{field}: scheme `{other}` is not allowed for this client type"
         ))),
     }
+}
+
+/// The CIBA delivery settings: set exactly when the client holds the CIBA
+/// grant, which only an authenticating client may (CIBA Core §4). `ping`
+/// needs an HTTPS notification endpoint; `poll` must not name one.
+fn resolve_backchannel(
+    auth_method: TokenEndpointAuthMethod,
+    allowed_grants: &[String],
+    mode: Option<BackchannelDeliveryMode>,
+    endpoint: Option<String>,
+) -> AppResult<(Option<BackchannelDeliveryMode>, Option<String>)> {
+    let endpoint = endpoint
+        .map(|e| e.trim().to_string())
+        .filter(|e| !e.is_empty());
+    if !allowed_grants.iter().any(|g| g == grants::CIBA) {
+        if mode.is_some() || endpoint.is_some() {
+            return Err(AppError::BadRequest(
+                "backchannel_token_delivery_mode and backchannel_client_notification_endpoint \
+                 need the CIBA grant"
+                    .into(),
+            ));
+        }
+        return Ok((None, None));
+    }
+    if auth_method == TokenEndpointAuthMethod::None {
+        return Err(AppError::BadRequest(
+            "the CIBA grant requires client authentication".into(),
+        ));
+    }
+    let mode = mode.unwrap_or(BackchannelDeliveryMode::Poll);
+    match (mode, &endpoint) {
+        (BackchannelDeliveryMode::Ping, None) => Err(AppError::BadRequest(
+            "ping mode needs backchannel_client_notification_endpoint".into(),
+        )),
+        (BackchannelDeliveryMode::Ping, Some(uri)) => {
+            validate_uri(
+                "backchannel_client_notification_endpoint",
+                uri,
+                ClientType::Web,
+            )?;
+            Ok((Some(mode), endpoint))
+        }
+        (BackchannelDeliveryMode::Poll, Some(_)) => Err(AppError::BadRequest(
+            "backchannel_client_notification_endpoint is only used in ping mode".into(),
+        )),
+        (BackchannelDeliveryMode::Poll, None) => Ok((Some(mode), None)),
+    }
+}
+
+/// What the FAPI 2.0 Security Profile (§5.3.2) asks of a client, checked
+/// where it can be at registration: a confidential client authenticating
+/// with `private_key_jwt` (mTLS is not offered), no grant outside the
+/// profile, and no switching off PKCE or DPoP. HTTPS redirects are checked
+/// with the redirect URIs.
+fn check_fapi2(
+    client_type: ClientType,
+    auth_method: TokenEndpointAuthMethod,
+    allowed_grants: &[String],
+    require_pkce: Option<bool>,
+    dpop_bound: Option<bool>,
+) -> AppResult<()> {
+    let refuse = |why: &str| Err(AppError::BadRequest(format!("FAPI 2.0 profile: {why}")));
+    if !matches!(client_type, ClientType::Web | ClientType::Machine) {
+        return refuse("the client must be confidential (web or machine)");
+    }
+    if auth_method != TokenEndpointAuthMethod::PrivateKeyJwt {
+        return refuse("token_endpoint_auth_method must be private_key_jwt");
+    }
+    if let Some(g) = allowed_grants.iter().find(|g| {
+        !matches!(
+            g.as_str(),
+            grants::AUTHORIZATION_CODE
+                | grants::REFRESH_TOKEN
+                | grants::CLIENT_CREDENTIALS
+                | grants::CIBA
+        )
+    }) {
+        return refuse(&format!("grant type `{g}` is outside the profile"));
+    }
+    if require_pkce == Some(false) {
+        return refuse("PKCE cannot be switched off");
+    }
+    if dpop_bound == Some(false) {
+        return refuse("access tokens must be DPoP-bound");
+    }
+    Ok(())
 }
 
 /// Resolve `NewClient` into a full `Client` using type-driven defaults.
@@ -171,6 +258,23 @@ pub fn resolve(
             "private_key_jwt requires jwks or jwks_uri".into(),
         ));
     }
+    let (delivery_mode, notification_endpoint) = resolve_backchannel(
+        auth_method,
+        &allowed_grants,
+        input.backchannel_token_delivery_mode,
+        input.backchannel_client_notification_endpoint.clone(),
+    )?;
+    let security_profile = input.security_profile.unwrap_or_default();
+    let fapi2 = security_profile == SecurityProfile::Fapi2;
+    if fapi2 {
+        check_fapi2(
+            client_type,
+            auth_method,
+            &allowed_grants,
+            input.require_pkce,
+            input.dpop_bound_access_tokens,
+        )?;
+    }
     let needs_redirect = allowed_grants
         .iter()
         .any(|g| g == grants::AUTHORIZATION_CODE);
@@ -181,6 +285,11 @@ pub fn resolve(
     }
     for uri in &input.redirect_uris {
         validate_uri("redirect_uris", uri, client_type)?;
+        if fapi2 && !uri.starts_with("https://") {
+            return Err(AppError::BadRequest(format!(
+                "redirect_uris: `{uri}` must use https under the FAPI 2.0 profile"
+            )));
+        }
     }
     for uri in &input.post_logout_redirect_uris {
         validate_uri("post_logout_redirect_uris", uri, client_type)?;
@@ -272,14 +381,20 @@ pub fn resolve(
         id_token_encryption: input.id_token_encryption.map(Json),
         subject_type,
         sector_identifier_uri: input.sector_identifier_uri,
-        require_pkce: input.require_pkce.unwrap_or(default_pkce),
+        require_pkce: input.require_pkce.unwrap_or(default_pkce || fapi2),
         require_consent: input.require_consent.unwrap_or(true),
         id_token_scope_claims: input.id_token_scope_claims.unwrap_or(false),
         cors_origins: input.cors_origins,
         initiate_login_uri: input.initiate_login_uri,
         backchannel_logout_uri: input.backchannel_logout_uri,
         frontchannel_logout_uri: input.frontchannel_logout_uri,
-        dpop_bound_access_tokens: input.dpop_bound_access_tokens.unwrap_or(false),
+        dpop_bound_access_tokens: input.dpop_bound_access_tokens.unwrap_or(fapi2),
+        backchannel_token_delivery_mode: delivery_mode,
+        backchannel_client_notification_endpoint: notification_endpoint,
+        security_profile,
+        require_pushed_authorization_requests: input
+            .require_pushed_authorization_requests
+            .unwrap_or(false),
         service_account_user_id: None,
         registration_access_token_hash: None,
         status: ClientStatus::Active,

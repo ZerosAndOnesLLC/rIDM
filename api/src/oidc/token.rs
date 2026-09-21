@@ -127,6 +127,15 @@ async fn handle(
         .map_err(|d| OAuthError::new(OAuthErrorCode::InvalidDpopProof, d))?
     {
         Some(proof) => {
+            if client.is_fapi2()
+                && !jsonwebtoken::decode_header(proof)
+                    .is_ok_and(|h| crate::oidc::fapi::allows_jws(h.alg))
+            {
+                return Err(OAuthError::new(
+                    OAuthErrorCode::InvalidDpopProof,
+                    "the FAPI 2.0 profile allows PS256, ES256 or EdDSA proofs only",
+                ));
+            }
             let htu = dpop::htu_candidates(state, tenant.tenant.as_ref(), "/token");
             Some(
                 dpop::verify_proof(
@@ -142,7 +151,7 @@ async fn handle(
                 .jkt,
             )
         }
-        None if client.dpop_bound_access_tokens => {
+        None if client.dpop_bound_access_tokens || client.is_fapi2() => {
             return Err(OAuthError::new(
                 OAuthErrorCode::InvalidDpopProof,
                 "this client must present a DPoP proof",
@@ -173,6 +182,7 @@ async fn handle(
             client_credentials(state, tenant_row, &client, params, dpop_jkt).await
         }
         grants::DEVICE_CODE => device_code(state, tenant_row, &client, params, dpop_jkt).await,
+        grants::CIBA => backchannel(state, tenant_row, &client, params, dpop_jkt).await,
         grants::TOKEN_EXCHANGE => {
             token_exchange(state, tenant_row, &client, params, dpop_jkt).await
         }
@@ -451,7 +461,20 @@ struct Issue<'a> {
 async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, OAuthError> {
     let mappers = effective_mappers(state, i.tenant.id, i.client).await?;
     let mut tc = TokenClient::from_client(i.client, i.tenant, mappers);
-    tc.access_token_alg = i.audience.signing_alg;
+    match i.audience.signing_alg {
+        Some(alg) if i.client.is_fapi2() && !crate::oidc::fapi::allows_signing(alg) => {
+            return Err(OAuthError::new(
+                OAuthErrorCode::InvalidTarget,
+                format!(
+                    "the resource server asks for {} tokens, which the FAPI 2.0 profile does not allow",
+                    alg.as_str()
+                ),
+            ));
+        }
+        Some(alg) => tc.access_token_alg = Some(alg),
+        // A FAPI client's tokens already default to an algorithm it allows.
+        None => {}
+    }
     // What the grant asked for, less what this audience does not carry.
     let granted = scopes::granted_for_audience(
         state,
@@ -834,6 +857,62 @@ async fn device_code(
     .await
 }
 
+/// CIBA Core §10.1: the client collects what the user approved on their
+/// own device. The answers while it waits are the device grant's.
+async fn backchannel(
+    state: &AppState,
+    tenant: &Tenant,
+    client: &Arc<Client>,
+    params: &RawParams,
+    dpop_jkt: Option<&str>,
+) -> Result<TokenResponse, OAuthError> {
+    use crate::services::ciba::{self, Poll as CibaPoll};
+    let one = |n: &str| params.one(n).map_err(OAuthError::invalid_request);
+    let auth_req_id = one("auth_req_id")?
+        .ok_or_else(|| OAuthError::invalid_request("auth_req_id is required"))?;
+    let (record, approval) = match ciba::poll(state, tenant.id, client.id, auth_req_id).await? {
+        None => {
+            return Err(OAuthError::new(
+                OAuthErrorCode::InvalidGrant,
+                "invalid auth_req_id",
+            ));
+        }
+        Some(CibaPoll::Pending) => {
+            return Err(OAuthError::code(OAuthErrorCode::AuthorizationPending));
+        }
+        Some(CibaPoll::SlowDown) => return Err(OAuthError::code(OAuthErrorCode::SlowDown)),
+        Some(CibaPoll::Denied) => return Err(OAuthError::code(OAuthErrorCode::AccessDenied)),
+        Some(CibaPoll::Expired) => return Err(OAuthError::code(OAuthErrorCode::ExpiredToken)),
+        Some(CibaPoll::Approved(record, approval)) => (record, approval),
+    };
+    let subject = load_subject(state, tenant.id, approval.user_id, approval.org_id).await?;
+    let role_ids: Vec<Uuid> = subject.roles.iter().map(|r| r.id).collect();
+    let audience = resolve_audience(state, tenant.id, client, &record.audiences, &role_ids).await?;
+    issue_tokens(
+        state,
+        Issue {
+            tenant,
+            client,
+            subject: Some(&subject),
+            scopes: &record.scopes,
+            audience,
+            session_id: Some(approval.session_id),
+            org_id: approval.org_id,
+            auth_time: Some(approval.auth_time),
+            amr: approval.amr.clone(),
+            acr: approval.acr.clone(),
+            nonce: None,
+            with_refresh: None,
+            issue_refresh: true,
+            code_for_hash: None,
+            dpop_jkt,
+            act: None,
+            not_after: None,
+        },
+    )
+    .await
+}
+
 async fn refresh_token(
     state: &AppState,
     tenant: &Tenant,
@@ -850,7 +929,9 @@ async fn refresh_token(
     // before the token is spent, so a refused request leaves it usable.
     let extra = parse_resources(params)?;
     let requested_scopes = one("scope")?.map(scopes::parse_scope_param);
-    let rotated = refresh_tokens::rotate(
+    // The FAPI 2.0 profile keeps the refresh token (§5.3.2.1): a client
+    // that loses a rotated token's response loses its grant.
+    let rotated = refresh_tokens::redeem(
         state,
         tenant.id,
         &client.client_id,
@@ -858,6 +939,7 @@ async fn refresh_token(
         dpop_jkt,
         &extra,
         requested_scopes.as_deref(),
+        !client.is_fapi2(),
     )
     .await?;
     if let Some(act) = &rotated.record.act {
