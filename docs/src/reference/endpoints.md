@@ -36,6 +36,7 @@ The container image's `HEALTHCHECK` runs `ridm-api --healthcheck` inside the con
 | POST | `/t/{slug}/par` | client authentication | authorize | Pushed authorization request; answers `201 {"request_uri": "urn:ietf:params:oauth:request_uri:...", "expires_in": ...}` for a single use at `/authorize`. | RFC 9126 |
 | POST | `/t/{slug}/token` | client authentication | token | Token endpoint, form-encoded only. Grants below. Optional `DPoP` header. | RFC 6749 §3.2, RFC 8693, RFC 8628, RFC 9449, RFC 8707 |
 | POST | `/t/{slug}/device_authorization` | client authentication | token | Starts the device authorization grant; the client must be allowed the device-code grant. | RFC 8628 §3.1 |
+| POST | `/t/{slug}/bc-authorize` | client authentication (confidential clients only) | token | Backchannel authentication: names the user (`login_hint` or `id_token_hint`) and answers `{"auth_req_id", "expires_in", "interval"}`; the user approves in the account console. See [Backchannel sign-in and FAPI 2.0](../admin/ciba-fapi.md). | OpenID CIBA Core 1.0 §7 |
 | GET, POST | `/t/{slug}/userinfo` | access token, JWT or opaque (`Authorization: Bearer` or `DPoP`, or an `access_token` form field on POST) | token | Claims about the token's subject; the token must carry `openid`. See [Token claims](token-claims.md#userinfo-response). | OIDC Core §5.3, RFC 6750 |
 | GET | `/t/{slug}/features` | access token of the tenant (`Bearer` or `DPoP`) | token | The [feature flags](../admin/feature-flags.md) that are on for the token's organization (`org_id`), or tenant-wide: `{"features": [...], "org_id": ...}`. | — |
 | POST | `/t/{slug}/introspect` | client authentication (confidential clients only) | token | Token introspection for refresh tokens (`rt_...`), personal access tokens (`rpat_...`) and access tokens, JWT or opaque (`at_...`); the only way a resource server learns what an opaque token stands for. Unknown, expired, foreign or inactive tokens, and ID tokens, answer `{"active": false}`. | RFC 7662 |
@@ -49,7 +50,7 @@ The container image's `HEALTHCHECK` runs `ridm-api --healthcheck` inside the con
 
 ### Client authentication
 
-`/token`, `/par`, `/device_authorization`, `/introspect` and `/revoke` authenticate the client with the method registered for it; any other method is `invalid_client`.
+`/token`, `/par`, `/device_authorization`, `/bc-authorize`, `/introspect` and `/revoke` authenticate the client with the method registered for it; any other method is `invalid_client`. A client under the FAPI 2.0 profile must use `private_key_jwt` with the issuer as the assertion's `aud`.
 
 | Method | How |
 |--------|-----|
@@ -65,9 +66,10 @@ The container image's `HEALTHCHECK` runs `ridm-api --healthcheck` inside the con
 | `grant_type` | Notes |
 |--------------|-------|
 | `authorization_code` | PKCE `S256` only; `plain` is refused. Replaying a code revokes everything the first exchange produced. A code whose browser session was signed out before the exchange is refused (`invalid_grant`). `resource` may only pick among the resources named at `/authorize` (`invalid_target` otherwise). |
-| `refresh_token` | Rotation on every use with reuse detection. `scope` and `resource` may narrow the original grant, never widen it (`invalid_scope`, `invalid_target`, checked before the token is spent). Without `offline_access` the token ends with its browser session; each refresh extends the session's idle window. |
+| `refresh_token` | Rotation on every use with reuse detection (not for a FAPI 2.0 client, which keeps its refresh token). `scope` and `resource` may narrow the original grant, never widen it (`invalid_scope`, `invalid_target`, checked before the token is spent). Without `offline_access` the token ends with its browser session; each refresh extends the session's idle window. |
 | `client_credentials` | Tokens for the client itself, or for its service-account user when one exists. `openid` and `offline_access` are refused. With no `scope`, the tenant's default scopes the client may hold. |
 | `urn:ietf:params:oauth:grant-type:device_code` | Polling answers `authorization_pending`, `slow_down`, `access_denied` or `expired_token` until the user approves. |
+| `urn:openid:params:grant-type:ciba` | `auth_req_id` from `/bc-authorize`. The same answers as the device grant while the user decides; `slow_down` applies only to a request still undecided, so a pinged client collects at once. The tokens are handed over once. |
 | `urn:ietf:params:oauth:grant-type:token-exchange` | `subject_token` (type `urn:ietf:params:oauth:token-type:access_token` or `...:jwt`; an opaque `at_...` token must be sent as `access_token`), optional `actor_token` (same rule), `audience`, `resource`, `scope`. No refresh token; the result reports `issued_token_type`. A client registered for opaque tokens may not request `...:jwt`. |
 
 A client may only use the grants in its `allowed_grants`; a known grant it is not allowed is `unauthorized_client`, an unknown one `unsupported_grant_type`. Audiences come from `resource` parameters (RFC 8707; token exchange also takes `audience`), or from the client's `allowed_audiences` when none is requested, plus the resource server of any requested scope bound to one; see [Resource servers, scopes and permissions](../concepts/resource-servers.md) and [Token claims](token-claims.md#scopes-in-the-token).
@@ -76,14 +78,16 @@ The response is `{"access_token", "token_type", "expires_in", "refresh_token"?, 
 
 ### Discovery document
 
-The discovery document advertises exactly what the build implements ([`api/src/oidc/discovery.rs`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/api/src/oidc/discovery.rs)). Endpoints are `{issuer}/authorize`, `/token`, `/.well-known/jwks.json`, `/userinfo`, `/introspect`, `/revoke`, `/end_session`, `/par` and `/device_authorization`; `registration_endpoint` (`{issuer}/register`) appears only when the tenant's `dcr.mode` is not `disabled`.
+The discovery document advertises exactly what the build implements ([`api/src/oidc/discovery.rs`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/api/src/oidc/discovery.rs)). Endpoints are `{issuer}/authorize`, `/token`, `/.well-known/jwks.json`, `/userinfo`, `/introspect`, `/revoke`, `/end_session`, `/par`, `/device_authorization` and `/bc-authorize` (`backchannel_authentication_endpoint`); `registration_endpoint` (`{issuer}/register`) appears only when the tenant's `dcr.mode` is not `disabled`.
 
 | Member | Value |
 |--------|-------|
 | `scopes_supported` | the tenant's scopes (standard plus custom) |
 | `response_types_supported` | `code` |
 | `response_modes_supported` | `query`, `fragment`, `jwt`, `query.jwt`, `fragment.jwt`, `form_post.jwt` |
-| `grant_types_supported` | `authorization_code`, `refresh_token`, `client_credentials`, `urn:ietf:params:oauth:grant-type:device_code`, `urn:ietf:params:oauth:grant-type:token-exchange` |
+| `grant_types_supported` | `authorization_code`, `refresh_token`, `client_credentials`, `urn:ietf:params:oauth:grant-type:device_code`, `urn:ietf:params:oauth:grant-type:token-exchange`, `urn:openid:params:grant-type:ciba` |
+| `backchannel_token_delivery_modes_supported` | `poll`, `ping` |
+| `backchannel_user_code_parameter_supported` | `false` |
 | `subject_types_supported` | `public`, `pairwise` |
 | `id_token_signing_alg_values_supported` | `RS256`, `RS384`, `RS512`, `ES256`, `EdDSA` |
 | `id_token_encryption_alg_values_supported` | `RSA-OAEP-256`, `RSA-OAEP` |
@@ -103,7 +107,7 @@ The discovery document advertises exactly what the build implements ([`api/src/o
 | `request_parameter_supported` | `true` |
 | `request_uri_parameter_supported` | `true` (PAR `request_uri` values only) |
 | `require_request_uri_registration` | `false` |
-| `require_pushed_authorization_requests` | `false` |
+| `require_pushed_authorization_requests` | `false` (tenant-wide; a client can be registered to require PAR) |
 | `authorization_response_iss_parameter_supported` | `true` |
 | `backchannel_logout_supported`, `backchannel_logout_session_supported` | `true` |
 | `frontchannel_logout_supported`, `frontchannel_logout_session_supported` | `true` |
@@ -197,6 +201,8 @@ The self-service API for a signed-in user, under `/t/{slug}/account`. It takes a
 | DELETE | `/t/{slug}/account/sessions/{session_id}` | End one session, with back-channel logout. |
 | GET | `/t/{slug}/account/apps` | Applications the user consented to. |
 | DELETE | `/t/{slug}/account/apps/{client_id}` | Withdraw consent and the application's refresh tokens. |
+| GET | `/t/{slug}/account/backchannel-requests` | Backchannel (CIBA) sign-in requests waiting on the user. |
+| POST | `/t/{slug}/account/backchannel-requests/{id}/approve`, `.../deny` | Answer one; an approval is remembered as consent. Refused (`403`) in an impersonated session; approving also needs a sign-in session, so a personal access token cannot. |
 | GET | `/t/{slug}/account/identities` | Linked upstream identities. |
 | POST | `/t/{slug}/account/identities/link` | Start linking an upstream identity: answers `{"url"}`, a `/broker/{alias}/start?ticket=...` address to send the browser to. |
 | DELETE | `/t/{slug}/account/identities/{idp_id}` | Unlink one. |

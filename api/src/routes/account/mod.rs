@@ -1,3 +1,4 @@
+mod approvals;
 mod apps;
 mod contact;
 mod data;
@@ -11,6 +12,7 @@ mod profile;
 mod sessions;
 mod tokens;
 
+pub use approvals::approvals_router;
 pub use apps::apps_router;
 pub use contact::contact_router;
 pub use data::data_router;

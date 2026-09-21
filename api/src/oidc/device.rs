@@ -68,6 +68,25 @@ async fn handle(
         true,
     )
     .await?;
+    let audiences = requested_resources(state, tenant.id(), &client, &params).await?;
+    // A scope bound to a resource server targets it too.
+    let audiences = scopes::with_bound_audiences(
+        audiences,
+        &client.allowed_audiences,
+        checked.bound_audiences,
+    );
+    Ok(device_codes::issue(state, tenant, &client, checked.scopes, audiences).await?)
+}
+
+/// The `resource` parameters (RFC 8707) of a request that is not an
+/// authorization request: each a registered resource server this client may
+/// target, duplicates dropped.
+pub async fn requested_resources(
+    state: &AppState,
+    tenant_id: uuid::Uuid,
+    client: &crate::models::Client,
+    params: &RawParams,
+) -> Result<Vec<String>, OAuthError> {
     let mut audiences: Vec<String> = vec![];
     for r in params.many("resource") {
         let r = r.trim();
@@ -81,9 +100,9 @@ async fn handle(
                 format!("invalid resource `{r}`"),
             ));
         }
-        let mut tx = crate::db::tenant_tx(&state.db, tenant.id()).await?;
+        let mut tx = crate::db::tenant_tx(&state.db, tenant_id).await?;
         let known =
-            crate::repos::resource_servers::find_by_identifier(&mut *tx, tenant.id(), r).await?;
+            crate::repos::resource_servers::find_by_identifier(&mut *tx, tenant_id, r).await?;
         tx.commit().await?;
         if known.is_none() {
             return Err(OAuthError::new(
@@ -102,11 +121,5 @@ async fn handle(
             audiences.push(r.to_string());
         }
     }
-    // A scope bound to a resource server targets it too.
-    let audiences = scopes::with_bound_audiences(
-        audiences,
-        &client.allowed_audiences,
-        checked.bound_audiences,
-    );
-    Ok(device_codes::issue(state, tenant, &client, checked.scopes, audiences).await?)
+    Ok(audiences)
 }

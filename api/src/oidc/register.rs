@@ -12,8 +12,8 @@ use serde_json::{Value, json};
 use crate::error::AppError;
 use crate::middleware::TenantCtx;
 use crate::models::{
-    Client, ClientSubjectType, ClientType, DcrMode, DcrPolicy, IdTokenEncryptionConfig, NewClient,
-    TokenEndpointAuthMethod, grants,
+    BackchannelDeliveryMode, Client, ClientSubjectType, ClientType, DcrMode, DcrPolicy,
+    IdTokenEncryptionConfig, NewClient, TokenEndpointAuthMethod, grants,
 };
 use crate::oidc::bearer;
 use crate::services::{clients, dcr};
@@ -56,6 +56,13 @@ pub struct Metadata {
     pub initiate_login_uri: Option<String>,
     pub require_pushed_authorization_requests: Option<bool>,
     pub dpop_bound_access_tokens: Option<bool>,
+    /// CIBA Core §4: `poll` or `ping` (`push` is not offered).
+    pub backchannel_token_delivery_mode: Option<String>,
+    pub backchannel_client_notification_endpoint: Option<String>,
+    /// Signed authentication requests and user codes are not supported;
+    /// asking for either is refused rather than silently ignored.
+    pub backchannel_authentication_request_signing_alg: Option<String>,
+    pub backchannel_user_code_parameter: Option<bool>,
     /// rIDM extension: repeat the scope-derived standard claims in the ID
     /// token instead of only at the userinfo endpoint.
     pub id_token_scope_claims: Option<bool>,
@@ -171,6 +178,24 @@ pub fn to_new_client(m: &Metadata, policy: &DcrPolicy) -> Result<NewClient, AppE
         }),
         (None, Some(_)) => return Err(bad("id_token_encrypted_response_enc requires ..._alg")),
     };
+    let backchannel_token_delivery_mode = match m.backchannel_token_delivery_mode.as_deref() {
+        None => None,
+        Some("poll") => Some(BackchannelDeliveryMode::Poll),
+        Some("ping") => Some(BackchannelDeliveryMode::Ping),
+        Some(other) => {
+            return Err(bad(&format!(
+                "unsupported backchannel_token_delivery_mode `{other}`"
+            )));
+        }
+    };
+    if m.backchannel_authentication_request_signing_alg.is_some() {
+        return Err(bad(
+            "signed backchannel authentication requests are not supported",
+        ));
+    }
+    if m.backchannel_user_code_parameter == Some(true) {
+        return Err(bad("backchannel user codes are not supported"));
+    }
     let name = m
         .client_name
         .clone()
@@ -211,6 +236,12 @@ pub fn to_new_client(m: &Metadata, policy: &DcrPolicy) -> Result<NewClient, AppE
         backchannel_logout_uri: m.backchannel_logout_uri.clone(),
         frontchannel_logout_uri: m.frontchannel_logout_uri.clone(),
         dpop_bound_access_tokens: m.dpop_bound_access_tokens,
+        backchannel_token_delivery_mode,
+        backchannel_client_notification_endpoint: m
+            .backchannel_client_notification_endpoint
+            .clone(),
+        security_profile: None,
+        require_pushed_authorization_requests: m.require_pushed_authorization_requests,
     })
 }
 
@@ -230,8 +261,13 @@ pub fn to_metadata(state: &AppState, tenant: &TenantCtx, client: &Client) -> Val
         "registration_client_uri": format!("{}/register/{}", tenant.issuer(state), client.client_id),
         "client_id_issued_at": client.created_at.timestamp(),
         "dpop_bound_access_tokens": client.dpop_bound_access_tokens,
+        "require_pushed_authorization_requests": client.require_pushed_authorization_requests,
         "id_token_scope_claims": client.id_token_scope_claims,
     });
+    if let Some(mode) = client.backchannel_token_delivery_mode {
+        v["backchannel_token_delivery_mode"] = json!(mode.as_str());
+        v["backchannel_user_code_parameter"] = json!(false);
+    }
     for (k, val) in [
         ("client_uri", &client.client_uri),
         ("logo_uri", &client.logo_uri),
@@ -242,6 +278,10 @@ pub fn to_metadata(state: &AppState, tenant: &TenantCtx, client: &Client) -> Val
         ("backchannel_logout_uri", &client.backchannel_logout_uri),
         ("frontchannel_logout_uri", &client.frontchannel_logout_uri),
         ("initiate_login_uri", &client.initiate_login_uri),
+        (
+            "backchannel_client_notification_endpoint",
+            &client.backchannel_client_notification_endpoint,
+        ),
     ] {
         if let Some(x) = val {
             v[k] = json!(x);

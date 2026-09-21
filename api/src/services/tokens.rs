@@ -53,6 +53,9 @@ pub struct TokenClient {
     /// Sign access tokens with this algorithm instead of the tenant's
     /// default (the audience's resource server asks for it).
     pub access_token_alg: Option<SigningAlg>,
+    /// Sign ID tokens with this algorithm instead of the tenant's default
+    /// (a FAPI 2.0 client, when the default is one the profile forbids).
+    pub id_token_alg: Option<SigningAlg>,
     /// `permissions` claim of the access token: what the subject's roles
     /// hold on the requested resource servers (empty: no claim).
     pub permissions: Vec<String>,
@@ -71,6 +74,9 @@ impl TokenClient {
         mappers: Vec<ClaimMapper>,
     ) -> Self {
         let policy = &tenant.settings.session;
+        let fapi_alg = client
+            .is_fapi2()
+            .then(|| crate::oidc::fapi::signing_alg(tenant));
         let sector_identifier = client
             .sector_identifier_uri
             .as_deref()
@@ -111,7 +117,8 @@ impl TokenClient {
             sector_identifier,
             id_token_scope_claims: client.id_token_scope_claims,
             access_token_format: client.access_token_format,
-            access_token_alg: None,
+            access_token_alg: fapi_alg,
+            id_token_alg: fapi_alg,
             permissions: vec![],
             not_after: None,
             id_token_encryption,
@@ -143,6 +150,7 @@ impl TokenClient {
             id_token_scope_claims: false,
             access_token_format: AccessTokenFormat::Jwt,
             access_token_alg: None,
+            id_token_alg: None,
             permissions: vec![],
             not_after: None,
         }
@@ -438,7 +446,12 @@ pub async fn issue_access_token(
 }
 
 pub async fn issue_id_token(state: &AppState, req: IdTokenRequest<'_>) -> AppResult<IssuedToken> {
-    let key = keys::ensure_active(state, req.tenant.id, &req.tenant.settings.keys).await?;
+    let key = match req.client.id_token_alg {
+        Some(alg) => {
+            keys::ensure_active_alg(state, req.tenant.id, &req.tenant.settings.keys, alg).await?
+        }
+        None => keys::ensure_active(state, req.tenant.id, &req.tenant.settings.keys).await?,
+    };
     let now = Utc::now();
     let exp = now + chrono::Duration::from_std(req.client.id_token_ttl).unwrap_or_default();
 

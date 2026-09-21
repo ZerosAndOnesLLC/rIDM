@@ -46,6 +46,7 @@ pub struct Capabilities {
     pub device: bool,
     pub token_exchange: bool,
     pub dpop: bool,
+    pub ciba: bool,
 }
 
 pub const CAPABILITIES: Capabilities = Capabilities {
@@ -65,6 +66,7 @@ pub const CAPABILITIES: Capabilities = Capabilities {
     device: true,
     token_exchange: true,
     dpop: true,
+    ciba: true,
 };
 
 pub const STANDARD_CLAIMS: [&str; 30] = [
@@ -128,6 +130,13 @@ pub struct ProviderMetadata {
     pub pushed_authorization_request_endpoint: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub device_authorization_endpoint: Option<String>,
+    /// OpenID CIBA Core §4.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backchannel_authentication_endpoint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backchannel_token_delivery_modes_supported: Option<Vec<&'static str>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backchannel_user_code_parameter_supported: Option<bool>,
     pub scopes_supported: Vec<String>,
     pub response_types_supported: Vec<&'static str>,
     pub response_modes_supported: Vec<&'static str>,
@@ -201,6 +210,9 @@ pub fn build(
     if caps.token_exchange {
         grant_types.push("urn:ietf:params:oauth:grant-type:token-exchange");
     }
+    if caps.ciba {
+        grant_types.push(crate::models::grants::CIBA);
+    }
     let auth_methods = vec![
         "none",
         "client_secret_basic",
@@ -227,6 +239,9 @@ pub fn build(
         end_session_endpoint: caps.end_session.then(|| ep("/end_session")),
         pushed_authorization_request_endpoint: caps.par.then(|| ep("/par")),
         device_authorization_endpoint: caps.device.then(|| ep("/device_authorization")),
+        backchannel_authentication_endpoint: caps.ciba.then(|| ep("/bc-authorize")),
+        backchannel_token_delivery_modes_supported: caps.ciba.then(|| vec!["poll", "ping"]),
+        backchannel_user_code_parameter_supported: caps.ciba.then_some(false),
         scopes_supported: scope_names,
         response_types_supported: vec!["code"],
         response_modes_supported: response_modes,

@@ -125,7 +125,9 @@ Clients also carry: token lifetimes that override the tenant's defaults; a
 stable `sub` for each client or sector, so clients cannot correlate users);
 optional ID token encryption to the client's own key (`RSA-OAEP-256` or
 `RSA-OAEP` with `A256GCM` or `A128GCM`); `dpop_bound_access_tokens`, which
-requires every token to be sender-constrained; `cors_origins` for browser
+requires every token to be sender-constrained; `require_pushed_authorization_requests`
+and a `security_profile` (`fapi2` holds the client to the FAPI 2.0 Security Profile);
+the CIBA delivery mode for [backchannel sign-in](../admin/ciba-fapi.md); `cors_origins` for browser
 clients calling the token endpoint; and back-channel and front-channel logout
 URIs (a back-channel URI must resolve to a public address, like every URL rIDM
 calls on a client's behalf). See [Tokens](tokens.md) and

@@ -132,6 +132,7 @@ it, and only while its browser session is alive.
 | **Profile** | Edit the attributes the tenant's [profile schema](users.md#profile-schema) lets users edit (others are shown read-only), choose a language, change their email address or phone number (proven by a code sent to the new one), remove the phone number |
 | **Security** | Change the password (the current one is required while one is set, with an option to sign out everywhere else); enrol and remove second factors and regenerate recovery codes; link and unlink upstream accounts; list and revoke trusted devices; list sessions and end one or all but this one; mint and revoke personal access tokens |
 | **Applications** | See the applications they consented to, with scopes and the applications' privacy and terms links, and remove access, which also revokes the application's refresh tokens |
+| **Requests** | Approve or deny the [backchannel sign-in](ciba-fapi.md) requests applications sent them; the page refreshes itself while open |
 | **Your data** | Download everything held about them as JSON (no secrets), and delete the account after typing the username |
 
 Every security change (a factor, a device, a session, the password, a contact detail,

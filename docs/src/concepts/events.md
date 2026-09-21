@@ -37,6 +37,7 @@ shipped, they do not change. The main families:
 | `audit.*` | `audit.chain_broken` ([the scheduled check](../admin/webhooks-audit.md#the-scheduled-check)) |
 | `impersonation.*` | `impersonation.requested`, `impersonation.started`, `impersonation.ended` ([impersonation](../admin/impersonation.md)) |
 | `client.*`, `consent.*`, `authorization.*` | `client.created`, `client.secret_rotated`, `consent.granted`, `authorization.granted` |
+| `backchannel.*` | `backchannel.requested`, `backchannel.denied` ([backchannel sign-in](../admin/ciba-fapi.md)) |
 | `group.*`, `role.*`, `permission.*` | `group.member_added`, `role.assigned`, `role.composite_added`, `permission.granted` |
 | `resource_server.*`, `scope.*`, `claim_mapper.*` | configuration changes |
 | `signing_key.*`, `master_key.*` | `signing_key.created`, `signing_key.status_changed`, `master_key.rotated` |

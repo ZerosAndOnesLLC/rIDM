@@ -41,7 +41,9 @@ those of the event's `kind` document (next to `type`).
 | `audit.chain_broken` | `seq`, `reason` (the [scheduled check](#the-scheduled-check) found this tenant's chain broken) |
 | `device.trusted`, `device.revoked` | `user_id`, `device_id` |
 | `session.created`, `session.revoked` | `session_id`, `user_id` |
-| `authorization.granted` | `user_id`, `client_id`, `scopes` |
+| `authorization.granted` | `user_id`, `client_id`, `scopes` (also raised when the user approves a backchannel request) |
+| `backchannel.requested` | `request_id`, `client_id`, `user_id`, `scopes`, `binding_message` (actor: the client) |
+| `backchannel.denied` | `request_id`, `client_id`, `user_id` |
 | `consent.granted` | `user_id`, `client_id`, `scopes` |
 | `consent.revoked` | `user_id`, `client_id` |
 | `token.refresh_reuse_detected` | `family_id`, `client_id`, `user_id` |

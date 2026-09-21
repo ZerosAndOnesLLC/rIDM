@@ -25,9 +25,10 @@ The source is in [`docs/`](docs/); this README stays the developer's overview.
   admins. Every tenant-scoped table is protected by forced Postgres row level security
   bound per transaction, with composite foreign keys so rows can never cross tenants.
 - **Standards, not surprises.** Authorization code + PKCE, client credentials, refresh
-  token rotation with reuse detection, device flow, PAR, JAR/JARM, DCR, RP-initiated,
-  back-channel and front-channel logout, token exchange, DPoP. No implicit, hybrid, or
-  password grants.
+  token rotation with reuse detection, device flow, backchannel sign-in (CIBA), PAR,
+  JAR/JARM, DCR, RP-initiated, back-channel and front-channel logout, token exchange,
+  DPoP, and a per-client FAPI 2.0 Security Profile. No implicit, hybrid, or password
+  grants.
 - **One image.** A deployment is the API image plus Postgres and Valkey. The image
   compiles the UI's static export into the server, which serves the sign-in pages and
   both consoles on its own origin; the same export can also go on any static host or
@@ -171,6 +172,16 @@ tokens. Users with any admin permission can't be impersonated. The session can't
 user's credentials, give or withdraw consent, mint personal tokens or delete the account.
 Every event it raises records the administrator (`impersonator_id` in the audit log), and
 the account console shows a banner to end it.
+
+Applications that already know who the user is can ask them to sign in on their own device
+(CIBA, `POST /t/{slug}/bc-authorize`, poll or ping delivery). The user is emailed or texted
+a link to **Requests** in the account console, compares the binding message and approves or
+denies; the client then collects the tokens with the `urn:openid:params:grant-type:ciba`
+grant. A client can also be held to the FAPI 2.0 Security Profile (`security_profile:
+fapi2`): `private_key_jwt` with the issuer as audience, PAR only, PKCE, DPoP-bound tokens,
+PS256/ES256/EdDSA signatures both ways and refresh tokens that are not rotated; or just
+required to use PAR (`require_pushed_authorization_requests`). See the docs' *Backchannel
+sign-in and FAPI 2.0*.
 
 Locale is negotiated per request: the OIDC `ui_locales` parameter, then the user's
 stored locale, then the tenant default, constrained to the tenant's supported list

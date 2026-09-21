@@ -277,6 +277,12 @@ pub fn device_code(tenant_id: Uuid, device_hash: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:device:{device_hash}")
 }
 
+/// A live backchannel authentication request (CIBA), by the hash of its
+/// `auth_req_id`.
+pub fn ciba_request(tenant_id: Uuid, auth_req_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:ciba:{auth_req_hash}")
+}
+
 /// The user code shown on the device → the device code's hash.
 pub fn device_user_code(tenant_id: Uuid, user_code: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:device:user:{user_code}")

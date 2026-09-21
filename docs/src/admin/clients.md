@@ -99,7 +99,9 @@ Redirect and post-logout URIs must be `https`, `http` only on a loopback host
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `allowed_grants` | by type | Any of `authorization_code`, `refresh_token`, `client_credentials`, `urn:ietf:params:oauth:grant-type:device_code`, `urn:ietf:params:oauth:grant-type:token-exchange`. An empty list means no grant at all |
+| `allowed_grants` | by type | Any of `authorization_code`, `refresh_token`, `client_credentials`, `urn:ietf:params:oauth:grant-type:device_code`, `urn:ietf:params:oauth:grant-type:token-exchange`, `urn:openid:params:grant-type:ciba` (confidential clients only; see [Backchannel sign-in](ciba-fapi.md)). An empty list means no grant at all |
+| `backchannel_token_delivery_mode` | `poll` with the CIBA grant | `poll` or `ping`; only with the CIBA grant |
+| `backchannel_client_notification_endpoint` | `null` | Where a `ping` client is told; required in `ping` mode |
 | `allowed_scopes` | by type | Scopes the client may ask for; each must exist in the tenant |
 | `allowed_audiences` | `[]` | Resource servers (by identifier) the client may get access tokens for; each must exist. Empty means any resource server except the built-in ones. `urn:ridm:admin` makes admin API tokens possible (see [Administrator access](access.md)) |
 
@@ -160,17 +162,20 @@ Choose opaque tokens when the audience must not be able to read the token's cont
 or when you want every use checked centrally (revocation takes effect at the next
 introspection), and accept the introspection round trip that costs.
 
-### PAR, JAR and DPoP
+### PAR, JAR, DPoP and FAPI 2.0
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `dpop_bound_access_tokens` | `false` | Every token request must carry a DPoP proof, and the tokens are bound to its key |
+| `dpop_bound_access_tokens` | `false` (`true` under FAPI 2.0) | Every token request must carry a DPoP proof, and the tokens are bound to its key |
+| `require_pushed_authorization_requests` | `false` | `/authorize` refuses the client's requests unless they came through PAR (RFC 9126 §6) |
+| `security_profile` | `none` | `fapi2` holds the client to the FAPI 2.0 Security Profile: see [Backchannel sign-in and FAPI 2.0](ciba-fapi.md#the-fapi-20-security-profile) |
 
 Pushed authorization requests (`POST /t/{slug}/par`) and JWT-secured authorization
 requests (a `request` parameter signed with one of the client's `jwks` keys) are
-available to every client, with no per-client switch; nothing makes PAR mandatory.
-Any client may also present DPoP proofs voluntarily; the field above makes them
-compulsory. See [Tokens](../concepts/tokens.md).
+available to every client; `require_pushed_authorization_requests` (or the FAPI 2.0
+profile) makes PAR the only way in. Any client may also present DPoP proofs
+voluntarily; `dpop_bound_access_tokens` makes them compulsory. See
+[Tokens](../concepts/tokens.md).
 
 ## Changing a client
 
@@ -276,7 +281,11 @@ How registered metadata maps onto a client:
 - `scope` sets the allowed scopes; audiences, CORS origins and token lifetimes cannot
   be registered.
 - Every registered client gets `require_consent: true`.
-- `require_pushed_authorization_requests` is accepted but has no effect.
+- `require_pushed_authorization_requests` is stored and enforced.
+- `backchannel_token_delivery_mode` (`poll` or `ping`) and
+  `backchannel_client_notification_endpoint` register a CIBA client; signed
+  backchannel requests and user codes are refused. `security_profile` cannot be
+  registered: an administrator sets it.
 
 The response carries the `client_id`, any `client_secret` (with
 `client_secret_expires_at: 0`), and a `registration_access_token` for the management

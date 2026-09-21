@@ -37,6 +37,11 @@ pub async fn merge(
     ) {
         return Err(bad("request objects must be signed with an asymmetric key"));
     }
+    if client.is_fapi2() && !crate::oidc::fapi::allows_jws(header.alg) {
+        return Err(bad(
+            "the FAPI 2.0 profile allows PS256, ES256 or EdDSA request objects only",
+        ));
+    }
     let keys = client_keys::jwks(state, client, false)
         .await
         .map_err(Failure::Internal)?;

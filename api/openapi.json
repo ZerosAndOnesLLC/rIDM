@@ -16219,6 +16219,195 @@
         ]
       }
     },
+    "/t/{slug}/account/backchannel-requests": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "account_list_requests",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PendingRequest"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/backchannel-requests/{id}/approve": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Approve the request: the client receives tokens for the scopes it asked\nfor, as if the user had signed in to it, and the grant is remembered as\nconsent (so it shows, and can be withdrawn, under connected apps).",
+        "operationId": "account_approve_request",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The request's id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An impersonated session, or a token without a live sign-in session (a personal access token), cannot approve",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such pending request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/t/{slug}/account/backchannel-requests/{id}/deny": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Deny the request: the client's next token request is refused with\n`access_denied`.",
+        "operationId": "account_deny_request",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The request's id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Missing or invalid account token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An impersonated session cannot answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such pending request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/t/{slug}/account/devices": {
       "get": {
         "tags": [
@@ -19328,6 +19517,14 @@
           }
         }
       },
+      "BackchannelDeliveryMode": {
+        "type": "string",
+        "description": "How a CIBA client learns the user decided (CIBA Core §5). Push is not\noffered: it puts the tokens themselves on an outbound call.",
+        "enum": [
+          "poll",
+          "ping"
+        ]
+      },
       "Branding": {
         "type": "object",
         "properties": {
@@ -19622,6 +19819,8 @@
           "id_token_scope_claims",
           "cors_origins",
           "dpop_bound_access_tokens",
+          "security_profile",
+          "require_pushed_authorization_requests",
           "status",
           "created_at",
           "updated_at"
@@ -19655,10 +19854,28 @@
               "type": "string"
             }
           },
+          "backchannel_client_notification_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where a `ping` client is told a request was decided."
+          },
           "backchannel_logout_uri": {
             "type": [
               "string",
               "null"
+            ]
+          },
+          "backchannel_token_delivery_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BackchannelDeliveryMode",
+                "description": "CIBA delivery mode; set exactly when the client may use the CIBA grant."
+              }
             ]
           },
           "client_id": {
@@ -19777,11 +19994,18 @@
           "require_pkce": {
             "type": "boolean"
           },
+          "require_pushed_authorization_requests": {
+            "type": "boolean",
+            "description": "Authorization requests must come through PAR (RFC 9126 §6); always\nso under the FAPI 2.0 profile."
+          },
           "sector_identifier_uri": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "security_profile": {
+            "$ref": "#/components/schemas/SecurityProfile"
           },
           "service_account_user_id": {
             "type": [
@@ -22494,10 +22718,28 @@
             },
             "default": null
           },
+          "backchannel_client_notification_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
           "backchannel_logout_uri": {
             "type": [
               "string",
               "null"
+            ],
+            "default": null
+          },
+          "backchannel_token_delivery_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BackchannelDeliveryMode"
+              }
             ],
             "default": null
           },
@@ -22650,10 +22892,28 @@
             ],
             "default": null
           },
+          "require_pushed_authorization_requests": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
           "sector_identifier_uri": {
             "type": [
               "string",
               "null"
+            ],
+            "default": null
+          },
+          "security_profile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SecurityProfile"
+              }
             ],
             "default": null
           },
@@ -24220,6 +24480,65 @@
           }
         }
       },
+      "PendingRequest": {
+        "type": "object",
+        "description": "A request waiting on the user, as their account console shows it.",
+        "required": [
+          "id",
+          "client_id",
+          "client_name",
+          "scopes",
+          "created_at",
+          "expires_at"
+        ],
+        "properties": {
+          "binding_message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The text the client shows on its own device, to compare."
+          },
+          "client_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The client's row id."
+          },
+          "client_name": {
+            "type": "string"
+          },
+          "client_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "logo_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "Permission": {
         "type": "object",
         "required": [
@@ -25675,6 +25994,14 @@
             }
           }
         }
+      },
+      "SecurityProfile": {
+        "type": "string",
+        "description": "A security profile the client is held to.",
+        "enum": [
+          "none",
+          "fapi2"
+        ]
       },
       "Sent": {
         "type": "object",

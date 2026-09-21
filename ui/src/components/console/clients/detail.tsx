@@ -10,7 +10,7 @@ import { Badge, Button, IconButton, Modal, PageHeader } from "@/components/conso
 import { Spinner } from "@/components/ui";
 import { formatDate } from "@/i18n";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
-import { ALL_GRANTS, AUTH_METHODS, GRANT_LABELS, playgroundHref, typeLabel, usesSecret, type AuthMethod, type ClientView, type NewClient } from "@/lib/console/clients";
+import { ALL_GRANTS, AUTH_METHODS, CIBA_GRANT, GRANT_LABELS, playgroundHref, typeLabel, usesSecret, type AuthMethod, type ClientView, type NewClient } from "@/lib/console/clients";
 import { useConsole } from "@/lib/console/session";
 import { AudiencePicker, CheckList, ScopePicker } from "./pickers";
 import { CopyButton, RevealModal, type Revealed } from "./reveal";
@@ -99,6 +99,7 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
   }
   if (!c || !sections) return <Spinner label="Loading client…" />;
   const grantsOk = !(c.token_endpoint_auth_method === "none" && c.allowed_grants.includes("client_credentials"));
+  const fapi = c.security_profile === "fapi2";
 
   return (
     <>
@@ -148,7 +149,19 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
         </Section>
 
         <Section id="grants" title="Grants & authentication" description="How the client obtains tokens and proves who it is.">
-          <CheckList legend="Grant types" options={ALL_GRANTS.map((g) => ({ value: g, label: GRANT_LABELS[g]! }))} value={c.allowed_grants} onChange={(v) => update({ allowed_grants: v })} disabled={!editable} />
+          <CheckList
+            legend="Grant types"
+            options={ALL_GRANTS.map((g) => ({ value: g, label: GRANT_LABELS[g]! }))}
+            value={c.allowed_grants}
+            onChange={(v) =>
+              update(
+                v.includes(CIBA_GRANT)
+                  ? { allowed_grants: v }
+                  : { allowed_grants: v, backchannel_token_delivery_mode: null, backchannel_client_notification_endpoint: null },
+              )
+            }
+            disabled={!editable}
+          />
           <div className="flex flex-col gap-4">
             <Field label="Client authentication" hint={usesSecret(c.token_endpoint_auth_method) ? "Secrets are managed below." : c.token_endpoint_auth_method === "private_key_jwt" ? "Needs a JWKS or JWKS URI (Tokens & keys)." : "Public client: no credential, PKCE required."} error={grantsOk ? null : "Client credentials need client authentication."}>
               {(fid, by) => (
@@ -161,8 +174,59 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
                 </SelectInput>
               )}
             </Field>
-            <Toggle label="Require PKCE" checked={c.require_pkce} disabled={!editable} onChange={(v) => update({ require_pkce: v })} />
-            <Toggle label="DPoP-bound access tokens" hint="Every token request must carry a DPoP proof; the tokens only work with that key (RFC 9449)." checked={c.dpop_bound_access_tokens} disabled={!editable} onChange={(v) => update({ dpop_bound_access_tokens: v })} />
+            <Field label="Security profile" hint={fapi ? "FAPI 2.0: private key JWT, pushed requests, PKCE, DPoP-bound tokens, HTTPS redirects, ES256/EdDSA signatures, no refresh rotation." : "No profile beyond the settings below."}>
+              {(fid, by) => (
+                <SelectInput id={fid} aria-describedby={by} value={c.security_profile} disabled={!editable} onChange={(e) => update(e.target.value === "fapi2" ? { security_profile: "fapi2", require_pkce: true, dpop_bound_access_tokens: true } : { security_profile: "none" })}>
+                  <option value="none">None</option>
+                  <option value="fapi2">FAPI 2.0 Security Profile</option>
+                </SelectInput>
+              )}
+            </Field>
+            {c.allowed_grants.includes(CIBA_GRANT) && (
+              <Field label="Backchannel delivery" hint="Poll: the client asks the token endpoint. Ping: rIDM calls the client's notification endpoint once the user answers.">
+                {(fid, by) => (
+                  <SelectInput
+                    id={fid}
+                    aria-describedby={by}
+                    value={c.backchannel_token_delivery_mode ?? "poll"}
+                    disabled={!editable}
+                    onChange={(e) =>
+                      update(
+                        e.target.value === "ping"
+                          ? { backchannel_token_delivery_mode: "ping" }
+                          : { backchannel_token_delivery_mode: "poll", backchannel_client_notification_endpoint: null },
+                      )
+                    }
+                  >
+                    <option value="poll">Poll</option>
+                    <option value="ping">Ping</option>
+                  </SelectInput>
+                )}
+              </Field>
+            )}
+            {c.allowed_grants.includes(CIBA_GRANT) && c.backchannel_token_delivery_mode === "ping" && (
+              <Field label="Notification endpoint" hint="HTTPS; receives the auth_req_id with the client's notification token as the bearer.">
+                {(fid, by) => (
+                  <TextInput
+                    id={fid}
+                    aria-describedby={by}
+                    type="url"
+                    value={c.backchannel_client_notification_endpoint ?? ""}
+                    disabled={!editable}
+                    onChange={(e) => update({ backchannel_client_notification_endpoint: e.target.value || null })}
+                  />
+                )}
+              </Field>
+            )}
+            <Toggle label="Require PKCE" checked={c.require_pkce || fapi} disabled={!editable || fapi} onChange={(v) => update({ require_pkce: v })} />
+            <Toggle label="DPoP-bound access tokens" hint="Every token request must carry a DPoP proof; the tokens only work with that key (RFC 9449)." checked={c.dpop_bound_access_tokens || fapi} disabled={!editable || fapi} onChange={(v) => update({ dpop_bound_access_tokens: v })} />
+            <Toggle
+              label="Require pushed authorization requests"
+              hint="Refuse authorization requests that did not come through PAR (RFC 9126)."
+              checked={c.require_pushed_authorization_requests || fapi}
+              disabled={!editable || fapi}
+              onChange={(v) => update({ require_pushed_authorization_requests: v })}
+            />
             <Toggle label="Ask users for consent" hint="Off for first-party applications." checked={c.require_consent} disabled={!editable} onChange={(v) => update({ require_consent: v })} />
             <Toggle
               label="Scope claims in the ID token"

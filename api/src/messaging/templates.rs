@@ -30,7 +30,7 @@ pub struct Rendered {
 }
 
 /// Events rIDM sends messages for.
-pub const EVENTS: [&str; 9] = [
+pub const EVENTS: [&str; 10] = [
     "verify_email",
     "password_reset",
     "magic_link",
@@ -40,6 +40,7 @@ pub const EVENTS: [&str; 9] = [
     "password_changed",
     "mfa_changed",
     "email_changed",
+    "backchannel_request",
 ];
 
 fn builtin(channel: MessageChannel, event: &str) -> Option<Template> {
@@ -98,6 +99,14 @@ fn builtin(channel: MessageChannel, event: &str) -> Option<Template> {
             "Your {{tenant.display_name}} email address changed",
             "Hi {{user.username}},\n\nThe email address on your account changed to {{new_email}} on {{when}}. If this was not you, contact support immediately.",
             "<p>Hi {{user.username}},</p><p>The email address on your account changed to {{new_email}} on {{when}}. If this was not you, contact support immediately.</p>",
+        ),
+        (MessageChannel::Email, "backchannel_request") => t(
+            "{{client_name}} asks to sign you in to {{tenant.display_name}}",
+            "Hi {{user.username}},\n\n{{client_name}} is asking to sign you in to {{tenant.display_name}}.{{#if binding_message}}\nIt shows this code: {{binding_message}}. Check that it matches before you approve.{{/if}}\n\nApprove or deny the request:\n{{link}}\n\nIt expires in {{expires_minutes}} minutes. If you did not start this, deny it.",
+            "<p>Hi {{user.username}},</p><p>{{client_name}} is asking to sign you in to {{tenant.display_name}}.</p>{{#if binding_message}}<p>It shows this code: <strong>{{binding_message}}</strong>. Check that it matches before you approve.</p>{{/if}}<p><a href=\"{{link}}\">Approve or deny the request</a></p><p>It expires in {{expires_minutes}} minutes. If you did not start this, deny it.</p>",
+        ),
+        (MessageChannel::Sms, "backchannel_request") => sms(
+            "{{tenant.display_name}}: {{client_name}} asks to sign you in{{#if binding_message}} (code {{binding_message}}){{/if}}. Approve or deny: {{link}}",
         ),
         (MessageChannel::Sms, "otp") => {
             sms("{{tenant.display_name}} code: {{code}} (expires in {{expires_minutes}} min)")

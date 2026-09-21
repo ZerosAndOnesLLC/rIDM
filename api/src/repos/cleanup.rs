@@ -55,6 +55,11 @@ pub const TARGETS: &[Target] = &[
         keep: Keep::Retention,
     },
     Target {
+        table: "ciba_requests",
+        stale: "created_at < $1",
+        keep: Keep::Retention,
+    },
+    Target {
         table: "invitations",
         stale: "expires_at < $1 OR (accepted_at IS NOT NULL AND accepted_at < $1) OR (revoked_at IS NOT NULL AND revoked_at < $1)",
         keep: Keep::Retention,

@@ -233,6 +233,11 @@ async fn verify_assertion(
             "client_assertion must use an asymmetric algorithm",
         ));
     }
+    if client.is_fapi2() && !crate::oidc::fapi::allows_jws(header.alg) {
+        return Err(invalid_client(
+            "the FAPI 2.0 profile allows PS256, ES256 or EdDSA assertions only",
+        ));
+    }
     let mut keys = client_keys::jwks(state, client, false)
         .await
         .map_err(OAuthError::from)?;
@@ -266,6 +271,13 @@ async fn verify_assertion(
     let data = jsonwebtoken::decode::<Value>(assertion, &decoding, &validation)
         .map_err(|e| invalid_client(&format!("client_assertion rejected: {e}")))?;
     let claims = data.claims;
+    // FAPI 2.0 §5.3.2.1: the issuer identifier, as a string, is the only
+    // audience the profile accepts.
+    if client.is_fapi2() && claims["aud"] != tenant.issuer(state).as_str() {
+        return Err(invalid_client(
+            "client_assertion aud must be the issuer identifier (FAPI 2.0)",
+        ));
+    }
     if claims["sub"] != client.client_id.as_str() {
         return Err(invalid_client("client_assertion sub must be the client_id"));
     }
