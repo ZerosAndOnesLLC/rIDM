@@ -52,6 +52,15 @@ release renames that heading to the version and date.
   `GEOIP_LONGITUDE_HEADERS`) or a MaxMind DB file the deployment supplies
   (`GEOIP_DB`); with neither, the device and velocity signals still work.
 
+### Fixed
+
+- The legacy password verifier took its iteration count from the stored hash
+  and allowed up to ten million rounds, which is about 25 seconds of CPU for
+  PBKDF2-SHA512: an imported or crafted hash turned every sign-in attempt
+  against that account into a worker held hostage. The ceiling is now a
+  million, above every corpus rIDM imports from, and a hash beyond it is
+  refused rather than computed. Found by the `jwt_decode` fuzz target.
+
 ## [0.1.0] - 2026-09-19
 
 The first release.
