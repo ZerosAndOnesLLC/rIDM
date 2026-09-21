@@ -1,0 +1,24 @@
+# CodeQL configuration shared by every language in `.github/workflows/codeql.yml`.
+#
+# Test code is excluded. A test is meant to hold the values a scanner objects
+# to — passwords, fixed signing secrets, tokens printed so a failure can be
+# read — and an alert on one says nothing about what ships. Everything the
+# server, the CLI, the console and the example clients actually run is
+# scanned; only the code that exercises them is not.
+name: rIDM
+
+paths-ignore:
+  # Rust integration, security, isolation and conformance suites.
+  - api/tests
+  - crates/*/tests
+  # Fuzz targets and the corpora they read.
+  - api/fuzz
+  # Playwright suite, its fixtures and setup.
+  - ui/e2e
+  - ui/playwright.config.ts
+  # k6 load scripts.
+  - perf
+  # Shell-driven smoke tests around the packaged artifacts.
+  - deploy/helm/smoke
+  - deploy/upgrade-smoke
+  - examples/smoke

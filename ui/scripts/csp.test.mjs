@@ -16,6 +16,14 @@ test("hashes executable inline scripts only", () => {
   assert.deepEqual(inlineScriptHashes(html), [sha("alert(1)"), sha('import "./m.js"')]);
 });
 
+test("an end tag with trailing whitespace still closes the script", () => {
+  // `</script >` is a valid end tag. Missing it would swallow the rest of the
+  // document into the body and hash the wrong bytes, and the browser would
+  // then refuse the real script.
+  const html = `<head><script>alert(1)</script ><script>alert(2)</script></head>`;
+  assert.deepEqual(inlineScriptHashes(html), [sha("alert(1)"), sha("alert(2)")]);
+});
+
 test("policy allows self, the hashes, the API and the captcha vendors", () => {
   const p = buildPolicy({ hashes: [sha("x")], apiOrigin: "https://id.example.com" });
   assert.match(p, /script-src 'self' 'sha256-[A-Za-z0-9+/=]+' https:\/\/challenges\.cloudflare\.com/);

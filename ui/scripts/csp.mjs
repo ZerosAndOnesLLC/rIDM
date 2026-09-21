@@ -22,7 +22,10 @@ const CAPTCHA_SCRIPTS = ["https://challenges.cloudflare.com", "https://js.hcaptc
 const CAPTCHA_FRAMES = ["https://challenges.cloudflare.com", "https://*.hcaptcha.com"];
 const CAPTCHA_CONNECT = ["https://challenges.cloudflare.com", "https://*.hcaptcha.com"];
 
-const SCRIPT_RE = /<script(\s[^>]*)?>([\s\S]*?)<\/script>/gi;
+// `</script >` and `</script\n>` end a script just as `</script>` does; a
+// pattern that misses them would hash the wrong body (or none), and the page
+// would then be refused by its own CSP.
+const SCRIPT_RE = /<script(\s[^>]*)?>([\s\S]*?)<\/script\s*>/gi;
 
 /** `scheme://host[:port]` of a URL, or null when it is empty or unparsable. */
 export function originOf(url) {

@@ -101,6 +101,13 @@ was sent so tests assert on content instead of sleeping.
 Every security finding gets a regression test in `api/tests/security/` before the fix
 merges.
 
+CodeQL runs on every pull request (`.github/workflows/codeql.yml`) over the Rust, the
+TypeScript, the Python helpers and the workflows themselves. It does not scan the test
+suites (`.github/codeql/codeql-config.yml`): a test is meant to hold the fixed
+passwords, fixed signing keys and printed tokens a scanner objects to, and an alert on
+one says nothing about what ships. It is not a required check — a finding is triaged in
+the Security tab, not by blocking the merge.
+
 ## Pull requests
 
 - Open an issue or discussion first for anything larger than a bug fix.
