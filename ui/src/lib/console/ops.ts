@@ -17,6 +17,11 @@ export type LogEntry = Schemas["LogEntry"];
 export type IdentityProvider = Schemas["IdentityProviderView"];
 export type IdentityProviderPatch = Partial<Schemas["IdentityProviderUpdate"]>;
 export type IdpPreset = Schemas["Preset"];
+export type SamlIdp = Schemas["IdpView"];
+export type SamlKey = Schemas["SamlKeyView"];
+export type SamlSp = Schemas["SamlSpView"];
+export type SamlSpInput = Schemas["SamlSpInput"];
+export type SamlAttribute = Schemas["SamlAttribute"];
 
 export function href(page: string, tenant: string, params: Record<string, string> = {}): string {
   return `/console/${page}/?${new URLSearchParams({ tenant, ...params })}`;

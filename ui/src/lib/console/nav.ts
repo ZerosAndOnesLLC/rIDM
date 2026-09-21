@@ -2,7 +2,7 @@
 // the sidebar and the command palette only show what the administrator can
 // actually open. Entries are added as their pages land.
 
-import { AppWindow, ArrowLeftRight, Briefcase, Building2, FolderTree, Globe, KeyRound, KeySquare, LayoutDashboard, Mail, Network, Plug, ScrollText, Server, Settings2, ShieldCheck, Tags, ToggleRight, UsersRound, Webhook, type LucideIcon } from "lucide-react";
+import { AppWindow, ArrowLeftRight, Briefcase, Building2, FileBadge, FolderTree, Globe, KeyRound, KeySquare, LayoutDashboard, Mail, Network, Plug, ScrollText, Server, Settings2, ShieldCheck, Tags, ToggleRight, UsersRound, Webhook, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   label: string;
@@ -45,6 +45,7 @@ export const NAV: NavGroup[] = [
     title: "Applications",
     items: [
       { label: "Clients", href: "/console/clients/", icon: AppWindow, permission: "ridm:clients:read", key: "c" },
+      { label: "SAML", href: "/console/saml/", icon: FileBadge, permission: "ridm:clients:read", key: "b" },
       { label: "Resource servers", href: "/console/resource-servers/", icon: Server, permission: "ridm:resource-servers:read", key: "a" },
       { label: "Scopes", href: "/console/scopes/", icon: Tags, permission: "ridm:scopes:read", key: "p" },
       { label: "Claim mappers", href: "/console/claim-mappers/", icon: KeySquare, permission: "ridm:mappers:read", key: "m" },

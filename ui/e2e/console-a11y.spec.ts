@@ -17,6 +17,7 @@ const PAGES: [string, string, string][] = [
   ["organizations", `/console/organizations/?tenant=${TENANT}`, "Organizations"],
   ["roles", `/console/roles/?tenant=${TENANT}`, "Roles"],
   ["clients", `/console/clients/?tenant=${TENANT}`, "Clients"],
+  ["saml", `/console/saml/?tenant=${TENANT}`, "SAML"],
   ["resource servers", `/console/resource-servers/?tenant=${TENANT}`, "Resource servers"],
   ["scopes", `/console/scopes/?tenant=${TENANT}`, "Scopes"],
   ["claim mappers", `/console/claim-mappers/?tenant=${TENANT}`, "Claim mappers"],
@@ -61,7 +62,7 @@ test.describe("admin console accessibility sweep", () => {
     test.use({ viewport: { width: 390, height: 844 } });
     // By name, not by index: adding a page must not silently move which pages
     // this checks (it once did, and the sweep started testing something else).
-    const ON_PHONE = ["overview", "users", "organizations", "clients", "audit"];
+    const ON_PHONE = ["overview", "users", "organizations", "clients", "saml", "audit"];
     for (const [name, path, heading] of PAGES.filter(([n]) => ON_PHONE.includes(n))) {
       test(`${name} page on a phone`, async ({ page }) => {
         await consoleLogin(page, loadState());
