@@ -72,6 +72,8 @@ those of the event's `kind` document (next to `type`).
 | `signing_key.created` | `key_id`, `kid`, `alg` |
 | `signing_key.status_changed` | `key_id`, `kid`, `status` |
 | `master_key.rotated` | `new_version` |
+| `saml_key.created` | `key_id` |
+| `saml_key.status_changed` | `key_id`, `status` (`active` or `deleted`) |
 | `webhook.created`, `webhook.updated`, `webhook.deleted`, `webhook.secret_rotated` | `webhook_id` |
 | `webhook.test` | `webhook_id` |
 | `webhook.delivery_dead` | `webhook_id`, `delivery_id`, `event_name` |

@@ -41,6 +41,7 @@ shipped, they do not change. The main families:
 | `group.*`, `role.*`, `permission.*` | `group.member_added`, `role.assigned`, `role.composite_added`, `permission.granted` |
 | `resource_server.*`, `scope.*`, `claim_mapper.*` | configuration changes |
 | `signing_key.*`, `master_key.*` | `signing_key.created`, `signing_key.status_changed`, `master_key.rotated` |
+| `saml_key.*` | `saml_key.created`, `saml_key.status_changed` ([SAML identity provider](../admin/saml-idp.md)) |
 | `identity_provider.*`, `identity.*` | `identity.linked`, `identity.unlinked` |
 | `invitation.*`, `personal_token.*`, `scim_token.*`, `dcr_token.*`, `ip_rule.*`, `webhook.*` | lifecycle of each |
 

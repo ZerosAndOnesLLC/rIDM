@@ -434,6 +434,10 @@ async fn the_response_verifies_with_xmlsec1_too() {
         .output()
         .is_err()
     {
+        assert!(
+            std::env::var_os("RIDM_REQUIRE_XMLSEC1").is_none(),
+            "RIDM_REQUIRE_XMLSEC1 is set but xmlsec1 is not installed"
+        );
         eprintln!("xmlsec1 not installed; interop not checked");
         return;
     }

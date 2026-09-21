@@ -97,6 +97,12 @@ Both are game over by construction, and the mitigation is operational.
 | A client pushing unwanted backchannel (CIBA) sign-in requests at a user | Only confidential clients with the CIBA grant may ask; at most five requests wait on one user; the user must approve on their own, signed-in account console, never from the notice alone; an impersonated session cannot answer |
 | Phishing through the CIBA notice | The binding message is limited to 64 letters, digits, spaces and `-_.:#` (no links, markup or line breaks); the notice links to the tenant's own account console, never carries the `auth_req_id`, and the request is answerable only by the user it names |
 | Collecting someone else's CIBA grant | The `auth_req_id` is 256 random bits, stored hashed, bound to the requesting client, and handed over once; ping callbacks go through the outbound SSRF guard |
+| Forged or wrapped SAML signatures | rIDM's own XML-DSig accepts one shape only: an enveloped signature with one `Reference` to the verified element's `ID`, that `ID` unique in the document, exclusive C14N without comments, no SHA-1; keys come from the SP's registered certificates, never from `KeyInfo`; and the verified element itself is what is read, so a signature over another part of the document proves nothing. Checked against xmlsec1 in both directions and fuzzed |
+| XML entity attacks (XXE, billion laughs) | The XML parser refuses DTDs outright; documents are capped at 256 KiB after DEFLATE (which is itself read with a limit), 20,000 nodes and 64 levels |
+| A SAML response sent somewhere it should not go | The consumer URL is only ever one the SP registered; unregistered URLs are an error page, not a redirect |
+| Replayed or stale SAML requests | Request IDs are remembered for 15 minutes and accepted once; `IssueInstant` must be within ten minutes (three of skew); a signed request must name rIDM as its `Destination` |
+| Unsolicited SAML responses pushing a user into an application | IdP-initiated sign-in is off unless the SP opts in |
+| SAML signing key rotation breaking SPs, or a stolen key | The SAML keys are separate from the JWT keys and never rotate on a timer; a rollover publishes the new certificate before it signs; keys are encrypted under the master key |
 | Downgrade of a high-assurance client | A client under the FAPI 2.0 profile is refused, at registration and on every request, anything weaker than the profile: no request outside PAR, no missing PKCE or DPoP, no RSA-PKCS1 or HMAC signatures, no client assertion addressed to anything but the issuer |
 
 ### Multi-tenancy and authorization
@@ -210,6 +216,10 @@ Recorded rather than hidden; each is either scheduled or a deliberate trade-off.
   the only sender constraint, including for FAPI 2.0 clients; mTLS is Phase 13.
 - **CIBA requests cannot be signed and take no user code.** Both are optional in CIBA
   Core; a client asking for either at registration is refused.
+- **SAML logout is front-channel only.** SPs are logged out through the user's browser;
+  a session ended without one (an administrator's revocation, a password change) does
+  not reach them, and there is no SOAP back-channel logout. An SP that never answers
+  its logout request stops the walk at its page.
 - **No hardware security module or cloud key management backend.** The
   `KeyEncryptor` interface exists for it; backends are Phase 13.
 

@@ -26,6 +26,10 @@ defaults for everything else. Every default can be overridden.
 | `machine` | Service calling other services, no user | `client_secret_basic` | `client_credentials` |
 | `device` | TV, CLI or kiosk that cannot show a browser | `none` (public) | `urn:ietf:params:oauth:grant-type:device_code`, `refresh_token` |
 
+A sixth type, `saml`, is a SAML 2.0 service provider: it has no redirect URIs, grants
+or secret, and is registered and edited through the SAML routes, not these (see
+[SAML identity provider](../admin/saml-idp.md)).
+
 A client created without a type is a `web` client. Clients other than
 `machine` are allowed the standard scopes by default; a `machine` client starts
 with none.

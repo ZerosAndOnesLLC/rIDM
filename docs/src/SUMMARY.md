@@ -38,6 +38,7 @@
 - [Adaptive authentication](admin/adaptive-auth.md)
 - [Impersonation](admin/impersonation.md)
 - [Backchannel sign-in and FAPI 2.0](admin/ciba-fapi.md)
+- [SAML identity provider](admin/saml-idp.md)
 - [Feature flags](admin/feature-flags.md)
 - [Email, SMS and templates](admin/messaging.md)
 - [SCIM provisioning](admin/scim.md)

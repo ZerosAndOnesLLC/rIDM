@@ -42,13 +42,17 @@ pub fn other_rsa_cert() -> crate::saml::cert::Certificate {
 
 /// The `xmlsec1` command-line tool, when installed: an independent XML
 /// signature and encryption implementation to check rIDM's against. The
-/// interop tests pass without it (CI installs it; see `ci.yml`).
+/// interop tests skip without it, unless `RIDM_REQUIRE_XMLSEC1` is set, as
+/// CI sets it.
 pub fn xmlsec1() -> Option<std::path::PathBuf> {
-    let out = std::process::Command::new("xmlsec1")
+    let found = std::process::Command::new("xmlsec1")
         .arg("--version")
         .output()
-        .ok()?;
-    out.status.success().then(|| "xmlsec1".into())
+        .is_ok_and(|o| o.status.success());
+    if !found && std::env::var_os("RIDM_REQUIRE_XMLSEC1").is_some() {
+        panic!("RIDM_REQUIRE_XMLSEC1 is set but xmlsec1 is not installed");
+    }
+    found.then(|| "xmlsec1".into())
 }
 
 /// A scratch directory for files handed to `xmlsec1`.

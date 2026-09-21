@@ -26,7 +26,8 @@ Of the built-in roles only `ridm:owner` holds `ridm:tenants:import`; `ridm:admin
   "message_templates": [],
   "webhooks": [],
   "ip_rules": [],
-  "identity_providers": []
+  "identity_providers": [],
+  "saml_service_providers": []
 }
 ```
 
@@ -35,7 +36,7 @@ Of the built-in roles only `ridm:owner` holds `ridm:tenants:import`; `ridm:admin
 | `format` | yes | must be `ridm.tenant/1`; anything else is refused |
 | `tenant` | yes | name and settings ([below](#tenant)) |
 | `profile_schema` | no | the user profile schema; defaults to an empty schema |
-| `resource_servers` … `identity_providers` | no | collections, each defaulting to empty |
+| `resource_servers` … `saml_service_providers` | no | collections, each defaulting to empty |
 
 Unknown fields are refused at the top level and in every section, so a misspelt key fails the import rather than being dropped. The one exception is inside `tenant.settings`, which, like settings everywhere, ignores keys it does not know (they are not stored).
 
@@ -214,6 +215,10 @@ Keyed by `alias` (lower-cased).
 | `sort_order` | 0 | |
 
 The client secret is never part of the document. An update keeps the stored secret; a provider created by an import has none, and the report lists its alias under `secrets.identity_providers` so you can set it (`PATCH .../identity-providers/{alias}` with `client_secret`). See [Identity brokering](../concepts/brokering.md).
+
+### `saml_service_providers`
+
+Keyed by `client_id`: the registration `POST /admin/tenants/{slug}/saml/service-providers` takes (`name`, `entity_id`, `acs_urls`, `slo_url`, `name_id_format`, `attributes`, certificates, signing and encryption options, …; see [SAML identity provider](../admin/saml-idp.md)), plus `status` (default `active`). Certificates may be PEM or base64 and compare equal either way. SAML clients appear here and never under `clients`; a `clients` entry with `client_type: saml` is refused. The IdP's own SAML signing keys are not part of the document.
 
 ## How an import works
 

@@ -90,7 +90,13 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # The SAML interop tests check rIDM's XML signatures and encryption
+      # against xmlsec1; without it they would skip, so CI requires it.
+      - name: xmlsec1
+        run: sudo apt-get update -q && sudo apt-get install -y -q xmlsec1
       - name: cargo test (lib + bins)
+        env:
+          RIDM_REQUIRE_XMLSEC1: "1"
         run: cargo test --workspace --lib --bins --locked
 
   integration:
@@ -120,7 +126,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: xmlsec1
+        run: sudo apt-get update -q && sudo apt-get install -y -q xmlsec1
       - name: cargo test (integration)
+        env:
+          RIDM_REQUIRE_XMLSEC1: "1"
         run: cargo test --workspace --tests --locked
 
   coverage:

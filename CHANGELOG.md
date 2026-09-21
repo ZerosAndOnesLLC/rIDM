@@ -16,6 +16,33 @@ release renames that heading to the version and date.
 
 ### Added
 
+- SAML 2.0 identity provider. Every tenant publishes IdP metadata at
+  `{issuer}/saml/metadata` (entity ID: the issuer) and answers `AuthnRequest`s
+  over HTTP-Redirect and HTTP-POST at `/saml/sso` with a signed, optionally
+  encrypted (AES-GCM or AES-CBC, RSA-OAEP) `Response`. A SAML application is
+  registered as a service provider — a client of the new type `saml`, with
+  `saml_service_providers` holding its entity ID, consumer URLs, logout URL,
+  NameID format (pairwise persistent, transient, email or user id), attribute
+  names, certificates and signing options — from its metadata or by hand, in
+  the console's new SAML page or at `/admin/tenants/{slug}/saml/...`.
+  Requests are admitted only from registered SPs, to registered consumer URLs,
+  once, within ten minutes, with signatures checked against the SP's
+  certificates (`require_signed_requests` to insist). The sign-in itself is
+  the OIDC one: second factors (REFEDS MFA and Microsoft `multipleauthn`
+  context classes are step-up requests), risk policy, consent and
+  organizations apply unchanged. IdP-initiated sign-in (`/saml/init?sp=`) for
+  SPs that opt in. Front-channel Single Logout: an SP's `LogoutRequest` ends
+  the session and walks the browser through the session's other SAML SPs
+  before answering, and RP-initiated logouts walk them too. The SAML signing
+  keys are separate from the JWT keys and rotate only by hand (pending,
+  published first → active → delete). SPs travel in the tenant document under
+  `saml_service_providers`. New events `saml_key.created` and
+  `saml_key.status_changed`. The XML signature, canonicalization and
+  encryption code is rIDM's own (new dependencies `roxmltree`, `rcgen`,
+  `x509-parser`, `flate2`; no C XML library); the parser refuses DTDs,
+  signatures are accepted only over the element read, and it is checked
+  against xmlsec1 in both directions (CI installs it) and fuzzed
+  (`saml_message`).
 - Organizations within a tenant: membership (a user may belong to several, one
   of them primary), role grants scoped to an organization, email domains
   verified by DNS TXT record with auto-join, an organization step in the login
