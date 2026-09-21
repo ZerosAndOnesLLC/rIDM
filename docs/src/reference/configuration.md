@@ -10,7 +10,7 @@ Conventions used below:
 - **Booleans** accept `1`, `true`, `yes`, `on` and `0`, `false`, `no`, `off` (any case).
 - **Integers** are unsigned 32-bit.
 - An invalid or missing required value stops the server with `configuration error: ...` on standard error and exit code `2`.
-- **Secrets can come from files.** `DATABASE_URL`, `DATABASE_READ_URL`, `REDIS_URL`, `MASTER_KEY`, `SMTP_PASSWORD`, `METRICS_TOKEN`, `AUDIT_SINK_TOKEN` and `BOOTSTRAP_ADMIN_PASSWORD` each also have a `*_FILE` form (`DATABASE_URL_FILE`, ...) naming a file that holds the value, the convention for Docker and Kubernetes secret mounts. One trailing line ending is dropped and nothing else; an empty file counts as unset, like an empty variable; the variable itself wins when both are set. A file that cannot be read stops the server like an invalid value. The [production compose stack](../deploy/production-compose.md) passes every secret this way.
+- **Secrets can come from files.** `DATABASE_URL`, `DATABASE_READ_URL`, `REDIS_URL`, `MASTER_KEY`, `SMTP_PASSWORD`, `METRICS_TOKEN`, `AUDIT_SINK_TOKEN`, `AUDIT_SINK_SECRET` and `BOOTSTRAP_ADMIN_PASSWORD` each also have a `*_FILE` form (`DATABASE_URL_FILE`, ...) naming a file that holds the value, the convention for Docker and Kubernetes secret mounts. One trailing line ending is dropped and nothing else; an empty file counts as unset, like an empty variable; the variable itself wins when both are set. A file that cannot be read stops the server like an invalid value. The [production compose stack](../deploy/production-compose.md) passes every secret this way.
 
 ## Required
 
@@ -111,8 +111,10 @@ Per-tenant ceilings live in `settings.rate_limits` (see [Rate limits, IP rules a
 | `METRICS_TOKEN` | string | unset | When set, `GET /metrics` demands `Authorization: Bearer <token>`; unset, it is open. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | URL | unset | OTLP/HTTP collector base URL (e.g. `http://otel-collector:4318`); traces are posted to `<url>/v1/traces` as protobuf: one `info` span per request, named `METHOD /route/{template}`, plus whatever else `RUST_LOG` enables. Unset, no exporter runs. |
 | `OTEL_SERVICE_NAME` | string | `ridm` | `service.name` on exported traces. |
-| `AUDIT_SINK_URL` | URL | unset | Also ship every audit row: `https://...` (JSON arrays of up to 100 rows), or `syslog://host:514` / `syslog+udp://host:514` (UDP) and `syslog+tcp://host:514` (RFC 5424, one message per row). |
+| `AUDIT_SINK_URL` | URL | unset | Also ship every audit row, from the database, so nothing is lost while the receiver is down: `https://...` (JSON arrays of up to 100 rows), `syslog://host:514` / `syslog+udp://host:514` (UDP), `syslog+tcp://host:514` (RFC 5424, one message per line) or `syslog+tls://host:6514` (RFC 5425). See [Shipping to an external system](../admin/webhooks-audit.md#shipping-to-an-external-system). |
 | `AUDIT_SINK_TOKEN` | string | unset | Sent as `Authorization: Bearer <token>` to an HTTP(S) audit sink. |
+| `AUDIT_SINK_SECRET` | string | unset | Signs each HTTP(S) batch: `X-RIDM-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<body>">`. |
+| `AUDIT_SINK_CA_FILE` | path | unset | PEM certificates to trust for the sink (HTTPS or `syslog+tls`) instead of the system's roots. |
 | `HOSTNAME` | string | `-` | The host field of syslog audit lines. Usually set by the container runtime. |
 
 See [Observability](../deploy/observability.md) for the metric names and the audit sink's delivery behaviour.

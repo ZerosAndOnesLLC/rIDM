@@ -92,6 +92,8 @@ pub const PROTECTED_CLAIMS: &[&str] = &[
     "iss",
     // The organization comes from the session, never from a mapper.
     "org_id",
+    // Feature flags come from the tenant's settings (the `features` scope).
+    "features",
     "sub",
     "aud",
     "exp",

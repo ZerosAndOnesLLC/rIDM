@@ -15,14 +15,16 @@ pub struct Scope {
     pub updated_at: DateTime<Utc>,
 }
 
-/// Scopes every tenant has (seeded by migration 0008).
-pub const STANDARD_SCOPES: [&str; 6] = [
+/// Scopes every tenant has (seeded by migration 0008; `features` by the
+/// Phase 12.5 migration).
+pub const STANDARD_SCOPES: [&str; 7] = [
     "openid",
     "profile",
     "email",
     "phone",
     "address",
     "offline_access",
+    "features",
 ];
 
 #[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]

@@ -116,6 +116,9 @@ the user typing anything.
   waives a policy-driven second factor here exactly as it does in the flow. A
   session whose user has since been disabled or deleted gets no code at all:
   the user is asked to sign in afresh.
+- An administrator may open a session as a user ([impersonation](../admin/impersonation.md)).
+  It owes none of the user's steps, carries no `amr`, names the administrator in
+  every token's `act` claim, and ends after the tenant's `impersonation.max_minutes`.
 
 The request parameters that interact with the session behave as OIDC
 specifies: `prompt=login` and `max_age` force a fresh sign-in, `prompt=none`

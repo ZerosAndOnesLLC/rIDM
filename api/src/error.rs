@@ -24,6 +24,10 @@ pub enum AppError {
     /// the account has one); the client re-authorizes with `max_age=0`.
     #[error("sign in again{} to change security settings", if *mfa { " with your second step" } else { "" })]
     ReauthenticationRequired { mfa: bool },
+    /// An administrator signed in as the user tried something only the user
+    /// may do: change a credential, delete the account, grant consent.
+    #[error("this cannot be done while impersonating a user")]
+    ImpersonationForbidden,
     #[error("{0} not found")]
     NotFound(&'static str),
     #[error("{0}")]
@@ -72,7 +76,9 @@ impl AppError {
         match self {
             Self::BadRequest(_) | Self::Validation(_) => StatusCode::BAD_REQUEST,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
-            Self::Forbidden(_) | Self::ReauthenticationRequired { .. } => StatusCode::FORBIDDEN,
+            Self::Forbidden(_)
+            | Self::ReauthenticationRequired { .. }
+            | Self::ImpersonationForbidden => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
@@ -90,6 +96,7 @@ impl AppError {
             Self::Unauthorized => "urn:ridm:error:unauthorized",
             Self::Forbidden(_) => "urn:ridm:error:forbidden",
             Self::ReauthenticationRequired { .. } => "urn:ridm:error:reauthentication-required",
+            Self::ImpersonationForbidden => "urn:ridm:error:impersonation-forbidden",
             Self::NotFound(_) => "urn:ridm:error:not-found",
             Self::Conflict(_) => "urn:ridm:error:conflict",
             Self::RateLimited { .. } => "urn:ridm:error:rate-limited",
@@ -346,7 +353,7 @@ impl From<AppError> for OAuthError {
             AppError::Validation(_) => Self::invalid_request("validation failed"),
             AppError::Unauthorized => Self::code(OAuthErrorCode::InvalidToken),
             AppError::Forbidden(m) => Self::new(OAuthErrorCode::AccessDenied, m),
-            e @ AppError::ReauthenticationRequired { .. } => {
+            e @ (AppError::ReauthenticationRequired { .. } | AppError::ImpersonationForbidden) => {
                 Self::new(OAuthErrorCode::AccessDenied, e.to_string())
             }
             AppError::NotFound(what) => Self::invalid_request(format!("{what} not found")),

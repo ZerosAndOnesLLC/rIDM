@@ -4,7 +4,7 @@ use sqlx::{PgExecutor, QueryBuilder};
 use uuid::Uuid;
 
 use crate::models::SessionRow;
-use crate::services::sessions::SsoSession;
+use crate::services::sessions::{Impersonator, SsoSession};
 
 const COLUMNS: &str = "id, tenant_id, user_id, auth_time, amr, acr, ip, user_agent, device_id, org_id, \
     created_at, last_seen_at, expires_at, idle_expires_at, revoked_at";
@@ -69,6 +69,29 @@ pub async fn set_device<'e>(
         .bind(device_id)
         .execute(exec)
         .await?;
+    Ok(())
+}
+
+/// Who opened an impersonated session, and why.
+pub async fn set_impersonation<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+    impersonator: &Impersonator,
+    reason: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE sso_sessions SET impersonator_id = $3, impersonator_tenant_id = $4, \
+         impersonator_username = $5, impersonation_reason = $6 WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .bind(impersonator.user_id)
+    .bind(impersonator.tenant_id)
+    .bind(&impersonator.username)
+    .bind(reason)
+    .execute(exec)
+    .await?;
     Ok(())
 }
 

@@ -1,4 +1,5 @@
 pub mod audit;
+pub mod audit_chains;
 pub mod claim_mappers;
 pub mod cleanup;
 pub mod clients;

@@ -24,6 +24,7 @@ the built-in roles.
 | `ridm:tenants:import` | Import tenant configuration |
 | `ridm:users:read` | View users, their sessions, credentials, devices, tokens, consents, linked identities |
 | `ridm:users:write` | Create, change, disable and delete users; manage their sessions, credentials, devices, tokens, consents, roles and groups |
+| `ridm:users:impersonate` | Sign in as a user where the tenant allows it ([impersonation](impersonation.md)) |
 | `ridm:invitations:read` | View invitations |
 | `ridm:invitations:write` | Create, resend and revoke invitations; bulk import users |
 | `ridm:groups:read` / `write` | View groups and members / create, change, delete groups and manage membership |
@@ -57,7 +58,7 @@ permissions.
 | Role | Holds |
 |------|-------|
 | `ridm:owner` | Every permission, including tenant lifecycle |
-| `ridm:admin` | Every permission except `ridm:tenants:create`, `ridm:tenants:delete` and `ridm:tenants:import` |
+| `ridm:admin` | Every permission except `ridm:tenants:create`, `ridm:tenants:delete`, `ridm:tenants:import` and `ridm:users:impersonate` |
 | `ridm:user-manager` | `ridm:tenants:read`, `ridm:users:read`, `ridm:users:write`, `ridm:invitations:read`, `ridm:invitations:write`, `ridm:groups:read`, `ridm:groups:write`, `ridm:roles:read`, `ridm:audit:read`, `ridm:scim:read`, `ridm:scim:write` |
 | `ridm:org-admin` | `ridm:orgs:read`, `ridm:orgs:write`, `ridm:invitations:read`, `ridm:invitations:write`, `ridm:roles:read` — meant to be granted [inside one organization](#organization-administrators) |
 | `ridm:client-manager` | `ridm:tenants:read`, `ridm:clients:read`, `ridm:clients:write`, `ridm:scopes:read`, `ridm:scopes:write`, `ridm:mappers:read`, `ridm:mappers:write`, `ridm:resource-servers:read`, `ridm:resource-servers:write`, `ridm:roles:read`, `ridm:audit:read` |

@@ -35,6 +35,10 @@ those of the event's `kind` document (next to `type`).
 | `mfa.changed` | `user_id`, `change` |
 | `risk.step_up` | `user_id`, `score`, `signals`, `country` |
 | `risk.blocked` | `user_id`, `score`, `signals`, `country` |
+| `impersonation.requested` | `user_id`, `reason` |
+| `impersonation.started` | `user_id`, `session_id`, `impersonator_id`, `impersonator_tenant_id`, `reason` |
+| `impersonation.ended` | `user_id`, `session_id`, `impersonator_id` |
+| `audit.chain_broken` | `seq`, `reason` (the [scheduled check](#the-scheduled-check) found this tenant's chain broken) |
 | `device.trusted`, `device.revoked` | `user_id`, `device_id` |
 | `session.created`, `session.revoked` | `session_id`, `user_id` |
 | `authorization.granted` | `user_id`, `client_id`, `scopes` |
@@ -161,6 +165,8 @@ X-Api-Key: …
 | `X-RIDM-Signature` | `t=<timestamp>,v1=<hex HMAC-SHA256>` |
 
 `event.actor.type` is `user`, `client`, `admin` or `system` (the last without an `id`).
+`event.impersonator` names the administrator when the event happened in a session they
+opened as the user ([impersonation](impersonation.md)).
 `event.ip` and `event.user_agent` appear when the event was raised by a request that
 recorded them, such as sign-in attempts. `attempt` counts from 1 and restarts at 1 after
 a manual redelivery. Payloads carry ids, not full records: fetch the current state from
@@ -297,6 +303,7 @@ Every event in the catalogue is appended to its tenant's chain as a row with:
 | `name` | the dotted event name |
 | `actor_type`, `actor_id` | `user`, `client`, `admin` or `system`; a SCIM token acts as `client` |
 | `subject_id` | the main entity: the first of `user_id`, `client_id`, `role_id`, `group_id`, `invitation_id`, `key_id`, `mapper_id`, `resource_server_id`, `scope_id`, `session_id` in the payload |
+| `impersonator_id` | the administrator behind the event, when it happened in a session they opened as the user ([impersonation](impersonation.md)) |
 | `ip`, `user_agent` | when the event came from a request that recorded them |
 | `payload` | the event's `kind` document |
 | `prev_hash`, `hash` | the chain links, lowercase hex |
@@ -322,8 +329,8 @@ curl -G https://id.example.com/admin/tenants/acme/audit \
 |-----------|---------|
 | `from`, `to` | RFC 3339 bounds on `occurred_at` |
 | `name` | exact event name, or a prefix when it ends with `.` or `*` |
-| `actor_id`, `subject_id` | exact match |
-| `user_id` | rows where the user is the actor or the subject |
+| `actor_id`, `subject_id`, `impersonator_id` | exact match |
+| `user_id` | rows where the user is the actor, the subject or the impersonator |
 | `limit` | page size, 50 by default, at most 500 |
 | `cursor` | the previous page's `next_cursor` |
 
@@ -346,7 +353,8 @@ id|chain|seq|occurred_at|name|actor_type|actor_id|subject_id|ip|user_agent|paylo
 
 with `chain` the tenant id (the nil UUID for the global chain), `occurred_at` in RFC 3339
 UTC with exactly six fractional digits and a `Z`, absent values as empty strings, and
-`payload` as compact JSON with its keys sorted. The first row of a chain has no
+`payload` as compact JSON with its keys sorted. A row with an `impersonator_id` has
+`|impersonator:<uuid>` appended; rows without one hash as they always did. The first row of a chain has no
 `prev_hash`. Writers of one chain are serialised with a Postgres advisory lock, so `seq`
 has no gaps.
 
@@ -354,16 +362,64 @@ has no gaps.
 and recomputes every hash:
 
 ```json
-{ "checked": 48211, "valid": true, "first_seq": 1, "last_seq": 48211 }
+{
+  "checked": 48211, "valid": true, "first_seq": 1, "last_seq": 48211,
+  "last_hash": "9f2c…",
+  "scheduled": { "verified_seq": 48190, "verified_at": "2026-09-21T03:10:44Z" }
+}
 ```
 
 A row that was altered, removed from the middle or reordered makes it answer
 `"valid": false` with `broken_at_seq` and a `reason` (`gap in chain after seq …`,
 `prev_hash does not link to the previous row`, `row hash does not match its contents`).
-The chain proves that retained history was not edited in place; it cannot prove that
-the newest rows were not cut off, so keep an external copy (see
-[Shipping to an external system](#shipping-to-an-external-system)) or record the head
-`seq` and `hash` periodically.
+`scheduled` is what the daily check (below) last established.
+
+The chain proves that retained history was not edited in place. On its own it can't
+prove that the newest rows were not cut off, or that the whole log was not rewritten
+by someone holding the database. Two things close that gap: keep `last_hash`
+somewhere else, and keep a copy outside rIDM
+([Shipping to an external system](#shipping-to-an-external-system)).
+
+### Checking an export yourself
+
+`ridm audit verify --file` checks a JSON export with nothing but the file. It never
+contacts the server, so a server that rewrote its own log can't vouch for itself. The
+algorithm is the one above, and it lives in the `ridm-core` crate, so you can also
+check exports with your own tooling.
+
+```bash
+ridm audit export -o acme-2026-09.json         # the whole chain, oldest first
+ridm audit verify -f acme-2026-09.json --head 9f2c…
+# Intact: 48211 rows (seq 1–48211), ending on 9f2c….
+```
+
+| Flag | Proves |
+|------|--------|
+| `--head <hex>` | The chain ends on a hash you kept earlier (the `last_hash` of a previous check), so nothing was cut off or rewritten after that point. |
+| `--after <hex>` | The file's first row follows that hash, so consecutive exports (`--from`/`--to` windows) form one unbroken chain. |
+
+It fails, exiting non-zero, at the first row that does not hash or link, and names its
+`seq`. An export filtered by event name or user has gaps by design, and verification
+says so. Export the whole chain, or a time window, to check it. `ridm audit verify`
+without `--file` asks the server to walk its copy, and `--global` does the same for the
+global chain. The file is read as a stream, so an export of millions of rows is fine.
+
+### The scheduled check
+
+The daily `audit_verify` job checks every chain that grew since it was last found
+intact. It starts from that checkpoint rather than from the oldest row, which keeps it
+cheap on a large log. It rehashes the checkpoint row itself, so a rewrite that reaches
+the checkpoint is caught; the verify endpoint and `ridm audit verify` always walk
+everything. When a chain does not verify, the job:
+
+- stores where and why on the chain, which the verify endpoint shows as
+  `scheduled.broken_at_seq`, and checks that chain from the start on every run until
+  it verifies again;
+- logs an error and counts it in `ridm_audit_chain_breaks_total`, and sets
+  `ridm_audit_chains_broken` to the number of broken chains (alert on anything above
+  0);
+- records `audit.chain_broken` (`seq`, `reason`) in that tenant's chain, once per
+  break, so the tenant's webhooks hear of it.
 
 ### Retention
 
@@ -390,16 +446,29 @@ store:
 
 | `AUDIT_SINK_URL` | Transport |
 |------------------|-----------|
-| `https://…` or `http://…` | POST of a JSON array of rows, up to 100 rows or one second's worth per request; `Authorization: Bearer $AUDIT_SINK_TOKEN` when that is set |
-| `syslog://host:port` (or `syslog+udp://`) | one RFC 5424 message per row over UDP, facility local0, severity informational, the row as JSON in the message; port 514 by default |
-| `syslog+tcp://host:port` | the same over TCP, newline-delimited |
+| `https://…` or `http://…` | POST of a JSON array of up to 100 rows of one chain, in chain order. `Authorization: Bearer $AUDIT_SINK_TOKEN` when that is set. `X-RIDM-Signature: t=<unix>,v1=<hex>` (HMAC-SHA256 of `"<t>.<body>"` under `AUDIT_SINK_SECRET`, the [webhook scheme](#verifying-a-delivery)) when that is set. |
+| `syslog://host:port` (or `syslog+udp://`) | One RFC 5424 message per row over UDP, facility local0, severity informational, with the row as JSON in the message. Port 514 by default. |
+| `syslog+tcp://host:port` | The same over TCP, newline-delimited. |
+| `syslog+tls://host:port` | The same over TLS (RFC 5425): each message is prefixed with its length. Port 6514 by default. The collector's certificate is checked against the system's roots, or against `AUDIT_SINK_CA_FILE` (PEM) for a private CA. |
 
-The sink is fed from a queue of 10,000 rows and never slows the audit writer. A failed
-HTTP batch gets three attempts in total, with backoff, then is dropped with a warning; when the
-queue is full, rows are dropped. Watch `ridm_audit_sink_rows_total`,
-`ridm_audit_sink_failures_total` and `ridm_audit_sink_dropped_total`. The database
-chain stays the record of truth: the export endpoints can backfill anything the sink
-missed.
+The sink ships **from the database**, not from memory. A worker on one node at a time
+(a leader lock) reads each chain's rows after the last one it delivered, sends them,
+and records how far it got only once the receiver accepted them. When a delivery fails,
+nothing moves: the worker backs off, doubling up to a minute, and tries the same rows
+again. A receiver that is down for an hour, or a rolling restart of rIDM, delays rows
+but never loses them.
+
+- **At least once.** A row can arrive twice, for example when a node dies between a
+  delivery and recording it. Deduplicate on the row's `id`, not on `seq`: after a
+  database restore, a chain reuses the `seq` numbers written after the backup.
+- **A new destination starts now.** The first time rIDM sees an `AUDIT_SINK_URL`
+  (compared without credentials or query), it starts every chain at its current head
+  rather than replaying history. Backfill older rows with `ridm audit export`.
+- **Rows the retention job removed before they were shipped are skipped.**
+
+Watch `ridm_audit_sink_rows_total`, `ridm_audit_sink_failures_total` and
+`ridm_audit_sink_lag_rows` (rows recorded but not yet shipped, over every chain). A lag
+that keeps growing means the receiver is refusing rows or can't keep up.
 
 ## Caveats
 

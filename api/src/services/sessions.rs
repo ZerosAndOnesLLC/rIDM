@@ -37,12 +37,25 @@ pub struct SsoSession {
     /// Organization this session acts in; the source of the `org_id` claim.
     #[serde(default)]
     pub org_id: Option<Uuid>,
+    /// The administrator who opened this session as the user
+    /// (impersonation); the source of the `act` claim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub impersonator: Option<Impersonator>,
     pub created_at: DateTime<Utc>,
     pub last_seen_at: DateTime<Utc>,
     /// Absolute end of life.
     pub expires_at: DateTime<Utc>,
     /// Sliding end of life.
     pub idle_expires_at: DateTime<Utc>,
+}
+
+/// The administrator behind an impersonated session.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct Impersonator {
+    pub user_id: Uuid,
+    /// The administrator's own tenant (`master` for a global administrator).
+    pub tenant_id: Uuid,
+    pub username: String,
 }
 
 impl SsoSession {
@@ -163,6 +176,7 @@ pub async fn create(
         user_agent: req.user_agent,
         device_id: None,
         org_id: None,
+        impersonator: None,
         created_at: now,
         last_seen_at: now,
         expires_at: now + chrono::Duration::seconds(req.policy.absolute_timeout_secs as i64),
@@ -183,6 +197,62 @@ pub async fn create(
             user_id: req.user_id,
         },
     ));
+    metrics::counter!("ridm_sessions_created_total").increment(1);
+    Ok(session)
+}
+
+pub struct NewImpersonatedSession<'a> {
+    pub user_id: Uuid,
+    pub impersonator: Impersonator,
+    pub reason: &'a str,
+    pub lifetime: chrono::Duration,
+    pub ip: Option<String>,
+    pub user_agent: Option<String>,
+}
+
+/// Open a session as the user on behalf of an administrator. It lives for
+/// `lifetime` at most (never past the tenant's absolute timeout), does not
+/// count against the user's concurrent-session cap — opening it never signs
+/// the user out anywhere — and carries no authentication method: nothing the
+/// user proved went into it.
+pub async fn create_impersonated(
+    state: &AppState,
+    tenant: &Tenant,
+    req: NewImpersonatedSession<'_>,
+) -> AppResult<SsoSession> {
+    let policy = &tenant.settings.session;
+    let now = Utc::now();
+    let expires_at = now
+        + req.lifetime.min(chrono::Duration::seconds(
+            policy.absolute_timeout_secs as i64,
+        ));
+    let session = SsoSession {
+        id: Uuid::now_v7(),
+        tenant_id: tenant.id,
+        user_id: req.user_id,
+        auth_time: now,
+        amr: vec![],
+        acr: None,
+        ip: req.ip,
+        user_agent: req.user_agent,
+        device_id: None,
+        org_id: None,
+        impersonator: Some(req.impersonator),
+        created_at: now,
+        last_seen_at: now,
+        expires_at,
+        idle_expires_at: (now + chrono::Duration::seconds(policy.idle_timeout_secs as i64))
+            .min(expires_at),
+    };
+    let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
+    repos::sessions::insert(&mut *tx, &session, None).await?;
+    if let Some(imp) = &session.impersonator {
+        repos::sessions::set_impersonation(&mut *tx, tenant.id, session.id, imp, req.reason)
+            .await?;
+    }
+    tx.commit().await?;
+    store(state, &session).await?;
+    track(state, &session).await?;
     metrics::counter!("ridm_sessions_created_total").increment(1);
     Ok(session)
 }
@@ -276,7 +346,12 @@ pub async fn from_request(
     let Some(id) = session_id_from_headers(state, tenant, headers) else {
         return Ok(None);
     };
-    get(state, tenant.id, id, &tenant.settings.session).await
+    let session = get(state, tenant.id, id, &tenant.settings.session).await?;
+    // What this request goes on to do, it does for the administrator.
+    if let Some(imp) = session.as_ref().and_then(|s| s.impersonator.as_ref()) {
+        ridm_core::events::acting::set(imp.user_id);
+    }
+    Ok(session)
 }
 
 async fn mirror_touch(state: &AppState, session: &SsoSession) -> AppResult<()> {
@@ -345,9 +420,11 @@ pub async fn revoke(state: &AppState, tenant_id: Uuid, session_id: Uuid) -> AppR
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     repos::sessions::mark_revoked(&mut *tx, tenant_id, session_id).await?;
     tx.commit().await?;
-    let owner = raw
-        .and_then(|raw| serde_json::from_str::<SsoSession>(&raw).ok())
-        .map(|s| s.user_id);
+    let ended = raw.and_then(|raw| serde_json::from_str::<SsoSession>(&raw).ok());
+    let owner = ended.as_ref().map(|s| s.user_id);
+    if let Some(s) = ended.as_ref().filter(|_| removed > 0) {
+        crate::services::impersonation::announce_end(state, s);
+    }
     if let Some(user_id) = owner {
         untrack(state, tenant_id, user_id, session_id).await?;
         state.events.publish(Event::new(

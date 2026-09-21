@@ -85,6 +85,10 @@ pub const CATALOGUE: &[PermissionDef] = &[
         "ridm:users:write",
         "Create, change, disable and delete users; manage their sessions, credentials, devices, tokens, consents, roles and groups"
     ),
+    perm!(
+        "ridm:users:impersonate",
+        "Sign in as a user to see what they see (impersonation), where the tenant allows it"
+    ),
     perm!("ridm:invitations:read", "View invitations"),
     perm!(
         "ridm:invitations:write",
@@ -201,10 +205,12 @@ pub const BUILT_IN_ROLES: &[BuiltInRole] = &[
     BuiltInRole {
         name: ADMIN_ROLE,
         description: "Administrator: everything except creating, deleting and importing tenants",
+        // Impersonation stays with owners unless a custom role is given it.
         grants: Grants::AllExcept(&[
             "ridm:tenants:create",
             "ridm:tenants:delete",
             "ridm:tenants:import",
+            "ridm:users:impersonate",
         ]),
     },
     BuiltInRole {
@@ -519,8 +525,10 @@ mod tests {
         let owner = built_in_role(OWNER_ROLE).unwrap().permissions();
         assert_eq!(owner.len(), CATALOGUE.len());
         let admin = built_in_role(ADMIN_ROLE).unwrap().permissions();
-        assert_eq!(admin.len(), CATALOGUE.len() - 3);
+        assert_eq!(admin.len(), CATALOGUE.len() - 4);
         assert!(!admin.contains(&"ridm:tenants:delete"));
+        // Impersonation stays with owners.
+        assert!(!admin.contains(&"ridm:users:impersonate"));
         let viewer = built_in_role(VIEWER_ROLE).unwrap().permissions();
         assert!(viewer.iter().all(|p| p.ends_with(":read")));
         assert!(viewer.contains(&"ridm:audit:read"));

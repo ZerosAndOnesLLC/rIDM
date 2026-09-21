@@ -17,6 +17,7 @@ after the change has been committed. An event carries:
 | `tenant_id` | the tenant, or `null` for deployment-wide events such as master-key rotation |
 | `occurred_at` | when it happened |
 | `actor` | who caused it: `{"type": "user" \| "admin" \| "client", "id": ...}` or `{"type": "system"}` |
+| `impersonator` | the administrator behind it, when it happened in a session they opened as the user ([impersonation](../admin/impersonation.md)) |
 | `ip`, `user_agent` | the request's client address and browser, when there was a request |
 | `kind` | what happened, with its details, tagged by `type` |
 
@@ -33,6 +34,8 @@ shipped, they do not change. The main families:
 | `token.*` | `token.revoked`, `token.refresh_reuse_detected` |
 | `mfa.*` | `mfa.changed` |
 | `risk.*` | `risk.step_up`, `risk.blocked` ([adaptive authentication](../admin/adaptive-auth.md)) |
+| `audit.*` | `audit.chain_broken` ([the scheduled check](../admin/webhooks-audit.md#the-scheduled-check)) |
+| `impersonation.*` | `impersonation.requested`, `impersonation.started`, `impersonation.ended` ([impersonation](../admin/impersonation.md)) |
 | `client.*`, `consent.*`, `authorization.*` | `client.created`, `client.secret_rotated`, `consent.granted`, `authorization.granted` |
 | `group.*`, `role.*`, `permission.*` | `group.member_added`, `role.assigned`, `role.composite_added`, `permission.granted` |
 | `resource_server.*`, `scope.*`, `claim_mapper.*` | configuration changes |

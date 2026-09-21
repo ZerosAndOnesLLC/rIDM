@@ -1,0 +1,145 @@
+//! The audit export sink's worker: ships rows from the database to
+//! `AUDIT_SINK_URL` ([`crate::services::audit_sink`]) and remembers, per
+//! chain, how far it got (`audit_chains.sink_seq`).
+//!
+//! One node ships at a time (a leader lock); the others wait their turn. A
+//! failed delivery leaves the cursor where it was and backs off, doubling up
+//! to a minute, so a receiver that is down for an hour gets the whole hour
+//! when it comes back — nothing is dropped. A newly configured destination
+//! starts at the chains' current heads rather than replaying history.
+
+use std::time::Duration;
+
+use crate::db;
+use crate::error::AppResult;
+use crate::jobs::leader;
+use crate::models::AuditFilter;
+use crate::repos;
+use crate::services::audit_sink::{AuditSink, BATCH};
+use crate::state::AppState;
+
+pub const JOB_NAME: &str = "audit_sink";
+/// Chains looked at per pass.
+const CHAINS_PER_PASS: i64 = 50;
+const LOCK_TTL: Duration = Duration::from_secs(30);
+/// How long one node ships before giving others a chance at the lock.
+const TURN: Duration = Duration::from_secs(20);
+const IDLE: Duration = Duration::from_secs(1);
+const MAX_BACKOFF: Duration = Duration::from_secs(60);
+
+/// What one pass did.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct Pass {
+    pub shipped: usize,
+    /// A delivery failed; the pass stopped there.
+    pub failed: bool,
+}
+
+/// Run the worker for as long as the process does. `None` without a sink.
+pub fn spawn(state: AppState) -> Option<tokio::task::JoinHandle<()>> {
+    state.audit_sink.clone()?;
+    Some(tokio::spawn(async move {
+        let mut backoff = IDLE;
+        loop {
+            match turn(&state).await {
+                Ok(true) => backoff = (backoff * 2).clamp(IDLE * 2, MAX_BACKOFF),
+                Ok(false) => backoff = IDLE,
+                Err(err) => {
+                    tracing::error!(error = %err, "audit sink pass failed");
+                    backoff = (backoff * 2).clamp(IDLE * 2, MAX_BACKOFF);
+                }
+            }
+            tokio::time::sleep(backoff).await;
+        }
+    }))
+}
+
+/// One turn at the lock: ship until caught up, a delivery fails, or the
+/// turn is over. Returns whether a delivery failed.
+async fn turn(state: &AppState) -> AppResult<bool> {
+    let Some(lock) = leader::try_acquire(&state.redis, JOB_NAME, LOCK_TTL).await? else {
+        return Ok(false);
+    };
+    let started = tokio::time::Instant::now();
+    let outcome = async {
+        loop {
+            let pass = run_pass(state).await?;
+            if pass.failed {
+                return Ok(true);
+            }
+            if pass.shipped == 0 || started.elapsed() > TURN {
+                return Ok(false);
+            }
+        }
+    }
+    .await;
+    lock.release().await?;
+    outcome
+}
+
+/// Ship one batch of every chain that has rows waiting (up to
+/// [`CHAINS_PER_PASS`] chains). Callers hold the leader lock.
+pub async fn run_pass(state: &AppState) -> AppResult<Pass> {
+    let Some(sink) = state.audit_sink.as_ref() else {
+        return Ok(Pass::default());
+    };
+    ensure_started(state, sink).await?;
+    let mut tx = db::bypass_tx(&state.db).await?;
+    let pending = repos::audit_chains::pending(&mut *tx, CHAINS_PER_PASS).await?;
+    tx.commit().await?;
+    let mut pass = Pass::default();
+    for chain in pending {
+        let mut tx = db::bypass_tx(&state.db).await?;
+        let rows = repos::audit::chain_page(
+            &mut *tx,
+            chain.chain_id,
+            &AuditFilter::default(),
+            Some(chain.sink_seq),
+            BATCH as i64,
+        )
+        .await?;
+        tx.commit().await?;
+        let Some(last) = rows.last().map(|r| r.seq) else {
+            // Retention purged what was waiting; move past it.
+            let mut tx = db::bypass_tx(&state.db).await?;
+            let head = repos::audit_chains::state(&mut *tx, chain.chain_id)
+                .await?
+                .map(|s| s.head_seq);
+            if let Some(head) = head {
+                repos::audit_chains::advance_sink(&mut *tx, chain.chain_id, head).await?;
+            }
+            tx.commit().await?;
+            continue;
+        };
+        if let Err(err) = sink.deliver(&rows).await {
+            metrics::counter!("ridm_audit_sink_failures_total").increment(1);
+            tracing::warn!(error = %err, chain = %chain.chain_id, rows = rows.len(), "audit sink delivery failed; will retry");
+            pass.failed = true;
+            break;
+        }
+        let mut tx = db::bypass_tx(&state.db).await?;
+        repos::audit_chains::advance_sink(&mut *tx, chain.chain_id, last).await?;
+        tx.commit().await?;
+        metrics::counter!("ridm_audit_sink_rows_total").increment(rows.len() as u64);
+        pass.shipped += rows.len();
+    }
+    let mut tx = db::bypass_tx(&state.db).await?;
+    let lag = repos::audit_chains::sink_lag(&mut *tx).await?;
+    tx.commit().await?;
+    metrics::gauge!("ridm_audit_sink_lag_rows").set(lag as f64);
+    Ok(pass)
+}
+
+/// A destination seen for the first time starts at the current heads.
+async fn ensure_started(state: &AppState, sink: &AuditSink) -> AppResult<()> {
+    let mut tx = db::bypass_tx(&state.db).await?;
+    if repos::audit_chains::sink_target(&mut *tx).await?.as_deref() != Some(sink.id()) {
+        repos::audit_chains::start_sink(&mut *tx, sink.id()).await?;
+        tracing::info!(
+            sink = sink.id(),
+            "audit sink starts at the current chain heads"
+        );
+    }
+    tx.commit().await?;
+    Ok(())
+}

@@ -41,6 +41,9 @@ export function needsReauth(error: unknown): boolean {
 export function AccountProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const restore = async () => {
+      // Arriving from an impersonation ticket: whoever this tab was signed
+      // in as before, it signs in again through the new session.
+      if (new URLSearchParams(window.location.search).get("impersonate") === "1") accountAuth.clearSession();
       const s = accountAuth.loadSession();
       if (s) {
         accountStore.set(s);

@@ -61,6 +61,16 @@
             }
           },
           {
+            "name": "impersonator_id",
+            "in": "query",
+            "description": "Rows an administrator caused while impersonating someone.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
             "name": "user_id",
             "in": "query",
             "required": false,
@@ -192,6 +202,16 @@
           {
             "name": "subject_id",
             "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "impersonator_id",
+            "in": "query",
+            "description": "Rows an administrator caused while impersonating someone.",
             "required": false,
             "schema": {
               "type": "string",
@@ -949,7 +969,7 @@
         "tags": [
           "audit"
         ],
-        "summary": "`?from=&to=&name=&actor_id=&subject_id=&user_id=&cursor=&limit=`; `name`\nmatches exactly, or as a prefix when it ends with `.` or `*`.",
+        "summary": "`?from=&to=&name=&actor_id=&subject_id=&impersonator_id=&user_id=&cursor=&limit=`; `name`\nmatches exactly, or as a prefix when it ends with `.` or `*`.",
         "operationId": "audit_list",
         "parameters": [
           {
@@ -999,6 +1019,16 @@
           {
             "name": "subject_id",
             "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "impersonator_id",
+            "in": "query",
+            "description": "Rows an administrator caused while impersonating someone.",
             "required": false,
             "schema": {
               "type": "string",
@@ -1147,6 +1177,16 @@
           {
             "name": "subject_id",
             "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "impersonator_id",
+            "in": "query",
+            "description": "Rows an administrator caused while impersonating someone.",
             "required": false,
             "schema": {
               "type": "string",
@@ -12883,6 +12923,16 @@
             }
           },
           {
+            "name": "impersonator_id",
+            "in": "query",
+            "description": "Rows an administrator caused while impersonating someone.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
             "name": "user_id",
             "in": "query",
             "required": false,
@@ -14084,6 +14134,112 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/users/{user}/impersonate": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Sign in as the user: a one-time URL that opens a session as them in the\nbrowser that follows it. The tenant must allow impersonation, the user\nmust be active and hold no admin permission, and every token from the\nsession names the caller in `act`.",
+        "operationId": "users_impersonate",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImpersonateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImpersonationTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No reason, or the caller themselves",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing, impersonation off, or the user is an administrator",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The user is not active",
             "content": {
               "application/json": {
                 "schema": {
@@ -18600,6 +18756,24 @@
           }
         }
       },
+      "AccountImpersonation": {
+        "type": "object",
+        "required": [
+          "impersonator",
+          "expires_at"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the session ends by itself."
+          },
+          "impersonator": {
+            "type": "string",
+            "description": "The administrator's username (in their own tenant)."
+          }
+        }
+      },
       "AccountMe": {
         "type": "object",
         "required": [
@@ -18645,6 +18819,17 @@
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "impersonation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AccountImpersonation",
+                "description": "Set when an administrator opened this session as the user. Changes\nto credentials, consent and the account's existence are refused."
+              }
+            ]
           },
           "phone": {
             "type": [
@@ -18762,6 +18947,13 @@
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "impersonated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The administrator (their username) who opened this session as the\nuser. The session's address and browser are theirs, so neither is\nshown."
           },
           "ip": {
             "type": [
@@ -19032,6 +19224,14 @@
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "impersonator_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The administrator behind the event, when it happened in a session\nthey opened as a user (impersonation)."
           },
           "ip": {
             "type": [
@@ -20407,6 +20607,36 @@
           "access_token"
         ]
       },
+      "FeatureFlag": {
+        "type": "object",
+        "description": "One feature flag. Stored documents from before descriptions and\norganizations existed held a bare `true`/`false`, which still loads.",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the flag switches, for the people who toggle it."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "The tenant-wide value."
+          },
+          "organizations": {
+            "type": "object",
+            "description": "Values for particular organizations, by organization slug; they win\nover `enabled` for users signed in to that organization.",
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "FieldChange": {
         "type": "object",
         "required": [
@@ -21127,6 +21357,76 @@
           }
         },
         "additionalProperties": false
+      },
+      "ImpersonateBody": {
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Why: recorded with every audit event of the impersonation (1–500\ncharacters)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ImpersonationPolicy": {
+        "type": "object",
+        "description": "Whether administrators holding `ridm:users:impersonate` may sign in as\nthis tenant's users, and for how long at a time.",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "max_minutes": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The longest an impersonated session lives, in minutes (1–480). It\nnever outlives the tenant's absolute session timeout either.",
+            "default": 60,
+            "minimum": 0
+          }
+        }
+      },
+      "ImpersonationTicket": {
+        "type": "object",
+        "required": [
+          "url",
+          "expires_at"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "url": {
+            "type": "string",
+            "description": "Open this in a browser to become the user there. It works once, and\nonly until `expires_at`."
+          }
+        }
+      },
+      "Impersonator": {
+        "type": "object",
+        "description": "The administrator behind an impersonated session.",
+        "required": [
+          "user_id",
+          "tenant_id",
+          "username"
+        ],
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The administrator's own tenant (`master` for a global administrator)."
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
       },
       "ImportError": {
         "type": "object",
@@ -23235,6 +23535,14 @@
                   "type": "string",
                   "format": "uuid"
                 },
+                "impersonator_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uuid",
+                  "description": "The administrator behind the event, when it happened in a session\nthey opened as a user (impersonation)."
+                },
                 "ip": {
                   "type": [
                     "string",
@@ -25073,6 +25381,41 @@
           "B4096"
         ]
       },
+      "ScheduledVerification": {
+        "type": "object",
+        "description": "What the `audit_verify` job last established about a chain.",
+        "properties": {
+          "broken_at_seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Where the job found the chain broken, while it stays broken."
+          },
+          "broken_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verified_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "verified_seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The chain is intact up to here."
+          }
+        }
+      },
       "ScimToken": {
         "type": "object",
         "description": "A bearer token a provisioning system uses against `/scim/v2/{tenant}`.",
@@ -25633,6 +25976,17 @@
             "format": "date-time",
             "description": "Sliding end of life."
           },
+          "impersonator": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Impersonator",
+                "description": "The administrator who opened this session as the user\n(impersonation); the source of the `act` claim."
+              }
+            ]
+          },
           "ip": {
             "type": [
               "string",
@@ -26155,13 +26509,25 @@
           },
           "features": {
             "type": "object",
-            "description": "Feature flags: free-form keys the deployment or its clients consult.",
+            "description": "Feature flags: switches the deployment and its applications consult,\neach on or off for the tenant and optionally per organization. An\napplication reads the ones that are on through the `features` scope.",
             "default": {},
             "additionalProperties": {
-              "type": "boolean"
+              "$ref": "#/components/schemas/FeatureFlag"
             },
             "propertyNames": {
               "type": "string"
+            }
+          },
+          "impersonation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ImpersonationPolicy",
+                "description": "Administrators signing in as users (Phase 12.4), off until enabled."
+              }
+            ],
+            "default": {
+              "enabled": false,
+              "max_minutes": 60
             }
           },
           "keys": {
@@ -26885,6 +27251,13 @@
             ],
             "format": "int64"
           },
+          "last_hash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Hash of the newest row checked (lowercase hex): keep it, and a later\n`ridm audit verify --head` proves an export still ends where it did."
+          },
           "last_seq": {
             "type": [
               "integer",
@@ -26896,6 +27269,17 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "scheduled": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScheduledVerification",
+                "description": "The daily verification job's progress on this chain."
+              }
             ]
           },
           "valid": {

@@ -5,9 +5,12 @@
 //! Reads need `ridm:users:read`, writes `ridm:users:write`. Handing out a
 //! role or a group membership is additionally checked against the caller's
 //! own admin permissions so nobody can grant what they do not hold.
+//! Signing in as a user needs `ridm:users:impersonate`.
 
 use axum::body::Body;
-use axum::extract::{DefaultBodyLimit, Path, Query, State};
+use std::net::SocketAddr;
+
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, State};
 use axum::http::StatusCode;
 use axum::http::header::{self, HeaderMap};
 use axum::response::{IntoResponse, Response};
@@ -21,6 +24,7 @@ use zeroize::Zeroizing;
 
 use crate::db;
 use crate::error::{AppError, AppResult};
+use crate::middleware::client_ip;
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
 use crate::models::{
     Consent, Credential, Group, LinkedIdentity, NewUser, PersonalAccessToken, Principal, Role,
@@ -31,8 +35,10 @@ use crate::routes::admin::AuditFilterQuery;
 use crate::services::admin_access::{self, Grant};
 use crate::services::bulk_users::{self, ExportFormat, ImportReport};
 use crate::services::password::{self, SetPasswordOptions};
-use crate::services::sessions::{self, SsoSession};
-use crate::services::{broker, consents, groups, logout, roles, trusted_devices, users};
+use crate::services::sessions::{self, Impersonator, SsoSession};
+use crate::services::{
+    broker, consents, groups, impersonation, logout, roles, trusted_devices, users,
+};
 use crate::state::AppState;
 use crate::util::cursor::Page;
 
@@ -47,6 +53,7 @@ pub fn users_router() -> OpenApiRouter<AppState> {
         .routes(routes!(force_password_change))
         .routes(routes!(unlock))
         .routes(routes!(list_sessions, revoke_sessions))
+        .routes(routes!(impersonate))
         .routes(routes!(revoke_session))
         .routes(routes!(credentials))
         .routes(routes!(delete_credential))
@@ -67,6 +74,7 @@ pub fn users_router() -> OpenApiRouter<AppState> {
 
 const P_READ: &str = "ridm:users:read";
 const P_WRITE: &str = "ridm:users:write";
+const P_IMPERSONATE: &str = "ridm:users:impersonate";
 /// Bulk import is an invitation-side power in the catalogue; creating users
 /// with credentials also needs the users permission.
 const P_IMPORT: &str = "ridm:invitations:write";
@@ -510,6 +518,63 @@ async fn revoke_session(
     }
     logout::end_session(&state, &tenant, session_id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// --- impersonation ----------------------------------------------------------
+
+#[derive(Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+struct ImpersonateBody {
+    /// Why: recorded with every audit event of the impersonation (1–500
+    /// characters).
+    reason: String,
+}
+
+#[derive(Serialize, utoipa::ToSchema)]
+struct ImpersonationTicket {
+    /// Open this in a browser to become the user there. It works once, and
+    /// only until `expires_at`.
+    url: String,
+    expires_at: DateTime<Utc>,
+}
+
+/// Sign in as the user: a one-time URL that opens a session as them in the
+/// browser that follows it. The tenant must allow impersonation, the user
+/// must be active and hold no admin permission, and every token from the
+/// session names the caller in `act`.
+#[utoipa::path(post, path = "/admin/tenants/{slug}/users/{user}/impersonate", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), request_body = ImpersonateBody, responses((status = 200, body = ImpersonationTicket), (status = 400, description = "No reason, or the caller themselves", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing, impersonation off, or the user is an administrator", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 409, description = "The user is not active", body = crate::error::Problem)), security(("bearer" = [])))]
+async fn impersonate(
+    State(state): State<AppState>,
+    admin: AdminCtx,
+    AdminTenantPath(tenant): AdminTenantPath,
+    Path(UserPath { user }): Path<UserPath>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<ImpersonateBody>,
+) -> AppResult<Json<ImpersonationTicket>> {
+    admin.require(tenant.id, P_IMPERSONATE)?;
+    let ip = client_ip(&state, &headers, Some(peer));
+    let user_agent = headers
+        .get(header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let issued = impersonation::request(
+        &state,
+        &tenant,
+        user,
+        Impersonator {
+            user_id: admin.user_id,
+            tenant_id: admin.tenant.id,
+            username: admin.username.clone(),
+        },
+        &body.reason,
+        (ip, user_agent),
+    )
+    .await?;
+    Ok(Json(ImpersonationTicket {
+        url: issued.url,
+        expires_at: issued.expires_at,
+    }))
 }
 
 // --- credentials and devices ------------------------------------------------

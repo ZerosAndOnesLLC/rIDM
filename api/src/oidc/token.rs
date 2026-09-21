@@ -517,6 +517,7 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
                     acr: i.acr.as_deref(),
                     access_token: Some(&at.token),
                     code: None,
+                    act: i.act.clone(),
                 },
             )
             .await?
@@ -526,12 +527,17 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
     };
 
     let refresh = if i.issue_refresh && i.client.allows_grant(grants::REFRESH_TOKEN) {
-        let ttl = Duration::seconds(
+        let mut ttl = Duration::seconds(
             i.client
                 .refresh_token_ttl_secs
                 .map(|s| s.max(1) as i64)
                 .unwrap_or(i.tenant.settings.session.refresh_token_ttl_secs as i64),
         );
+        // A family never outlives the instant its tokens must stop by (an
+        // impersonated session's end), `offline_access` or not.
+        if let Some(until) = i.not_after {
+            ttl = ttl.min(until - Utc::now()).max(Duration::seconds(1));
+        }
         let issued = refresh_tokens::issue(
             state,
             i.tenant.id,
@@ -546,6 +552,7 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
                 amr: &i.amr,
                 acr: i.acr.as_deref(),
                 org_id: i.org_id,
+                act: i.act.as_ref(),
                 // Public clients' refresh tokens are bound to the proof key
                 // (RFC 9449 §5); confidential clients are bound by their credentials.
                 dpop_jkt: if i.client.is_public() {
@@ -600,6 +607,18 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
         id_token,
         scope: Some(i.scopes.join(" ")),
     })
+}
+
+/// The grant being redeemed came from an impersonated session: whatever this
+/// request records, it records for the administrator `act` names.
+fn mark_acting(act: &serde_json::Value) {
+    if let Some(id) = act
+        .get("sub")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|s| Uuid::parse_str(s).ok())
+    {
+        ridm_core::events::acting::set(id);
+    }
 }
 
 /// What one authorization code produced, kept for ten minutes so a replay of
@@ -703,6 +722,9 @@ async fn authorization_code(
         ));
     }
 
+    if let Some(acting) = &record.acting {
+        mark_acting(&acting.act);
+    }
     let subject = load_subject(state, tenant.id, record.user_id, record.org_id).await?;
     let role_ids: Vec<Uuid> = subject.roles.iter().map(|r| r.id).collect();
     let extra = parse_resources(params)?;
@@ -741,8 +763,8 @@ async fn authorization_code(
             issue_refresh: true,
             code_for_hash: Some(code_hash(code)),
             dpop_jkt,
-            act: None,
-            not_after: None,
+            act: record.acting.as_ref().map(|a| a.act.clone()),
+            not_after: record.acting.as_ref().map(|a| a.until),
         },
     )
     .await
@@ -775,6 +797,9 @@ async fn device_code(
             Some(Poll::Expired) => return Err(OAuthError::code(OAuthErrorCode::ExpiredToken)),
             Some(Poll::Approved(record, approval)) => (record, approval),
         };
+    if let Some(acting) = &approval.acting {
+        mark_acting(&acting.act);
+    }
     let subject = load_subject(state, tenant.id, approval.user_id, approval.org_id).await?;
     let role_ids: Vec<Uuid> = subject.roles.iter().map(|r| r.id).collect();
     let extra = parse_resources(params)?;
@@ -802,8 +827,8 @@ async fn device_code(
             issue_refresh: true,
             code_for_hash: None,
             dpop_jkt,
-            act: None,
-            not_after: None,
+            act: approval.acting.as_ref().map(|a| a.act.clone()),
+            not_after: approval.acting.as_ref().map(|a| a.until),
         },
     )
     .await
@@ -835,6 +860,9 @@ async fn refresh_token(
         requested_scopes.as_deref(),
     )
     .await?;
+    if let Some(act) = &rotated.record.act {
+        mark_acting(act);
+    }
     let scopes: Vec<String> = requested_scopes.unwrap_or_else(|| rotated.record.scopes.clone());
     let subject = match rotated.record.user_id {
         Some(uid) => Some(load_subject(state, tenant.id, uid, rotated.record.org_id).await?),
@@ -872,8 +900,13 @@ async fn refresh_token(
             issue_refresh: false,
             code_for_hash: None,
             dpop_jkt,
-            act: None,
-            not_after: None,
+            // An impersonated family stops when its session would have.
+            not_after: rotated
+                .record
+                .act
+                .as_ref()
+                .map(|_| rotated.record.expires_at),
+            act: rotated.record.act.clone(),
         },
     )
     .await?;

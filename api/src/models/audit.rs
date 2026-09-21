@@ -20,6 +20,9 @@ pub struct AuditEvent {
     pub actor_id: Option<Uuid>,
     /// The main entity the event is about (user, client, role, ...), when it has one.
     pub subject_id: Option<Uuid>,
+    /// The administrator behind the event, when it happened in a session
+    /// they opened as a user (impersonation).
+    pub impersonator_id: Option<Uuid>,
     pub ip: Option<String>,
     pub user_agent: Option<String>,
     /// The event's `kind` document (`type` plus its fields).
@@ -82,7 +85,9 @@ pub struct AuditFilter {
     pub name: Option<String>,
     pub actor_id: Option<Uuid>,
     pub subject_id: Option<Uuid>,
-    /// Rows where the user is the actor or the subject.
+    /// Rows an administrator caused while impersonating someone.
+    pub impersonator_id: Option<Uuid>,
+    /// Rows where the user is the actor, the subject or the impersonator.
     pub user_id: Option<Uuid>,
 }
 

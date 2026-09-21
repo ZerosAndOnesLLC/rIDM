@@ -201,6 +201,7 @@ fn body_for(op: &Operation) -> Option<Value> {
             json!({"name": format!("m-{}", &Uuid::new_v4().simple().to_string()[..8])})
         }
         (_, "create_permission") => json!({"name": "m:read"}),
+        (_, "impersonate") => json!({"reason": "matrix"}),
         _ => json!({}),
     })
 }

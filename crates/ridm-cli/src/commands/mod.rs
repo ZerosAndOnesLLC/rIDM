@@ -1,3 +1,4 @@
+pub mod audit;
 #[cfg(feature = "bootstrap")]
 pub mod bootstrap;
 pub mod clients;

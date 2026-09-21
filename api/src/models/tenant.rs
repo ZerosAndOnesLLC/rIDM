@@ -63,12 +63,17 @@ pub struct TenantSettings {
     pub audit: crate::models::AuditPolicy,
     /// What users may do to their own account from the account console.
     pub account: AccountPolicy,
+    /// Administrators signing in as users (Phase 12.4), off until enabled.
+    pub impersonation: ImpersonationPolicy,
     /// Request ceilings on the OAuth and sign-in endpoints.
     pub rate_limits: RateLimitPolicy,
     /// Custom issuer host (Phase 9.3). `None` means `{PUBLIC_URL}/t/{slug}`.
     pub custom_domain: Option<String>,
-    /// Feature flags: free-form keys the deployment or its clients consult.
-    pub features: std::collections::BTreeMap<String, bool>,
+    /// Feature flags: switches the deployment and its applications consult,
+    /// each on or off for the tenant and optionally per organization. An
+    /// application reads the ones that are on through the `features` scope.
+    #[schema(value_type = std::collections::BTreeMap<String, FeatureFlag>)]
+    pub features: std::collections::BTreeMap<String, FeatureFlag>,
 }
 
 /// Self-service rights of the account console.
@@ -94,6 +99,76 @@ impl Default for AccountPolicy {
             deletion_retention_days: 30,
             personal_tokens: true,
             personal_token_max_days: 365,
+        }
+    }
+}
+
+/// One feature flag. Stored documents from before descriptions and
+/// organizations existed held a bare `true`/`false`, which still loads.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, utoipa::ToSchema)]
+pub struct FeatureFlag {
+    /// The tenant-wide value.
+    pub enabled: bool,
+    /// What the flag switches, for the people who toggle it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Values for particular organizations, by organization slug; they win
+    /// over `enabled` for users signed in to that organization.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub organizations: std::collections::BTreeMap<String, bool>,
+}
+
+impl<'de> Deserialize<'de> for FeatureFlag {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Full {
+            enabled: bool,
+            #[serde(default)]
+            description: Option<String>,
+            #[serde(default)]
+            organizations: std::collections::BTreeMap<String, bool>,
+        }
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Stored {
+            Bare(bool),
+            Full(Full),
+        }
+        Ok(match Stored::deserialize(d)? {
+            Stored::Bare(enabled) => Self {
+                enabled,
+                ..Self::default()
+            },
+            Stored::Full(f) => Self {
+                enabled: f.enabled,
+                description: f.description,
+                organizations: f.organizations,
+            },
+        })
+    }
+}
+
+/// Whether administrators holding `ridm:users:impersonate` may sign in as
+/// this tenant's users, and for how long at a time.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(default)]
+pub struct ImpersonationPolicy {
+    pub enabled: bool,
+    /// The longest an impersonated session lives, in minutes (1–480). It
+    /// never outlives the tenant's absolute session timeout either.
+    pub max_minutes: u32,
+}
+
+impl ImpersonationPolicy {
+    pub const MAX_MINUTES: u32 = 480;
+}
+
+impl Default for ImpersonationPolicy {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_minutes: 60,
         }
     }
 }

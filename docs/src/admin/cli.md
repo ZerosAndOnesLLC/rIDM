@@ -197,6 +197,19 @@ otherwise `diff --exit-code` exits `3` when the plan is not empty. The document 
 Both master-key commands need a global administrator. See
 [Rotating keys](key-rotation.md).
 
+### audit
+
+| Command | Flags | API call |
+|---------|-------|----------|
+| `ridm audit verify` | `--head HEX` the hash the chain must end on; `--global` the global chain | `GET /admin/tenants/{slug}/audit/verify` (or `/admin/audit/verify`) |
+| `ridm audit verify -f FILE` | `--head HEX`; `--after HEX` the hash the first row must follow; `-` reads stdin | none: the file is checked here, trusting nothing else |
+| `ridm audit export` | `-o, --out FILE` (default: stdout); `--format json\|csv`; `--from`, `--to` RFC 3339 bounds; `--global` | `GET /admin/tenants/{slug}/audit/export`, streamed to disk |
+
+`verify` prints `Intact: N rows (seq A–B), ending on <hash>` and exits `0`, or names the
+first row that doesn't hash or link and exits `1`. Keep the hash: passing it as `--head`
+later proves the chain was not cut off or rewritten since. See
+[Checking an export yourself](webhooks-audit.md#checking-an-export-yourself).
+
 ### user
 
 | Command | Flags | API call |

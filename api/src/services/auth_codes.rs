@@ -36,6 +36,9 @@ pub struct AuthCode {
     /// Organization the session acts in, so the exchanged tokens name it.
     #[serde(default)]
     pub org_id: Option<Uuid>,
+    /// The administrator behind an impersonated session, for `act`.
+    #[serde(default)]
+    pub acting: Option<crate::services::impersonation::Acting>,
     /// The `claims` request parameter, verbatim (OIDC Core §5.5).
     pub claims: Option<serde_json::Value>,
     pub issued_at: DateTime<Utc>,

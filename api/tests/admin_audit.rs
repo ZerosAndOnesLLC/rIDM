@@ -410,3 +410,91 @@ async fn a_command_records_what_it_published_before_it_exits() {
     assert_eq!(recorder.flush(&state).await, 0);
     assert_eq!(recorded().await, 1);
 }
+
+/// Rows of the app's tenant chain, once the writer has caught up to `n`.
+async fn chain_rows(app: &TestApp, n: i64) -> Vec<(i64, Uuid)> {
+    for _ in 0..200 {
+        let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+        let rows: Vec<(i64, Uuid)> =
+            sqlx::query_as("SELECT seq, id FROM audit_events WHERE tenant_id = $1 ORDER BY seq")
+                .bind(app.tenant.id)
+                .fetch_all(&mut *tx)
+                .await
+                .unwrap();
+        tx.commit().await.unwrap();
+        if rows.len() as i64 >= n {
+            return rows;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("the audit writer did not reach {n} rows");
+}
+
+fn tamper(id: Uuid) -> sqlx::query::Query<'static, sqlx::Postgres, sqlx::postgres::PgArguments> {
+    sqlx::query("UPDATE audit_events SET payload = payload || '{\"tampered\": true}' WHERE id = $1")
+        .bind(id)
+}
+
+#[tokio::test]
+async fn the_scheduled_check_resumes_from_its_checkpoint_and_reports_a_break_once() {
+    let app = TestApp::spawn().await;
+    let tid = app.tenant.id;
+    let t = admin_token(&app, tid, OWNER_ROLE).await;
+    let base = format!("/admin/tenants/{}/audit", app.tenant.slug);
+    // Wait until the writer has recorded everything the setup published.
+    let mut rows = chain_rows(&app, 2).await;
+    loop {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let now = chain_rows(&app, 2).await;
+        if now.len() == rows.len() {
+            break;
+        }
+        rows = now;
+    }
+
+    // First pass walks the whole chain and leaves a checkpoint.
+    let first = audit::verify_chain(&app.state, Some(tid)).await.unwrap();
+    assert!(first.checked >= rows.len() as u64, "{first:?}");
+    assert_eq!(first.broken_at_seq, None);
+    let (_, report, _) = get_json(&app, &format!("{base}/verify"), Some(&t)).await;
+    assert_eq!(
+        report["scheduled"]["verified_seq"].as_i64(),
+        report["last_seq"].as_i64(),
+        "{report}"
+    );
+
+    // Nothing new: the next pass only rechecks the checkpoint row.
+    let again = audit::verify_chain(&app.state, Some(tid)).await.unwrap();
+    assert_eq!(again.checked, 0, "{again:?}");
+
+    // New rows are walked from the checkpoint on.
+    user_with_role(&app, tid, None).await;
+    let grown = chain_rows(&app, rows.len() as i64 + 1).await;
+    let next = audit::verify_chain(&app.state, Some(tid)).await.unwrap();
+    assert_eq!(next.checked, (grown.len() - rows.len()) as u64, "{next:?}");
+
+    // A rewrite behind the checkpoint that reaches the checkpoint row is
+    // caught, reported once, and shows on the verify endpoint.
+    let (last_seq, last_id) = *grown.last().unwrap();
+    let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+    tamper(last_id).execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
+    let broken = audit::verify_chain(&app.state, Some(tid)).await.unwrap();
+    assert_eq!(broken.broken_at_seq, Some(last_seq));
+    let announced = wait_for(&app, &format!("{base}?name=audit.chain_broken"), &t, |p| {
+        !p["items"].as_array().unwrap().is_empty()
+    })
+    .await;
+    assert_eq!(announced["items"][0]["payload"]["seq"], last_seq);
+    assert_eq!(announced["items"][0]["actor_type"], "system");
+    let (_, report, _) = get_json(&app, &format!("{base}/verify"), Some(&t)).await;
+    assert_eq!(report["valid"], false);
+    assert_eq!(report["scheduled"]["broken_at_seq"], last_seq, "{report}");
+
+    // Still broken on the next pass, but not announced again.
+    let still = audit::verify_chain(&app.state, Some(tid)).await.unwrap();
+    assert_eq!(still.broken_at_seq, Some(last_seq));
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let (_, page, _) = get_json(&app, &format!("{base}?name=audit.chain_broken"), Some(&t)).await;
+    assert_eq!(page["items"].as_array().unwrap().len(), 1);
+}

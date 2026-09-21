@@ -93,6 +93,35 @@ impl Api {
     pub async fn delete(&self, path: &str) -> Result<Value> {
         self.send(Method::DELETE, path, &[], None).await
     }
+
+    /// GET a download and stream it into `out` as it arrives, however large.
+    /// Returns the bytes written.
+    pub async fn download(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+        out: &mut impl std::io::Write,
+    ) -> Result<u64> {
+        let url = self.url(path, query)?;
+        let mut res = self
+            .http
+            .get(url.clone())
+            .header(AUTHORIZATION, format!("Bearer {}", self.bearer))
+            .send()
+            .await?;
+        let status = res.status();
+        if !status.is_success() {
+            let text = res.text().await?;
+            return Err(problem(&Method::GET, &url, status, &text).into());
+        }
+        let mut written = 0u64;
+        while let Some(chunk) = res.chunk().await? {
+            out.write_all(&chunk)?;
+            written += chunk.len() as u64;
+        }
+        out.flush()?;
+        Ok(written)
+    }
 }
 
 /// Turn a refusal into an [`ApiError`], reading the RFC 9457 document when the

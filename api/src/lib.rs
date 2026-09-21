@@ -80,6 +80,7 @@ fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
         .merge(routes::verification::router())
         .merge(routes::recovery::router());
     let oauth_tokens = Router::new()
+        .merge(routes::features::router())
         .merge(oidc::token::router())
         .merge(oidc::device::router())
         .merge(oidc::userinfo::router())
@@ -100,6 +101,11 @@ fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
         .merge(limited(flows, Category::Flows, Style::Problem))
         .merge(limited(
             routes::broker::router(),
+            Category::Flows,
+            Style::Html,
+        ))
+        .merge(limited(
+            routes::impersonation::router(),
             Category::Flows,
             Style::Html,
         ))
@@ -131,6 +137,7 @@ fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
         .layer(axum::middleware::from_fn(
             middleware::http_metrics::http_metrics,
         ))
+        .layer(axum::middleware::from_fn(middleware::acting::acting_scope))
         .layer(telemetry::http_trace_layer())
         .with_state(state)
 }

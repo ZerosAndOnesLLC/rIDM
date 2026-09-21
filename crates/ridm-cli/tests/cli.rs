@@ -806,3 +806,84 @@ async fn bootstrap_mints_a_token_the_rest_of_the_cli_accepts() {
     assert_eq!(run.code, 2, "{run:?}");
     assert!(run.stderr.contains("configuration error"), "{run:?}");
 }
+
+#[tokio::test]
+async fn an_audit_export_is_verified_offline_and_tampering_is_caught() {
+    let app = TestApp::spawn().await;
+    let cli = owner_cli(&app).await;
+    // Setting the CLI up created a user and granted a role: rows to check.
+    let mut report = Value::Null;
+    for _ in 0..100 {
+        report = cli
+            .run(&["audit", "verify", "--output", "json"])
+            .await
+            .ok()
+            .json();
+        if report["checked"].as_u64().unwrap_or(0) >= 2 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    let head = report["last_hash"].as_str().expect("a head").to_string();
+
+    let file = cli.file("chain.json");
+    let path = file.to_str().unwrap();
+    let wrote = cli.run(&["audit", "export", "-o", path]).await.ok();
+    assert!(wrote.stderr.contains("Wrote"), "{wrote:?}");
+    let checked = cli
+        .run(&["audit", "verify", "-f", path, "--head", &head])
+        .await
+        .ok();
+    assert!(checked.stdout.starts_with("Intact:"), "{checked:?}");
+    assert!(checked.stdout.contains(&head), "{checked:?}");
+
+    // A head from elsewhere, a predecessor that is not there: refused.
+    let wrong = "ab".repeat(32);
+    let run = cli
+        .run(&["audit", "verify", "-f", path, "--head", &wrong])
+        .await;
+    assert_ne!(run.code, 0, "{run:?}");
+    let run = cli
+        .run(&["audit", "verify", "-f", path, "--after", &wrong])
+        .await;
+    assert_ne!(run.code, 0, "{run:?}");
+
+    // One changed payload in the file breaks it at that row.
+    let mut rows: Vec<Value> =
+        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let seq = rows[1]["seq"].as_i64().unwrap();
+    rows[1]["payload"]["tampered"] = json!(true);
+    let bad = cli.file("tampered.json");
+    std::fs::write(&bad, serde_json::to_string(&rows).unwrap()).unwrap();
+    let run = cli
+        .run(&["audit", "verify", "-f", bad.to_str().unwrap()])
+        .await;
+    assert_ne!(run.code, 0, "{run:?}");
+    assert!(
+        run.stderr.contains(&format!("broken at seq {seq}")),
+        "{run:?}"
+    );
+
+    // A row dropped from the middle is a gap.
+    rows.remove(1);
+    std::fs::write(&bad, serde_json::to_string(&rows).unwrap()).unwrap();
+    let run = cli
+        .run(&["audit", "verify", "-f", bad.to_str().unwrap()])
+        .await;
+    assert!(run.stderr.contains("gap"), "{run:?}");
+
+    // The server's own copy, rewritten, fails the server-side check too.
+    let mut tx = ridm_api::db::bypass_tx(&app.state.db).await.unwrap();
+    sqlx::query(
+        "UPDATE audit_events SET payload = payload || '{\"tampered\": true}' \
+         WHERE tenant_id = $1 AND seq = 1",
+    )
+    .bind(app.tenant.id)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    let run = cli.run(&["audit", "verify"]).await;
+    assert_ne!(run.code, 0, "{run:?}");
+    assert!(run.stderr.contains("broken at seq 1"), "{run:?}");
+}

@@ -33,6 +33,7 @@ Access tokens are JWTs unless the client is registered with `access_token_format
 | `jti` | always | a UUIDv7; revocation denylists it until `exp` |
 | `tid` | always | the tenant's UUID. A relying party serving several tenants of one deployment keys on it |
 | `org_id` | the sign-in acts in an organization | the organization's UUID (see [Organizations](../concepts/organizations.md)). It comes from the session, so the same user signing in to another organization gets another value; no mapper can write it |
+| `features` | the `features` scope was granted | the tenant's [feature flags](../admin/feature-flags.md) that are on for the sign-in's organization, sorted (`[]` when none); no mapper can write it |
 | `scope` | always | the granted scopes, space-separated (see [Scopes in the token](#scopes-in-the-token)) |
 | `roles` | a user subject | names of the user's effective roles: direct, inherited through groups and their ancestors, and expanded composites; a `roles` claim mapper replaces it |
 | `groups` | a user subject | names (not paths) of the user's groups, including ancestor groups; a `groups` claim mapper replaces it |
@@ -42,7 +43,7 @@ Access tokens are JWTs unless the client is registered with `access_token_format
 | `amr` | the token came from an authentication | authentication methods (below) |
 | `acr` | the session has a class | `urn:ridm:acr:single`, `urn:ridm:acr:mfa`, or the `*:mfa` class the client asked for |
 | `cnf` | a DPoP proof bound the token | `{"jkt": "<RFC 7638 thumbprint of the proof key>"}` (RFC 9449 §6.1) |
-| `act` | token exchange with an `actor_token` | `{"sub", "client_id"}` of the acting party, nesting any previous `act` (RFC 8693 §4.1) |
+| `act` | token exchange with an `actor_token`, or a sign-in an administrator opened as the user | token exchange: `{"sub", "client_id"}` of the acting party, nesting any previous `act` (RFC 8693 §4.1). [Impersonation](../admin/impersonation.md): `{"sub", "iss"}` of the administrator. The admin API refuses any token carrying it |
 | profile attributes | the attribute lists `access_token` in its `visible_in` and the user has a value | one claim per attribute, named after it (see [Profile attributes](#profile-attributes)) |
 
 A `client_credentials` token for a client with a service account is issued for that account's user, so it carries `roles`, `groups` and `permissions` like any user token. A token exchanged under RFC 8693 keeps the subject token's `sub`, `sid`, `amr` and `acr`, and never outlives it.
@@ -87,9 +88,11 @@ Issued from the token endpoint when the scope includes `openid` and there is a u
 | `auth_time` | always | when the user authenticated; a token minted from a refresh token repeats the original value (OIDC Core §12.2) |
 | `tid` | always | the tenant's UUID |
 | `org_id` | the sign-in acts in an organization | as in the access token |
+| `features` | the `features` scope was granted | as in the access token |
 | `nonce` | the authorization request had one | echoed |
 | `sid` | a browser session exists | the session's UUID, the value back- and front-channel logout name |
 | `amr`, `acr` | as in the access token | refresh-derived ID tokens repeat the original values |
+| `act` | an administrator opened the session as the user | as in the access token ([impersonation](../admin/impersonation.md)) |
 | `at_hash` | always (an access token is always issued alongside) | left half of the hash of the access token, using the hash of the signing algorithm (SHA-256 for `RS256`/`ES256`, SHA-384 for `RS384`, SHA-512 for `RS512` and `EdDSA`) |
 
 The claims released by the granted scopes (below) are **not** in the ID token by default: an access token is always issued with it, so they are read from `/userinfo` (OIDC Core §5.4). A client that wants them in the ID token as well sets `id_token_scope_claims`. Profile attributes listing `id_token` in `visible_in`, and claim mappers with `id` in `include_in`, add claims to the ID token either way.
@@ -111,6 +114,8 @@ Each scope releases the claims named in its `claims` list, which administrators 
 | `email` | `email`, `email_verified` |
 | `phone` | `phone_number`, `phone_number_verified` |
 | `address` | `address` |
+
+`features` is seeded with no `claims`: it adds the `features` claim to the access and ID tokens (above), not to userinfo.
 
 A claim name is resolved against the user as follows: `preferred_username` is the username, `email`/`email_verified` and `phone_number`/`phone_number_verified` come from the user's contact fields (only when the user has that address or number), `locale` and `updated_at` from the record, `address` from the profile attribute `address` when it is a JSON object. Any other name is a top-level user field of that name (`username`, `email`, `phone`, `locale`, …) or else the profile attribute of that name; `attributes.<name>` names the profile attribute explicitly. A claim with no value for the user is left out. Protected claims and `roles`, `groups` and `permissions` are never released this way. A custom scope with a `claims` list releases those claims the same way.
 

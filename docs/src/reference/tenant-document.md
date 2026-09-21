@@ -47,7 +47,7 @@ The document is configuration, not data or credentials. It never contains:
 - **Users** and everything attached to them: credentials, sessions, trusted devices, consents, personal access tokens, linked identities, role assignments to users and group memberships. Move users with the bulk user [import and export](../admin/users.md).
 - **Provider credentials**: the email and SMS delivery settings and the CAPTCHA provider, which hold secrets.
 - **Signing keys** (each tenant has its own), SCIM provisioning tokens, dynamic registration initial access tokens, invitations and the audit log.
-- **Built-in objects**: the `ridm-admin-console` and `ridm-account-console` clients, the built-in `ridm:*` roles, and the built-in resource servers `urn:ridm:admin` and `urn:ridm:account`. Exports leave them out, an import naming a built-in client is refused, and pruning never deletes them. The standard scopes (`openid`, `profile`, `email`, `phone`, `address`, `offline_access`) are exported so their descriptions can be tuned, but pruning never deletes them either.
+- **Built-in objects**: the `ridm-admin-console` and `ridm-account-console` clients, the built-in `ridm:*` roles, and the built-in resource servers `urn:ridm:admin` and `urn:ridm:account`. Exports leave them out, an import naming a built-in client is refused, and pruning never deletes them. The standard scopes (`openid`, `profile`, `email`, `phone`, `address`, `offline_access`, `features`) are exported so their descriptions can be tuned, but pruning never deletes them either.
 
 ## Sections
 
@@ -70,6 +70,7 @@ The tenant's status (active or disabled) is not part of the document.
 | `mfa` | `{"mode": "off"}`; also `optional`, `required`, `required_for_admins`, `{"mode": "required_for_roles", "roles": [...]}` |
 | `mfa_methods` | `totp` (`true`), `email_otp` (`false`), `sms_otp` (`false`) |
 | `risk` | `enabled` (`false`), `weights` (`new_device` 20, `new_country` 50, `impossible_travel` 60, `velocity` 40), `step_up_at` (50), `block_at` (100), `impossible_travel_kmh` (900), `velocity_window_minutes` (15), `velocity_max_failures` (10) |
+| `impersonation` | `enabled` (`false`), `max_minutes` (60, 1–480) |
 | `auth` | first-factor methods: `password` (`true`), `magic_link`, `email_otp`, `sms_otp`, `passkey` (all `false`) |
 | `registration` | `enabled` (`false`), `require_email_verification` (`true`), `require_terms` (`false`), `terms_url`, `privacy_url` (`null`), `allowed_email_domains` (`[]`, any). A leftover `captcha` key from older exports is ignored; the setting is `captcha.on_registration` |
 | `locale` | `default` (`"en"`), `supported` (`["en"]`) |
@@ -84,7 +85,7 @@ The tenant's status (active or disabled) is not part of the document.
 | `account` | `self_deletion` (`true`), `deletion_retention_days` (30), `personal_tokens` (`true`), `personal_token_max_days` (365, 0 = no limit) |
 | `rate_limits` | `enabled` (`true`), `window_secs` (60), `token_per_ip` (600), `token_per_client` (1200), `authorize_per_ip` (300), `flows_per_ip` (600), `tenant_total` (0, off) |
 | `custom_domain` | `null`, or a host name |
-| `features` | `{}`: free-form boolean flags |
+| `features` | `{}`: flag name to `{enabled, description, organizations}` (a bare boolean is accepted); see [Feature flags](../admin/feature-flags.md) |
 
 What each setting does is described in [Tenants and tenant settings](../admin/tenants.md).
 

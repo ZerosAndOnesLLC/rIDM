@@ -28,7 +28,7 @@ use crate::models::{
     TokenKind, User,
 };
 use crate::services::claims::{ClaimContext, apply_mappers, profile_claims, scope_claims};
-use crate::services::{jwe, keys, opaque_tokens, profile_schema, scopes};
+use crate::services::{features, jwe, keys, opaque_tokens, profile_schema, scopes};
 use crate::state::AppState;
 
 const MATERIAL_L1_TTL: Duration = Duration::from_secs(300);
@@ -204,6 +204,9 @@ pub struct IdTokenRequest<'a> {
     pub access_token: Option<&'a str>,
     /// Authorization code (for `c_hash`, hybrid-less: only when returned with a code).
     pub code: Option<&'a str>,
+    /// The administrator behind an impersonated sign-in (`act`), so a
+    /// relying party can tell from the ID token too.
+    pub act: Option<Value>,
 }
 
 pub struct IssuedToken {
@@ -303,7 +306,7 @@ pub async fn sign(
         .map_err(|e| AppError::Internal(format!("jwt sign: {e}")))
 }
 
-fn issuer(state: &AppState, tenant: &Tenant) -> String {
+pub fn issuer(state: &AppState, tenant: &Tenant) -> String {
     match &tenant.settings.custom_domain {
         Some(host) => format!("https://{host}"),
         None => state.config.issuer_for(&tenant.slug),
@@ -370,6 +373,10 @@ pub async fn issue_access_token(
     // same user in another organization gets another token.
     if let Some(org) = req.org_id {
         claims.insert("org_id".into(), json!(org));
+    }
+    if req.scopes.iter().any(|s| s == features::SCOPE) {
+        let on = features::enabled_for(state, req.tenant, req.org_id).await?;
+        claims.insert("features".into(), json!(on));
     }
     if req.user.is_some() {
         // A `roles` or `groups` mapper reshapes these (a client's roles only,
@@ -469,6 +476,10 @@ pub async fn issue_id_token(state: &AppState, req: IdTokenRequest<'_>) -> AppRes
     if let Some(org) = req.org_id {
         claims.insert("org_id".into(), json!(org));
     }
+    if req.scopes.iter().any(|s| s == features::SCOPE) {
+        let on = features::enabled_for(state, req.tenant, req.org_id).await?;
+        claims.insert("features".into(), json!(on));
+    }
     if let Some(n) = req.nonce {
         claims.insert("nonce".into(), json!(n));
     }
@@ -486,6 +497,9 @@ pub async fn issue_id_token(state: &AppState, req: IdTokenRequest<'_>) -> AppRes
     }
     if let Some(code) = req.code {
         claims.insert("c_hash".into(), json!(half_hash(key.alg, code)));
+    }
+    if let Some(act) = req.act {
+        claims.insert("act".into(), act);
     }
 
     let jws = sign(state, &key, "JWT", &claims).await?;

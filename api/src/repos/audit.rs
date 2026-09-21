@@ -9,11 +9,11 @@ use crate::models::{AuditEvent, AuditFilter};
 use crate::util::cursor::Cursor;
 
 const COLUMNS: &str = "id, tenant_id, seq, occurred_at, recorded_at, name, actor_type, actor_id, \
-    subject_id, ip, user_agent, payload, prev_hash, hash";
+    subject_id, impersonator_id, ip, user_agent, payload, prev_hash, hash";
 
 /// Nil uuid stands for the global chain.
 pub fn chain_id(tenant_id: Option<Uuid>) -> Uuid {
-    tenant_id.unwrap_or(Uuid::nil())
+    ridm_core::audit_chain::chain_id(tenant_id)
 }
 
 /// Serialize writers of one chain for the transaction.
@@ -41,8 +41,8 @@ pub async fn chain_head<'e>(
 pub async fn insert<'e>(exec: impl PgExecutor<'e>, row: &AuditEvent) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO audit_events (id, tenant_id, chain_id, seq, occurred_at, recorded_at, name, \
-         actor_type, actor_id, subject_id, ip, user_agent, payload, prev_hash, hash) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
+         actor_type, actor_id, subject_id, ip, user_agent, payload, prev_hash, hash, impersonator_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
     )
     .bind(row.id)
     .bind(row.tenant_id)
@@ -59,6 +59,7 @@ pub async fn insert<'e>(exec: impl PgExecutor<'e>, row: &AuditEvent) -> Result<(
     .bind(&row.payload)
     .bind(&row.prev_hash)
     .bind(&row.hash)
+    .bind(row.impersonator_id)
     .execute(exec)
     .await?;
     Ok(())
@@ -94,10 +95,15 @@ fn push_filters(qb: &mut QueryBuilder<sqlx::Postgres>, f: &AuditFilter) {
     if let Some(s) = f.subject_id {
         qb.push(" AND subject_id = ").push_bind(s);
     }
+    if let Some(i) = f.impersonator_id {
+        qb.push(" AND impersonator_id = ").push_bind(i);
+    }
     if let Some(u) = f.user_id {
         qb.push(" AND (actor_id = ")
             .push_bind(u)
             .push(" OR subject_id = ")
+            .push_bind(u)
+            .push(" OR impersonator_id = ")
             .push_bind(u)
             .push(")");
     }

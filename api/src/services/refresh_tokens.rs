@@ -35,6 +35,9 @@ pub struct IssueRequest<'a> {
     /// Organization the sign-in acted in, repeated by every token minted from
     /// this family.
     pub org_id: Option<Uuid>,
+    /// `act` of an impersonated sign-in, repeated by every token minted from
+    /// this family.
+    pub act: Option<&'a serde_json::Value>,
 }
 
 /// A freshly minted token: the secret is only ever returned here.
@@ -77,6 +80,7 @@ async fn insert_in(
         amr: req.amr.to_vec(),
         acr: req.acr.map(str::to_string),
         org_id: req.org_id,
+        act: req.act.cloned(),
         expires_at,
         dpop_jkt: req.dpop_jkt.map(str::to_string),
         consumed_at: None,
@@ -258,6 +262,7 @@ pub async fn rotate(
         amr: &current.amr,
         acr: current.acr.as_deref(),
         org_id: current.org_id,
+        act: current.act.as_ref(),
     };
     // The family keeps its absolute expiry (and its DPoP binding); rotation never extends it.
     let issued = insert_in(

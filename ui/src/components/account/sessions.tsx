@@ -68,6 +68,7 @@ export function Sessions() {
                 <p className="flex flex-wrap items-center gap-2 text-[0.9375rem] font-medium text-ink">
                   <span className="truncate">{s.user_agent ?? t("account.device_unnamed")}</span>
                   {s.current && <Badge tone="accent">{t("account.session_current")}</Badge>}
+                  {s.impersonated_by && <Badge>{t("account.session_impersonated", { name: s.impersonated_by })}</Badge>}
                 </p>
                 <p className="text-[0.8125rem] text-muted">
                   {t("account.session_signed_in", { when: when(s.auth_time) })}

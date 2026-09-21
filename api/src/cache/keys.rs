@@ -250,6 +250,18 @@ pub fn broker_link_ticket(tenant_id: Uuid, ticket_hash: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:broker:link:{ticket_hash}")
 }
 
+/// A one-time ticket that opens an impersonated session in the browser that
+/// presents it.
+pub fn impersonation_ticket(tenant_id: Uuid, ticket_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:impersonate:{ticket_hash}")
+}
+
+/// The browser's own session an impersonated session replaced, put back
+/// when the impersonation ends.
+pub fn impersonation_restore(tenant_id: Uuid, session_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:session:{session_id}:restore")
+}
+
 /// An upstream provider's JWK set.
 pub fn idp_jwks(tenant_id: Uuid, idp_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:idp:{idp_id}:jwks")

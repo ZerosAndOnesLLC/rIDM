@@ -162,6 +162,16 @@ comes from a CDN or proxy header (`GEOIP_COUNTRY_HEADERS`, believed only behind
 `TRUSTED_PROXIES`) or a MaxMind DB file the deployment supplies (`GEOIP_DB`); with neither,
 the device and velocity signals still work and no location signal is ever raised.
 
+Administrators can sign in as a user to see what they see (impersonation), where a tenant
+turns it on (`settings.impersonation`, off by default). It takes the
+`ridm:users:impersonate` permission (built-in owners only) and a reason. The result is a
+one-time link that opens a session as the user, lasting at most `max_minutes`. Every token
+from that session names the administrator in an `act` claim, and the admin API refuses such
+tokens. Users with any admin permission can't be impersonated. The session can't change the
+user's credentials, give or withdraw consent, mint personal tokens or delete the account.
+Every event it raises records the administrator (`impersonator_id` in the audit log), and
+the account console shows a banner to end it.
+
 Locale is negotiated per request: the OIDC `ui_locales` parameter, then the user's
 stored locale, then the tenant default, constrained to the tenant's supported list
 (exact tag or same language). The flow state carries the result as `locale`, `dir`
@@ -247,7 +257,7 @@ in [`.env.example`](.env.example). The essentials:
 | `RETENTION_DAYS` | Days the hourly cleanup keeps spent rows (expired tokens and sessions, login attempts, sent messages, finished deliveries; default 30) |
 | `METRICS_TOKEN` | Bearer token `GET /metrics` demands; open when unset |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME` | Export traces (one span per request, see [Observability](#observability)) over OTLP/HTTP to this collector base URL under this service name (`ridm`) |
-| `AUDIT_SINK_URL`, `AUDIT_SINK_TOKEN` | Ship every audit row to an HTTP endpoint (JSON batches, optional bearer) or a syslog receiver (`syslog://`, `syslog+tcp://`) |
+| `AUDIT_SINK_URL`, `AUDIT_SINK_TOKEN`, `AUDIT_SINK_SECRET`, `AUDIT_SINK_CA_FILE` | Ship every audit row, from the database and without loss, to an HTTP endpoint (JSON batches, optional bearer, HMAC-signed with the secret) or a syslog receiver (`syslog://`, `syslog+tcp://`, `syslog+tls://`); the CA file trusts a private CA |
 
 Health probes: `GET /healthz` (liveness) and `GET /readyz` (database + cache); `GET /metrics` for Prometheus (see [Observability](#observability)).
 `ridm-api --healthcheck` probes `/healthz` itself for images without curl: it dials
@@ -479,12 +489,16 @@ exporter runs. Logs are JSON (`LOG_FORMAT=json`) with the current span's fields;
 default `info` level log lines do not repeat the request span (it shows from `debug`).
 
 Audit export: set `AUDIT_SINK_URL` and every audit row (as stored, with its chain
-sequence and hash) is also shipped: to `https://…` as JSON arrays of up to 100 rows
-(within a second of the first), with `Authorization: Bearer <AUDIT_SINK_TOKEN>` when
-set, in up to three attempts with backoff; or to `syslog://host:514` (UDP) /
-`syslog+tcp://host:514` as one RFC 5424 message per row (`<134>1 <time> <host> ridm -
-<event name> - <json>`). The sink never slows the writer: a bounded queue drops rows
-when the destination falls behind and counts them.
+sequence and hash) is also shipped: to `https://…` as JSON arrays of up to 100 rows of
+one chain, with `Authorization: Bearer <AUDIT_SINK_TOKEN>` and an `X-RIDM-Signature`
+HMAC (`AUDIT_SINK_SECRET`, the webhook scheme) when set; or to `syslog://host:514`
+(UDP), `syslog+tcp://host:514` (one RFC 5424 message per line) or
+`syslog+tls://host:6514` (RFC 5425 framing; `AUDIT_SINK_CA_FILE` for a private CA). The
+sink ships from the database, not from memory: a leader-elected worker keeps a cursor per
+chain and advances it only after the receiver accepted the rows, backing off up to a
+minute on failure, so an outage or a restart delays rows but loses none (delivery is at
+least once; deduplicate on `id`). A newly configured destination starts at the current
+chain heads. `ridm_audit_sink_lag_rows` shows what is waiting.
 
 ### Background jobs
 
@@ -1133,7 +1147,12 @@ master key and take part in master-key rotation.
 
 Every domain event is appended to `audit_events` (monthly partitions, tenant RLS) by an
 in-process writer; rows are hash-chained per tenant (`SHA-256(prev_hash || row)`), so a
-row changed or removed inside the retained window fails verification. Retention is a
+row changed or removed inside the retained window fails verification. The chain
+algorithm lives in `ridm-core`, so `ridm audit verify --file` checks a JSON export without
+trusting the server (`--head` pins the hash it must end on, `--after` the one it must
+follow). A daily `audit_verify` job walks every chain that grew from its last verified
+checkpoint, and records a break once as `audit.chain_broken`, with
+`ridm_audit_chains_broken` for alerting. Retention is a
 tenant setting (`settings.audit.retention_days`, default 365, `0` keeps forever); a daily
 job creates upcoming partitions and drops each tenant's expired chain prefix, so what
 remains stays contiguous. The global chain follows the master tenant's policy.

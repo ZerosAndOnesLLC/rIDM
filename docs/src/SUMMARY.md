@@ -36,6 +36,8 @@
 - [Organizations](admin/organizations.md)
 - [MFA policy](admin/mfa-policy.md)
 - [Adaptive authentication](admin/adaptive-auth.md)
+- [Impersonation](admin/impersonation.md)
+- [Feature flags](admin/feature-flags.md)
 - [Email, SMS and templates](admin/messaging.md)
 - [SCIM provisioning](admin/scim.md)
 - [Webhooks and the audit log](admin/webhooks-audit.md)

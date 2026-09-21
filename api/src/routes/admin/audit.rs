@@ -49,6 +49,8 @@ pub struct AuditFilterQuery {
     pub name: Option<String>,
     pub actor_id: Option<Uuid>,
     pub subject_id: Option<Uuid>,
+    /// Rows an administrator caused while impersonating someone.
+    pub impersonator_id: Option<Uuid>,
     pub user_id: Option<Uuid>,
 }
 
@@ -60,12 +62,13 @@ impl From<AuditFilterQuery> for AuditFilter {
             name: q.name,
             actor_id: q.actor_id,
             subject_id: q.subject_id,
+            impersonator_id: q.impersonator_id,
             user_id: q.user_id,
         }
     }
 }
 
-/// `?from=&to=&name=&actor_id=&subject_id=&user_id=&cursor=&limit=`; `name`
+/// `?from=&to=&name=&actor_id=&subject_id=&impersonator_id=&user_id=&cursor=&limit=`; `name`
 /// matches exactly, or as a prefix when it ends with `.` or `*`.
 #[utoipa::path(get, path = "/admin/tenants/{slug}/audit", tag = "audit", params(("slug" = String, Path, description = "Tenant slug"), AuditFilterQuery, ("cursor" = Option<String>, Query), ("limit" = Option<u32>, Query)), responses((status = 200, body = Page<AuditEvent>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
