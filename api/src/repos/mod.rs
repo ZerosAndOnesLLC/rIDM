@@ -23,6 +23,7 @@ pub mod provider_settings;
 pub mod refresh_tokens;
 pub mod resource_servers;
 pub mod roles;
+pub mod saml;
 pub mod scim_tokens;
 pub mod scopes;
 pub mod sessions;

@@ -389,6 +389,9 @@ async fn registration_token(
 ) -> AppResult<Response> {
     admin.require(tenant.id, P_WRITE)?;
     let c = resolve_client(&state, tenant.id, &client).await?;
+    if c.client_type == crate::models::ClientType::Saml {
+        return Err(AppError::Conflict(clients::SAML_ELSEWHERE.into()));
+    }
     let token = clients::issue_registration_token(&state, tenant.id, c.id).await?;
     let body = RegistrationTokenView {
         registration_access_token: token.to_string(),

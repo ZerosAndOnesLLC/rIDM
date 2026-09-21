@@ -179,6 +179,10 @@ fn check_fapi2(
     Ok(())
 }
 
+/// SAML service providers are clients too, but their settings are SAML
+/// ones, edited through their own routes.
+pub const SAML_ELSEWHERE: &str = "SAML service providers are managed under /saml/service-providers";
+
 /// Resolve `NewClient` into a full `Client` using type-driven defaults.
 pub fn resolve(
     tenant_id: Uuid,
@@ -189,6 +193,9 @@ pub fn resolve(
         return Err(AppError::BadRequest("name must be 1-255 characters".into()));
     }
     let client_type = input.client_type.unwrap_or(ClientType::Web);
+    if client_type == ClientType::Saml {
+        return Err(AppError::BadRequest(SAML_ELSEWHERE.into()));
+    }
     let client_id = match input.client_id.map(|s| s.trim().to_string()) {
         Some(id) if !id.is_empty() => {
             if !is_valid_client_id(&id) {
@@ -229,6 +236,7 @@ pub fn resolve(
                 vec![grants::DEVICE_CODE, grants::REFRESH_TOKEN],
                 true,
             ),
+            ClientType::Saml => unreachable!("refused above"),
         };
     let auth_method = input.token_endpoint_auth_method.unwrap_or(default_auth);
     let allowed_grants = input
@@ -713,6 +721,9 @@ pub async fn update_metadata(
     mut input: NewClient,
 ) -> AppResult<(Client, Option<Zeroizing<String>>)> {
     let current = get(state, tenant_id, id).await?;
+    if current.client_type == ClientType::Saml {
+        return Err(AppError::Conflict(SAML_ELSEWHERE.into()));
+    }
     input.client_id = Some(current.client_id.clone());
     let (mut resolved, fresh_secret) = resolve(tenant_id, input)?;
     resolved.id = current.id;

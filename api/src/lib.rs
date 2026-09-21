@@ -14,6 +14,7 @@ pub mod oidc;
 pub mod openapi;
 pub mod repos;
 pub mod routes;
+pub mod saml;
 pub mod services;
 pub mod state;
 pub mod telemetry;
