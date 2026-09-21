@@ -245,6 +245,54 @@ async fn only_pending(fx: &Fx, token: &str) -> Value {
     list[0].clone()
 }
 
+/// Move the live (Valkey) record of `auth_req_id` past its expiry.
+async fn age_live_record(fx: &Fx, auth_req_id: &str) {
+    let key = ridm_api::cache::keys::ciba_request(
+        fx.tenant.id,
+        &URL_SAFE_NO_PAD.encode(<sha2::Sha256 as sha2::Digest>::digest(
+            auth_req_id.as_bytes(),
+        )),
+    );
+    let mut conn = fx.app.state.redis.get().await.unwrap();
+    let raw: String = redis::cmd("GET")
+        .arg(&key)
+        .query_async(&mut conn)
+        .await
+        .unwrap();
+    let mut rec: Value = serde_json::from_str(&raw).unwrap();
+    rec["expires_at"] = serde_json::json!(Utc::now() - chrono::Duration::seconds(1));
+    let _: () = redis::cmd("SET")
+        .arg(&key)
+        .arg(rec.to_string())
+        .arg("KEEPTTL")
+        .query_async(&mut conn)
+        .await
+        .unwrap();
+}
+
+/// Open a request for alice from the poll client: `(auth_req_id, row id)`.
+async fn open_for_alice(fx: &Fx, alice: &str) -> (String, String) {
+    let (status, ack) = bc_authorize(
+        fx,
+        &fx.poll,
+        &[("scope", "openid offline_access"), ("login_hint", "alice")],
+    )
+    .await;
+    assert_eq!(status, 200, "{ack}");
+    let (_, list) = account(fx, alice, reqwest::Method::GET, "").await;
+    let row = list.as_array().unwrap().first().expect("listed")["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    (ack["auth_req_id"].as_str().unwrap().to_string(), row)
+}
+
+async fn answer(fx: &Fx, token: &str, row: &str, verb: &str) -> u16 {
+    account(fx, token, reqwest::Method::POST, &format!("/{row}/{verb}"))
+        .await
+        .0
+}
+
 fn claims_of(jwt: &str) -> Value {
     let payload = jwt.split('.').nth(1).unwrap();
     serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).unwrap()).unwrap()
@@ -482,29 +530,7 @@ async fn an_expired_request_is_expired_token() {
     .await;
     assert_eq!(ack["expires_in"], 30);
     let auth_req_id = ack["auth_req_id"].as_str().unwrap();
-    // Age the live record past its expiry.
-    let key = ridm_api::cache::keys::ciba_request(
-        fx.tenant.id,
-        &URL_SAFE_NO_PAD.encode(<sha2::Sha256 as sha2::Digest>::digest(
-            auth_req_id.as_bytes(),
-        )),
-    );
-    let mut conn = fx.app.state.redis.get().await.unwrap();
-    let raw: String = redis::cmd("GET")
-        .arg(&key)
-        .query_async(&mut conn)
-        .await
-        .unwrap();
-    let mut rec: Value = serde_json::from_str(&raw).unwrap();
-    rec["expires_at"] = serde_json::json!(Utc::now() - chrono::Duration::seconds(1));
-    let _: () = redis::cmd("SET")
-        .arg(&key)
-        .arg(rec.to_string())
-        .arg("KEEPTTL")
-        .query_async(&mut conn)
-        .await
-        .unwrap();
-    drop(conn);
+    age_live_record(&fx, auth_req_id).await;
     let (status, body) = collect(&fx, &fx.poll, auth_req_id).await;
     assert_eq!(
         (status, body["error"].as_str()),
@@ -876,4 +902,173 @@ async fn ping_mode_calls_the_client_back() {
     // Another client cannot collect it.
     let (_, body) = collect(&fx, &fx.poll, &auth_req_id).await;
     assert_eq!(body["error"], "invalid_grant");
+}
+
+/// Phase 12.7: the CIBA state machine. Each terminal answer is given once
+/// and the request is gone after it; an undecided request that outlives its
+/// expiry can be neither collected nor answered; an approval not collected
+/// in time expires too; a stranger's poll never spends the grant; two
+/// collections racing for one approval get one set of tokens between them.
+#[tokio::test]
+async fn every_state_answers_once() {
+    let fx = fixture().await;
+    let alice = account_token(&fx, fx.alice).await;
+    let other = ciba_client(&fx.app, "other", BackchannelDeliveryMode::Poll, None).await;
+
+    // pending → slow_down stays pending, and the interval keeps growing.
+    let (id, row) = open_for_alice(&fx, &alice).await;
+    let (_, b) = collect(&fx, &fx.poll, &id).await;
+    assert_eq!(b["error"], "authorization_pending");
+    for _ in 0..2 {
+        let (_, b) = collect(&fx, &fx.poll, &id).await;
+        assert_eq!(b["error"], "slow_down");
+    }
+    // A stranger learns nothing and spends nothing.
+    let (_, b) = collect(&fx, &other, &id).await;
+    assert_eq!(b["error"], "invalid_grant");
+    // Approved → handed over at once despite the slow_downs, then gone.
+    assert_eq!(answer(&fx, &alice, &row, "approve").await, 204);
+    assert_eq!(
+        answer(&fx, &alice, &row, "approve").await,
+        404,
+        "answered once"
+    );
+    assert_eq!(
+        answer(&fx, &alice, &row, "deny").await,
+        404,
+        "and not undone"
+    );
+    let (_, b) = collect(&fx, &other, &id).await;
+    assert_eq!(b["error"], "invalid_grant", "still not the stranger's");
+    let (status, b) = collect(&fx, &fx.poll, &id).await;
+    assert_eq!(status, 200, "{b}");
+    assert!(b["refresh_token"].is_string(), "offline_access was granted");
+    let (_, b) = collect(&fx, &fx.poll, &id).await;
+    assert_eq!(b["error"], "invalid_grant");
+
+    // Denied → access_denied once, then gone.
+    let (id, row) = open_for_alice(&fx, &alice).await;
+    assert_eq!(answer(&fx, &alice, &row, "deny").await, 204);
+    assert_eq!(answer(&fx, &alice, &row, "approve").await, 404);
+    let (_, b) = collect(&fx, &fx.poll, &id).await;
+    assert_eq!(b["error"], "access_denied");
+    let (_, b) = collect(&fx, &fx.poll, &id).await;
+    assert_eq!(b["error"], "invalid_grant");
+
+    // Approved but not collected in time → expired_token, then gone.
+    let (id, row) = open_for_alice(&fx, &alice).await;
+    assert_eq!(answer(&fx, &alice, &row, "approve").await, 204);
+    age_live_record(&fx, &id).await;
+    let (_, b) = collect(&fx, &fx.poll, &id).await;
+    assert_eq!(b["error"], "expired_token");
+    let (_, b) = collect(&fx, &fx.poll, &id).await;
+    assert_eq!(b["error"], "invalid_grant");
+
+    // Past its expiry in the database: no longer listed, cannot be answered.
+    let (_, row) = open_for_alice(&fx, &alice).await;
+    let mut tx = db::bypass_tx(&fx.app.state.db).await.unwrap();
+    sqlx::query("UPDATE ciba_requests SET expires_at = now() - interval '1 second' WHERE id = $1")
+        .bind(row.parse::<Uuid>().unwrap())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let (_, list) = account(&fx, &alice, reqwest::Method::GET, "").await;
+    assert_eq!(list, serde_json::json!([]));
+    assert_eq!(answer(&fx, &alice, &row, "approve").await, 404);
+
+    // Two collections racing for one approval: one set of tokens.
+    let (id, row) = open_for_alice(&fx, &alice).await;
+    assert_eq!(answer(&fx, &alice, &row, "approve").await, 204);
+    let (a, b) = tokio::join!(collect(&fx, &fx.poll, &id), collect(&fx, &fx.poll, &id));
+    let mut statuses = [a.0, b.0];
+    statuses.sort();
+    assert_eq!(statuses, [200, 400], "{a:?} {b:?}");
+
+    // Every request ended up with its outcome in the audit trail.
+    let mut tx = db::bypass_tx(&fx.app.state.db).await.unwrap();
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT status, count(*) FROM ciba_requests WHERE tenant_id = $1 GROUP BY status ORDER BY status",
+    )
+    .bind(fx.tenant.id)
+    .fetch_all(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(
+        rows,
+        vec![
+            ("approved".to_string(), 1),
+            ("consumed".to_string(), 2),
+            ("denied".to_string(), 1),
+            ("pending".to_string(), 1),
+        ],
+        "the uncollected approval stays approved, the aged one pending"
+    );
+}
+
+#[tokio::test]
+async fn only_the_user_themselves_can_answer() {
+    let fx = fixture().await;
+    let alice = account_token(&fx, fx.alice).await;
+    let (id, row) = open_for_alice(&fx, &alice).await;
+    // A token acting for alice (an impersonation or an exchange) cannot.
+    let user = users::get(&fx.app.state, fx.tenant.id, fx.alice)
+        .await
+        .unwrap();
+    let mut client = TokenClient::public(ACCOUNT_CLIENT_ID);
+    client.access_token_ttl = Duration::from_secs(300);
+    let acting = tokens::issue_access_token(
+        &fx.app.state,
+        AccessTokenRequest {
+            tenant: &fx.tenant,
+            client: &client,
+            user: Some(&user),
+            scopes: &["openid".into()],
+            audiences: &[ACCOUNT_AUDIENCE.to_string()],
+            roles: &[],
+            groups: &[],
+            session_id: None,
+            auth_time: Some(Utc::now()),
+            amr: &[],
+            acr: None,
+            org_id: None,
+            cnf_jkt: None,
+            act: Some(serde_json::json!({"sub": fx.bob.to_string(), "iss": "x"})),
+        },
+    )
+    .await
+    .unwrap()
+    .token;
+    for verb in ["approve", "deny"] {
+        let (status, body) = account(
+            &fx,
+            &acting,
+            reqwest::Method::POST,
+            &format!("/{row}/{verb}"),
+        )
+        .await;
+        assert_eq!(status, 403, "{verb}: {body}");
+        assert_eq!(body["type"], "urn:ridm:error:impersonation-forbidden");
+    }
+    // Alice can, and a user disabled after approving gets no tokens.
+    assert_eq!(answer(&fx, &alice, &row, "approve").await, 204);
+    users::update(
+        &fx.app.state,
+        fx.tenant.id,
+        Actor::System,
+        fx.alice,
+        ridm_api::models::UserUpdate {
+            status: Some(ridm_api::models::UserStatus::Disabled),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let (status, body) = collect(&fx, &fx.poll, &id).await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (400, Some("invalid_grant")),
+        "{body}"
+    );
 }
