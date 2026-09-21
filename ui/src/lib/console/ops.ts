@@ -17,6 +17,11 @@ export type LogEntry = Schemas["LogEntry"];
 export type IdentityProvider = Schemas["IdentityProviderView"];
 export type IdentityProviderPatch = Partial<Schemas["IdentityProviderUpdate"]>;
 export type IdpPreset = Schemas["Preset"];
+export type SamlIdp = Schemas["IdpView"];
+export type SamlKey = Schemas["SamlKeyView"];
+export type SamlSp = Schemas["SamlSpView"];
+export type SamlSpInput = Schemas["SamlSpInput"];
+export type SamlAttribute = Schemas["SamlAttribute"];
 
 export function href(page: string, tenant: string, params: Record<string, string> = {}): string {
   return `/console/${page}/?${new URLSearchParams({ tenant, ...params })}`;
@@ -36,6 +41,7 @@ export const EVENT_NAMES = [
   "login.failed", "login.new_device", "login.passwordless_sent", "login.succeeded",
   "master_key.rotated", "mfa.changed",
   "risk.blocked", "risk.step_up",
+  "saml_key.created", "saml_key.status_changed",
   "role.assigned", "role.composite_added", "role.composite_removed", "role.created", "role.deleted", "role.unassigned", "role.updated",
   "scope.created", "scope.deleted", "scope.updated",
   "session.created", "session.revoked", "signing_key.created", "signing_key.status_changed",

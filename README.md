@@ -27,8 +27,9 @@ The source is in [`docs/`](docs/); this README stays the developer's overview.
 - **Standards, not surprises.** Authorization code + PKCE, client credentials, refresh
   token rotation with reuse detection, device flow, backchannel sign-in (CIBA), PAR,
   JAR/JARM, DCR, RP-initiated, back-channel and front-channel logout, token exchange,
-  DPoP, and a per-client FAPI 2.0 Security Profile. No implicit, hybrid, or password
-  grants.
+  DPoP, a per-client FAPI 2.0 Security Profile, and a SAML 2.0 identity provider
+  (SSO over both browser bindings, front-channel Single Logout). No implicit, hybrid,
+  or password grants.
 - **One image.** A deployment is the API image plus Postgres and Valkey. The image
   compiles the UI's static export into the server, which serves the sign-in pages and
   both consoles on its own origin; the same export can also go on any static host or
@@ -182,6 +183,16 @@ fapi2`): `private_key_jwt` with the issuer as audience, PAR only, PKCE, DPoP-bou
 PS256/ES256/EdDSA signatures both ways and refresh tokens that are not rotated; or just
 required to use PAR (`require_pushed_authorization_requests`). See the docs' *Backchannel
 sign-in and FAPI 2.0*.
+
+Every tenant is also a SAML 2.0 identity provider (`{issuer}/saml/metadata`). A SAML
+application is registered as a service provider (a `saml` client) from its metadata or by
+hand, and signs users in through the same sign-in pages, second factors and risk policy as
+OIDC clients: signed (optionally encrypted) assertions with persistent, transient, email
+or id NameIDs and attributes from the tenant's claims, HTTP-Redirect and HTTP-POST
+requests with signature checks, IdP-initiated sign-in for SPs that opt in, and
+front-channel Single Logout. The XML signature and encryption code is rIDM's own (no C XML
+library), checked against xmlsec1 and fuzzed. The SAML signing keys rotate only by hand,
+with the new certificate published first. See the docs' *SAML identity provider*.
 
 Locale is negotiated per request: the OIDC `ui_locales` parameter, then the user's
 stored locale, then the tenant default, constrained to the tenant's supported list

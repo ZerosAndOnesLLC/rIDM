@@ -298,17 +298,27 @@ fn claims_of(jwt: &str) -> Value {
     serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).unwrap()).unwrap()
 }
 
+/// Audit rows named `name`, once there is one: the audit writer runs in the
+/// background, so a row lands a moment after the request that raised it
+/// (long enough, under the coverage build, for a single read to miss it).
 async fn audit_count(app: &TestApp, name: &str) -> i64 {
-    let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
-    let n: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND name = $2")
-            .bind(app.tenant.id)
-            .bind(name)
-            .fetch_one(&mut *tx)
-            .await
-            .unwrap();
-    tx.commit().await.unwrap();
-    n
+    for _ in 0..100 {
+        let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+        let n: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND name = $2",
+        )
+        .bind(app.tenant.id)
+        .bind(name)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        if n > 0 {
+            return n;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    0
 }
 
 #[tokio::test]

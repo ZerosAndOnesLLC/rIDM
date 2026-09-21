@@ -8,7 +8,7 @@ import { TextInput } from "@/components/console/form";
 import { Badge, Button, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
 import { formatDate } from "@/i18n";
-import { AUTH_METHODS, clientHref, typeLabel } from "@/lib/console/clients";
+import { AUTH_METHODS, clientHref, samlHref, typeLabel } from "@/lib/console/clients";
 import { useDebounced } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
 
@@ -77,7 +77,7 @@ export function ClientsTable({ tenant, onCreate }: { tenant: string; onCreate: (
               {rows.map((c) => (
                 <tr key={c.id} className="border-b border-line last:border-b-0 hover:bg-ground/60">
                   <td className="px-4 py-2.5 font-medium text-ink">
-                    <Link href={clientHref(tenant, c.id)} className="hover:underline underline-offset-4">
+                    <Link href={c.client_type === "saml" ? samlHref(tenant, c.id) : clientHref(tenant, c.id)} className="hover:underline underline-offset-4">
                       {c.name}
                     </Link>
                   </td>

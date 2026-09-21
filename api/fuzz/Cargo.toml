@@ -60,3 +60,10 @@ path = "fuzz_targets/scim_filter.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "saml_message"
+path = "fuzz_targets/saml_message.rs"
+test = false
+doc = false
+bench = false

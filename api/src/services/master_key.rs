@@ -48,6 +48,12 @@ const TABLES: &[EncryptedTable] = &[
         aad_prefix: "webhooks",
         id_column: "id",
     },
+    EncryptedTable {
+        table: "saml_signing_keys",
+        column: "private_key_enc",
+        aad_prefix: "saml_signing_keys",
+        id_column: "id",
+    },
 ];
 
 struct EncryptedTable {

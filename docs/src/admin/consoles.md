@@ -71,7 +71,7 @@ Single keys work when no text field has focus; `?` lists them.
 | `?` | The shortcut list |
 | `g` then `o` | Overview |
 | `g` then `u` / `g` / `r` | Users / Groups / Roles |
-| `g` then `c` / `a` / `p` / `m` | Clients / Resource servers / Scopes / Claim mappers |
+| `g` then `c` / `b` / `a` / `p` / `m` | Clients / SAML / Resource servers / Scopes / Claim mappers |
 | `g` then `k` / `l` / `i` | Signing keys / Audit log / IP rules |
 | `g` then `w` / `e` / `d` / `v` | Webhooks / Messaging / Identity providers / Provisioning |
 | `g` then `t` / `s` / `x` | Tenants / Settings / Export & import |
@@ -86,6 +86,7 @@ The `g` sequence waits one second for its second key.
 | Users | `/console/users/` | `ridm:users:read` | [Users, invitations and bulk import](users.md) |
 | Groups, Roles | `/console/groups/`, `/console/roles/` | `ridm:groups:read`, `ridm:roles:read` | [Users, groups and roles](../concepts/users-groups-roles.md) |
 | Clients | `/console/clients/` | `ridm:clients:read` | [Registering clients](clients.md) |
+| SAML | `/console/saml/` | `ridm:clients:read` (keys: `ridm:keys:write`) | [SAML identity provider](saml-idp.md) |
 | Playground | `/console/playground/?client=<id>` | reached from a client's detail page | Runs the client's flow for real (authorization code with PKCE, or client credentials with a pasted secret) and shows the token response, the decoded tokens and userinfo |
 | Resource servers, Scopes, Claim mappers | `/console/resource-servers/`, `/console/scopes/`, `/console/claim-mappers/` | the matching `read` permission | [Resource servers, scopes and permissions](../concepts/resource-servers.md) |
 | Signing keys | `/console/keys/` | `ridm:keys:read` | [Rotating keys](key-rotation.md) |

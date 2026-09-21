@@ -1428,6 +1428,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/tenants/{slug}/saml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["saml_idp"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/saml/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a rollover: a new key, listed in metadata at once but not signing. */
+        post: operations["saml_add_key"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/saml/keys/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a pending or retiring key from metadata. */
+        delete: operations["saml_delete_key"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/saml/keys/{key}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign with this key from now on; the active one before it is kept in
+         *     metadata as `retiring` until deleted.
+         */
+        post: operations["saml_activate_key"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/saml/service-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["saml_list"];
+        put?: never;
+        post: operations["saml_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/saml/service-providers/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read an SP's metadata into a registration to review; nothing is saved. */
+        post: operations["saml_import_metadata"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/saml/service-providers/{sp}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["saml_get_one"];
+        /** Replace the SP's settings (the public client id and status are kept). */
+        put: operations["saml_replace"];
+        post?: never;
+        delete: operations["saml_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/tenants/{slug}/scim/tokens": {
         parameters: {
             query?: never;
@@ -2849,6 +2969,11 @@ export interface components {
             /** @default [] */
             visible_in: components["schemas"]["Exposure"][];
         };
+        /**
+         * @description `NameFormat` of a released attribute.
+         * @enum {string}
+         */
+        AttributeNameFormat: "basic" | "uri" | "unspecified";
         /** @enum {string} */
         AttributeType: "string" | "number" | "boolean" | "email" | "url" | "phone" | "date" | "enum" | "json";
         AttributeValidation: {
@@ -3147,7 +3272,7 @@ export interface components {
         /** @enum {string} */
         ClientSubjectType: "public" | "pairwise";
         /** @enum {string} */
-        ClientType: "spa" | "web" | "native" | "machine" | "device";
+        ClientType: "spa" | "web" | "native" | "machine" | "device" | "saml";
         /**
          * @description Client as returned to administrators: every metadata column, plus the
          *     secrets' ids and validity windows (never the secrets or their hashes).
@@ -3257,6 +3382,11 @@ export interface components {
             credentials: components["schemas"]["Credential"][];
             password: components["schemas"]["PasswordSummary"];
         };
+        /**
+         * @description The block cipher for the content.
+         * @enum {string}
+         */
+        DataEncryption: "aes256-gcm" | "aes128-gcm" | "aes256-cbc" | "aes128-cbc";
         DayStats: {
             /** Format: date */
             date: string;
@@ -3652,6 +3782,16 @@ export interface components {
              */
             username: string | null;
         };
+        /** @description The IdP side: what to give an SP, and the signing keys. */
+        IdpView: {
+            entity_id: string;
+            /** @description IdP-initiated sign-in: add `?sp=<entity ID or client id>`. */
+            init_url: string;
+            keys: components["schemas"]["SamlKeyView"][];
+            metadata_url: string;
+            slo_url: string;
+            sso_url: string;
+        };
         ImpersonateBody: {
             /**
              * @description Why: recorded with every audit event of the impersonation (1–500
@@ -3857,6 +3997,11 @@ export interface components {
          */
         KeyStatus: "pending" | "active" | "retiring" | "revoked";
         /**
+         * @description How the content key travels.
+         * @enum {string}
+         */
+        KeyTransport: "rsa-oaep-mgf1p" | "rsa-oaep-sha256";
+        /**
          * @description What happens when an upstream identity signs in for the first time and
          *     a local account with the same email address exists.
          * @enum {string}
@@ -4010,6 +4155,10 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        MetadataBody: {
+            /** @description The SP's metadata document (XML). */
+            metadata: string;
+        };
         /**
          * @description Which second-step methods users may enrol. Passkeys are offered as a
          *     second step whenever `AuthMethods::passkey` is on.
@@ -4061,6 +4210,11 @@ export interface components {
             /** @description Unused recovery codes. */
             recovery_codes: number;
         };
+        /**
+         * @description The subject identifier an SP receives.
+         * @enum {string}
+         */
+        NameIdFormat: "persistent" | "transient" | "email" | "unspecified";
         /**
          * @description Input for creating a claim mapper: `config` is the mapper document
          *     (`type`, its fields and `include_in`) without the name.
@@ -5232,6 +5386,161 @@ export interface components {
          * @enum {string}
          */
         RsaBits: "B2048" | "B3072" | "B4096";
+        /** @description One released attribute: the value of a claim, under the SP's name. */
+        SamlAttribute: {
+            /**
+             * @description A claim the client's scopes, the profile schema or a claim mapper
+             *     produce (`email`, `name`, `groups`, `roles`, ...).
+             */
+            claim: string;
+            friendly_name?: string | null;
+            /** @description The attribute's `Name`, e.g. `urn:oid:0.9.2342.19200300.100.1.3`. */
+            name: string;
+            name_format?: components["schemas"]["AttributeNameFormat"];
+        };
+        /**
+         * @description Lifecycle of a SAML signing key: `pending` (in metadata, not signing)
+         *     → `active` (signing) → `retiring` (in metadata, not signing) → deleted.
+         * @enum {string}
+         */
+        SamlKeyStatus: "pending" | "active" | "retiring";
+        /** @description A key as metadata and the console show it. */
+        SamlKeyView: {
+            /** Format: date-time */
+            activated_at?: string | null;
+            /** @description base64 DER. */
+            certificate: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            not_after: string;
+            /** @description SHA-256 of the certificate, hex with colons, as SP consoles show it. */
+            sha256_fingerprint: string;
+            status: components["schemas"]["SamlKeyStatus"];
+        };
+        /** @description The SAML side of a `saml` client. */
+        SamlServiceProvider: {
+            /**
+             * @description HTTP-POST assertion consumer services; the position is the index
+             *     and the first is the default.
+             */
+            acs_urls: string[];
+            allow_idp_initiated: boolean;
+            /** Format: int32 */
+            assertion_ttl_secs: number;
+            attributes: components["schemas"]["SamlAttribute"][];
+            /**
+             * Format: uuid
+             * @description The client's row id.
+             */
+            client_id: string;
+            /** Format: date-time */
+            created_at: string;
+            data_encryption: components["schemas"]["DataEncryption"];
+            default_relay_state?: string | null;
+            encrypt_assertion: boolean;
+            /** @description base64 DER certificate assertions are encrypted to. */
+            encryption_certificate?: string | null;
+            entity_id: string;
+            key_transport: components["schemas"]["KeyTransport"];
+            name_id_format: components["schemas"]["NameIdFormat"];
+            require_signed_requests: boolean;
+            sign_assertion: boolean;
+            sign_response: boolean;
+            /** @description base64 DER certificates the SP signs requests with. */
+            signing_certificates: string[];
+            slo_binding: components["schemas"]["SloBinding"];
+            slo_url?: string | null;
+            /** Format: uuid */
+            tenant_id: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /**
+         * @description A SAML service provider: its registration as `POST /saml/service-providers`
+         *     takes it, keyed by the public client id, plus `status`.
+         */
+        SamlSpDoc: Record<string, never> & {
+            client_id: string;
+            status?: components["schemas"]["ClientStatus"];
+        };
+        /**
+         * @description A service provider as the admin API reads and writes it: the client's
+         *     own fields and the SAML settings side by side.
+         */
+        SamlSpInput: {
+            /** @default [] */
+            acs_urls: string[];
+            /** @default null */
+            allow_idp_initiated: boolean | null;
+            /**
+             * @description Scopes whose claims may be released as attributes.
+             * @default null
+             */
+            allowed_scopes: string[] | null;
+            /**
+             * Format: int32
+             * @default null
+             */
+            assertion_ttl_secs: number | null;
+            /** @default null */
+            attributes: components["schemas"]["SamlAttribute"][] | null;
+            /**
+             * @description The public client id; generated when absent.
+             * @default null
+             */
+            client_id: string | null;
+            /** @default null */
+            client_uri: string | null;
+            /** @default null */
+            data_encryption: null | components["schemas"]["DataEncryption"];
+            /** @default null */
+            default_relay_state: string | null;
+            /** @default null */
+            description: string | null;
+            /** @default null */
+            encrypt_assertion: boolean | null;
+            /** @default null */
+            encryption_certificate: string | null;
+            /** @default  */
+            entity_id: string;
+            /** @default null */
+            key_transport: null | components["schemas"]["KeyTransport"];
+            /** @default null */
+            logo_uri: string | null;
+            /** @default  */
+            name: string;
+            /** @default null */
+            name_id_format: null | components["schemas"]["NameIdFormat"];
+            /**
+             * @description Ask the user before releasing attributes. Off by default: SAML SPs
+             *     are enterprise applications an administrator connected.
+             * @default null
+             */
+            require_consent: boolean | null;
+            /** @default null */
+            require_signed_requests: boolean | null;
+            /** @default null */
+            sign_assertion: boolean | null;
+            /** @default null */
+            sign_response: boolean | null;
+            /**
+             * @description PEM or base64 DER.
+             * @default []
+             */
+            signing_certificates: string[];
+            /** @default null */
+            slo_binding: null | components["schemas"]["SloBinding"];
+            /** @default null */
+            slo_url: string | null;
+        };
+        /** @description A registered SP. */
+        SamlSpView: {
+            client: components["schemas"]["Client"];
+            saml: components["schemas"]["SamlServiceProvider"];
+        };
         /** @description What the `audit_verify` job last established about a chain. */
         ScheduledVerification: {
             /**
@@ -5422,6 +5731,11 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        /**
+         * @description Binding rIDM uses to send an SP its logout messages.
+         * @enum {string}
+         */
+        SloBinding: "redirect" | "post";
         /** @description SMS delivery through any HTTP gateway. */
         SmsProviderConfig: {
             auth_header?: string | null;
@@ -5565,6 +5879,8 @@ export interface components {
             profile_schema?: components["schemas"]["ProfileSchema"];
             resource_servers?: components["schemas"]["ResourceServerDoc"][];
             roles?: components["schemas"]["RoleDoc"][];
+            /** @description SAML service providers (`saml` clients), which `clients` leaves out. */
+            saml_service_providers?: components["schemas"]["SamlSpDoc"][];
             scopes?: components["schemas"]["ScopeDoc"][];
             tenant: components["schemas"]["TenantSection"];
             webhooks?: components["schemas"]["WebhookDoc"][];
@@ -13901,6 +14217,537 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Problem"];
                 };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    saml_idp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdpView"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    saml_add_key: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SamlKeyView"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A pending key exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    saml_delete_key: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The active key cannot be deleted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    saml_activate_key: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    saml_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SamlSpView"][];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    saml_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SamlSpInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SamlSpView"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The entity ID or client id is taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    saml_import_metadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetadataBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SamlSpInput"];
+                };
+            };
+            /** @description Not usable SP metadata */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    saml_get_one: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                /** @description The client's row id */
+                sp: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SamlSpView"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    saml_replace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                /** @description The client's row id */
+                sp: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SamlSpInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SamlSpView"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The entity ID is taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    saml_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                /** @description The client's row id */
+                sp: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Missing or invalid admin token */
             401: {

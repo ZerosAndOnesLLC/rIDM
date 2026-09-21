@@ -94,6 +94,7 @@ async fn handle(
             skip_consent: !client.require_consent,
             organization: None,
             device_code: Some(device_hash.clone()),
+            saml: None,
         },
         stage: FlowStage::Authenticate,
         session_id: None,

@@ -909,7 +909,7 @@ pub async fn consent_step(
     if !approve {
         deny_device(state, &flow).await?;
         return Ok(ConsentOutcome::Denied {
-            redirect_to: denial_redirect(&flow),
+            redirect_to: denial_redirect(state, tenant, &flow).await?,
         });
     }
     // Consent is the user's to give; an administrator signed in as them
@@ -948,9 +948,18 @@ pub enum ConsentOutcome {
     Denied { redirect_to: String },
 }
 
-/// Client-facing error redirect used by cancel and consent denial.
-pub fn denial_redirect(flow: &LoginFlow) -> String {
-    error_redirect(flow, "the user denied the request")
+/// Client-facing error redirect used by cancel and consent denial. A SAML
+/// SP gets a `RequestDenied` response instead, posted through a one-time
+/// URL of rIDM's.
+pub async fn denial_redirect(
+    state: &AppState,
+    tenant: &Tenant,
+    flow: &LoginFlow,
+) -> AppResult<String> {
+    if flow.request.saml.is_some() {
+        return crate::services::saml_idp::denial_url(state, tenant, &flow.request).await;
+    }
+    Ok(error_redirect(flow, "the user denied the request"))
 }
 
 /// `access_denied` back to the client, with a reason the client may show.
@@ -968,10 +977,10 @@ fn error_redirect(flow: &LoginFlow, description: &str) -> String {
 }
 
 /// `POST /flows/{id}/cancel`
-pub async fn cancel(state: &AppState, flow: &LoginFlow) -> AppResult<String> {
+pub async fn cancel(state: &AppState, tenant: &Tenant, flow: &LoginFlow) -> AppResult<String> {
     deny_device(state, flow).await?;
     login_flows::delete(state, flow.tenant_id, flow.id).await?;
-    Ok(denial_redirect(flow))
+    denial_redirect(state, tenant, flow).await
 }
 
 /// A device authorization the flow was approving is denied with it.
@@ -1085,9 +1094,19 @@ async fn refuse(
     );
     deny_device(state, flow).await?;
     login_flows::delete(state, flow.tenant_id, flow.id).await?;
-    Ok(AuthStep::Blocked {
-        redirect_to: error_redirect(flow, "the sign-in was refused"),
-    })
+    let redirect_to = if flow.request.saml.is_some() {
+        crate::services::saml_idp::refusal_url(
+            state,
+            tenant,
+            &flow.request,
+            crate::saml::ns::status::AUTHN_FAILED,
+            "the sign-in was refused",
+        )
+        .await?
+    } else {
+        error_redirect(flow, "the sign-in was refused")
+    };
+    Ok(AuthStep::Blocked { redirect_to })
 }
 
 /// Is `acr` an authentication context class that means "a second factor

@@ -19,6 +19,9 @@ pub enum ClientType {
     Machine,
     /// Input-constrained device, device authorization grant.
     Device,
+    /// SAML 2.0 service provider: no redirect URIs, grants or secret; its
+    /// SAML settings are a `saml_service_providers` row.
+    Saml,
 }
 
 #[derive(

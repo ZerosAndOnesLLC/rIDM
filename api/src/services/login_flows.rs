@@ -43,6 +43,11 @@ pub struct AuthRequest {
     /// session to act in. A member is put there without being asked.
     #[serde(default)]
     pub organization: Option<String>,
+    /// A SAML `AuthnRequest` (or IdP-initiated sign-in) being answered: the
+    /// flow ends in a SAML `Response` to `redirect_uri`, the SP's assertion
+    /// consumer service, instead of a code.
+    #[serde(default)]
+    pub saml: Option<crate::services::saml_idp::SamlRequestContext>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

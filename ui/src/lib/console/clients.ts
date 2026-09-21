@@ -51,15 +51,24 @@ export function typeDefaults(type: ClientType): { auth: AuthMethod; grants: stri
       return { auth: "client_secret_basic", grants: ["client_credentials"], pkce: false };
     case "device":
       return { auth: "none", grants: ["urn:ietf:params:oauth:grant-type:device_code", "refresh_token"], pkce: true };
+    case "saml":
+      return { auth: "none", grants: [], pkce: false };
   }
 }
 
 export function typeLabel(type: ClientType): string {
+  if (type === "saml") return "SAML service provider";
   return CLIENT_TYPES.find((t) => t.value === type)?.label ?? type;
 }
 
 export function usesSecret(auth: AuthMethod): boolean {
   return auth === "client_secret_basic" || auth === "client_secret_post";
+}
+
+/** A SAML client is edited on the SAML page. */
+export function samlHref(tenant: string | null, id: string): string {
+  const q = new URLSearchParams({ ...(tenant ? { tenant } : {}), sp: id });
+  return `/console/saml/?${q}`;
 }
 
 export function clientHref(tenant: string | null, id: string, extra: Record<string, string> = {}): string {

@@ -32,6 +32,7 @@ jobs:
           - redirect_uri
           - pkce
           - scim_filter
+          - saml_message
     env:
       CARGO_TERM_COLOR: always
       CARGO_INCREMENTAL: "0"

@@ -83,6 +83,11 @@ pub struct LogoutOutcome {
     /// The session was live until now.
     #[serde(skip)]
     pub ended: bool,
+    /// SAML SPs that took part: front-channel only, so a caller with a
+    /// browser walks it through them (`saml_idp::logout_through`); without
+    /// one they keep their own sessions until those expire.
+    #[serde(skip)]
+    pub saml_participants: Vec<crate::services::saml_idp::Participant>,
 }
 
 /// Terminate a session everywhere it is known: the SSO session, the refresh
@@ -98,6 +103,8 @@ pub async fn end_session(
     session_id: Uuid,
 ) -> AppResult<LogoutOutcome> {
     let participants = sessions::clients_of(state, tenant.id, session_id).await?;
+    let saml_participants =
+        crate::services::saml_idp::participants(state, tenant.id, session_id).await?;
     let session = sessions::get(state, tenant.id, session_id, &tenant.settings.session).await?;
     let ended = sessions::revoke(state, tenant.id, session_id).await?;
 
@@ -107,6 +114,7 @@ pub async fn end_session(
     };
     let mut outcome = LogoutOutcome {
         ended,
+        saml_participants,
         ..Default::default()
     };
     let Some(session) = session else {

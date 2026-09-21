@@ -387,6 +387,16 @@ pub enum EventKind {
     MasterKeyRotated {
         new_version: u32,
     },
+    /// A SAML signing key was generated (the first on demand, the next by
+    /// an operator starting a rollover).
+    SamlKeyCreated {
+        key_id: Uuid,
+    },
+    /// A SAML signing key was activated, retired or deleted.
+    SamlKeyStatusChanged {
+        key_id: Uuid,
+        status: String,
+    },
     /// The scheduled verification found the chain this event is recorded in
     /// broken at `seq`: a row there was changed, removed or put out of order.
     AuditChainBroken {
@@ -593,6 +603,8 @@ impl EventKind {
             Self::SigningKeyCreated { .. } => "signing_key.created",
             Self::SigningKeyStatusChanged { .. } => "signing_key.status_changed",
             Self::MasterKeyRotated { .. } => "master_key.rotated",
+            Self::SamlKeyCreated { .. } => "saml_key.created",
+            Self::SamlKeyStatusChanged { .. } => "saml_key.status_changed",
             Self::AuditChainBroken { .. } => "audit.chain_broken",
             Self::ScopeCreated { .. } => "scope.created",
             Self::ScopeUpdated { .. } => "scope.updated",

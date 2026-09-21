@@ -165,6 +165,19 @@ All in the `flows` limit family; errors are problem documents.
 | POST | `/t/{slug}/verification/email/confirm` | Confirm an address with the token from the link; when the link belongs to a flow waiting for verification the user is signed in and the flow state returned. |
 | POST | `/t/{slug}/device/verify` | The user's side of the device grant: `{user_code}` becomes a login flow for the device's client. |
 
+## SAML identity provider
+
+Every tenant is a SAML 2.0 IdP whose entity ID is its issuer. See [SAML identity provider](../admin/saml-idp.md).
+
+| Method | Path | Auth | Limit | Purpose | Spec |
+|--------|------|------|-------|---------|------|
+| GET | `/t/{slug}/saml/metadata` | none | authorize | The IdP's metadata: SSO and SLO endpoints (both bindings), NameID formats, and every SAML signing certificate, the active one first. | SAML Metadata §2 |
+| GET, POST | `/t/{slug}/saml/sso` | the SP's signature when it has certificates registered | authorize | `AuthnRequest` by HTTP-Redirect (query) or HTTP-POST (form). A POST is checked, kept for ten minutes and resumed at `?continue=` by a same-site GET. Answers with a signed `Response` posted to the SP's consumer URL. | SAML Bindings §3.4, §3.5; Profiles §4.1 |
+| GET | `/t/{slug}/saml/init` | the user's session | authorize | IdP-initiated sign-in: `?sp=` entity ID or client id, optional `RelayState`; only for SPs with `allow_idp_initiated`. | Profiles §4.1.5 |
+| GET, POST | `/t/{slug}/saml/slo` | the SP's signature when it has certificates registered | authorize | `LogoutRequest` from an SP (ends the session, walks the other SPs, answers), or an SP's `LogoutResponse` during such a walk (`RelayState` names it). | Profiles §4.4 |
+| GET | `/t/{slug}/saml/slo/chain/{id}` | none (a one-time id) | authorize | Continues a logout that started at rIDM through the session's SAML SPs. | |
+| GET | `/t/{slug}/saml/respond/{ticket}` | none (a one-time id) | authorize | Posts a failure `Response` (`RequestDenied`, `AuthnFailed`) to the SP after a cancelled, refused or blocked sign-in. | |
+
 ## Identity brokering
 
 | Method | Path | Auth | Limit | Purpose |

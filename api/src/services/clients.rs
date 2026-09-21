@@ -49,7 +49,7 @@ fn random_secret() -> Zeroizing<String> {
     Zeroizing::new(format!("{SECRET_PREFIX}{}", URL_SAFE_NO_PAD.encode(bytes)))
 }
 
-fn random_client_id() -> String {
+pub(crate) fn random_client_id() -> String {
     let mut bytes = [0u8; 12];
     rand::fill(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes).replace(['-', '_'], "0")
@@ -64,7 +64,7 @@ pub fn is_valid_client_id(s: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b':' | b'-'))
 }
 
-fn validate_uri(field: &str, uri: &str, client_type: ClientType) -> AppResult<()> {
+pub(crate) fn validate_uri(field: &str, uri: &str, client_type: ClientType) -> AppResult<()> {
     let parsed = url::Url::parse(uri)
         .map_err(|_| AppError::BadRequest(format!("{field}: `{uri}` is not a valid URL")))?;
     if parsed.fragment().is_some() {
@@ -179,6 +179,10 @@ fn check_fapi2(
     Ok(())
 }
 
+/// SAML service providers are clients too, but their settings are SAML
+/// ones, edited through their own routes.
+pub const SAML_ELSEWHERE: &str = "SAML service providers are managed under /saml/service-providers";
+
 /// Resolve `NewClient` into a full `Client` using type-driven defaults.
 pub fn resolve(
     tenant_id: Uuid,
@@ -189,6 +193,9 @@ pub fn resolve(
         return Err(AppError::BadRequest("name must be 1-255 characters".into()));
     }
     let client_type = input.client_type.unwrap_or(ClientType::Web);
+    if client_type == ClientType::Saml {
+        return Err(AppError::BadRequest(SAML_ELSEWHERE.into()));
+    }
     let client_id = match input.client_id.map(|s| s.trim().to_string()) {
         Some(id) if !id.is_empty() => {
             if !is_valid_client_id(&id) {
@@ -229,6 +236,7 @@ pub fn resolve(
                 vec![grants::DEVICE_CODE, grants::REFRESH_TOKEN],
                 true,
             ),
+            ClientType::Saml => unreachable!("refused above"),
         };
     let auth_method = input.token_endpoint_auth_method.unwrap_or(default_auth);
     let allowed_grants = input
@@ -682,6 +690,9 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
             "the admin console client is built in and cannot be deleted".into(),
         ));
     }
+    if client.client_type == ClientType::Saml {
+        super::saml_sps::forget(state, tenant_id, id).await?;
+    }
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let ok = repos::clients::delete(&mut *tx, tenant_id, id).await?;
     tx.commit().await?;
@@ -713,6 +724,9 @@ pub async fn update_metadata(
     mut input: NewClient,
 ) -> AppResult<(Client, Option<Zeroizing<String>>)> {
     let current = get(state, tenant_id, id).await?;
+    if current.client_type == ClientType::Saml {
+        return Err(AppError::Conflict(SAML_ELSEWHERE.into()));
+    }
     input.client_id = Some(current.client_id.clone());
     let (mut resolved, fresh_secret) = resolve(tenant_id, input)?;
     resolved.id = current.id;

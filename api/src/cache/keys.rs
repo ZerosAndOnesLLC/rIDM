@@ -84,6 +84,29 @@ pub fn signing_key_material(key_id: Uuid) -> String {
     format!("{PREFIX}:signing_key:{key_id}:material")
 }
 
+/// The tenant's SAML signing keys (public views).
+pub fn saml_keys(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:saml:keys")
+}
+
+/// A SAML signing key's decrypted signer (L1 only).
+pub fn saml_key_material(key_id: Uuid) -> String {
+    format!("{PREFIX}:saml_key:{key_id}:material")
+}
+
+/// A SAML service provider by its client's row id.
+pub fn saml_sp(tenant_id: Uuid, client_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:saml:sp:{client_id}")
+}
+
+/// A SAML service provider by entity ID. Entity IDs are URLs of any
+/// length, so the key holds their SHA-256.
+pub fn saml_sp_by_entity(tenant_id: Uuid, entity_id: &str) -> String {
+    use sha2::Digest as _;
+    let h = sha2::Sha256::digest(entity_id.as_bytes());
+    format!("{PREFIX}:t:{tenant_id}:saml:entity:{}", hex::encode(h))
+}
+
 /// Denylisted access-token `jti` (instant revocation before expiry).
 pub fn jti_denied(tenant_id: Uuid, jti: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:jti:{jti}")

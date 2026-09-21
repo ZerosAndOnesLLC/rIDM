@@ -12,6 +12,7 @@ workflow.
 | `redirect_uri` | a registered list (lines) and a requested URI (after the blank line) | a match outside an exact registration only ever happens for a native client's loopback redirect |
 | `pkce` | a `code_verifier` | the grammar check agrees with itself, the transform yields a well-formed challenge, and a verifier verifies against its own challenge and no other |
 | `scim_filter` | a SCIM filter string | a parsed filter evaluates over a document (and over an empty one) |
+| `saml_message` | a SAML HTTP-Redirect query string, or an XML message or metadata document | the Redirect decoder, the XML parser, the protocol and metadata readers never panic; exclusive C14N output reparses and canonicalizes to itself; no signature verifies against an unrelated certificate |
 
 ## Running them
 

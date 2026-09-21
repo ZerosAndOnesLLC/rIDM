@@ -14,6 +14,7 @@ pub mod oidc;
 pub mod openapi;
 pub mod repos;
 pub mod routes;
+pub mod saml;
 pub mod services;
 pub mod state;
 pub mod telemetry;
@@ -113,6 +114,11 @@ fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
         .merge(oidc::discovery::router())
         .merge(limited(
             oidc::authorize::router(),
+            Category::Authorize,
+            Style::Html,
+        ))
+        .merge(limited(
+            routes::saml::router(),
             Category::Authorize,
             Style::Html,
         ))
