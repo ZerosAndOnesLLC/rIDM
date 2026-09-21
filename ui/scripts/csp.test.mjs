@@ -16,6 +16,18 @@ test("hashes executable inline scripts only", () => {
   assert.deepEqual(inlineScriptHashes(html), [sha("alert(1)"), sha('import "./m.js"')]);
 });
 
+test("an end tag closes the script whatever trails the name", () => {
+  // `</script >`, `</script\n bar>` and `</script/>` all end a script, and a
+  // pattern that missed one would swallow the rest of the document into the
+  // body and hash the wrong bytes — after which the browser refuses the real
+  // script. `</scriptish>` ends nothing.
+  const html =
+    `<head><script>alert(1)</script ><script>alert(2)</script\n bar>` +
+    `<script>alert(3)</script/><script>alert(4)</script></head>`;
+  assert.deepEqual(inlineScriptHashes(html), [sha("alert(1)"), sha("alert(2)"), sha("alert(3)"), sha("alert(4)")]);
+  assert.deepEqual(inlineScriptHashes(`<script>alert(5)</scriptish></script>`), [sha("alert(5)</scriptish>")]);
+});
+
 test("policy allows self, the hashes, the API and the captcha vendors", () => {
   const p = buildPolicy({ hashes: [sha("x")], apiOrigin: "https://id.example.com" });
   assert.match(p, /script-src 'self' 'sha256-[A-Za-z0-9+/=]+' https:\/\/challenges\.cloudflare\.com/);

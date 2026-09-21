@@ -97,11 +97,21 @@ pub fn direction(locale: &str) -> &'static str {
     if is_rtl(locale) { "rtl" } else { "ltr" }
 }
 
+/// The most languages a tenant may declare. Far more than any login page
+/// offers, and it stops a settings document from deciding how much memory
+/// validating it costs.
+const MAX_SUPPORTED_LOCALES: usize = 200;
+
 /// Canonicalize tenant locale settings and reject a default outside the
 /// supported list or malformed tags.
 pub fn validate_settings(settings: &mut LocaleSettings) -> AppResult<()> {
     let default = normalize(&settings.default)
         .ok_or_else(|| AppError::BadRequest("locale.default is not a valid language tag".into()))?;
+    if settings.supported.len() > MAX_SUPPORTED_LOCALES {
+        return Err(AppError::BadRequest(format!(
+            "locale.supported may name at most {MAX_SUPPORTED_LOCALES} languages"
+        )));
+    }
     let mut supported = Vec::with_capacity(settings.supported.len() + 1);
     for tag in &settings.supported {
         let n = normalize(tag).ok_or_else(|| {
@@ -180,6 +190,16 @@ mod tests {
         assert!(!is_rtl("en"));
         assert_eq!(direction("ur"), "rtl");
         assert_eq!(direction("de-CH"), "ltr");
+    }
+
+    #[test]
+    fn an_absurd_supported_list_is_refused_before_it_is_walked() {
+        let mut s = LocaleSettings {
+            default: "en".into(),
+            supported: std::iter::repeat_n("en".to_string(), MAX_SUPPORTED_LOCALES + 1).collect(),
+        };
+        let err = validate_settings(&mut s).expect_err("too many languages");
+        assert!(err.to_string().contains("at most"), "{err}");
     }
 
     #[test]

@@ -22,7 +22,12 @@ const CAPTCHA_SCRIPTS = ["https://challenges.cloudflare.com", "https://js.hcaptc
 const CAPTCHA_FRAMES = ["https://challenges.cloudflare.com", "https://*.hcaptcha.com"];
 const CAPTCHA_CONNECT = ["https://challenges.cloudflare.com", "https://*.hcaptcha.com"];
 
-const SCRIPT_RE = /<script(\s[^>]*)?>([\s\S]*?)<\/script>/gi;
+// An end tag closes the script whatever follows the name — `</script >`,
+// `</script\n>`, even `</script bar>`, whose attributes a parser ignores. A
+// pattern that misses one of those would hash the wrong body (or none), and
+// the page would then be refused by its own CSP. `</scriptish>` is not an end
+// tag, hence the separator before the junk.
+const SCRIPT_RE = /<script(\s[^>]*)?>([\s\S]*?)<\/script(?:[\s/][^>]*)?>/gi;
 
 /** `scheme://host[:port]` of a URL, or null when it is empty or unparsable. */
 export function originOf(url) {

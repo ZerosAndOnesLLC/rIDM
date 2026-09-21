@@ -1,0 +1,61 @@
+# CodeQL, as an advanced configuration rather than GitHub's default setup:
+# only this form can exclude paths, and the test suites are full of the values
+# a scanner is right to object to everywhere else (see
+# `.github/codeql/codeql-config.yml`). Running it here also means the scan
+# happens on every pull request, not weekly.
+name: codeql
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Sunday 04:17 UTC, so a query-pack update is noticed without a push.
+    - cron: "17 4 * * 0"
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+          - language: python
+            build-mode: none
+          - language: rust
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          config-file: ./.github/codeql/codeql-config.yml
+          # The threat model default setup ran with: input that crosses a
+          # process boundary counts as remote.
+          threat-model: remote
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
