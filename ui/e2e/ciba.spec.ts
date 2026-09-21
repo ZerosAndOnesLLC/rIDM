@@ -40,24 +40,26 @@ async function asClient(client: { id: string; secret: string }, path: string, fo
   return { status: res.status, body: (await res.json()) as Record<string, unknown> };
 }
 
+/** Follow the emailed link in a fresh browser: the account console sends it to sign in first. */
 async function accountSignIn(page: Page, url: string) {
   await page.goto(url);
   await page.getByRole("button", { name: "Continue", exact: true }).click();
-  const password = page.getByLabel("Password", { exact: true });
-  if (await password.isVisible({ timeout: 10_000 }).catch(() => false)) {
-    await page.getByLabel("Email or username").fill(state.email);
-    await password.fill(state.password);
-    await page.getByRole("button", { name: "Continue", exact: true }).click();
-  }
+  await page.waitForURL(/\/login\//);
+  await page.getByLabel("Email or username").fill(state.email);
+  await page.getByLabel("Password", { exact: true }).fill(state.password);
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.waitForURL(/\/account\/approvals\//, { timeout: 20_000 });
   await expect(page.getByRole("heading", { name: "Sign-in requests", level: 1 })).toBeVisible({ timeout: 20_000 });
 }
 
 test("an application signs the user in over the back channel", async ({ page }) => {
+  // Its own binding message, so a retry never mistakes an earlier attempt's request for its own.
+  const binding = `E2E ${Math.floor(1000 + Math.random() * 9000)}`;
   const client = await registerCibaClient();
   const ack = await asClient(client, "/bc-authorize", {
     scope: "openid profile",
     login_hint: state.email,
-    binding_message: "E2E 42",
+    binding_message: binding,
   });
   expect(ack.status).toBe(200);
   const authReqId = ack.body.auth_req_id as string;
@@ -67,19 +69,18 @@ test("an application signs the user in over the back channel", async ({ page }) 
 
   // The notice links to the approvals page for this request.
   const mail = await mailpit.waitFor(state.email, 15_000, "E2E Bank");
-  expect(mail.text).toContain("E2E 42");
+  expect(mail.text).toContain(binding);
   const link = mail.links.find((l) => l.includes("/account/approvals/"));
   expect(link, mail.text).toBeTruthy();
   expect(link).toContain(`tenant=${TENANT}`);
 
   await accountSignIn(page, link!);
-  const item = page.getByRole("list", { name: "Waiting for your answer" }).getByRole("listitem").first();
+  const item = page.getByRole("list", { name: "Waiting for your answer" }).getByRole("listitem").filter({ hasText: binding });
   await expect(item.getByText("E2E Bank asks to sign you in")).toBeVisible();
-  await expect(item.getByText("E2E 42")).toBeVisible();
   await expectAccessible(page);
   await item.getByRole("button", { name: "Approve" }).click();
   await expect(page.getByText("E2E Bank is signed in.")).toBeVisible();
-  await expect(page.getByText("Nothing is waiting for you.")).toBeVisible();
+  await expect(item).toHaveCount(0);
 
   const tokens = await asClient(client, "/token", { grant_type: CIBA, auth_req_id: authReqId });
   expect(tokens.status).toBe(200);
@@ -88,5 +89,5 @@ test("an application signs the user in over the back channel", async ({ page }) 
 
   // The approval is remembered: the bank is a connected application now.
   await page.getByRole("link", { name: "Applications" }).click();
-  await expect(page.getByText("E2E Bank")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("E2E Bank").first()).toBeVisible({ timeout: 15_000 });
 });
