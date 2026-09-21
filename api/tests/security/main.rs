@@ -6,6 +6,7 @@ mod common;
 
 mod bulk_import;
 mod custom_domains;
+mod legacy_hash_cost;
 mod mfa_policy;
 mod org_admin;
 mod outbound;
