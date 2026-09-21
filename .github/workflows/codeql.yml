@@ -42,18 +42,25 @@ jobs:
             build-mode: none
           - language: rust
             build-mode: none
+    env:
+      # Since the action started building "overlay" databases on the default
+      # branch, the JavaScript/TypeScript analysis of `main` uploads fine but
+      # GitHub records it as "Unknown Error" with no rules, and the Security
+      # tab reports the scan as failed (2026-09-21, twice on the same commit).
+      # Full databases for that language until that is fixed upstream; an
+      # empty value leaves the other languages on the action's own choice.
+      CODEQL_OVERLAY_DATABASE_MODE: ${{ matrix.language == 'javascript-typescript' && 'none' || '' }}
     steps:
       - uses: actions/checkout@v7
 
+      # The threat model is the default one, `remote`: input that crosses a
+      # process boundary counts as untrusted.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           config-file: ./.github/codeql/codeql-config.yml
-          # The threat model default setup ran with: input that crosses a
-          # process boundary counts as remote.
-          threat-model: remote
 
       - name: Analyze
         uses: github/codeql-action/analyze@v4
