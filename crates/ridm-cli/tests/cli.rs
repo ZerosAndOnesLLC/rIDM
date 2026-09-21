@@ -811,7 +811,10 @@ async fn bootstrap_mints_a_token_the_rest_of_the_cli_accepts() {
 async fn an_audit_export_is_verified_offline_and_tampering_is_caught() {
     let app = TestApp::spawn().await;
     let cli = owner_cli(&app).await;
-    // Setting the CLI up created a user and granted a role: rows to check.
+    // Setting the CLI up created a user and granted a role; one more user
+    // makes three rows, so the file below has a row in the *middle* to drop
+    // (with two, the second is the tail, and dropping it leaves no gap).
+    user_with_role(&app, app.tenant.id, None).await;
     let mut report = Value::Null;
     for _ in 0..100 {
         report = cli
@@ -819,7 +822,7 @@ async fn an_audit_export_is_verified_offline_and_tampering_is_caught() {
             .await
             .ok()
             .json();
-        if report["checked"].as_u64().unwrap_or(0) >= 2 {
+        if report["checked"].as_u64().unwrap_or(0) >= 3 {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
