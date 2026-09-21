@@ -60,7 +60,7 @@ with `{"status": "disabled"}`, or the switch on its page.
 | `sign_response`, `sign_assertion` | `true`, `true` | At least one stays on |
 | `encrypt_assertion`, `encryption_certificate` | `false`, none | Encrypt the assertion to the SP's RSA certificate |
 | `data_encryption` | `aes256-gcm` | Also `aes128-gcm`, and `aes256-cbc` / `aes128-cbc` for SPs that cannot read GCM |
-| `key_transport` | `rsa-oaep-mgf1p` | RSA-OAEP with SHA-1 (every SAML stack reads it; SHA-1 is sound inside OAEP), or `rsa-oaep-sha256` |
+| `key_transport` | `rsa-oaep-mgf1p` | RSA-OAEP with SHA-1 (every SAML stack reads it; SHA-1 is sound inside OAEP), or `rsa-oaep-sha256` (XML Encryption 1.1; SPs built on xmlsec 1.2 cannot read it) |
 | `allow_idp_initiated`, `default_relay_state` | `false`, none | See [IdP-initiated sign-in](#idp-initiated-sign-in) |
 | `assertion_ttl_secs` | `300` | How long the SP may accept the assertion (30–3600) |
 | `client_id` | generated | rIDM's own id for the SP: roles, audit, consent |

@@ -363,7 +363,7 @@ mod tests {
 
     #[test]
     fn xmlsec1_decrypts_what_we_encrypt() {
-        use crate::saml::testkit::{rsa_key_pem, scratch, xmlsec1, xmlsec1_lax};
+        use crate::saml::testkit::{rsa_key_pem, scratch, xmlsec1, xmlsec1_is_1_2, xmlsec1_lax};
         let Some(tool) = xmlsec1() else {
             eprintln!("xmlsec1 not installed; interop not checked");
             return;
@@ -374,6 +374,11 @@ mod tests {
         let plain = r#"<saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="_a"><saml:Issuer>é</saml:Issuer></saml:Assertion>"#;
         for data in [DataEncryption::Aes256Gcm, DataEncryption::Aes128Cbc] {
             for transport in [KeyTransport::RsaOaepMgf1p, KeyTransport::RsaOaepSha256] {
+                // xmlsec1 1.2 predates XML-Enc 1.1's `rsa-oaep`; SPs built
+                // on it need the default, `rsa-oaep-mgf1p`.
+                if transport == KeyTransport::RsaOaepSha256 && xmlsec1_is_1_2() {
+                    continue;
+                }
                 let el = encrypt(plain, &rsa_cert(), data, transport).unwrap();
                 let file = dir.join("enc.xml");
                 std::fs::write(&file, el.to_string()).unwrap();

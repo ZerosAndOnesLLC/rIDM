@@ -58,16 +58,20 @@ pub fn xmlsec1() -> Option<std::path::PathBuf> {
 /// `--lax-key-search` where it exists: xmlsec1 1.3 searches keys strictly by
 /// default and needs it; 1.2 (Ubuntu's) is lax already and refuses the flag.
 pub fn xmlsec1_lax() -> Vec<&'static str> {
-    let version = std::process::Command::new("xmlsec1")
-        .arg("--version")
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-        .unwrap_or_default();
-    if version.contains(" 1.2.") {
+    if xmlsec1_is_1_2() {
         vec![]
     } else {
         vec!["--lax-key-search"]
     }
+}
+
+/// Whether the installed xmlsec1 is a 1.2 release (Ubuntu's), which also
+/// lacks XML-Enc 1.1's `rsa-oaep` key transport.
+pub fn xmlsec1_is_1_2() -> bool {
+    std::process::Command::new("xmlsec1")
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains(" 1.2."))
 }
 
 /// A scratch directory for files handed to `xmlsec1`.
