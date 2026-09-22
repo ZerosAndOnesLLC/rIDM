@@ -85,6 +85,9 @@ test.describe("Kerberos desktop sign-in", () => {
   dns_lookup_realm = false
   dns_canonicalize_hostname = false
   rdns = false
+  # MIT 1.20+ appends the resolver's search domain to a short name such as
+  # localhost (CI runners have one), which names a principal nobody has.
+  qualify_shortname = ""
   udp_preference_limit = 1
 [realms]
   EXAMPLE.TEST = {

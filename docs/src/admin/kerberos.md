@@ -23,7 +23,9 @@ keytab file.
 - **Use the host's own name.** Browsers resolve a CNAME to its target before building the
   principal name. Give rIDM an A/AAAA record, or register the principal for the name the
   CNAME points to (or turn the lookup off with Chrome's `DisableAuthNegotiateCnameLookup`
-  policy). An address typed as an IP never gets Kerberos.
+  policy). An address typed as an IP never gets Kerberos. Use a fully qualified name:
+  MIT Kerberos clients (1.20+) append the resolver's search domain to a name with no
+  dots, and ask for a principal you did not register.
 - **AES keys only.** rIDM accepts `aes256-cts-hmac-sha1-96` and `aes128-cts-hmac-sha1-96`
   tickets. RC4 and DES are refused as broken. The newer RFC 8009 types
   (`aes256-cts-hmac-sha384-192`, `aes128-cts-hmac-sha256-128`, MIT's default since 1.21)
