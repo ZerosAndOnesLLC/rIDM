@@ -27,6 +27,11 @@ embedded-ui = []
 # under a multi-threaded server's load. glibc builds, the image among them,
 # have no need of it.
 mimalloc = ["dep:mimalloc"]
+# Kerberos / SPNEGO desktop sign-in: the ticket acceptor behind
+# `/t/{slug}/kerberos/negotiate`. Without it a `kerberos` identity provider can
+# still be configured (tenant documents stay portable between builds) but
+# nobody can sign in with it. The released image and binaries turn it on.
+kerberos = ["dep:picky-krb"]
 
 [dependencies]
 ridm-core = { workspace = true }
@@ -77,6 +82,7 @@ flate2 = { workspace = true }
 reqwest = { workspace = true }
 hickory-resolver = { workspace = true }
 ldap3 = { workspace = true }
+picky-krb = { workspace = true, optional = true }
 lettre = { workspace = true }
 handlebars = { workspace = true }
 

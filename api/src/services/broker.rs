@@ -1008,8 +1008,9 @@ pub(crate) async fn apply_mappers(
     }
 }
 
-/// Link an upstream identity to a signed-in user (account console).
-async fn link(
+/// Link an upstream identity to a signed-in user (account console), or to
+/// the local account a Kerberos principal matched.
+pub(crate) async fn link(
     state: &AppState,
     tenant: &crate::models::Tenant,
     idp: &IdentityProvider,

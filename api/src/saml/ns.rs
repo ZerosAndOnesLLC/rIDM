@@ -21,6 +21,7 @@ pub const ATTRNAME_UNSPECIFIED: &str = "urn:oasis:names:tc:SAML:2.0:attrname-for
 
 pub const AC_PASSWORD_PROTECTED: &str =
     "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport";
+pub const AC_KERBEROS: &str = "urn:oasis:names:tc:SAML:2.0:ac:classes:Kerberos";
 pub const AC_UNSPECIFIED: &str = "urn:oasis:names:tc:SAML:2.0:ac:classes:unspecified";
 /// REFEDS MFA profile: what research and enterprise SPs ask for when they
 /// want a second factor.

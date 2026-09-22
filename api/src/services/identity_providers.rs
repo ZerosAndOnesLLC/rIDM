@@ -17,9 +17,11 @@ use zeroize::Zeroizing;
 use crate::cache::keys;
 use crate::db;
 use crate::error::{AppError, AppResult, FieldError};
+use crate::kerberos::{self, KeytabEntryInfo};
 use crate::models::{
-    IdentityProvider, IdentityProviderUpdate, IdpAuthMethod, IdpKind, IdpMappers, LdapEditMode,
-    LdapSettings, LinkPolicy, NewIdentityProvider, PublicIdentityProvider, SamlUpstreamSettings,
+    IdentityProvider, IdentityProviderUpdate, IdpAuthMethod, IdpKind, IdpMappers, KerberosSettings,
+    LdapEditMode, LdapSettings, LinkPolicy, NewIdentityProvider, PublicIdentityProvider,
+    SamlUpstreamSettings,
 };
 use crate::repos;
 use crate::state::AppState;
@@ -157,7 +159,8 @@ pub fn validate_alias(raw: &str) -> AppResult<String> {
         && a != "presets"
         && a != "discover"
         && a != "saml-metadata"
-        && a != "ldap-test";
+        && a != "ldap-test"
+        && a != "kerberos-keytab";
     if ok {
         Ok(a)
     } else {
@@ -453,6 +456,10 @@ struct Resolved {
     sort_order: i32,
     saml: Option<SamlUpstreamSettings>,
     ldap: Option<LdapSettings>,
+    kerberos: Option<KerberosSettings>,
+    /// What the keytab a Kerberos provider will have holds (the new one,
+    /// or the stored one when the change keeps it).
+    keytab_entries: Vec<KeytabEntryInfo>,
 }
 
 fn opt(s: Option<String>) -> Option<String> {
@@ -502,11 +509,20 @@ async fn finish(mut r: Resolved, has_secret: bool) -> AppResult<Resolved> {
             message: "must be 1-100 characters".into(),
         }]));
     }
+    if r.kerberos.is_some() && r.kind != IdpKind::Kerberos {
+        return Err(field_error(
+            "kerberos",
+            "is only for a provider of kind `kerberos`",
+        ));
+    }
     if r.kind == IdpKind::Saml {
         return finish_saml(r);
     }
     if r.kind == IdpKind::Ldap {
         return finish_ldap(r);
+    }
+    if r.kind == IdpKind::Kerberos {
+        return finish_kerberos(r);
     }
     if r.saml.is_some() {
         return Err(field_error("saml", "is only for a provider of kind `saml`"));
@@ -569,6 +585,7 @@ async fn finish(mut r: Resolved, has_secret: bool) -> AppResult<Resolved> {
         }
         IdpKind::Saml => unreachable!("finished by finish_saml"),
         IdpKind::Ldap => unreachable!("finished by finish_ldap"),
+        IdpKind::Kerberos => unreachable!("finished by finish_kerberos"),
         IdpKind::Oauth2 => {
             for (name, present) in [
                 ("authorization_endpoint", r.authorization_endpoint.is_some()),
@@ -678,6 +695,177 @@ fn finish_ldap(mut r: Resolved) -> AppResult<Resolved> {
     r.scopes = vec![];
     r.pkce = false;
     Ok(r)
+}
+
+/// A Kerberos realm has none of the OAuth fields and no mappers (a ticket
+/// carries a name and nothing else); its settings are checked against the
+/// keytab it will have.
+fn finish_kerberos(mut r: Resolved) -> AppResult<Resolved> {
+    let settings = r
+        .kerberos
+        .take()
+        .ok_or_else(|| field_error("kerberos", "is required for a provider of kind `kerberos`"))?;
+    if r.saml.is_some() {
+        return Err(field_error("saml", "is only for a provider of kind `saml`"));
+    }
+    if r.ldap.is_some() {
+        return Err(field_error("ldap", "is only for a provider of kind `ldap`"));
+    }
+    r.kerberos = Some(validate_kerberos(settings, &r.keytab_entries)?);
+    r.mappers = IdpMappers::default();
+    r.preset = None;
+    r.issuer = None;
+    r.authorization_endpoint = None;
+    r.token_endpoint = None;
+    r.userinfo_endpoint = None;
+    r.jwks_uri = None;
+    r.client_id = String::new();
+    r.token_endpoint_auth_method = IdpAuthMethod::None;
+    r.scopes = vec![];
+    r.pkce = false;
+    Ok(r)
+}
+
+/// Read an uploaded keytab: base64 (standard or URL-safe, padding and line
+/// breaks optional) of a keytab file. Returns the canonical base64 kept as
+/// the provider's secret and what the file holds.
+pub fn decode_keytab(raw: &str) -> AppResult<(String, Vec<KeytabEntryInfo>)> {
+    use base64::Engine as _;
+    use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD};
+    let compact: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
+    let bytes = [STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD]
+        .iter()
+        .find_map(|e| e.decode(&compact).ok())
+        .ok_or_else(|| field_error("kerberos.keytab", "is not base64"))?;
+    let entries = kerberos::parse_keytab(&bytes).map_err(|e| field_error("kerberos.keytab", &e))?;
+    if entries.is_empty() {
+        return Err(field_error("kerberos.keytab", "holds no keys"));
+    }
+    Ok((
+        STANDARD.encode(&bytes),
+        entries.iter().map(kerberos::KeytabEntry::info).collect(),
+    ))
+}
+
+/// Check and normalize a Kerberos provider's settings. The service
+/// principal comes from the keytab when it holds one service, and must be
+/// one the keytab has an AES key for when a keytab is there.
+pub fn validate_kerberos(
+    mut s: KerberosSettings,
+    entries: &[KeytabEntryInfo],
+) -> AppResult<KerberosSettings> {
+    let usable: Vec<&KeytabEntryInfo> = entries.iter().filter(|e| e.supported).collect();
+    if !entries.is_empty() && usable.is_empty() {
+        let kinds: Vec<&str> = entries.iter().map(|e| e.etype_name.as_str()).collect();
+        return Err(field_error(
+            "kerberos.keytab",
+            &format!(
+                "has no AES key (it holds {}); export one with aes256-cts-hmac-sha1-96",
+                kinds.join(", ")
+            ),
+        ));
+    }
+    let spn = match opt(s.service_principal.take()) {
+        Some(p) => p,
+        None => {
+            let mut services: Vec<&str> = usable.iter().map(|e| e.principal.as_str()).collect();
+            services.sort_unstable();
+            services.dedup();
+            match services.as_slice() {
+                [one] => one.to_string(),
+                [] => {
+                    return Err(field_error(
+                        "kerberos.service_principal",
+                        "is required (HTTP/<host>@<REALM>) unless the keytab names it",
+                    ));
+                }
+                many => {
+                    return Err(field_error(
+                        "kerberos.service_principal",
+                        &format!(
+                            "the keytab holds several services ({}); name one",
+                            many.join(", ")
+                        ),
+                    ));
+                }
+            }
+        }
+    };
+    let principal = kerberos::Principal::parse(&spn)
+        .map_err(|e| field_error("kerberos.service_principal", &e))?;
+    if principal.components.len() != 2 || !principal.components[0].eq_ignore_ascii_case("HTTP") {
+        return Err(field_error(
+            "kerberos.service_principal",
+            "browsers ask for HTTP/<host>@<REALM>, <host> being the name they reach rIDM by",
+        ));
+    }
+    if !entries.is_empty()
+        && !usable.iter().any(|e| {
+            kerberos::Principal::parse(&e.principal).is_ok_and(|p| p.eq_ignore_case(&principal))
+        })
+    {
+        return Err(field_error(
+            "kerberos.keytab",
+            &format!("has no AES key for {principal}"),
+        ));
+    }
+    s.service_principal = Some(principal.to_string());
+    let mut realms = vec![];
+    for r in &s.realms {
+        let r = kerberos::normalize_realm(r).map_err(|e| field_error("kerberos.realms", &e))?;
+        if !realms.contains(&r) {
+            realms.push(r);
+        }
+    }
+    if realms.is_empty() {
+        realms.push(
+            kerberos::normalize_realm(&principal.realm)
+                .map_err(|e| field_error("kerberos.service_principal", &e))?,
+        );
+    }
+    if realms.len() > 20 {
+        return Err(field_error("kerberos.realms", "at most 20 realms"));
+    }
+    s.realms = realms;
+    let mut networks = vec![];
+    for n in &s.trusted_networks {
+        let n = n.trim();
+        let net = n
+            .parse::<ipnet::IpNet>()
+            .or_else(|_| n.parse::<std::net::IpAddr>().map(ipnet::IpNet::from))
+            .map_err(|_| {
+                field_error(
+                    "kerberos.trusted_networks",
+                    &format!("`{n}` is not a network (10.0.0.0/8) or an address"),
+                )
+            })?
+            .trunc()
+            .to_string();
+        if !networks.contains(&net) {
+            networks.push(net);
+        }
+    }
+    if networks.len() > 100 {
+        return Err(field_error(
+            "kerberos.trusted_networks",
+            "at most 100 networks",
+        ));
+    }
+    s.trusted_networks = networks;
+    if !(30..=900).contains(&s.max_skew_seconds) {
+        return Err(field_error("kerberos.max_skew_seconds", "must be 30-900"));
+    }
+    s.ldap_attribute = opt(s.ldap_attribute);
+    if let Some(a) = &s.ldap_attribute {
+        crate::ldap::check_attribute(a).map_err(|e| field_error("kerberos.ldap_attribute", &e))?;
+    }
+    if s.ldap_attribute.is_some() && s.ldap_idp_id.is_none() {
+        return Err(field_error(
+            "kerberos.ldap_attribute",
+            "is only used with a directory (ldap_idp_id)",
+        ));
+    }
+    Ok(s)
 }
 
 /// Check and normalize a directory's settings, filling in the vendor's
@@ -974,6 +1162,8 @@ fn from_new(input: NewIdentityProvider) -> AppResult<Resolved> {
         sort_order: input.sort_order.unwrap_or(0),
         saml: input.saml,
         ldap: input.ldap,
+        kerberos: input.kerberos,
+        keytab_entries: vec![],
     })
 }
 
@@ -1000,6 +1190,12 @@ fn from_existing(idp: &IdentityProvider) -> Resolved {
         sort_order: idp.sort_order,
         saml: idp.saml.as_ref().map(|s| s.settings()),
         ldap: idp.ldap.as_ref().map(|s| s.settings()),
+        kerberos: idp.kerberos.as_ref().map(|s| s.settings()),
+        keytab_entries: idp
+            .kerberos
+            .as_ref()
+            .map(|k| k.keytab_entries.0.clone())
+            .unwrap_or_default(),
     }
 }
 
@@ -1009,6 +1205,7 @@ async fn invalidate(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
         .invalidate(&[
             keys::identity_providers(tenant_id),
             keys::ldap_directories(tenant_id),
+            keys::kerberos_realms(tenant_id),
         ])
         .await
 }
@@ -1031,6 +1228,17 @@ pub async fn list(state: &AppState, tenant_id: Uuid) -> AppResult<Vec<IdentityPr
                 let mut l = ldap.swap_remove(i);
                 l.bind_password_set = r.client_secret_set;
                 r.ldap = Some(l);
+            }
+        }
+    }
+    if rows.iter().any(|r| r.kind == IdpKind::Kerberos) {
+        let mut krb = repos::identity_providers::list_kerberos(&mut *tx, tenant_id).await?;
+        for r in &mut rows {
+            if let Some(i) = krb.iter().position(|s| s.idp_id == r.id) {
+                let mut k = krb.swap_remove(i);
+                k.keytab_set = r.client_secret_set;
+                k.supported = kerberos::crypto::AVAILABLE;
+                r.kerberos = Some(k);
             }
         }
     }
@@ -1058,6 +1266,15 @@ pub async fn get(state: &AppState, tenant_id: Uuid, key: &str) -> AppResult<Iden
             .map(|mut l| {
                 l.bind_password_set = row.client_secret_set;
                 l
+            });
+    }
+    if row.kind == IdpKind::Kerberos {
+        row.kerberos = repos::identity_providers::find_kerberos(&mut *tx, tenant_id, row.id)
+            .await?
+            .map(|mut k| {
+                k.keytab_set = row.client_secret_set;
+                k.supported = kerberos::crypto::AVAILABLE;
+                k
             });
     }
     tx.commit().await?;
@@ -1120,12 +1337,20 @@ pub async fn create(
     input: NewIdentityProvider,
 ) -> AppResult<IdentityProvider> {
     let is_ldap = input.kind == Some(IdpKind::Ldap);
+    let is_kerberos = input.kind == Some(IdpKind::Kerberos);
     if is_ldap && input.client_secret.is_some() {
         return Err(field_error(
             "client_secret",
             "a directory's service account password is `ldap.bind_password`",
         ));
     }
+    if is_kerberos && input.client_secret.is_some() {
+        return Err(field_error(
+            "client_secret",
+            "a Kerberos provider's secret is its keytab, `kerberos.keytab`",
+        ));
+    }
+    let mut keytab_entries = None;
     let secret = if is_ldap {
         input
             .ldap
@@ -1133,6 +1358,20 @@ pub async fn create(
             .and_then(|l| l.bind_password.as_ref())
             .map(|p| p.0.clone())
             .filter(|p| !p.is_empty())
+    } else if is_kerberos {
+        match input
+            .kerberos
+            .as_ref()
+            .and_then(|k| k.keytab.as_ref())
+            .filter(|k| !k.0.trim().is_empty())
+        {
+            Some(k) => {
+                let (b64, entries) = decode_keytab(&k.0)?;
+                keytab_entries = Some(entries);
+                Some(b64)
+            }
+            None => None,
+        }
     } else {
         input
             .client_secret
@@ -1140,7 +1379,9 @@ pub async fn create(
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
     };
-    let r = finish(from_new(input)?, secret.is_some()).await?;
+    let mut r = from_new(input)?;
+    r.keytab_entries = keytab_entries.clone().unwrap_or_default();
+    let r = finish(r, secret.is_some()).await?;
     check_unsolicited_target(state, tenant_id, r.saml.as_ref()).await?;
     check_ldap_secret(r.ldap.as_ref(), secret.is_some())?;
     let id = Uuid::now_v7();
@@ -1188,6 +1429,19 @@ pub async fn create(
         let mut l = store_ldap(&mut tx, tenant_id, row.id, ldap).await?;
         l.bind_password_set = row.client_secret_set;
         row.ldap = Some(l);
+    }
+    if let Some(krb) = &r.kerberos {
+        let mut k = store_kerberos(
+            &mut tx,
+            tenant_id,
+            row.id,
+            krb,
+            Some(keytab_entries.as_deref().unwrap_or_default()),
+        )
+        .await?;
+        k.keytab_set = row.client_secret_set;
+        k.supported = kerberos::crypto::AVAILABLE;
+        row.kerberos = Some(k);
     }
     tx.commit().await?;
     invalidate(state, tenant_id).await?;
@@ -1286,6 +1540,19 @@ pub async fn update(
     if let Some(v) = patch.ldap {
         r.ldap = Some(v);
     }
+    // A Kerberos provider's keytab travels in its settings the same way.
+    let keytab: Option<Option<(String, Vec<KeytabEntryInfo>)>> =
+        match patch.kerberos.as_ref().and_then(|k| k.keytab.as_ref()) {
+            Some(k) if k.0.trim().is_empty() => Some(None),
+            Some(k) => Some(Some(decode_keytab(&k.0)?)),
+            None => None,
+        };
+    if let Some(v) = patch.kerberos {
+        r.kerberos = Some(v);
+    }
+    if let Some(k) = &keytab {
+        r.keytab_entries = k.as_ref().map(|(_, e)| e.clone()).unwrap_or_default();
+    }
     if (r.kind == IdpKind::Saml) != (existing.kind == IdpKind::Saml) {
         return Err(field_error(
             "kind",
@@ -1296,6 +1563,18 @@ pub async fn update(
         return Err(field_error(
             "kind",
             "a provider cannot change to or from LDAP; create another one",
+        ));
+    }
+    if (r.kind == IdpKind::Kerberos) != (existing.kind == IdpKind::Kerberos) {
+        return Err(field_error(
+            "kind",
+            "a provider cannot change to or from Kerberos; create another one",
+        ));
+    }
+    if r.kind == IdpKind::Kerberos && patch.client_secret.is_some() {
+        return Err(field_error(
+            "client_secret",
+            "a Kerberos provider's secret is its keytab, `kerberos.keytab`",
         ));
     }
     if r.kind == IdpKind::Ldap && patch.client_secret.is_some() {
@@ -1321,6 +1600,10 @@ pub async fn update(
     }
     let secret: Option<Option<String>> = if r.kind == IdpKind::Ldap {
         ldap_password
+    } else if r.kind == IdpKind::Kerberos {
+        keytab
+            .as_ref()
+            .map(|k| k.as_ref().map(|(b64, _)| b64.clone()))
     } else {
         patch
             .client_secret
@@ -1385,6 +1668,13 @@ pub async fn update(
         l.bind_password_set = row.client_secret_set;
         row.ldap = Some(l);
     }
+    if let Some(krb) = &r.kerberos {
+        let entries = keytab.as_ref().map(|_| r.keytab_entries.as_slice());
+        let mut k = store_kerberos(&mut tx, tenant_id, row.id, krb, entries).await?;
+        k.keytab_set = row.client_secret_set;
+        k.supported = kerberos::crypto::AVAILABLE;
+        row.kerberos = Some(k);
+    }
     tx.commit().await?;
     invalidate(state, tenant_id).await?;
     if row.jwks_uri != existing.jwks_uri {
@@ -1445,6 +1735,36 @@ async fn store_ldap(
         return Err(field_error("ldap.group_parent_id", "no such group"));
     }
     Ok(repos::identity_providers::upsert_ldap(&mut **tx, tenant_id, idp_id, ldap).await?)
+}
+
+/// Write a Kerberos provider's settings; a directory it names must be one
+/// of the tenant's LDAP providers, and another provider already accepting
+/// tickets for the service principal is a conflict.
+async fn store_kerberos(
+    tx: &mut crate::db::Tx,
+    tenant_id: Uuid,
+    idp_id: Uuid,
+    krb: &KerberosSettings,
+    entries: Option<&[KeytabEntryInfo]>,
+) -> AppResult<crate::models::KerberosUpstream> {
+    if let Some(dir) = krb.ldap_idp_id {
+        let found = repos::identity_providers::find_by_id(&mut **tx, tenant_id, dir).await?;
+        if !found.is_some_and(|p| p.kind == IdpKind::Ldap) {
+            return Err(field_error(
+                "kerberos.ldap_idp_id",
+                "is not one of the tenant's LDAP identity providers",
+            ));
+        }
+    }
+    repos::identity_providers::upsert_kerberos(&mut **tx, tenant_id, idp_id, krb, entries)
+        .await
+        .map_err(|e| match AppError::from_db(e) {
+            AppError::Conflict(_) => AppError::Conflict(
+                "another identity provider already accepts tickets for this service principal"
+                    .into(),
+            ),
+            other => other,
+        })
 }
 
 /// Delete a provider and, through the database, the identities linked to

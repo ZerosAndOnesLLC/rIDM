@@ -403,6 +403,76 @@ async fn sign_in_at(
     Ok(Found::User(Box::new(user)))
 }
 
+/// What a directory says about a name another mechanism already proved.
+pub enum DirectoryMatch {
+    /// No entry has it.
+    None,
+    /// An entry has it, and it may not sign in (several entries match, it
+    /// is disabled in AD, or the link policy refused to import it).
+    Refused,
+    User(Box<User>),
+}
+
+/// Sign in the directory user whose `attribute` is `value`, with no bind as
+/// them: another mechanism (a Kerberos ticket) proved who they are. The
+/// entry is imported or refreshed, groups included, as a password sign-in
+/// would. An unreachable directory is an error.
+pub async fn sign_in_proven(
+    state: &AppState,
+    tenant: &Tenant,
+    dir: &Directory,
+    attribute: &str,
+    value: &str,
+) -> AppResult<DirectoryMatch> {
+    if !dir.idp.enabled || value.is_empty() || value.len() > 512 {
+        return Ok(DirectoryMatch::Refused);
+    }
+    let mut conn = connect(state, dir).await?;
+    let found = conn
+        .search(
+            &dir.cfg.users_dn,
+            dir.scope(),
+            &dir.user_filter(Some(proto::eq(attribute, value))),
+            &dir.user_attributes(),
+            2,
+        )
+        .await
+        .map_err(|e| unavailable(dir, e))?;
+    let entry = match <[Entry; 1]>::try_from(found) {
+        Ok([one]) => one,
+        Err(v) if v.is_empty() => {
+            conn.close().await;
+            return Ok(DirectoryMatch::None);
+        }
+        Err(_) => {
+            tracing::warn!(provider = %dir.idp.alias, %attribute, "a proven name matches several directory entries; refused");
+            conn.close().await;
+            return Ok(DirectoryMatch::Refused);
+        }
+    };
+    if dir.disabled(&entry) {
+        conn.close().await;
+        return Ok(DirectoryMatch::Refused);
+    }
+    let Some(identity) = dir.identity(&entry) else {
+        tracing::warn!(provider = %dir.idp.alias, dn = %entry.dn, "directory entry has no usable uuid attribute");
+        conn.close().await;
+        return Ok(DirectoryMatch::Refused);
+    };
+    let groups = user_groups_after_bind(state, dir, &mut conn, &entry).await;
+    conn.close().await;
+    let user = match broker::resolve_user(state, tenant, &dir.idp, &identity).await? {
+        Ok(u) => u,
+        Err(e) => {
+            tracing::info!(provider = %dir.idp.alias, reason = e.code(), "directory user not imported");
+            return Ok(DirectoryMatch::Refused);
+        }
+    };
+    let user = refresh(state, tenant, dir, &user, &entry, true).await?;
+    apply_user_groups(state, tenant.id, dir, user.id, groups).await?;
+    Ok(DirectoryMatch::User(Box::new(user)))
+}
+
 /// Bring a linked user up to date with their entry: the link's DN and
 /// names, no local password, email, username and mapped attributes.
 /// Returns the user as stored afterwards.

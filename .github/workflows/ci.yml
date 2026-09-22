@@ -36,6 +36,10 @@ jobs:
         run: cargo check --workspace --all-targets --locked
       - name: clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # The Kerberos acceptor is an optional feature (on in every release
+      # build): lint the code both ways.
+      - name: clippy (kerberos)
+        run: cargo clippy --workspace --all-targets --locked --features ridm-api/kerberos -- -D warnings
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
@@ -97,7 +101,7 @@ jobs:
       - name: cargo test (lib + bins)
         env:
           RIDM_REQUIRE_XMLSEC1: "1"
-        run: cargo test --workspace --lib --bins --locked
+        run: cargo test --workspace --lib --bins --locked --features ridm-api/kerberos
 
   integration:
     name: integration
@@ -131,7 +135,10 @@ jobs:
       - name: cargo test (integration)
         env:
           RIDM_REQUIRE_XMLSEC1: "1"
-        run: cargo test --workspace --tests --locked
+          # The MIT Kerberos interop test runs a KDC container; with Docker
+          # there it must not skip.
+          RIDM_REQUIRE_KDC: "1"
+        run: cargo test --workspace --tests --locked --features ridm-api/kerberos
 
   coverage:
     name: coverage
@@ -254,8 +261,8 @@ jobs:
       - name: playwright browsers
         working-directory: ui
         run: npx playwright install --with-deps chromium
-      - name: redis-cli (protocol-compatible client; global setup clears the tenant cache in Valkey) and ldap-utils (the LDAP spec seeds its directory)
-        run: sudo apt-get update -q && sudo apt-get install -y -q redis-tools ldap-utils
+      - name: redis-cli (protocol-compatible client; global setup clears the tenant cache in Valkey), ldap-utils (the LDAP spec seeds its directory) and MIT GSSAPI (Chromium's Kerberos, for the SPNEGO spec)
+        run: sudo apt-get update -q && sudo apt-get install -y -q redis-tools ldap-utils libgssapi-krb5-2
       # The suite drives the artifact that ships: the static export compiled
       # into the API (embedded UI mode), everything on one origin.
       - name: build ui (static export, same origin)
@@ -264,7 +271,7 @@ jobs:
           NEXT_PUBLIC_API_URL: ""
         run: npm run build
       - name: build api (embedded ui)
-        run: cargo build -p ridm-api --locked --features embedded-ui
+        run: cargo build -p ridm-api --locked --features embedded-ui,kerberos
       - name: start api
         env:
           PUBLIC_URL: http://localhost:8090

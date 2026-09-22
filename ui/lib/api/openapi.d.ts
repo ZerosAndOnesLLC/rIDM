@@ -564,6 +564,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/tenants/{slug}/identity-providers/kerberos-keytab": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read a keytab without storing it: its entries (never a key) and the
+         *     services rIDM could accept tickets for with it.
+         */
+        post: operations["identity_providers_kerberos_keytab"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/tenants/{slug}/identity-providers/presets": {
         parameters: {
             query?: never;
@@ -3694,6 +3714,7 @@ export interface components {
             id: string;
             issuer?: string | null;
             jwks_uri?: string | null;
+            kerberos?: null | components["schemas"]["KerberosUpstream"];
             kind: components["schemas"]["IdpKind"];
             ldap?: null | components["schemas"]["LdapUpstream"];
             link_policy: components["schemas"]["LinkPolicy"];
@@ -3732,6 +3753,8 @@ export interface components {
             issuer: string | null;
             /** @default null */
             jwks_uri: string | null;
+            /** @default null */
+            kerberos: null | components["schemas"]["KerberosDoc"];
             /** @default oidc */
             kind: components["schemas"]["IdpKind"];
             /** @default null */
@@ -3793,6 +3816,8 @@ export interface components {
             /** @default null */
             jwks_uri: string | null;
             /** @default null */
+            kerberos: null | components["schemas"]["KerberosSettings"];
+            /** @default null */
             kind: null | components["schemas"]["IdpKind"];
             /** @default null */
             ldap: null | components["schemas"]["LdapSettings"];
@@ -3824,7 +3849,8 @@ export interface components {
         IdentityProviderView: components["schemas"]["IdentityProvider"] & {
             /**
              * @description The redirect URI (OIDC, OAuth 2.0) or the assertion consumer
-             *     service (SAML); empty for a directory (LDAP), which has none.
+             *     service (SAML); empty for a directory (LDAP) or a Kerberos realm,
+             *     which have none.
              */
             callback_url: string;
             saml_sp?: null | components["schemas"]["SamlSpInfo"];
@@ -3838,7 +3864,7 @@ export interface components {
          * @description The protocol an upstream provider speaks.
          * @enum {string}
          */
-        IdpKind: "oidc" | "oauth2" | "saml" | "ldap";
+        IdpKind: "oidc" | "oauth2" | "saml" | "ldap" | "kerberos";
         /**
          * @description Where the identity's fields come from in the upstream claims (ID token,
          *     then userinfo). Values are claim names; a dot descends into an object.
@@ -4061,6 +4087,123 @@ export interface components {
             /** @default null */
             description: string | null;
         };
+        /**
+         * @description A Kerberos provider's settings in a tenant document: the directory it
+         *     uses is named by alias, so the document means the same in any tenant.
+         */
+        KerberosDoc: {
+            /** @default false */
+            create_users: boolean;
+            /** @default null */
+            ldap_attribute: string | null;
+            /**
+             * @description The alias of the LDAP provider that owns the users.
+             * @default null
+             */
+            ldap_provider: string | null;
+            /** @default true */
+            match_username: boolean;
+            /**
+             * Format: int32
+             * @default 300
+             */
+            max_skew_seconds: number;
+            /** @default local_part */
+            name_form: components["schemas"]["KerberosNameForm"];
+            /** @default [] */
+            realms: string[];
+            /** @default  */
+            service_principal: string;
+            /** @default [] */
+            trusted_networks: string[];
+        };
+        /**
+         * @description How a client principal names a user.
+         * @enum {string}
+         */
+        KerberosNameForm: "local_part" | "principal";
+        /** @description What an administrator sets for a Kerberos provider. */
+        KerberosSettings: {
+            /**
+             * @description Without a directory: create an account (named by the name) for a
+             *     principal no account matches.
+             * @default false
+             */
+            create_users: boolean;
+            /**
+             * @description The service's keytab file, base64. Write-only: never returned; left
+             *     out on an update it is kept, an empty string clears it.
+             * @default null
+             */
+            keytab: string | null;
+            /**
+             * @description The directory attribute holding the name (`sAMAccountName` or
+             *     `userPrincipalName` on Active Directory, `uid` or `krbPrincipalName`
+             *     elsewhere, by the name form, when unset).
+             * @default null
+             */
+            ldap_attribute: string | null;
+            /**
+             * Format: uuid
+             * @description An LDAP identity provider that owns these users: the name is looked
+             *     up in the directory and the user imported or refreshed through it.
+             * @default null
+             */
+            ldap_idp_id: string | null;
+            /**
+             * @description Without a directory: sign in the local account whose username is the
+             *     name.
+             * @default true
+             */
+            match_username: boolean;
+            /**
+             * Format: int32
+             * @description Allowed clock difference with clients, 30–900 seconds.
+             * @default 300
+             */
+            max_skew_seconds: number;
+            /** @default local_part */
+            name_form: components["schemas"]["KerberosNameForm"];
+            /**
+             * @description The client realms whose users may sign in; the service's realm when
+             *     empty.
+             * @default []
+             */
+            realms: string[];
+            /**
+             * @description The service tickets are issued for, `HTTP/<host>@<REALM>`, where
+             *     `<host>` is the name browsers use for rIDM. Taken from the keytab
+             *     when it holds one service only.
+             * @default null
+             */
+            service_principal: string | null;
+            /**
+             * @description The networks (CIDRs) from which the login page tries Kerberos on its
+             *     own; elsewhere users click the provider's button.
+             * @default []
+             */
+            trusted_networks: string[];
+        };
+        /** @description The Kerberos side of a `kerberos` identity provider. */
+        KerberosUpstream: {
+            create_users: boolean;
+            /** @description What the stored keytab holds (never a key). */
+            keytab_entries: components["schemas"]["KeytabEntryInfo"][];
+            /** @description A keytab is stored (it is never returned). */
+            keytab_set: boolean;
+            ldap_attribute?: string | null;
+            /** Format: uuid */
+            ldap_idp_id?: string | null;
+            match_username: boolean;
+            /** Format: int32 */
+            max_skew_seconds: number;
+            name_form: components["schemas"]["KerberosNameForm"];
+            realms: string[];
+            service_principal: string;
+            /** @description This build of rIDM can accept tickets (the `kerberos` feature). */
+            supported: boolean;
+            trusted_networks: string[];
+        };
         /** @description Signing key lifecycle policy. */
         KeyPolicy: {
             /** @default RS256 */
@@ -4091,6 +4234,33 @@ export interface components {
          * @enum {string}
          */
         KeyTransport: "rsa-oaep-mgf1p" | "rsa-oaep-sha256";
+        KeytabBody: {
+            /** @description A keytab file, base64. */
+            keytab: string;
+        };
+        /** @description What a keytab entry says, without its key: what the admin API shows. */
+        KeytabEntryInfo: {
+            /** Format: int32 */
+            etype: number;
+            /** @description e.g. `aes256-cts-hmac-sha1-96`. */
+            etype_name: string;
+            /** Format: int32 */
+            kvno: number;
+            principal: string;
+            /** @description rIDM can use this key (AES). */
+            supported: boolean;
+        };
+        /**
+         * @description What a keytab holds, for the administrator to check before creating a
+         *     Kerberos provider with it.
+         */
+        KeytabReport: {
+            entries: components["schemas"]["KeytabEntryInfo"][];
+            /** @description The services it has an AES key for (a provider needs one of them). */
+            service_principals: string[];
+            /** @description This build of rIDM can accept tickets (the `kerberos` feature). */
+            supported: boolean;
+        };
         /**
          * @description Whether rIDM writes back to the directory.
          * @enum {string}
@@ -4692,6 +4862,8 @@ export interface components {
             issuer: string | null;
             /** @default null */
             jwks_uri: string | null;
+            /** @default null */
+            kerberos: null | components["schemas"]["KerberosSettings"];
             /** @default null */
             kind: null | components["schemas"]["IdpKind"];
             /** @default null */
@@ -9851,6 +10023,59 @@ export interface operations {
             };
             /** @description The issuer could not be reached */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_kerberos_keytab: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeytabBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeytabReport"];
+                };
+            };
+            /** @description Not a keytab */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -4,9 +4,10 @@ use sqlx::types::Json;
 use sqlx::{PgExecutor, QueryBuilder};
 use uuid::Uuid;
 
+use crate::kerberos::KeytabEntryInfo;
 use crate::models::{
-    IdentityProvider, IdpAuthMethod, IdpKind, IdpMappers, LdapSettings, LdapUpstream, LinkPolicy,
-    SamlUpstream, SamlUpstreamSettings, SloBinding,
+    IdentityProvider, IdpAuthMethod, IdpKind, IdpMappers, KerberosSettings, KerberosUpstream,
+    LdapSettings, LdapUpstream, LinkPolicy, SamlUpstream, SamlUpstreamSettings, SloBinding,
 };
 
 const COLUMNS: &str = "id, tenant_id, alias, kind, display_name, preset, enabled, hidden, issuer, \
@@ -500,4 +501,96 @@ pub async fn upsert_ldap<'e>(
         .bind(s.timeout_secs)
         .fetch_one(exec)
         .await
+}
+
+const KERBEROS_COLUMNS: &str = "idp_id, tenant_id, service_principal, realms, keytab_entries, \
+    name_form, ldap_idp_id, ldap_attribute, match_username, create_users, trusted_networks, \
+    max_skew_seconds, created_at, updated_at";
+
+/// The Kerberos settings of a provider.
+pub async fn find_kerberos<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    idp_id: Uuid,
+) -> Result<Option<KerberosUpstream>, sqlx::Error> {
+    let sql = format!(
+        "SELECT {KERBEROS_COLUMNS} FROM kerberos_identity_providers \
+         WHERE tenant_id = $1 AND idp_id = $2"
+    );
+    sqlx::query_as(sqlx::AssertSqlSafe(sql))
+        .bind(tenant_id)
+        .bind(idp_id)
+        .fetch_optional(exec)
+        .await
+}
+
+/// Every Kerberos provider's settings in the tenant (a tenant has a few).
+pub async fn list_kerberos<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+) -> Result<Vec<KerberosUpstream>, sqlx::Error> {
+    let sql = format!(
+        "SELECT {KERBEROS_COLUMNS} FROM kerberos_identity_providers WHERE tenant_id = $1 LIMIT 1000"
+    );
+    sqlx::query_as(sqlx::AssertSqlSafe(sql))
+        .bind(tenant_id)
+        .fetch_all(exec)
+        .await
+}
+
+/// Insert or replace a provider's Kerberos settings (validated: the service
+/// principal and realms are filled in). `entries` describes a keytab stored
+/// with this change; `None` keeps the description of the one already there.
+pub async fn upsert_kerberos<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    idp_id: Uuid,
+    s: &KerberosSettings,
+    entries: Option<&[KeytabEntryInfo]>,
+) -> Result<KerberosUpstream, sqlx::Error> {
+    let sql = format!(
+        "INSERT INTO kerberos_identity_providers (idp_id, tenant_id, service_principal, realms, \
+         keytab_entries, name_form, ldap_idp_id, ldap_attribute, match_username, create_users, \
+         trusted_networks, max_skew_seconds) \
+         VALUES ($1, $2, $3, $4, COALESCE($5, '[]'::jsonb), $6, $7, $8, $9, $10, $11, $12) \
+         ON CONFLICT (idp_id) DO UPDATE SET \
+         service_principal = EXCLUDED.service_principal, realms = EXCLUDED.realms, \
+         keytab_entries = COALESCE($5, kerberos_identity_providers.keytab_entries), \
+         name_form = EXCLUDED.name_form, ldap_idp_id = EXCLUDED.ldap_idp_id, \
+         ldap_attribute = EXCLUDED.ldap_attribute, match_username = EXCLUDED.match_username, \
+         create_users = EXCLUDED.create_users, trusted_networks = EXCLUDED.trusted_networks, \
+         max_skew_seconds = EXCLUDED.max_skew_seconds \
+         RETURNING {KERBEROS_COLUMNS}"
+    );
+    sqlx::query_as(sqlx::AssertSqlSafe(sql))
+        .bind(idp_id)
+        .bind(tenant_id)
+        .bind(s.service_principal.as_deref().unwrap_or_default())
+        .bind(&s.realms)
+        .bind(entries.map(Json))
+        .bind(s.name_form)
+        .bind(s.ldap_idp_id)
+        .bind(&s.ldap_attribute)
+        .bind(s.match_username)
+        .bind(s.create_users)
+        .bind(&s.trusted_networks)
+        .bind(s.max_skew_seconds)
+        .fetch_one(exec)
+        .await
+}
+
+/// The enabled Kerberos providers of a tenant with their settings (the
+/// login page's Negotiate step picks one by the ticket's service).
+pub async fn enabled_kerberos<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT id FROM identity_providers \
+         WHERE tenant_id = $1 AND kind = 'kerberos' AND enabled \
+         ORDER BY sort_order, alias LIMIT 100",
+    )
+    .bind(tenant_id)
+    .fetch_all(exec)
+    .await
 }

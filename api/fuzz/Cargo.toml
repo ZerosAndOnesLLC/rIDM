@@ -18,7 +18,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "=0.4.13"
 chrono = "=0.4.45"
-ridm-api = { path = ".." }
+ridm-api = { path = "..", features = ["kerberos"] }
 ridm-core = { path = "../../crates/ridm-core" }
 jsonwebtoken = { version = "=11.0.0", features = ["aws_lc_rs"] }
 serde_json = "=1.0.151"
@@ -65,6 +65,13 @@ bench = false
 [[bin]]
 name = "saml_message"
 path = "fuzz_targets/saml_message.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kerberos_token"
+path = "fuzz_targets/kerberos_token.rs"
 test = false
 doc = false
 bench = false

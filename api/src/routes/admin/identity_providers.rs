@@ -22,6 +22,7 @@ pub fn identity_providers_router() -> OpenApiRouter<AppState> {
         .routes(routes!(presets))
         .routes(routes!(discover))
         .routes(routes!(saml_metadata))
+        .routes(routes!(kerberos_keytab))
         .routes(routes!(list, create))
         .routes(routes!(get_one, update, delete))
         .routes(routes!(saml_refresh))
@@ -44,7 +45,8 @@ pub struct IdentityProviderView {
     #[serde(flatten)]
     pub provider: IdentityProvider,
     /// The redirect URI (OIDC, OAuth 2.0) or the assertion consumer
-    /// service (SAML); empty for a directory (LDAP), which has none.
+    /// service (SAML); empty for a directory (LDAP) or a Kerberos realm,
+    /// which have none.
     pub callback_url: String,
     /// What a SAML IdP is configured with: rIDM's SP entity ID and URLs.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -79,7 +81,7 @@ fn view(
             }),
         };
     }
-    if p.kind == IdpKind::Ldap {
+    if matches!(p.kind, IdpKind::Ldap | IdpKind::Kerberos) {
         return IdentityProviderView {
             provider: p,
             callback_url: String::new(),
@@ -160,6 +162,48 @@ async fn saml_metadata(
     Ok(Json(identity_providers::saml_settings_from_metadata(
         &text, url,
     )?))
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct KeytabBody {
+    /// A keytab file, base64.
+    pub keytab: String,
+}
+
+/// What a keytab holds, for the administrator to check before creating a
+/// Kerberos provider with it.
+#[derive(Serialize, utoipa::ToSchema)]
+pub struct KeytabReport {
+    pub entries: Vec<crate::kerberos::KeytabEntryInfo>,
+    /// The services it has an AES key for (a provider needs one of them).
+    pub service_principals: Vec<String>,
+    /// This build of rIDM can accept tickets (the `kerberos` feature).
+    pub supported: bool,
+}
+
+/// Read a keytab without storing it: its entries (never a key) and the
+/// services rIDM could accept tickets for with it.
+#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/kerberos-keytab", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug")), request_body = KeytabBody, responses((status = 200, body = KeytabReport), (status = 400, description = "Not a keytab", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem)), security(("bearer" = [])))]
+async fn kerberos_keytab(
+    admin: AdminCtx,
+    AdminTenantPath(tenant): AdminTenantPath,
+    Json(body): Json<KeytabBody>,
+) -> AppResult<Json<KeytabReport>> {
+    admin.require(tenant.id, P_WRITE)?;
+    let (_, entries) = identity_providers::decode_keytab(&body.keytab)?;
+    let mut service_principals: Vec<String> = entries
+        .iter()
+        .filter(|e| e.supported)
+        .map(|e| e.principal.clone())
+        .collect();
+    service_principals.sort_unstable();
+    service_principals.dedup();
+    Ok(Json(KeytabReport {
+        entries,
+        service_principals,
+        supported: crate::kerberos::crypto::AVAILABLE,
+    }))
 }
 
 /// Re-read a SAML provider's metadata URL now, as the daily job does.

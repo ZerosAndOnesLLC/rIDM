@@ -29,8 +29,8 @@ The source is in [`docs/`](docs/); this README stays the developer's overview.
   JAR/JARM, DCR, RP-initiated, back-channel and front-channel logout, token exchange,
   DPoP, a per-client FAPI 2.0 Security Profile, and SAML 2.0 both ways: as an identity
   provider and as the service provider of upstream SAML IdPs (SSO over both browser
-  bindings, front-channel Single Logout). No implicit, hybrid,
-  or password grants.
+  bindings, front-channel Single Logout). LDAP and Active Directory directories, and
+  Kerberos desktop sign-in (SPNEGO). No implicit, hybrid, or password grants.
 - **One image.** A deployment is the API image plus Postgres and Valkey. The image
   compiles the UI's static export into the server, which serves the sign-in pages and
   both consoles on its own origin; the same export can also go on any static host or
@@ -204,6 +204,16 @@ name this SP as audience and recipient, be fresh and unseen, and may be encrypte
 tenant's SAML keys. The continue step is bound to the browser that started the sign-in,
 IdP-initiated sign-in is a per-provider opt-in, and Single Logout runs both ways. See the
 docs' *SAML identity providers (upstream)*.
+
+A Kerberos realm is an identity provider of kind `kerberos`: users on a domain-joined
+desktop (or any machine holding a ticket) sign in without typing, through HTTP Negotiate
+(SPNEGO). The login page asks the browser on its own from the provider's trusted
+networks, or when the user clicks its button; rIDM validates the ticket against the
+service's keytab itself (pure Rust, AES encryption types, replay cache, mutual
+authentication), with no system Kerberos library. A principal finds its account through
+an LDAP provider (Active Directory), or by its link, a local username or a new account.
+The acceptor is the `kerberos` cargo feature, on in the released image and binaries. See
+the docs' *Kerberos desktop sign-in*.
 
 Locale is negotiated per request: the OIDC `ui_locales` parameter, then the user's
 stored locale, then the tenant default, constrained to the tenant's supported list
@@ -1541,7 +1551,7 @@ The full phased plan lives in [`working-plan.md`](working-plan.md). In short: sc
 tenants/users/roles → keys and JWTs → OIDC core → browser flows and end-user UI → admin
 API → admin UI → MFA and passkeys → account console, brokering, device flow → scale,
 security and operability → CLI and developer experience → packaging and v0.1.0. Post-v1:
-organizations, adaptive auth, SAML, LDAP, HSM/KMS key custody.
+organizations, adaptive auth, SAML, LDAP, Kerberos, HSM/KMS key custody.
 
 ## Releases
 

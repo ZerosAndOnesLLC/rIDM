@@ -300,6 +300,18 @@ pub fn ldap_directories(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:idps:ldap")
 }
 
+/// A tenant's enabled Kerberos providers, for the login page's Negotiate
+/// step.
+pub fn kerberos_realms(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:idps:kerberos")
+}
+
+/// A Kerberos authenticator already accepted (the replay cache), by the
+/// hash of its ciphertext.
+pub fn kerberos_replay(tenant_id: Uuid, hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:krb:replay:{hash}")
+}
+
 /// A pending device authorization (RFC 8628), by the device code's hash.
 pub fn device_code(tenant_id: Uuid, device_hash: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:device:{device_hash}")

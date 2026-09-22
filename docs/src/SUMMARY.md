@@ -41,6 +41,7 @@
 - [SAML identity provider](admin/saml-idp.md)
 - [SAML identity providers (upstream)](admin/saml-upstream.md)
 - [LDAP and Active Directory](admin/ldap.md)
+- [Kerberos desktop sign-in](admin/kerberos.md)
 - [Feature flags](admin/feature-flags.md)
 - [Email, SMS and templates](admin/messaging.md)
 - [SCIM provisioning](admin/scim.md)

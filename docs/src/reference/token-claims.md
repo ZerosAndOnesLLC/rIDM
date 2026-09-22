@@ -148,7 +148,7 @@ Front-channel logout loads each client's `frontchannel_logout_uri` with `iss` an
 
 ## `amr` values
 
-`amr` lists how the session was established (RFC 8176 names), with `mfa` added once a second factor passed.
+`amr` lists how the session was established (RFC 8176 names where one exists), with `mfa` added once a second factor passed.
 
 | Method | `amr` |
 |--------|-------|
@@ -158,6 +158,7 @@ Front-channel logout loads each client's `frontchannel_logout_uri` with `iss` an
 | Passkey sign-in with user verification | `hwk`, `user`, `mfa` |
 | Passkey sign-in without user verification | `hwk` |
 | Upstream identity provider (brokering) | `fed` |
+| Kerberos desktop sign-in | `kerberos` (RFC 8176 registers no value for it) |
 | Second step: authenticator app, email code | adds `otp`, `mfa` |
 | Second step: recovery code | adds `mfa` only |
 | Second step: SMS code | adds `otp`, `sms`, `mfa` |
