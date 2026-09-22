@@ -102,6 +102,10 @@ Both are game over by construction, and the mitigation is operational.
 | A SAML response sent somewhere it should not go | The consumer URL is only ever one the SP registered; unregistered URLs are an error page, not a redirect |
 | Replayed or stale SAML requests | Request IDs are remembered for 15 minutes and accepted once; `IssueInstant` must be within ten minutes (three of skew); a signed request must name rIDM as its `Destination` |
 | Unsolicited SAML responses pushing a user into an application | IdP-initiated sign-in is off unless the SP opts in |
+| A forged, wrapped or misdirected assertion from an upstream SAML IdP | Only the IdP's registered certificates count (never `KeyInfo`); the element read is the one the verified signature covers, and a `Response` must carry exactly one assertion; the assertion must be signed itself by default; issuer, audience, recipient, `InResponseTo` and validity window must be rIDM's; assertion IDs are remembered until they expire |
+| Login CSRF through the SAML assertion consumer service or a broker callback | Responses are accepted only for a request rIDM sent (unsolicited ones are a per-provider opt-in), and the step that signs the browser in (the OIDC/OAuth callback, or SAML's same-site continue) requires the binding cookie set in the browser that started the sign-in; posted answers are parked and continued same-site so the cookie is always checked |
+| A forged upstream `LogoutRequest` signing users out everywhere | It must be signed with the IdP's registered certificate, name rIDM's logout URL, be fresh and seen once |
+| An upstream IdP's metadata URL used to reach internal hosts, or a substituted IdP | Fetched through the SSRF-guarded outbound client (public addresses, https, no redirects, 256 KiB); a refresh naming another entity ID is refused |
 | SAML signing key rotation breaking SPs, or a stolen key | The SAML keys are separate from the JWT keys and never rotate on a timer; a rollover publishes the new certificate before it signs; keys are encrypted under the master key |
 | Downgrade of a high-assurance client | A client under the FAPI 2.0 profile is refused, at registration and on every request, anything weaker than the profile: no request outside PAR, no missing PKCE or DPoP, no RSA-PKCS1 or HMAC signatures, no client assertion addressed to anything but the issuer |
 
@@ -219,7 +223,7 @@ Recorded rather than hidden; each is either scheduled or a deliberate trade-off.
 - **SAML logout is front-channel only.** SPs are logged out through the user's browser;
   a session ended without one (an administrator's revocation, a password change) does
   not reach them, and there is no SOAP back-channel logout. An SP that never answers
-  its logout request stops the walk at its page.
+  its logout request stops the walk at its page. The same holds for upstream SAML IdPs.
 - **No hardware security module or cloud key management backend.** The
   `KeyEncryptor` interface exists for it; backends are Phase 13.
 

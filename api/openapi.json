@@ -4436,6 +4436,93 @@
         ]
       }
     },
+    "/admin/tenants/{slug}/identity-providers/saml-metadata": {
+      "post": {
+        "tags": [
+          "identity_providers"
+        ],
+        "summary": "Read an IdP's SAML metadata into the settings of a new `saml`\nprovider, for the administrator to review before creating it. Nothing\nis stored.",
+        "operationId": "identity_providers_saml_metadata",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SamlMetadataBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SamlUpstreamSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not usable IdP metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The metadata URL could not be read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/admin/tenants/{slug}/identity-providers/{idp}": {
       "get": {
         "tags": [
@@ -4666,6 +4753,102 @@
           },
           "409": {
             "description": "Alias in use",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/identity-providers/{idp}/saml/refresh": {
+      "post": {
+        "tags": [
+          "identity_providers"
+        ],
+        "summary": "Re-read a SAML provider's metadata URL now, as the daily job does.",
+        "operationId": "identity_providers_saml_refresh",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "idp",
+            "in": "path",
+            "description": "Row id or alias",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityProviderView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a SAML provider with a metadata URL, or its metadata is unusable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The metadata URL could not be read",
             "content": {
               "application/json": {
                 "schema": {
@@ -21940,6 +22123,17 @@
             ],
             "description": "`google`, `microsoft`, `github`, `apple`, `gitlab` or none."
           },
+          "saml": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SamlUpstream",
+                "description": "The SAML settings of a `saml` provider."
+              }
+            ]
+          },
           "scopes": {
             "type": "array",
             "items": {
@@ -22061,6 +22255,18 @@
             "type": [
               "string",
               "null"
+            ],
+            "default": null
+          },
+          "saml": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SamlUpstreamSettings",
+                "description": "A `saml` provider's settings (`metadata_url` included; the refresh\nstatus is not configuration)."
+              }
             ],
             "default": null
           },
@@ -22212,6 +22418,18 @@
             ],
             "default": null
           },
+          "saml": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SamlUpstreamSettings",
+                "description": "A `saml` provider's settings, replaced as a whole."
+              }
+            ],
+            "default": null
+          },
           "scopes": {
             "type": [
               "array",
@@ -22277,7 +22495,19 @@
             ],
             "properties": {
               "callback_url": {
-                "type": "string"
+                "type": "string",
+                "description": "The redirect URI (OIDC, OAuth 2.0) or the assertion consumer\nservice (SAML)."
+              },
+              "saml_sp": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SamlSpInfo",
+                    "description": "What a SAML IdP is configured with: rIDM's SP entity ID and URLs."
+                  }
+                ]
               }
             }
           }
@@ -22298,7 +22528,8 @@
         "description": "The protocol an upstream provider speaks.",
         "enum": [
           "oidc",
-          "oauth2"
+          "oauth2",
+          "saml"
         ]
       },
       "IdpMappers": {
@@ -23929,6 +24160,18 @@
             "type": [
               "string",
               "null"
+            ],
+            "default": null
+          },
+          "saml": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SamlUpstreamSettings",
+                "description": "Required for a `saml` provider, refused for any other."
+              }
             ],
             "default": null
           },
@@ -26616,6 +26859,26 @@
           }
         }
       },
+      "SamlMetadataBody": {
+        "type": "object",
+        "properties": {
+          "metadata": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The IdP's metadata document (pasted or uploaded)."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Or where to fetch it; it is kept as the provider's `metadata_url`."
+          }
+        },
+        "additionalProperties": false
+      },
       "SamlServiceProvider": {
         "type": "object",
         "description": "The SAML side of a `saml` client.",
@@ -26753,6 +27016,31 @@
           }
         ],
         "description": "A SAML service provider: its registration as `POST /saml/service-providers`\ntakes it, keyed by the public client id, plus `status`."
+      },
+      "SamlSpInfo": {
+        "type": "object",
+        "description": "rIDM as the service provider of one SAML IdP.",
+        "required": [
+          "entity_id",
+          "metadata_url",
+          "acs_url",
+          "slo_url"
+        ],
+        "properties": {
+          "acs_url": {
+            "type": "string"
+          },
+          "entity_id": {
+            "type": "string"
+          },
+          "metadata_url": {
+            "type": "string",
+            "description": "rIDM's SP metadata, to give the IdP (the entity ID is this URL)."
+          },
+          "slo_url": {
+            "type": "string"
+          }
+        }
       },
       "SamlSpInput": {
         "type": "object",
@@ -26965,6 +27253,218 @@
             "$ref": "#/components/schemas/SamlServiceProvider"
           }
         }
+      },
+      "SamlUpstream": {
+        "type": "object",
+        "description": "The SAML side of a `saml` identity provider.",
+        "required": [
+          "entity_id",
+          "sso_url",
+          "sso_binding",
+          "slo_binding",
+          "signing_certificates",
+          "sign_requests",
+          "want_assertions_signed",
+          "require_encrypted_assertions",
+          "force_authn",
+          "authn_context_class_refs",
+          "allow_unsolicited"
+        ],
+        "properties": {
+          "allow_unsolicited": {
+            "type": "boolean"
+          },
+          "authn_context_class_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "entity_id": {
+            "type": "string"
+          },
+          "force_authn": {
+            "type": "boolean"
+          },
+          "metadata_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the last refresh failed, until one succeeds."
+          },
+          "metadata_refreshed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the metadata URL was last read successfully."
+          },
+          "metadata_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name_id_format": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NameIdFormat"
+              }
+            ]
+          },
+          "require_encrypted_assertions": {
+            "type": "boolean"
+          },
+          "sign_requests": {
+            "type": "boolean"
+          },
+          "signing_certificates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "slo_binding": {
+            "$ref": "#/components/schemas/SloBinding"
+          },
+          "slo_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sso_binding": {
+            "$ref": "#/components/schemas/SloBinding"
+          },
+          "sso_url": {
+            "type": "string"
+          },
+          "unsolicited_client_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "want_assertions_signed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SamlUpstreamSettings": {
+        "type": "object",
+        "description": "What an administrator sets for a SAML identity provider.",
+        "properties": {
+          "allow_unsolicited": {
+            "type": "boolean",
+            "description": "Accept unsolicited responses (IdP-initiated sign-in).",
+            "default": false
+          },
+          "authn_context_class_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Authentication context classes to ask for (Comparison `exact`).",
+            "default": []
+          },
+          "entity_id": {
+            "type": "string",
+            "description": "The IdP's entity ID, the `Issuer` of its messages.",
+            "default": ""
+          },
+          "force_authn": {
+            "type": "boolean",
+            "description": "Ask the IdP to authenticate the user again (`ForceAuthn`).",
+            "default": false
+          },
+          "metadata_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The IdP's metadata URL, refreshed daily: its endpoints and\ncertificates replace the ones above.",
+            "default": null
+          },
+          "name_id_format": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NameIdFormat",
+                "description": "The NameID format to ask for (`NameIDPolicy`); none leaves it to\nthe IdP."
+              }
+            ],
+            "default": null
+          },
+          "require_encrypted_assertions": {
+            "type": "boolean",
+            "description": "Refuse assertions that are not encrypted (to the tenant's SAML key).",
+            "default": false
+          },
+          "sign_requests": {
+            "type": "boolean",
+            "description": "Sign `AuthnRequest`s and `LogoutRequest`s with the tenant's SAML key.",
+            "default": true
+          },
+          "signing_certificates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "base64 (or PEM) certificates it signs with; several during its\nkey rollover. Nothing unsigned is accepted, so one is required.",
+            "default": []
+          },
+          "slo_binding": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SloBinding"
+              }
+            ],
+            "default": "redirect"
+          },
+          "slo_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its single logout service; none leaves sign-out local.",
+            "default": null
+          },
+          "sso_binding": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SloBinding",
+                "description": "How `AuthnRequest`s reach it."
+              }
+            ],
+            "default": "redirect"
+          },
+          "sso_url": {
+            "type": "string",
+            "description": "Its single sign-on service.",
+            "default": ""
+          },
+          "unsolicited_client_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where an unsolicited sign-in lands: this client's\n`initiate_login_uri`; the account console when unset.",
+            "default": null
+          },
+          "want_assertions_signed": {
+            "type": "boolean",
+            "description": "The assertion itself must be signed; a signed `Response` around an\nunsigned assertion is refused.",
+            "default": true
+          }
+        },
+        "additionalProperties": false
       },
       "ScheduledVerification": {
         "type": "object",

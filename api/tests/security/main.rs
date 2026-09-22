@@ -4,6 +4,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod broker_binding;
 mod bulk_import;
 mod custom_domains;
 mod legacy_hash_cost;
@@ -11,6 +12,7 @@ mod mfa_policy;
 mod org_admin;
 mod outbound;
 mod resource_indicators;
+mod saml_upstream;
 mod scim_membership;
 mod session_cookies;
 mod session_revocation;

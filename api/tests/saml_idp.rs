@@ -923,7 +923,7 @@ async fn sp_initiated_logout_walks_the_other_sps_then_answers() {
             format: Some(at_a.name_id_format.clone()),
             sp_name_qualifier: None,
         },
-        &at_a.session_index,
+        Some(&at_a.session_index),
         Utc::now(),
     )
     .to_string();
@@ -1327,7 +1327,7 @@ async fn slo_binding_post_and_unknown_answers() {
             format: Some(at.name_id_format.clone()),
             sp_name_qualifier: None,
         },
-        &at.session_index,
+        Some(&at.session_index),
         Utc::now(),
     )
     .to_document();
@@ -1373,6 +1373,89 @@ async fn slo_binding_post_and_unknown_answers() {
     )
     .unwrap();
     assert_eq!(http.get(url).send().await.unwrap().status(), 400);
+}
+
+/// Found in 13.2's review: with OIDC front-channel logout URLs to frame,
+/// the page that answers a POST-binding SP dropped the auto-posting form,
+/// so the SP never got its `LogoutResponse`.
+#[tokio::test]
+async fn a_posted_logout_answer_survives_front_channel_frames() {
+    let fx = fixture().await;
+    let entity = "https://post-fc.example";
+    register(
+        &fx,
+        SamlSpInput {
+            slo_binding: Some(SloBinding::Post),
+            ..sp_input(entity)
+        },
+    )
+    .await;
+    ridm_api::services::clients::create(
+        &fx.app.state,
+        fx.tenant.id,
+        Actor::System,
+        ridm_api::models::NewClient {
+            client_id: Some("fc-app".into()),
+            name: "Front-channel app".into(),
+            client_type: Some(ridm_api::models::ClientType::Spa),
+            redirect_uris: vec!["https://fc.example/cb".into()],
+            frontchannel_logout_uri: Some("https://fc.example/logout".into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let certs = idp_certs(&fx).await;
+    let http = browser();
+    let at = sso(&http, &fx, entity, "_f1", &certs).await;
+    let live =
+        ridm_api::services::sessions::list_live_for_user(&fx.app.state, fx.tenant.id, fx.alice)
+            .await
+            .unwrap();
+    ridm_api::services::sessions::add_client(&fx.app.state, &live[0], "fc-app")
+        .await
+        .unwrap();
+
+    let ep = endpoints(&fx);
+    let logout = protocol::logout_request(
+        entity,
+        &ep.slo_url,
+        &protocol::NameId {
+            value: at.name_id.clone(),
+            format: Some(at.name_id_format.clone()),
+            sp_name_qualifier: None,
+        },
+        Some(&at.session_index),
+        Utc::now(),
+    )
+    .to_document();
+    let res = reqwest::Client::new()
+        .post(&ep.slo_url)
+        .form(&[("SAMLRequest", STANDARD.encode(&logout))])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let csp = res.headers()["content-security-policy"]
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(csp.contains("frame-src https://fc.example"), "{csp}");
+    let html = res.text().await.unwrap();
+    assert!(
+        html.contains("<iframe src=\"https://fc.example/logout?"),
+        "{html}"
+    );
+    assert!(html.contains("document.forms[0].submit()"), "{html}");
+    let fields = form_fields(&html);
+    assert_eq!(form_action(&html), format!("{entity}/slo"));
+    let xml = String::from_utf8(STANDARD.decode(&fields["SAMLResponse"]).unwrap()).unwrap();
+    let doc = xml::parse(&xml).unwrap();
+    dsig::verify_enveloped(&doc, doc.root_element(), &certs).unwrap();
+    assert_eq!(
+        protocol::parse_logout_response(&doc).unwrap().status,
+        ns::status::SUCCESS
+    );
 }
 
 #[tokio::test]

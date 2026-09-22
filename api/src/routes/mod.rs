@@ -11,6 +11,7 @@ pub mod invitations;
 pub mod jwks;
 pub mod recovery;
 pub mod saml;
+pub mod saml_sp;
 pub mod scim;
 pub mod ui;
 pub mod verification;

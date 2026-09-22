@@ -4,16 +4,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useState, type FormEvent } from "react";
-import { Field, NumberInput, SaveIndicator, Section, SelectInput, TagsInput, TextInput, Toggle } from "@/components/console/form";
+import { useCallback, useState, type ChangeEvent, type FormEvent } from "react";
+import { Field, NumberInput, SaveIndicator, Section, SelectInput, TagsInput, TextArea, TextInput, Toggle } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
-import { href, type IdentityProvider, type IdentityProviderPatch, type IdpPreset } from "@/lib/console/ops";
+import { href, type IdentityProvider, type IdentityProviderPatch, type IdpPreset, type SamlUpstreamSettings } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
 import { CreateDialog, DeleteButton, ErrorLine, Split } from "../access/common";
 import { CopyButton } from "../clients/reveal";
 import { JsonInput } from "../users/attributes";
+import { SamlSpDetails, SamlUpstreamSection } from "./saml-upstream";
 
 const POLICY_HINT: Record<IdentityProvider["link_policy"], string> = {
   verified_email: "An existing account with the same address is linked when both sides verified it; otherwise the sign-in is refused and the user links from their account page.",
@@ -36,7 +37,7 @@ export function IdentityProvidersPage({ tenant, selected }: { tenant: string; se
     <>
       <PageHeader
         title="Identity providers"
-        sub="Upstream OpenID Connect and OAuth 2.0 providers users can sign in through."
+        sub="Upstream OpenID Connect, OAuth 2.0 and SAML 2.0 providers users can sign in through."
         actions={
           can("ridm:idps:write") ? (
             <Button variant="primary" onClick={() => setCreating(true)}>
@@ -109,6 +110,9 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
   const [issuer, setIssuer] = useState("");
   const [clientId, setClientId] = useState("");
   const [secret, setSecret] = useState("");
+  const [metadataUrl, setMetadataUrl] = useState("");
+  const [metadata, setMetadata] = useState("");
+  const saml = preset === "saml";
   const chosen = presets.data?.find((p) => p.name === preset) ?? null;
   const pickPreset = (name: string) => {
     setPreset(name);
@@ -118,8 +122,24 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
       if (!displayName) setDisplayName(p.display_name);
     }
   };
+  const problem = (error: { errors?: { field: string; message: string }[] | null; detail?: string | null; title: string }) =>
+    new Error(error.errors?.map((e) => `${e.field} ${e.message}`).join("; ") || error.detail || error.title);
   const create = useMutation({
     mutationFn: async () => {
+      if (saml) {
+        // The IdP's metadata fills in everything; the URL is kept for the daily refresh.
+        const read = await client.POST("/admin/tenants/{slug}/identity-providers/saml-metadata", {
+          params: { path: { slug: tenant } },
+          body: metadataUrl.trim() ? { url: metadataUrl.trim() } : { metadata },
+        });
+        if (read.error) throw problem(read.error);
+        const { data, error } = await client.POST("/admin/tenants/{slug}/identity-providers", {
+          params: { path: { slug: tenant } },
+          body: { alias: alias.trim(), kind: "saml", display_name: displayName.trim() || null, saml: read.data as SamlUpstreamSettings } as never,
+        });
+        if (error) throw problem(error);
+        return data;
+      }
       const { data, error } = await client.POST("/admin/tenants/{slug}/identity-providers", {
         params: { path: { slug: tenant } },
         body: {
@@ -131,7 +151,7 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
           client_secret: secret || null,
         } as never,
       });
-      if (error) throw new Error(error.errors?.map((e) => `${e.field} ${e.message}`).join("; ") || error.detail || error.title);
+      if (error) throw problem(error);
       return data;
     },
     onSuccess: (p) => {
@@ -142,26 +162,34 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
       setClientId("");
       setSecret("");
       setPreset("");
+      setMetadataUrl("");
+      setMetadata("");
       onOpenChange(false);
       router.push(href("identity-providers", tenant, { idp: p.id }));
     },
   });
-  const needsIssuer = !chosen || chosen.kind === "oidc";
+  const needsIssuer = !saml && (!chosen || chosen.kind === "oidc");
+  const ready = alias.trim() && (saml ? metadataUrl.trim() || metadata.trim() : clientId.trim());
+  const onFile = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) void file.text().then(setMetadata);
+  };
   return (
     <CreateDialog
       open={open}
       onOpenChange={onOpenChange}
       title="New identity provider"
-      description="Pick a preset for the common providers, or give an OpenID Connect issuer: its endpoints are discovered. Register the callback URL shown afterwards with the provider."
+      description="Pick a preset for the common providers, give an OpenID Connect issuer (its endpoints are discovered), or a SAML identity provider's metadata. Register the URLs shown afterwards with the provider."
       submitLabel="Create provider"
       pending={create.isPending}
       error={create.error?.message ?? null}
-      onSubmit={() => alias.trim() && clientId.trim() && create.mutate()}
+      onSubmit={() => ready && create.mutate()}
     >
       <Field label="Preset" hint={chosen?.hint}>
         {(id, by) => (
           <SelectInput id={id} aria-describedby={by} value={preset} onChange={(e) => pickPreset(e.target.value)}>
             <option value="">Custom (OpenID Connect)</option>
+            <option value="saml">SAML 2.0</option>
             {(presets.data ?? []).map((p) => (
               <option key={p.name} value={p.name}>
                 {p.display_name}
@@ -171,7 +199,7 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
         )}
       </Field>
       <Field label="Alias" hint="In the callback URL: lowercase letters, digits and hyphens.">
-        {(id, by) => <TextInput id={id} aria-describedby={by} value={alias} onChange={(e) => setAlias(e.target.value)} autoFocus required placeholder="google" spellCheck={false} />}
+        {(id, by) => <TextInput id={id} aria-describedby={by} value={alias} onChange={(e) => setAlias(e.target.value)} autoFocus required placeholder={saml ? "corp" : "google"} spellCheck={false} />}
       </Field>
       <Field label="Display name" hint="On the login button: “Continue with …”.">
         {(id, by) => <TextInput id={id} aria-describedby={by} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={chosen?.display_name ?? "Company SSO"} />}
@@ -181,10 +209,27 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
           {(id, by) => <TextInput id={id} aria-describedby={by} type="url" value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder={chosen?.issuer ?? "https://idp.example.com"} spellCheck={false} />}
         </Field>
       )}
-      <Field label="Client ID">{(id) => <TextInput id={id} value={clientId} onChange={(e) => setClientId(e.target.value)} required spellCheck={false} autoComplete="off" />}</Field>
-      <Field label="Client secret" hint="Stored encrypted and never shown again. Leave empty for a public client using PKCE.">
-        {(id, by) => <TextInput id={id} aria-describedby={by} type="password" value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="new-password" />}
-      </Field>
+      {saml ? (
+        <>
+          <Field label="Metadata URL" hint="Where the identity provider publishes its metadata; rIDM re-reads it daily.">
+            {(id, by) => <TextInput id={id} aria-describedby={by} type="url" value={metadataUrl} onChange={(e) => setMetadataUrl(e.target.value)} placeholder="https://idp.example.com/saml/metadata" spellCheck={false} />}
+          </Field>
+          <Field label="Or its metadata" hint="The EntityDescriptor XML, when there is no URL to fetch it from.">
+            {(id, by) => <TextArea id={id} aria-describedby={by} value={metadata} disabled={!!metadataUrl.trim()} spellCheck={false} placeholder="<md:EntityDescriptor …>" onChange={(e) => setMetadata(e.target.value)} />}
+          </Field>
+          <label className="inline-flex cursor-pointer items-center gap-2 self-start text-[0.875rem] text-accent hover:underline underline-offset-4">
+            <input type="file" accept=".xml,application/xml,text/xml,application/samlmetadata+xml" className="sr-only" onChange={onFile} />
+            Upload a metadata file
+          </label>
+        </>
+      ) : (
+        <>
+          <Field label="Client ID">{(id) => <TextInput id={id} value={clientId} onChange={(e) => setClientId(e.target.value)} required spellCheck={false} autoComplete="off" />}</Field>
+          <Field label="Client secret" hint="Stored encrypted and never shown again. Leave empty for a public client using PKCE.">
+            {(id, by) => <TextInput id={id} aria-describedby={by} type="password" value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="new-password" />}
+          </Field>
+        </>
+      )}
     </CreateDialog>
   );
 }
@@ -228,6 +273,11 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
     setDraft((d) => (d ? ({ ...d, ...patch } as IdentityProvider) : d));
     if (editable) queue(patch);
   };
+  // The SAML settings are saved as a whole; the refresh status stays as it was read.
+  const updateSaml = (settings: SamlUpstreamSettings) => {
+    setDraft((d) => (d && d.saml ? { ...d, saml: { ...d.saml, ...settings } } : d));
+    if (editable) queue({ saml: settings });
+  };
   const [secret, setSecret] = useState("");
   const setSecretMutation = useMutation({
     mutationFn: async (value: string | null) => {
@@ -254,6 +304,7 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
   if (query.isError) return <ErrorLine error={query.error} />;
   if (!draft) return <Spinner label="Loading…" />;
   const m = draft.mappers;
+  const isSaml = draft.kind === "saml";
   const setMapper = (patch: Partial<IdentityProvider["mappers"]>) => update({ mappers: { ...m, ...patch } });
   const submitSecret = (e: FormEvent) => {
     e.preventDefault();
@@ -265,23 +316,33 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
         <h2 className="text-[1.125rem] font-semibold text-ink">{draft.display_name}</h2>
         <SaveIndicator status={status} error={error} />
       </div>
-      <Card title="Callback URL">
-        <p className="text-[0.875rem] text-muted">Register this redirect URI with the provider.</p>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <code className="break-all rounded-[var(--radius)] bg-ground px-2 py-1 font-mono text-[0.8125rem] text-ink">{draft.callback_url}</code>
-          <CopyButton value={draft.callback_url} label="Copy callback URL" />
-        </div>
-      </Card>
+      {isSaml ? (
+        <SamlSpDetails provider={draft} />
+      ) : (
+        <Card title="Callback URL">
+          <p className="text-[0.875rem] text-muted">Register this redirect URI with the provider.</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <code className="break-all rounded-[var(--radius)] bg-ground px-2 py-1 font-mono text-[0.8125rem] text-ink">{draft.callback_url}</code>
+            <CopyButton value={draft.callback_url} label="Copy callback URL" />
+          </div>
+        </Card>
+      )}
       <Section id="idp-general" title="Provider">
         <Field label="Display name">{(fid) => <TextInput id={fid} value={draft.display_name} disabled={!editable} onChange={(e) => update({ display_name: e.target.value })} />}</Field>
-        <Field label="Alias" hint="Changing it changes the callback URL.">
+        <Field label="Alias" hint={isSaml ? "Changing it changes rIDM's entity ID and URLs: the identity provider must be told." : "Changing it changes the callback URL."}>
           {(fid, by) => <TextInput id={fid} aria-describedby={by} value={draft.alias} disabled={!editable} spellCheck={false} onChange={(e) => update({ alias: e.target.value })} />}
         </Field>
         <Field label="Protocol">
           {(fid) => (
-            <SelectInput id={fid} value={draft.kind} disabled={!editable} onChange={(e) => update({ kind: e.target.value as IdentityProvider["kind"] })}>
-              <option value="oidc">OpenID Connect</option>
-              <option value="oauth2">OAuth 2.0</option>
+            <SelectInput id={fid} value={draft.kind} disabled={!editable || isSaml} onChange={(e) => update({ kind: e.target.value as IdentityProvider["kind"] })}>
+              {isSaml ? (
+                <option value="saml">SAML 2.0</option>
+              ) : (
+                <>
+                  <option value="oidc">OpenID Connect</option>
+                  <option value="oauth2">OAuth 2.0</option>
+                </>
+              )}
             </SelectInput>
           )}
         </Field>
@@ -293,59 +354,74 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
           <Toggle label="Hidden" hint="Not offered on the login page; reachable through a direct link only." checked={draft.hidden} disabled={!editable} onChange={(v) => update({ hidden: v })} />
         </div>
       </Section>
-      <Section id="idp-endpoints" title="Endpoints" description="For OpenID Connect a new issuer re-discovers the endpoints; fill them in by hand for providers without discovery.">
-        <Field label="Issuer" wide>
-          {(fid) => <TextInput id={fid} type="url" value={draft.issuer ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => update({ issuer: e.target.value || null })} />}
-        </Field>
-        <Field label="Authorization endpoint" wide>
-          {(fid) => <TextInput id={fid} type="url" value={draft.authorization_endpoint ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => update({ authorization_endpoint: e.target.value || null })} />}
-        </Field>
-        <Field label="Token endpoint" wide>
-          {(fid) => <TextInput id={fid} type="url" value={draft.token_endpoint ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => update({ token_endpoint: e.target.value || null })} />}
-        </Field>
-        <Field label="Userinfo endpoint" wide>
-          {(fid) => <TextInput id={fid} type="url" value={draft.userinfo_endpoint ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => update({ userinfo_endpoint: e.target.value || null })} />}
-        </Field>
-        <Field label="JWKS URI" wide>
-          {(fid) => <TextInput id={fid} type="url" value={draft.jwks_uri ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => update({ jwks_uri: e.target.value || null })} />}
-        </Field>
-      </Section>
-      <Section id="idp-client" title="Client">
-        <Field label="Client ID">{(fid) => <TextInput id={fid} value={draft.client_id} disabled={!editable} spellCheck={false} autoComplete="off" onChange={(e) => update({ client_id: e.target.value })} />}</Field>
-        <Field label="Token endpoint authentication">
-          {(fid) => (
-            <SelectInput id={fid} value={draft.token_endpoint_auth_method} disabled={!editable} onChange={(e) => update({ token_endpoint_auth_method: e.target.value as IdentityProvider["token_endpoint_auth_method"] })}>
-              <option value="client_secret_basic">client_secret_basic</option>
-              <option value="client_secret_post">client_secret_post</option>
-              <option value="none">none (PKCE only)</option>
-            </SelectInput>
-          )}
-        </Field>
-        <Field label="Scopes" wide>
-          {(fid, by) => <TagsInput id={fid} describedBy={by} value={draft.scopes} onChange={(v) => update({ scopes: v })} placeholder="openid, email, profile" />}
-        </Field>
-        <div className="sm:col-span-2">
-          <Toggle label="PKCE" hint="Required when no client secret is set." checked={draft.pkce} disabled={!editable} onChange={(v) => update({ pkce: v })} />
-        </div>
-        <form onSubmit={submitSecret} className="sm:col-span-2 flex flex-col gap-2">
-          <Field label="Client secret" hint={draft.client_secret_set ? "A secret is stored. Enter a new one to replace it." : "No secret is stored: the client authenticates with PKCE alone."}>
-            {(fid, by) => <TextInput id={fid} aria-describedby={by} type="password" value={secret} disabled={!editable} autoComplete="new-password" onChange={(e) => setSecret(e.target.value)} />}
-          </Field>
-          {editable && (
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" variant="primary" disabled={!secret || setSecretMutation.isPending}>
-                {draft.client_secret_set ? "Replace secret" : "Set secret"}
-              </Button>
-              {draft.client_secret_set && (
-                <Button type="button" disabled={setSecretMutation.isPending} onClick={() => setSecretMutation.mutate(null)}>
-                  Clear secret
-                </Button>
+      {isSaml ? (
+        <SamlUpstreamSection
+          tenant={tenant}
+          provider={draft}
+          editable={editable}
+          onChange={updateSaml}
+          onRefreshed={(p) => {
+            qc.setQueryData(["idp", tenant, id], p);
+            setDraft(p);
+          }}
+        />
+      ) : (
+        <>
+          <Section id="idp-endpoints" title="Endpoints" description="For OpenID Connect a new issuer re-discovers the endpoints; fill them in by hand for providers without discovery.">
+            <Field label="Issuer" wide>
+              {(fid) => <TextInput id={fid} type="url" value={draft.issuer ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => update({ issuer: e.target.value || null })} />}
+            </Field>
+            <Field label="Authorization endpoint" wide>
+              {(fid) => <TextInput id={fid} type="url" value={draft.authorization_endpoint ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => update({ authorization_endpoint: e.target.value || null })} />}
+            </Field>
+            <Field label="Token endpoint" wide>
+              {(fid) => <TextInput id={fid} type="url" value={draft.token_endpoint ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => update({ token_endpoint: e.target.value || null })} />}
+            </Field>
+            <Field label="Userinfo endpoint" wide>
+              {(fid) => <TextInput id={fid} type="url" value={draft.userinfo_endpoint ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => update({ userinfo_endpoint: e.target.value || null })} />}
+            </Field>
+            <Field label="JWKS URI" wide>
+              {(fid) => <TextInput id={fid} type="url" value={draft.jwks_uri ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => update({ jwks_uri: e.target.value || null })} />}
+            </Field>
+          </Section>
+          <Section id="idp-client" title="Client">
+            <Field label="Client ID">{(fid) => <TextInput id={fid} value={draft.client_id} disabled={!editable} spellCheck={false} autoComplete="off" onChange={(e) => update({ client_id: e.target.value })} />}</Field>
+            <Field label="Token endpoint authentication">
+              {(fid) => (
+                <SelectInput id={fid} value={draft.token_endpoint_auth_method} disabled={!editable} onChange={(e) => update({ token_endpoint_auth_method: e.target.value as IdentityProvider["token_endpoint_auth_method"] })}>
+                  <option value="client_secret_basic">client_secret_basic</option>
+                  <option value="client_secret_post">client_secret_post</option>
+                  <option value="none">none (PKCE only)</option>
+                </SelectInput>
               )}
+            </Field>
+            <Field label="Scopes" wide>
+              {(fid, by) => <TagsInput id={fid} describedBy={by} value={draft.scopes} onChange={(v) => update({ scopes: v })} placeholder="openid, email, profile" />}
+            </Field>
+            <div className="sm:col-span-2">
+              <Toggle label="PKCE" hint="Required when no client secret is set." checked={draft.pkce} disabled={!editable} onChange={(v) => update({ pkce: v })} />
             </div>
-          )}
-          <ErrorLine error={setSecretMutation.error} />
-        </form>
-      </Section>
+            <form onSubmit={submitSecret} className="sm:col-span-2 flex flex-col gap-2">
+              <Field label="Client secret" hint={draft.client_secret_set ? "A secret is stored. Enter a new one to replace it." : "No secret is stored: the client authenticates with PKCE alone."}>
+                {(fid, by) => <TextInput id={fid} aria-describedby={by} type="password" value={secret} disabled={!editable} autoComplete="new-password" onChange={(e) => setSecret(e.target.value)} />}
+              </Field>
+              {editable && (
+                <div className="flex flex-wrap gap-2">
+                  <Button type="submit" variant="primary" disabled={!secret || setSecretMutation.isPending}>
+                    {draft.client_secret_set ? "Replace secret" : "Set secret"}
+                  </Button>
+                  {draft.client_secret_set && (
+                    <Button type="button" disabled={setSecretMutation.isPending} onClick={() => setSecretMutation.mutate(null)}>
+                      Clear secret
+                    </Button>
+                  )}
+                </div>
+              )}
+              <ErrorLine error={setSecretMutation.error} />
+            </form>
+          </Section>
+        </>
+      )}
       <Section id="idp-accounts" title="Accounts" description="How an upstream identity becomes a local account, and what it fills in.">
         <Field label="Link policy" hint={POLICY_HINT[draft.link_policy]} wide>
           {(fid, by) => (
@@ -359,13 +435,13 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
         <div className="sm:col-span-2">
           <Toggle label="Trust the provider's email addresses" hint="Treat them as verified even without an email_verified claim." checked={draft.trust_email} disabled={!editable} onChange={(v) => update({ trust_email: v })} />
         </div>
-        <Field label="Subject claim" hint="The stable identifier; sub when empty.">
+        <Field label={isSaml ? "Subject attribute" : "Subject claim"} hint={isSaml ? "The stable identifier; the NameID when empty. Name an attribute for identity providers that send transient NameIDs." : "The stable identifier; sub when empty."}>
           {(fid, by) => <TextInput id={fid} aria-describedby={by} value={m.subject ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => setMapper({ subject: e.target.value || null })} />}
         </Field>
-        <Field label="Username claim" hint="preferred_username when empty; the email, then alias-subject, stand in.">
+        <Field label={isSaml ? "Username attribute" : "Username claim"} hint={isSaml ? "preferred_username when empty; uid, eduPersonPrincipalName and the UPN count. The email, then alias-subject, stand in." : "preferred_username when empty; the email, then alias-subject, stand in."}>
           {(fid, by) => <TextInput id={fid} aria-describedby={by} value={m.username ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => setMapper({ username: e.target.value || null })} />}
         </Field>
-        <Field label="Email claim" hint="email when empty.">
+        <Field label={isSaml ? "Email attribute" : "Email claim"} hint={isSaml ? "email when empty; mail and the standard attribute URIs count as email." : "email when empty."}>
           {(fid, by) => <TextInput id={fid} aria-describedby={by} value={m.email ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => setMapper({ email: e.target.value || null })} />}
         </Field>
         <Field label="Email verified claim" hint="email_verified when empty.">

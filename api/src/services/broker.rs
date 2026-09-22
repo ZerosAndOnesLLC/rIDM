@@ -11,6 +11,7 @@
 //! existing one; the login flow then continues like any other first factor
 //! (second step, profile completion, terms, consent).
 
+use axum::http::HeaderMap;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::Utc;
@@ -101,6 +102,71 @@ struct StateRecord {
     mode: Mode,
     nonce: String,
     verifier: Option<String>,
+    /// The hash of the browser's binding cookie (see [`binding_cookie`]).
+    browser: String,
+}
+
+// ---------------------------------------------------------------------------
+// Browser binding
+// ---------------------------------------------------------------------------
+
+/// How long a binding cookie lives: the provider's round trip, and the
+/// SAML parking step after it.
+pub const BINDING_TTL_SECS: i64 = 15 * 60;
+
+fn binding_cookie_name(state: &AppState, slug: &str) -> String {
+    crate::services::sessions::tenant_cookie_name(state.config.cookie_secure, "ridm_broker", slug)
+}
+
+/// The cookie that binds a brokered sign-in to the browser that started it.
+/// The step that signs the browser in (the callback, or SAML's same-site
+/// continue) must present it, so a callback URL or continue link someone
+/// else obtained signs nobody in (login CSRF). `SameSite=Lax`: a
+/// provider's cross-site POST does not carry it, so a posted answer is
+/// parked and continued by a same-site GET that does.
+pub fn binding_cookie(
+    state: &AppState,
+    tenant: &crate::models::Tenant,
+    value: &str,
+    max_age: i64,
+) -> String {
+    crate::services::sessions::cookie_header(
+        state.config.cookie_secure,
+        &binding_cookie_name(state, &tenant.slug),
+        value,
+        max_age,
+    )
+}
+
+/// The binding cookie a request carries.
+pub fn browser_binding(
+    state: &AppState,
+    tenant: &crate::models::Tenant,
+    headers: &HeaderMap,
+) -> Option<String> {
+    let name = binding_cookie_name(state, &tenant.slug);
+    headers
+        .get_all(axum::http::header::COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|line| line.split(';'))
+        .filter_map(|kv| kv.trim().split_once('='))
+        .find(|(k, _)| *k == name)
+        .map(|(_, v)| v.trim().to_string())
+        .filter(|v| !v.is_empty() && v.len() <= 128)
+}
+
+/// Whether `presented` (the request's binding cookie) is the one `hashed`
+/// was made from.
+pub fn binding_matches(presented: Option<&str>, hashed: &str) -> bool {
+    presented.is_some_and(|p| hash(p) == hashed)
+}
+
+/// A fresh binding value and its hash, to store with the sign-in.
+pub fn new_binding() -> (String, String) {
+    let v = random_token(32);
+    let h = hash(&v);
+    (v, h)
 }
 
 /// The callback URL the provider must know: `{issuer}/broker/{alias}/callback`.
@@ -113,13 +179,13 @@ pub fn callback_url(state: &AppState, tenant: &TenantCtx, alias: &str) -> String
 // ---------------------------------------------------------------------------
 
 /// Build the authorization request and remember the state. Returns the URL
-/// to send the browser to.
+/// to send the browser to and the value of the binding cookie to set.
 pub async fn start(
     state: &AppState,
     tenant: &TenantCtx,
     idp: &IdentityProvider,
     mode: Mode,
-) -> AppResult<String> {
+) -> AppResult<(String, String)> {
     if !idp.enabled {
         return Err(AppError::NotFound("identity provider"));
     }
@@ -139,11 +205,13 @@ pub async fn start(
     let token = random_token(32);
     let nonce = random_token(32);
     let verifier = idp.pkce.then(|| random_token(48));
+    let (browser, browser_hash) = new_binding();
     let rec = StateRecord {
         idp_id: idp.id,
         mode,
         nonce: nonce.clone(),
         verifier: verifier.clone(),
+        browser: browser_hash,
     };
     let mut conn = state.redis.get().await?;
     let _: () = conn
@@ -175,7 +243,7 @@ pub async fn start(
             q.append_pair("response_mode", "form_post");
         }
     }
-    Ok(url.to_string())
+    Ok((url.to_string(), browser))
 }
 
 // ---------------------------------------------------------------------------
@@ -233,7 +301,7 @@ pub async fn redeem_link_ticket(
 // ---------------------------------------------------------------------------
 
 /// The parameters a provider sends back (query for `GET`, form for `POST`).
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CallbackParams {
     pub code: Option<String>,
@@ -245,7 +313,7 @@ pub struct CallbackParams {
 }
 
 /// What upstream said about the person.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Identity {
     pub subject: String,
     pub email: Option<String>,
@@ -277,6 +345,44 @@ pub enum Outcome {
     },
 }
 
+fn parked_key(tenant_id: Uuid, id: Uuid) -> String {
+    format!("{}:t:{tenant_id}:broker:posted:{id}", keys::PREFIX)
+}
+
+/// Keep a provider's posted answer (`response_mode=form_post`) for the
+/// same-site GET that continues it, which carries the binding and session
+/// cookies the cross-site POST did not. Returns its one-time id.
+pub async fn park_callback(
+    state: &AppState,
+    tenant_id: Uuid,
+    params: &CallbackParams,
+) -> AppResult<Uuid> {
+    let id = Uuid::new_v4();
+    let mut conn = state.redis.get().await?;
+    let _: () = conn
+        .set_ex(
+            parked_key(tenant_id, id),
+            serde_json::to_string(params)?,
+            STATE_TTL_SECS,
+        )
+        .await?;
+    Ok(id)
+}
+
+/// Take a parked answer (once).
+pub async fn unpark_callback(
+    state: &AppState,
+    tenant_id: Uuid,
+    id: Uuid,
+) -> AppResult<Option<CallbackParams>> {
+    let mut conn = state.redis.get().await?;
+    let raw: Option<String> = redis::cmd("GETDEL")
+        .arg(parked_key(tenant_id, id))
+        .query_async(&mut conn)
+        .await?;
+    Ok(raw.and_then(|r| serde_json::from_str(&r).ok()))
+}
+
 /// Take the state record for `state` (once).
 async fn take_state(
     state: &AppState,
@@ -299,6 +405,7 @@ pub async fn callback(
     tenant: &TenantCtx,
     idp: &IdentityProvider,
     params: CallbackParams,
+    browser: Option<&str>,
     ctx: RequestContext,
 ) -> AppResult<Outcome> {
     let Some(rec) = take_state(
@@ -327,6 +434,10 @@ pub async fn callback(
     if rec.idp_id != idp.id || !idp.enabled {
         return Ok(failed(BrokerError::InvalidState));
     }
+    if !binding_matches(browser, &rec.browser) {
+        tracing::warn!(provider = %idp.alias, "a brokered sign-in was completed by another browser than the one that started it");
+        return Ok(failed(BrokerError::InvalidState));
+    }
     if let Some(err) = &params.error {
         tracing::info!(provider = %idp.alias, error = %err, description = params.error_description.as_deref().unwrap_or(""), "upstream sign-in refused");
         return Ok(failed(if err == "access_denied" {
@@ -345,7 +456,31 @@ pub async fn callback(
             return Ok(failed(BrokerError::Upstream));
         }
     };
-    match rec.mode {
+    conclude(state, tenant, idp, rec.mode, identity, ctx).await
+}
+
+/// Finish what `mode` started with a proven upstream identity: sign in to
+/// the login flow (resolving or creating the local user by the provider's
+/// link policy) or link it to the account-console user. Shared by every
+/// provider kind; SAML reaches it from its assertion consumer service.
+pub async fn conclude(
+    state: &AppState,
+    tenant: &TenantCtx,
+    idp: &IdentityProvider,
+    mode: Mode,
+    identity: Identity,
+    ctx: RequestContext,
+) -> AppResult<Outcome> {
+    let (flow_id, return_to) = match &mode {
+        Mode::Flow { flow_id } => (Some(*flow_id), None),
+        Mode::Link { return_to, .. } => (None, return_to.clone()),
+    };
+    let failed = |error: BrokerError| Outcome::Failed {
+        flow_id,
+        return_to: return_to.clone(),
+        error,
+    };
+    match mode {
         Mode::Flow { flow_id } => {
             let flow = flows::load(state, tenant.id(), flow_id).await?;
             if !matches!(flow.stage, FlowStage::Authenticate | FlowStage::Register) {
@@ -481,15 +616,25 @@ async fn prove(
             }
         }
     }
+    identity_from_claims(idp, claims, verified_subject)
+        .ok_or_else(|| AppError::Unavailable("no usable subject claim".into()))
+}
+
+/// Read the identity out of upstream claims by the provider's mappers:
+/// `verified_subject` (what the provider's signature vouches for) wins over
+/// the subject mapper. `None` when there is no usable subject.
+pub fn identity_from_claims(
+    idp: &IdentityProvider,
+    claims: Map<String, Value>,
+    verified_subject: Option<String>,
+) -> Option<Identity> {
     let m = &idp.mappers.0;
     let subject = match verified_subject {
         Some(s) => s,
-        None => claim(&claims, m.subject.as_deref().unwrap_or("sub"))
-            .and_then(scalar_text)
-            .ok_or_else(|| AppError::Unavailable("no subject claim".into()))?,
+        None => claim(&claims, m.subject.as_deref().unwrap_or("sub")).and_then(scalar_text)?,
     };
     if subject.is_empty() || subject.len() > 512 {
-        return Err(AppError::Unavailable("unusable subject claim".into()));
+        return None;
     }
     let email = claim(&claims, m.email.as_deref().unwrap_or("email"))
         .and_then(Value::as_str)
@@ -506,7 +651,7 @@ async fn prove(
     )
     .and_then(scalar_text)
     .filter(|u| !u.trim().is_empty());
-    Ok(Identity {
+    Some(Identity {
         subject,
         email,
         email_verified,

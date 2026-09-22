@@ -135,6 +135,29 @@ release renames that heading to the version and date.
   sender constraint.
 - `require_pushed_authorization_requests` per client, for PAR without the rest
   of the profile.
+- SAML 2.0 identity providers upstream: an identity provider of the new kind
+  `saml` (settings in `saml_identity_providers`) makes rIDM the service provider
+  of a SAML IdP. It is set up from the IdP's metadata URL or document
+  (`POST /admin/tenants/{slug}/identity-providers/saml-metadata`), and publishes
+  its own SP metadata at `{issuer}/broker/{alias}/saml/metadata` (the SP entity
+  ID), with signing and encryption certificates from the tenant's SAML keys.
+  `AuthnRequest`s are signed and sent by HTTP-Redirect or HTTP-POST; the
+  assertion consumer service accepts only responses signed with a registered
+  certificate (the assertion itself unless `want_assertions_signed` is off),
+  answering rIDM's request, for this SP and consumer URL, within their window,
+  once, and decrypts encrypted assertions (`require_encrypted_assertions` to
+  insist). The continue step after it is bound to the starting browser by a
+  cookie (login CSRF). The NameID is the subject unless a mapper names an
+  attribute (a transient NameID needs one); well-known attribute names (`mail`,
+  the eduPerson and Microsoft claim URIs, …) feed the default claims. IdP-initiated
+  sign-in is a per-provider opt-in landing on a client's `initiate_login_uri` or
+  the account console. Single Logout both ways: the IdP's signed `LogoutRequest`
+  ends the sessions it brokered and walks their SAML SPs (event
+  `logout.upstream`); a sign-out at rIDM sends the IdP a `LogoutRequest` after the
+  downstream SPs. The new hourly `saml_metadata_refresh` job re-reads metadata URLs
+  daily (`…/{alias}/saml/refresh` does it now); metrics
+  `ridm_saml_sp_responses_total`, `ridm_saml_metadata_refresh_total`. Console:
+  a SAML choice under Identity providers and its settings page.
 
 ### Changed
 
@@ -150,6 +173,19 @@ release renames that heading to the version and date.
   watch `ridm_audit_sink_lag_rows` instead.
 
 ### Fixed
+
+- Brokered sign-ins through OpenID Connect and OAuth 2.0 providers are now
+  bound to the browser that started them: a `SameSite=Lax` cookie set at
+  `/broker/{alias}/start` must come back to the callback, so a callback URL
+  opened in another browser no longer signs it in to someone else's account
+  (login CSRF). Posted callbacks (`form_post`, Apple) are parked and continued
+  by a same-site GET at `…/callback?continue=`.
+- The SAML IdP's front-channel logout page, shown when OIDC front-channel
+  logout URLs have to be framed, dropped the auto-posting form of a
+  POST-binding SP's `LogoutResponse`; the form is now embedded and submitted
+  after the frames.
+- A sign-out started by a downstream SAML SP now reaches the upstream SAML IdP
+  that brokered the session before the SP is answered.
 
 - Dynamic registration accepted `require_pushed_authorization_requests` and
   dropped it; it is now stored and enforced.

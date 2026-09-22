@@ -1132,6 +1132,10 @@ struct LogoutChain {
     partial: bool,
     /// OIDC front-channel logout URLs, framed on the last page.
     frontchannel: Vec<String>,
+    /// The upstream SAML IdP that brokered the ended session: told after
+    /// the SPs, before the SP that asked is answered.
+    #[serde(default)]
+    upstream: Option<crate::services::saml_sp::UpstreamSession>,
     finish: Finish,
 }
 
@@ -1181,6 +1185,7 @@ pub async fn logout_through(
         current: None,
         partial: false,
         frontchannel: vec![],
+        upstream: None,
         finish: Finish::Redirect(target),
     };
     save_chain(state, tenant.id, &chain).await?;
@@ -1223,7 +1228,7 @@ async fn step(state: &AppState, tenant: &TenantCtx, mut chain: LogoutChain) -> R
                 format: Some(p.name_id_format.clone()),
                 sp_name_qualifier: p.sp_name_qualifier.clone(),
             },
-            &p.session_index,
+            Some(&p.session_index),
             Utc::now(),
         );
         let request_id = request.attribute("ID").unwrap_or_default().to_string();
@@ -1244,6 +1249,29 @@ async fn step(state: &AppState, tenant: &TenantCtx, mut chain: LogoutChain) -> R
         .await
         {
             Ok(r) => r,
+            Err(e) => e.into_response(),
+        };
+    }
+    // Every SP had its turn; the upstream IdP next, then back here to
+    // finish.
+    if let Some(up) = chain.upstream.take() {
+        if let Err(e) = save_chain(state, tenant.id(), &chain).await {
+            return e.into_response();
+        }
+        let back = format!(
+            "{}/saml/slo/chain/{}",
+            tokens::issuer(state, &tenant.tenant),
+            chain.id
+        );
+        return match crate::services::saml_sp::logout_upstream(
+            state,
+            &tenant.tenant,
+            Some(up),
+            back,
+        )
+        .await
+        {
+            Ok(to) => Redirect::to(&to).into_response(),
             Err(e) => e.into_response(),
         };
     }
@@ -1328,7 +1356,23 @@ async fn finish_chain(state: &AppState, tenant: &TenantCtx, chain: LogoutChain) 
             }
         }
     };
-    with_frontchannel(next, &chain.frontchannel)
+    with_frontchannel(next, &chain.frontchannel).await
+}
+
+/// The `<form>` of an auto-posting page (`binding::to_post`), whose own
+/// `onload` submission is left behind with the rest of the page.
+async fn form_of(page: Response) -> Option<String> {
+    let body = axum::body::to_bytes(page.into_body(), 1024 * 1024)
+        .await
+        .ok()?;
+    let html = std::str::from_utf8(&body).ok()?;
+    let start = html.find("<form")?;
+    let end = html[start..].find("</form>")? + start + "</form>".len();
+    Some(
+        html[start..end]
+            .replace("<noscript>", "")
+            .replace("</noscript>", ""),
+    )
 }
 
 fn signed_out_page(state: &AppState, tenant: &TenantCtx) -> Response {
@@ -1342,7 +1386,7 @@ fn signed_out_page(state: &AppState, tenant: &TenantCtx) -> Response {
 
 /// Frame the OIDC front-channel logout URLs before `next` (a redirect or
 /// an auto-posting form) runs: they get two seconds to load.
-fn with_frontchannel(next: Response, frontchannel: &[String]) -> Response {
+async fn with_frontchannel(next: Response, frontchannel: &[String]) -> Response {
     if frontchannel.is_empty() {
         return next;
     }
@@ -1356,7 +1400,8 @@ fn with_frontchannel(next: Response, frontchannel: &[String]) -> Response {
         })
         .collect();
     // A redirect continues through a link the page follows after the
-    // frames; an auto-posting form is embedded as it is, delayed.
+    // frames; an auto-posting form is embedded as it is, and submitted
+    // after them.
     let (continue_html, script) = match next.headers().get(header::LOCATION) {
         Some(loc) => {
             let loc = authorize::html_escape(loc.to_str().unwrap_or_default());
@@ -1365,7 +1410,13 @@ fn with_frontchannel(next: Response, frontchannel: &[String]) -> Response {
                 "setTimeout(function(){location.href=document.getElementById('next').href},2000)",
             )
         }
-        None => (String::new(), ""),
+        None => match form_of(next).await {
+            Some(form) => (
+                form,
+                "setTimeout(function(){document.forms[0].submit()},2000)",
+            ),
+            None => (String::new(), ""),
+        },
     };
     let mut origins: Vec<String> = frontchannel
         .iter()
@@ -1502,9 +1553,13 @@ async fn logout_request(
     }
     let mut pending = vec![];
     let mut frontchannel = vec![];
+    let mut upstream = None;
     if let Some((sid, parts)) = ended {
         match crate::services::logout::end_session(state, &tenant.tenant, sid).await {
-            Ok(outcome) => frontchannel = outcome.frontchannel_logout_uris,
+            Ok(outcome) => {
+                frontchannel = outcome.frontchannel_logout_uris;
+                upstream = outcome.saml_upstream;
+            }
             Err(e) => return e.into_response(),
         }
         pending = parts
@@ -1518,6 +1573,7 @@ async fn logout_request(
         current: None,
         partial: false,
         frontchannel,
+        upstream,
         finish: Finish::Respond {
             client_id: sp.client_id,
             in_response_to: req.id,

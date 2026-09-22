@@ -27,8 +27,9 @@ The source is in [`docs/`](docs/); this README stays the developer's overview.
 - **Standards, not surprises.** Authorization code + PKCE, client credentials, refresh
   token rotation with reuse detection, device flow, backchannel sign-in (CIBA), PAR,
   JAR/JARM, DCR, RP-initiated, back-channel and front-channel logout, token exchange,
-  DPoP, a per-client FAPI 2.0 Security Profile, and a SAML 2.0 identity provider
-  (SSO over both browser bindings, front-channel Single Logout). No implicit, hybrid,
+  DPoP, a per-client FAPI 2.0 Security Profile, and SAML 2.0 both ways: as an identity
+  provider and as the service provider of upstream SAML IdPs (SSO over both browser
+  bindings, front-channel Single Logout). No implicit, hybrid,
   or password grants.
 - **One image.** A deployment is the API image plus Postgres and Valkey. The image
   compiles the UI's static export into the server, which serves the sign-in pages and
@@ -193,6 +194,16 @@ requests with signature checks, IdP-initiated sign-in for SPs that opt in, and
 front-channel Single Logout. The XML signature and encryption code is rIDM's own (no C XML
 library), checked against xmlsec1 and fuzzed. The SAML signing keys rotate only by hand,
 with the new certificate published first. See the docs' *SAML identity provider*.
+
+A SAML IdP (Entra ID, ADFS, Okta, Shibboleth, another rIDM) can also be an **upstream**
+identity provider of kind `saml`, configured from its metadata URL (re-read daily, so its
+certificate rollover needs nobody) or document. It gets the login-page button, account
+linking and mappers of any brokered provider. Responses must be signed by its registered
+certificates (the assertion itself, by default), answer rIDM's signed `AuthnRequest`,
+name this SP as audience and recipient, be fresh and unseen, and may be encrypted to the
+tenant's SAML keys. The continue step is bound to the browser that started the sign-in,
+IdP-initiated sign-in is a per-provider opt-in, and Single Logout runs both ways. See the
+docs' *SAML identity providers (upstream)*.
 
 Locale is negotiated per request: the OIDC `ui_locales` parameter, then the user's
 stored locale, then the tenant default, constrained to the tenant's supported list
@@ -535,6 +546,7 @@ skips the pass. Every pass is counted and timed (`ridm_job_runs_total`,
 |-----|-------|--------------|
 | `key_rotation` | 1 h | rotates and retires signing keys per the tenant key policy |
 | `audit_retention` | 24 h | creates upcoming audit partitions (through `audit_ensure_partitions`, see below), drops expired chain prefixes; a failure to create partitions does not stop the purge |
+| `saml_metadata_refresh` | 1 h | re-reads SAML identity providers' metadata URLs once a day |
 | `user_purge` | 24 h | hard-deletes soft-deleted users past the tenant's retention |
 | `webhook_delivery` | 30 s | retries webhook deliveries whose backoff elapsed (prompt delivery happens on the event) |
 | `message_delivery` | 30 s | sends queued and retrying email/SMS |
@@ -803,7 +815,7 @@ it) and `explicit` refuse with `broker_error=email_in_use` on the login page, wh
 `{alias}-{subject}`; mapped attributes are written on every sign-in, and the login flow
 then continues like any other first factor (second step, profile completion for required
 attributes, terms, consent). Events: `identity_provider.*`, `identity.linked`,
-`identity.unlinked`, `login.brokered`. Upstream endpoints must use https (plain http is
+`identity.unlinked`, `login.brokered`, `logout.upstream` (a SAML IdP's logout request). Upstream endpoints must use https (plain http is
 accepted for loopback hosts, for development and tests); providers export and import
 with the tenant configuration without their secrets.
 

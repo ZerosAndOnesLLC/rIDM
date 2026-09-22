@@ -19,7 +19,7 @@ use crate::db;
 use crate::error::{AppError, AppResult, FieldError};
 use crate::models::{
     IdentityProvider, IdentityProviderUpdate, IdpAuthMethod, IdpKind, IdpMappers, LinkPolicy,
-    NewIdentityProvider, PublicIdentityProvider,
+    NewIdentityProvider, PublicIdentityProvider, SamlUpstreamSettings,
 };
 use crate::repos;
 use crate::state::AppState;
@@ -155,7 +155,8 @@ pub fn validate_alias(raw: &str) -> AppResult<String> {
         && a.bytes().next().is_some_and(|b| b.is_ascii_alphanumeric())
         && a.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
         && a != "presets"
-        && a != "discover";
+        && a != "discover"
+        && a != "saml-metadata";
     if ok {
         Ok(a)
     } else {
@@ -245,6 +246,41 @@ pub async fn get_json(what: &str, url: &str, bearer: Option<&str>) -> AppResult<
         AppError::Unavailable(format!("{what}: {}", crate::util::outbound::describe(&e)))
     })?;
     read_json(what, res).await
+}
+
+/// `GET` a text document (an IdP's SAML metadata), size-capped.
+pub async fn get_text(what: &str, url: &str) -> AppResult<String> {
+    let res = client_for(what, url)?
+        .get(url)
+        .header(
+            "accept",
+            "application/samlmetadata+xml, application/xml, text/xml",
+        )
+        .header("user-agent", "rIDM")
+        .send()
+        .await
+        .map_err(|e| {
+            AppError::Unavailable(format!("{what}: {}", crate::util::outbound::describe(&e)))
+        })?;
+    let status = res.status();
+    if !status.is_success() {
+        return Err(AppError::Unavailable(format!("{what}: {status}")));
+    }
+    if res
+        .content_length()
+        .is_some_and(|l| l > crate::saml::xml::MAX_DOCUMENT_BYTES as u64)
+    {
+        return Err(AppError::Unavailable(format!("{what}: document too large")));
+    }
+    let bytes = res
+        .bytes()
+        .await
+        .map_err(|e| AppError::Unavailable(format!("{what}: {e}")))?;
+    if bytes.len() > crate::saml::xml::MAX_DOCUMENT_BYTES {
+        return Err(AppError::Unavailable(format!("{what}: document too large")));
+    }
+    String::from_utf8(bytes.to_vec())
+        .map_err(|_| AppError::Unavailable(format!("{what}: not UTF-8")))
 }
 
 /// `POST` a form (the token request) and read the JSON answer.
@@ -414,6 +450,7 @@ struct Resolved {
     trust_email: bool,
     mappers: IdpMappers,
     sort_order: i32,
+    saml: Option<SamlUpstreamSettings>,
 }
 
 fn opt(s: Option<String>) -> Option<String> {
@@ -462,6 +499,12 @@ async fn finish(mut r: Resolved, has_secret: bool) -> AppResult<Resolved> {
             field: "display_name".into(),
             message: "must be 1-100 characters".into(),
         }]));
+    }
+    if r.kind == IdpKind::Saml {
+        return finish_saml(r);
+    }
+    if r.saml.is_some() {
+        return Err(field_error("saml", "is only for a provider of kind `saml`"));
     }
     if r.client_id.trim().is_empty() {
         return Err(AppError::Validation(vec![FieldError {
@@ -516,6 +559,7 @@ async fn finish(mut r: Resolved, has_secret: bool) -> AppResult<Resolved> {
                 r.scopes.insert(0, "openid".into());
             }
         }
+        IdpKind::Saml => unreachable!("finished by finish_saml"),
         IdpKind::Oauth2 => {
             for (name, present) in [
                 ("authorization_endpoint", r.authorization_endpoint.is_some()),
@@ -543,6 +587,144 @@ async fn finish(mut r: Resolved, has_secret: bool) -> AppResult<Resolved> {
         }]));
     }
     Ok(r)
+}
+
+fn field_error(field: &str, message: &str) -> AppError {
+    AppError::Validation(vec![FieldError {
+        field: field.into(),
+        message: message.into(),
+    }])
+}
+
+/// A SAML provider has none of the OAuth fields: they are cleared, and its
+/// SAML settings are checked instead.
+fn finish_saml(mut r: Resolved) -> AppResult<Resolved> {
+    let settings = r
+        .saml
+        .take()
+        .ok_or_else(|| field_error("saml", "is required for a provider of kind `saml`"))?;
+    r.saml = Some(validate_saml(settings)?);
+    r.preset = None;
+    r.issuer = None;
+    r.authorization_endpoint = None;
+    r.token_endpoint = None;
+    r.userinfo_endpoint = None;
+    r.jwks_uri = None;
+    r.client_id = String::new();
+    r.token_endpoint_auth_method = IdpAuthMethod::None;
+    r.scopes = vec![];
+    r.pkce = false;
+    Ok(r)
+}
+
+/// Check and normalize a SAML provider's settings: https endpoints,
+/// certificates parsed and stored as base64 DER, bounded lists.
+pub fn validate_saml(mut s: SamlUpstreamSettings) -> AppResult<SamlUpstreamSettings> {
+    s.entity_id = s.entity_id.trim().to_string();
+    if s.entity_id.is_empty() || s.entity_id.len() > 1024 {
+        return Err(field_error("saml.entity_id", "must be 1-1024 characters"));
+    }
+    s.sso_url = validate_endpoint("saml.sso_url", &s.sso_url)?;
+    s.slo_url = match opt(s.slo_url) {
+        Some(u) => Some(validate_endpoint("saml.slo_url", &u)?),
+        None => None,
+    };
+    s.metadata_url = match opt(s.metadata_url) {
+        Some(u) => Some(validate_endpoint("saml.metadata_url", &u)?),
+        None => None,
+    };
+    let mut certs: Vec<String> = vec![];
+    for (i, c) in s.signing_certificates.iter().enumerate() {
+        let parsed = crate::saml::cert::Certificate::parse(c)
+            .map_err(|e| field_error(&format!("saml.signing_certificates.{i}"), &e.to_string()))?;
+        let b64 = parsed.to_base64();
+        if !certs.contains(&b64) {
+            certs.push(b64);
+        }
+    }
+    if certs.is_empty() || certs.len() > 10 {
+        return Err(field_error(
+            "saml.signing_certificates",
+            "one to ten certificates are required: nothing unsigned is accepted",
+        ));
+    }
+    s.signing_certificates = certs;
+    let mut classes: Vec<String> = vec![];
+    for c in &s.authn_context_class_refs {
+        let c = c.trim().to_string();
+        if c.is_empty() || c.len() > 256 {
+            return Err(field_error(
+                "saml.authn_context_class_refs",
+                "each class is 1-256 characters",
+            ));
+        }
+        if !classes.contains(&c) {
+            classes.push(c);
+        }
+    }
+    if classes.len() > 10 {
+        return Err(field_error(
+            "saml.authn_context_class_refs",
+            "at most ten classes",
+        ));
+    }
+    s.authn_context_class_refs = classes;
+    s.unsolicited_client_id = opt(s.unsolicited_client_id);
+    Ok(s)
+}
+
+/// The settings of a new SAML provider as an IdP's metadata describes it
+/// (`url`, when it was fetched, becomes the metadata URL). Checked like any
+/// settings, so what the console shows for review would be accepted.
+pub fn saml_settings_from_metadata(
+    text: &str,
+    url: Option<String>,
+) -> AppResult<SamlUpstreamSettings> {
+    use crate::models::{NameIdFormat, SloBinding};
+    let m = crate::saml::metadata::parse_idp_metadata(text)
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let binding = |redirect: bool| {
+        if redirect {
+            SloBinding::Redirect
+        } else {
+            SloBinding::Post
+        }
+    };
+    // Persistent first: it is the one made for account linking.
+    let name_id_format = [NameIdFormat::Persistent, NameIdFormat::Email]
+        .into_iter()
+        .find(|f| m.name_id_formats.iter().any(|n| n == f.urn()));
+    validate_saml(SamlUpstreamSettings {
+        entity_id: m.entity_id,
+        sso_url: m.sso.0,
+        sso_binding: binding(m.sso.1),
+        slo_url: m.slo.as_ref().map(|s| s.0.clone()),
+        slo_binding: m.slo.as_ref().map(|s| binding(s.1)).unwrap_or_default(),
+        signing_certificates: m.signing_certificates,
+        name_id_format,
+        metadata_url: url,
+        ..SamlUpstreamSettings::default()
+    })
+}
+
+/// The client an unsolicited SAML sign-in lands on must exist and say
+/// where (`initiate_login_uri`).
+async fn check_unsolicited_target(
+    state: &AppState,
+    tenant_id: Uuid,
+    s: Option<&SamlUpstreamSettings>,
+) -> AppResult<()> {
+    let Some(client_id) = s.and_then(|s| s.unsolicited_client_id.as_deref()) else {
+        return Ok(());
+    };
+    match crate::services::clients::find_by_client_id(state, tenant_id, client_id).await? {
+        Some(c) if c.initiate_login_uri.is_some() => Ok(()),
+        Some(_) => Err(field_error(
+            "saml.unsolicited_client_id",
+            "the client has no initiate_login_uri to send the browser to",
+        )),
+        None => Err(field_error("saml.unsolicited_client_id", "no such client")),
+    }
 }
 
 fn from_new(input: NewIdentityProvider) -> AppResult<Resolved> {
@@ -612,6 +794,7 @@ fn from_new(input: NewIdentityProvider) -> AppResult<Resolved> {
             .unwrap_or(false),
         mappers,
         sort_order: input.sort_order.unwrap_or(0),
+        saml: input.saml,
     })
 }
 
@@ -636,6 +819,7 @@ fn from_existing(idp: &IdentityProvider) -> Resolved {
         trust_email: idp.trust_email,
         mappers: idp.mappers.0.clone(),
         sort_order: idp.sort_order,
+        saml: idp.saml.as_ref().map(|s| s.settings()),
     }
 }
 
@@ -648,7 +832,15 @@ async fn invalidate(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
 
 pub async fn list(state: &AppState, tenant_id: Uuid) -> AppResult<Vec<IdentityProvider>> {
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    let rows = repos::identity_providers::list(&mut *tx, tenant_id).await?;
+    let mut rows = repos::identity_providers::list(&mut *tx, tenant_id).await?;
+    if rows.iter().any(|r| r.kind == IdpKind::Saml) {
+        let mut saml = repos::identity_providers::list_saml(&mut *tx, tenant_id).await?;
+        for r in &mut rows {
+            if let Some(i) = saml.iter().position(|s| s.idp_id == r.id) {
+                r.saml = Some(saml.swap_remove(i));
+            }
+        }
+    }
     tx.commit().await?;
     Ok(rows)
 }
@@ -663,8 +855,12 @@ pub async fn get(state: &AppState, tenant_id: Uuid, key: &str) -> AppResult<Iden
                 .await?
         }
     };
+    let mut row = row.ok_or(AppError::NotFound("identity provider"))?;
+    if row.kind == IdpKind::Saml {
+        row.saml = repos::identity_providers::find_saml(&mut *tx, tenant_id, row.id).await?;
+    }
     tx.commit().await?;
-    row.ok_or(AppError::NotFound("identity provider"))
+    Ok(row)
 }
 
 /// Providers offered on the login page (enabled, not hidden), cached.
@@ -703,6 +899,7 @@ pub async fn create(
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
     let r = finish(from_new(input)?, secret.is_some()).await?;
+    check_unsolicited_target(state, tenant_id, r.saml.as_ref()).await?;
     let id = Uuid::now_v7();
     let enc = encrypt_secret(state, tenant_id, id, secret.as_deref().unwrap_or("")).await?;
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
@@ -740,6 +937,10 @@ pub async fn create(
         AppError::Conflict(_) => AppError::Conflict("alias already in use".into()),
         other => other,
     })?;
+    let mut row = row;
+    if let Some(saml) = &r.saml {
+        row.saml = Some(store_saml(&mut tx, tenant_id, row.id, saml).await?);
+    }
     tx.commit().await?;
     invalidate(state, tenant_id).await?;
     state.events.publish(Event::new(
@@ -824,6 +1025,15 @@ pub async fn update(
     if let Some(v) = patch.sort_order {
         r.sort_order = v;
     }
+    if let Some(v) = patch.saml {
+        r.saml = Some(v);
+    }
+    if (r.kind == IdpKind::Saml) != (existing.kind == IdpKind::Saml) {
+        return Err(field_error(
+            "kind",
+            "a provider cannot change to or from SAML; create another one",
+        ));
+    }
     // A new issuer means new endpoints unless the patch names them.
     if issuer_changed && r.kind == IdpKind::Oidc {
         if !endpoints_given.0 {
@@ -847,6 +1057,7 @@ pub async fn update(
         None => existing.client_secret_set,
     };
     let r = finish(r, has_secret).await?;
+    check_unsolicited_target(state, tenant_id, r.saml.as_ref()).await?;
     let enc = match &secret {
         Some(s) => {
             Some(encrypt_secret(state, tenant_id, existing.id, s.as_deref().unwrap_or("")).await?)
@@ -890,6 +1101,10 @@ pub async fn update(
         other => other,
     })?
     .ok_or(AppError::NotFound("identity provider"))?;
+    let mut row = row;
+    if let Some(saml) = &r.saml {
+        row.saml = Some(store_saml(&mut tx, tenant_id, row.id, saml).await?);
+    }
     tx.commit().await?;
     invalidate(state, tenant_id).await?;
     if row.jwks_uri != existing.jwks_uri {
@@ -901,6 +1116,24 @@ pub async fn update(
         EventKind::IdentityProviderUpdated { idp_id: row.id },
     ));
     Ok(row)
+}
+
+/// Write a SAML provider's settings; another provider already using the
+/// entity ID is a conflict.
+async fn store_saml(
+    tx: &mut crate::db::Tx,
+    tenant_id: Uuid,
+    idp_id: Uuid,
+    saml: &SamlUpstreamSettings,
+) -> AppResult<crate::models::SamlUpstream> {
+    repos::identity_providers::upsert_saml(&mut **tx, tenant_id, idp_id, saml)
+        .await
+        .map_err(|e| match AppError::from_db(e) {
+            AppError::Conflict(_) => AppError::Conflict(
+                "another identity provider already has this SAML entity ID".into(),
+            ),
+            other => other,
+        })
 }
 
 /// Delete a provider and, through the database, the identities linked to

@@ -15,12 +15,13 @@ attributes, consent) still apply to brokered sign-ins.
 
 Identity providers are configured per tenant (admin console: Identity
 providers; admin API: `/admin/tenants/{slug}/identity-providers`). Each has an
-`alias`, used in its URLs, and one of two kinds:
+`alias`, used in its URLs, and one of three kinds:
 
 | Kind | How the identity is proved |
 |------|----------------------------|
 | `oidc` | an ID token, verified against the provider's published keys |
 | `oauth2` | the provider's userinfo endpoint, read with the access token |
+| `saml` | a signed SAML assertion posted to rIDM's assertion consumer service; see [SAML identity providers (upstream)](../admin/saml-upstream.md) |
 
 A **preset** (`google`, `microsoft`, `github`, `apple`, `gitlab`) fills in the
 kind, endpoints, scopes and claim mappings the provider needs; for any other
@@ -49,9 +50,15 @@ link on the partner's intranet.
    [login flow](flows-and-sessions.md).
 2. rIDM redirects to the provider's authorization endpoint with a fresh
    `state` (whose record in Valkey remembers the flow), a `nonce` and a PKCE
-   challenge.
+   challenge, and sets a short-lived `SameSite=Lax` cookie binding the sign-in
+   to this browser.
 3. The provider returns the browser to `/t/{slug}/broker/{alias}/callback`
-   (GET, or POST for providers using `form_post`, such as Apple).
+   (GET, or POST for providers using `form_post`, such as Apple; a posted
+   answer is kept for a moment and continued by a same-site GET to
+   `…/callback?continue=`, since a cross-site POST carries no `Lax` cookie).
+   The callback signs in only the browser holding the binding cookie: a
+   callback URL someone else obtained, opened in another browser, is refused
+   with `broker_error=invalid_state` (login CSRF).
 4. rIDM redeems the code. For `oidc` providers it verifies the ID token's
    signature against the provider's JWKS (cached for an hour, refetched once
    for an unknown `kid`), its issuer, audience, expiry and nonce. For `oauth2`
@@ -123,5 +130,6 @@ without their client secrets, so a tenant can be reproduced in another
 environment and the secrets set there afterwards.
 
 Events: `identity_provider.created`, `.updated` and `.deleted`,
-`identity.linked`, `identity.unlinked` and `login.brokered`. Brokering from
-SAML and LDAP directories is planned, not present.
+`identity.linked`, `identity.unlinked` and `login.brokered` (and
+`logout.upstream` when a SAML IdP's logout request ends sessions). Brokering
+from LDAP directories is planned, not present.

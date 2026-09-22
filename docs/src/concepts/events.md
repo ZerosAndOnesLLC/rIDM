@@ -30,6 +30,7 @@ shipped, they do not change. The main families:
 | `tenant.*` | `tenant.created`, `tenant.updated`, `tenant.profile_schema_updated` |
 | `user.*` | `user.created`, `user.registered`, `user.password_changed`, `user.email_verified`, `user.locked` |
 | `login.*` | `login.succeeded`, `login.failed`, `login.new_device`, `login.brokered`, `login.passwordless_sent` |
+| `logout.*` | `logout.upstream` ([SAML identity providers](../admin/saml-upstream.md#single-logout)) |
 | `session.*`, `device.*` | `session.created`, `session.revoked`, `device.trusted`, `device.revoked` |
 | `token.*` | `token.revoked`, `token.refresh_reuse_detected` |
 | `mfa.*` | `mfa.changed` |

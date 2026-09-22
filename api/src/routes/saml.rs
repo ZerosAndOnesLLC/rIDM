@@ -37,7 +37,7 @@ pub fn router() -> Router<AppState> {
         .route("/t/{slug}/saml/respond/{ticket}", get(respond))
 }
 
-fn bad(desc: &str) -> Response {
+pub(crate) fn bad(desc: &str) -> Response {
     error_page(StatusCode::BAD_REQUEST, "invalid_saml_request", desc)
 }
 
@@ -100,7 +100,10 @@ async fn sso_get(
 }
 
 /// The form fields of a POST-binding message.
-fn post_message(headers: &HeaderMap, body: &str) -> Result<binding::Received, Box<Response>> {
+pub(crate) fn post_message(
+    headers: &HeaderMap,
+    body: &str,
+) -> Result<binding::Received, Box<Response>> {
     let is_form = headers
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())

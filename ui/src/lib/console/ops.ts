@@ -17,6 +17,8 @@ export type LogEntry = Schemas["LogEntry"];
 export type IdentityProvider = Schemas["IdentityProviderView"];
 export type IdentityProviderPatch = Partial<Schemas["IdentityProviderUpdate"]>;
 export type IdpPreset = Schemas["Preset"];
+export type SamlUpstream = Schemas["SamlUpstream"];
+export type SamlUpstreamSettings = Schemas["SamlUpstreamSettings"];
 export type SamlIdp = Schemas["IdpView"];
 export type SamlKey = Schemas["SamlKeyView"];
 export type SamlSp = Schemas["SamlSpView"];
@@ -36,9 +38,12 @@ export const EVENT_NAMES = [
   "group.created", "group.deleted", "group.member_added", "group.member_removed", "group.updated",
   "organization.created", "organization.deleted", "organization.domain_added", "organization.domain_removed",
   "organization.domain_verified", "organization.member_added", "organization.member_removed", "organization.updated",
+  "identity.linked", "identity.unlinked",
+  "identity_provider.created", "identity_provider.deleted", "identity_provider.updated",
   "impersonation.ended", "impersonation.requested", "impersonation.started",
   "invitation.accepted", "invitation.created", "invitation.revoked",
-  "login.failed", "login.new_device", "login.passwordless_sent", "login.succeeded",
+  "login.brokered", "login.failed", "login.new_device", "login.passwordless_sent", "login.succeeded",
+  "logout.upstream",
   "master_key.rotated", "mfa.changed",
   "risk.blocked", "risk.step_up",
   "saml_key.created", "saml_key.status_changed",

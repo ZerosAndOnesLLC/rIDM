@@ -580,6 +580,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/tenants/{slug}/identity-providers/saml-metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read an IdP's SAML metadata into the settings of a new `saml`
+         *     provider, for the administrator to review before creating it. Nothing
+         *     is stored.
+         */
+        post: operations["identity_providers_saml_metadata"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/tenants/{slug}/identity-providers/{idp}": {
         parameters: {
             query?: never;
@@ -602,6 +623,23 @@ export interface paths {
          *     re-discovers the endpoints unless the patch names them.
          */
         patch: operations["identity_providers_update"];
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/identity-providers/{idp}/saml/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-read a SAML provider's metadata URL now, as the daily job does. */
+        post: operations["identity_providers_saml_refresh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/admin/tenants/{slug}/import": {
@@ -3625,6 +3663,7 @@ export interface components {
             pkce: boolean;
             /** @description `google`, `microsoft`, `github`, `apple`, `gitlab` or none. */
             preset?: string | null;
+            saml?: null | components["schemas"]["SamlUpstream"];
             scopes: string[];
             /** Format: int32 */
             sort_order: number;
@@ -3673,6 +3712,8 @@ export interface components {
             pkce: boolean;
             /** @default null */
             preset: string | null;
+            /** @default null */
+            saml: null | components["schemas"]["SamlUpstreamSettings"];
             /** @default [] */
             scopes: string[];
             /**
@@ -3720,6 +3761,8 @@ export interface components {
             /** @default null */
             pkce: boolean | null;
             /** @default null */
+            saml: null | components["schemas"]["SamlUpstreamSettings"];
+            /** @default null */
             scopes: string[] | null;
             /**
              * Format: int32
@@ -3737,7 +3780,12 @@ export interface components {
         };
         /** @description A provider with the callback URL the upstream must be told. */
         IdentityProviderView: components["schemas"]["IdentityProvider"] & {
+            /**
+             * @description The redirect URI (OIDC, OAuth 2.0) or the assertion consumer
+             *     service (SAML).
+             */
             callback_url: string;
+            saml_sp?: null | components["schemas"]["SamlSpInfo"];
         };
         /**
          * @description How the client authenticates at the token endpoint.
@@ -3748,7 +3796,7 @@ export interface components {
          * @description The protocol an upstream provider speaks.
          * @enum {string}
          */
-        IdpKind: "oidc" | "oauth2";
+        IdpKind: "oidc" | "oauth2" | "saml";
         /**
          * @description Where the identity's fields come from in the upstream claims (ID token,
          *     then userinfo). Values are claim names; a dot descends into an object.
@@ -4365,6 +4413,8 @@ export interface components {
             pkce: boolean | null;
             /** @default null */
             preset: string | null;
+            /** @default null */
+            saml: null | components["schemas"]["SamlUpstreamSettings"];
             /** @default null */
             scopes: string[] | null;
             /**
@@ -5420,6 +5470,12 @@ export interface components {
             sha256_fingerprint: string;
             status: components["schemas"]["SamlKeyStatus"];
         };
+        SamlMetadataBody: {
+            /** @description The IdP's metadata document (pasted or uploaded). */
+            metadata?: string | null;
+            /** @description Or where to fetch it; it is kept as the provider's `metadata_url`. */
+            url?: string | null;
+        };
         /** @description The SAML side of a `saml` client. */
         SamlServiceProvider: {
             /**
@@ -5465,6 +5521,14 @@ export interface components {
         SamlSpDoc: Record<string, never> & {
             client_id: string;
             status?: components["schemas"]["ClientStatus"];
+        };
+        /** @description rIDM as the service provider of one SAML IdP. */
+        SamlSpInfo: {
+            acs_url: string;
+            entity_id: string;
+            /** @description rIDM's SP metadata, to give the IdP (the entity ID is this URL). */
+            metadata_url: string;
+            slo_url: string;
         };
         /**
          * @description A service provider as the admin API reads and writes it: the client's
@@ -5540,6 +5604,104 @@ export interface components {
         SamlSpView: {
             client: components["schemas"]["Client"];
             saml: components["schemas"]["SamlServiceProvider"];
+        };
+        /** @description The SAML side of a `saml` identity provider. */
+        SamlUpstream: {
+            allow_unsolicited: boolean;
+            authn_context_class_refs: string[];
+            entity_id: string;
+            force_authn: boolean;
+            /** @description Why the last refresh failed, until one succeeds. */
+            metadata_error?: string | null;
+            /**
+             * Format: date-time
+             * @description When the metadata URL was last read successfully.
+             */
+            metadata_refreshed_at?: string | null;
+            metadata_url?: string | null;
+            name_id_format?: null | components["schemas"]["NameIdFormat"];
+            require_encrypted_assertions: boolean;
+            sign_requests: boolean;
+            signing_certificates: string[];
+            slo_binding: components["schemas"]["SloBinding"];
+            slo_url?: string | null;
+            sso_binding: components["schemas"]["SloBinding"];
+            sso_url: string;
+            unsolicited_client_id?: string | null;
+            want_assertions_signed: boolean;
+        };
+        /** @description What an administrator sets for a SAML identity provider. */
+        SamlUpstreamSettings: {
+            /**
+             * @description Accept unsolicited responses (IdP-initiated sign-in).
+             * @default false
+             */
+            allow_unsolicited: boolean;
+            /**
+             * @description Authentication context classes to ask for (Comparison `exact`).
+             * @default []
+             */
+            authn_context_class_refs: string[];
+            /**
+             * @description The IdP's entity ID, the `Issuer` of its messages.
+             * @default
+             */
+            entity_id: string;
+            /**
+             * @description Ask the IdP to authenticate the user again (`ForceAuthn`).
+             * @default false
+             */
+            force_authn: boolean;
+            /**
+             * @description The IdP's metadata URL, refreshed daily: its endpoints and
+             *     certificates replace the ones above.
+             * @default null
+             */
+            metadata_url: string | null;
+            /** @default null */
+            name_id_format: null | components["schemas"]["NameIdFormat"];
+            /**
+             * @description Refuse assertions that are not encrypted (to the tenant's SAML key).
+             * @default false
+             */
+            require_encrypted_assertions: boolean;
+            /**
+             * @description Sign `AuthnRequest`s and `LogoutRequest`s with the tenant's SAML key.
+             * @default true
+             */
+            sign_requests: boolean;
+            /**
+             * @description base64 (or PEM) certificates it signs with; several during its
+             *     key rollover. Nothing unsigned is accepted, so one is required.
+             * @default []
+             */
+            signing_certificates: string[];
+            /** @default redirect */
+            slo_binding: components["schemas"]["SloBinding"];
+            /**
+             * @description Its single logout service; none leaves sign-out local.
+             * @default null
+             */
+            slo_url: string | null;
+            /** @default redirect */
+            sso_binding: components["schemas"]["SloBinding"];
+            /**
+             * @description Its single sign-on service.
+             * @default
+             */
+            sso_url: string;
+            /**
+             * @description Where an unsolicited sign-in lands: this client's
+             *     `initiate_login_uri`; the account console when unset.
+             * @default null
+             */
+            unsolicited_client_id: string | null;
+            /**
+             * @description The assertion itself must be signed; a signed `Response` around an
+             *     unsigned assertion is refused.
+             * @default true
+             */
+            want_assertions_signed: boolean;
         };
         /** @description What the `audit_verify` job last established about a chain. */
         ScheduledVerification: {
@@ -9427,6 +9589,68 @@ export interface operations {
             };
         };
     };
+    identity_providers_saml_metadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SamlMetadataBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SamlUpstreamSettings"];
+                };
+            };
+            /** @description Not usable IdP metadata */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The metadata URL could not be read */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     identity_providers_get_one: {
         parameters: {
             query?: never;
@@ -9592,6 +9816,75 @@ export interface operations {
             };
             /** @description Alias in use */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_saml_refresh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                /** @description Row id or alias */
+                idp: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityProviderView"];
+                };
+            };
+            /** @description Not a SAML provider with a metadata URL, or its metadata is unusable */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The metadata URL could not be read */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

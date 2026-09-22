@@ -184,8 +184,12 @@ Every tenant is a SAML 2.0 IdP whose entity ID is its issuer. See [SAML identity
 |--------|------|------|-------|---------|
 | GET | `/t/{slug}/broker/{alias}/start` | none (`?flow=` a login flow, or `?ticket=` a link ticket from the account API) | flows | Sends the browser to the upstream provider named by `alias`. |
 | GET, POST | `/t/{slug}/broker/{alias}/callback` | `state` of the upstream request | flows | Receives the upstream response (POST for providers that post it back), then continues the login flow or finishes linking. |
+| GET | `/t/{slug}/broker/{alias}/saml/metadata` | none | flows | rIDM's SP metadata for a SAML provider (its URL is the SP entity ID). |
+| POST | `/t/{slug}/broker/{alias}/saml/acs` | the IdP's signature, `RelayState` | flows | Assertion consumer service (HTTP-POST): checks the `Response`, then redirects to a same-site `?continue=` GET, bound to the browser that started the sign-in, which continues the flow or the link. |
+| GET, POST | `/t/{slug}/broker/{alias}/saml/slo` | the IdP's signature | flows | The IdP's `LogoutRequest` (must be signed; ends the sessions it brokered) or its `LogoutResponse` to rIDM's. |
+| GET | `/t/{slug}/broker/{alias}/saml/slo/out/{id}`, `…/slo/done/{id}` | none (one-time ids) | flows | Send rIDM's `LogoutRequest` at the end of a sign-out that started here; answer the IdP's once the downstream SAML SPs had their turn. |
 
-Register the callback URL with the upstream provider; the admin API reports it as `callback_url` on every identity provider. See [Identity brokering](../concepts/brokering.md).
+Register the callback URL with the upstream provider; the admin API reports it as `callback_url` on every identity provider (for SAML, the assertion consumer service, with the rest under `saml_sp`). See [Identity brokering](../concepts/brokering.md).
 
 ## Account API
 
