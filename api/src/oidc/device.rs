@@ -13,6 +13,7 @@ use crate::middleware::{TenantCtx, client_ip_addr};
 use crate::models::grants;
 use crate::oidc::authorize::RawParams;
 use crate::oidc::client_auth;
+use crate::oidc::mtls::{ClientCert, ClientCertificate};
 use crate::services::device_codes::{self, DeviceAuthorization};
 use crate::services::scopes;
 use crate::state::AppState;
@@ -28,11 +29,12 @@ pub async fn device_authorization(
     State(state): State<AppState>,
     tenant: TenantCtx,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    cert: ClientCertificate,
     headers: HeaderMap,
     body: String,
 ) -> Response {
     let ip = client_ip_addr(&state, &headers, Some(peer));
-    let mut res = match handle(&state, &tenant, &headers, &body, ip).await {
+    let mut res = match handle(&state, &tenant, &headers, &body, ip, cert.get()).await {
         Ok(v) => axum::Json(v).into_response(),
         Err(e) => e.into_response(),
     };
@@ -47,12 +49,13 @@ async fn handle(
     headers: &HeaderMap,
     body: &str,
     ip: Option<IpAddr>,
+    cert: Option<&ClientCert>,
 ) -> Result<DeviceAuthorization, OAuthError> {
     let params = RawParams::parse(body);
     let one = |n: &str| params.one(n).map_err(OAuthError::invalid_request);
     let endpoint = format!("{}/device_authorization", tenant.issuer(state));
     let (client, _) =
-        client_auth::authenticate(state, tenant, headers, &params, &endpoint, ip).await?;
+        client_auth::authenticate(state, tenant, headers, &params, &endpoint, ip, cert).await?;
     if !client.allows_grant(grants::DEVICE_CODE) {
         return Err(OAuthError::new(
             OAuthErrorCode::UnauthorizedClient,

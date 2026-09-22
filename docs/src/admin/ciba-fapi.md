@@ -130,10 +130,10 @@ every request from the client is held to it.
 
 | Rule | Where it is enforced |
 |------|----------------------|
-| Confidential client (`web` or `machine`) authenticating with `private_key_jwt` | registration |
+| Confidential client (`web` or `machine`) authenticating with `private_key_jwt`, `tls_client_auth` or `self_signed_tls_client_auth` | registration |
 | Grants limited to `authorization_code`, `refresh_token`, `client_credentials` and CIBA | registration |
 | HTTPS redirect URIs, exact match | registration, `/authorize` |
-| PKCE and DPoP-bound tokens, which cannot be switched off | registration; `/authorize`, `/par`, `/token` |
+| PKCE, which cannot be switched off, and sender-constrained tokens: DPoP-bound, or [certificate-bound](mtls.md#certificate-bound-tokens) (at least one) | registration; `/authorize`, `/par`, `/token` |
 | Authorization requests only through PAR | `/authorize` refuses anything else with `invalid_request` to the redirect URI |
 | Client assertions signed with PS256, ES256 or EdDSA, with the issuer identifier as `aud`, as a string | every endpoint that authenticates the client |
 | Request objects and DPoP proofs signed with PS256, ES256 or EdDSA | `/par`, `/token` |
@@ -144,9 +144,10 @@ every request from the client is held to it.
 A resource server that asks for RS256 access tokens cannot be a FAPI client's
 audience: such a request is `invalid_target`.
 
-Mutual-TLS client authentication and certificate-bound tokens (RFC 8705) are not
-offered yet, so DPoP is the only sender constraint and `private_key_jwt` the only
-client authentication a FAPI client can use.
+With [mutual TLS](mtls.md) the client may authenticate with its certificate instead of
+`private_key_jwt`, and a client registered for certificate-bound tokens is
+sender-constrained by its certificate: it needs no DPoP proof, and DPoP defaults to off
+for it. Without either binding the registration is refused.
 
 ### Requiring PAR without the profile
 

@@ -32,6 +32,9 @@ pub struct RefreshToken {
     pub expires_at: DateTime<Utc>,
     /// DPoP key thumbprint the token is bound to (public clients, RFC 9449 §5).
     pub dpop_jkt: Option<String>,
+    /// Client certificate thumbprint the token is bound to (public clients,
+    /// RFC 8705 §4).
+    pub mtls_x5t: Option<String>,
     pub consumed_at: Option<DateTime<Utc>>,
     pub revoked_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,

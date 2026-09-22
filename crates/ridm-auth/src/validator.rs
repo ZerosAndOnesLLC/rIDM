@@ -114,6 +114,23 @@ impl Validator {
     /// Signature, `typ`, `alg`, `iss`, `aud`, `exp` and `nbf` are all checked,
     /// as are the scopes, permissions and roles the builder asked for.
     pub async fn validate(&self, token: &str) -> Result<Claims, AuthError> {
+        self.validate_with_certificate(token, None).await
+    }
+
+    /// [`validate`](Self::validate) for a request that came over mutual TLS:
+    /// `certificate` is the DER client certificate of the connection (or the
+    /// one a TLS-terminating proxy forwarded).
+    ///
+    /// A token bound to a certificate (RFC 8705 `cnf.x5t#S256`) is accepted
+    /// only with that certificate, and then without
+    /// [`ValidatorBuilder::allow_sender_constrained`]: the binding was checked
+    /// here. Without a certificate such a token is refused like any other
+    /// sender-constrained one.
+    pub async fn validate_with_certificate(
+        &self,
+        token: &str,
+        certificate: Option<&[u8]>,
+    ) -> Result<Claims, AuthError> {
         let token = token.trim();
         let header = jsonwebtoken::decode_header(token).map_err(|_| AuthError::Malformed)?;
 
@@ -167,8 +184,22 @@ impl Validator {
             AuthError::BadClaim("sub")
         })?;
 
-        if claims.cnf.is_some() && !self.allow_sender_constrained {
-            return Err(AuthError::SenderConstrained);
+        if let Some(cnf) = &claims.cnf {
+            let other = cnf.jkt.is_some() || !cnf.extra.is_empty();
+            match (cnf.x5t_s256.as_deref(), certificate) {
+                (Some(expected), Some(der)) => {
+                    if certificate_thumbprint(der) != expected {
+                        return Err(AuthError::CertificateMismatch);
+                    }
+                    if other && !self.allow_sender_constrained {
+                        return Err(AuthError::SenderConstrained);
+                    }
+                }
+                _ if !self.allow_sender_constrained => {
+                    return Err(AuthError::SenderConstrained);
+                }
+                _ => {}
+            }
         }
         self.required.check(&claims)?;
         Ok(claims)
@@ -468,6 +499,13 @@ impl Validator {
     pub fn shared(self) -> Arc<Self> {
         Arc::new(self)
     }
+}
+
+/// The RFC 8705 §3.1 thumbprint of a DER certificate: base64url(SHA-256).
+pub fn certificate_thumbprint(der: &[u8]) -> String {
+    use base64::Engine as _;
+    use sha2::Digest as _;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(der))
 }
 
 #[cfg(test)]

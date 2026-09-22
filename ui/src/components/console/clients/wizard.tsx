@@ -119,7 +119,8 @@ export function ClientWizard({ tenant, open, onOpenChange, onCreated }: { tenant
             <Field label="Client authentication" hint={usesSecret(auth) ? "A secret is generated and shown once when the client is created." : auth === "none" ? "Public clients cannot use client credentials." : "Add the client's JWKS on the detail page."}>
               {(id, by) => (
                 <SelectInput id={id} aria-describedby={by} value={auth} onChange={(e) => setAuth(e.target.value as AuthMethod)}>
-                  {AUTH_METHODS.map((m) => (
+                  {/* Mutual TLS needs a certificate subject or JWKS, set on the detail page. */}
+                  {AUTH_METHODS.filter((m) => !m.value.endsWith("tls_client_auth")).map((m) => (
                     <option key={m.value} value={m.value}>
                       {m.label}
                     </option>

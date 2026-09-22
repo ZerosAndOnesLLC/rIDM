@@ -13,6 +13,7 @@ workflow.
 | `pkce` | a `code_verifier` | the grammar check agrees with itself, the transform yields a well-formed challenge, and a verifier verifies against its own challenge and no other |
 | `scim_filter` | a SCIM filter string | a parsed filter evaluates over a document (and over an empty one) |
 | `saml_message` | a SAML HTTP-Redirect query string, or an XML message or metadata document | the Redirect decoder, the XML parser, the protocol and metadata readers never panic; exclusive C14N output reparses and canonicalizes to itself; no signature verifies against an unrelated certificate |
+| `client_cert` | a client certificate as DER, a proxy's certificate header (PEM, URL-encoded PEM, base64 DER), or a registered subject DN | the header yields one to five certificates or nothing; a certificate's thumbprint is its own, and the subject DN rIDM prints for it (when every attribute is text) matches that certificate |
 
 ## Running them
 

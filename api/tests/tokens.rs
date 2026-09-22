@@ -153,6 +153,7 @@ async fn access_and_id_tokens_sign_and_verify_for_every_algorithm() {
                 amr: &["pwd".into()],
                 acr: None,
                 cnf_jkt: None,
+                cnf_x5t: None,
                 act: None,
             },
         )
@@ -315,6 +316,7 @@ async fn expired_tokens_and_revoked_keys_are_rejected() {
             amr: &[],
             acr: None,
             cnf_jkt: None,
+            cnf_x5t: None,
             act: None,
         },
     )
@@ -366,6 +368,7 @@ async fn expired_tokens_and_revoked_keys_are_rejected() {
             amr: &[],
             acr: None,
             cnf_jkt: None,
+            cnf_x5t: None,
             act: None,
         },
     )
@@ -493,6 +496,7 @@ async fn mappers_and_encrypted_id_tokens() {
             amr: &[],
             acr: None,
             cnf_jkt: None,
+            cnf_x5t: None,
             act: None,
         },
     )
@@ -576,6 +580,7 @@ async fn access_token_expiry_is_capped_at_not_after() {
                     amr: &[],
                     acr: None,
                     cnf_jkt: None,
+                    cnf_x5t: None,
                     act: None,
                 },
             )

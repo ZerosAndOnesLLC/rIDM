@@ -42,7 +42,7 @@ Access tokens are JWTs unless the client is registered with `access_token_format
 | `auth_time` | the token came from an authentication | when the user authenticated |
 | `amr` | the token came from an authentication | authentication methods (below) |
 | `acr` | the session has a class | `urn:ridm:acr:single`, `urn:ridm:acr:mfa`, or the `*:mfa` class the client asked for |
-| `cnf` | a DPoP proof bound the token | `{"jkt": "<RFC 7638 thumbprint of the proof key>"}` (RFC 9449 §6.1) |
+| `cnf` | a DPoP proof bound the token, or the client is registered for [certificate-bound tokens](../admin/mtls.md#certificate-bound-tokens) | `{"jkt": "<RFC 7638 thumbprint of the proof key>"}` (RFC 9449 §6.1) and/or `{"x5t#S256": "<base64url SHA-256 of the client certificate>"}` (RFC 8705 §3.1) |
 | `act` | token exchange with an `actor_token`, or a sign-in an administrator opened as the user | token exchange: `{"sub", "client_id"}` of the acting party, nesting any previous `act` (RFC 8693 §4.1). [Impersonation](../admin/impersonation.md): `{"sub", "iss"}` of the administrator. The admin API refuses any token carrying it |
 | profile attributes | the attribute lists `access_token` in its `visible_in` and the user has a value | one claim per attribute, named after it (see [Profile attributes](#profile-attributes)) |
 
@@ -144,7 +144,7 @@ Front-channel logout loads each client's `frontchannel_logout_uri` with `iss` an
 
 ## Introspection response
 
-`POST {issuer}/introspect` (RFC 7662) answers `{"active": false}` for anything unknown, expired, revoked, issued to another client, or belonging to an inactive user, and for ID tokens, which are not access tokens. For an active access token, JWT or opaque, it returns `active: true`, `token_type` (`DPoP` when the token carries `cnf`, else `Bearer`), `typ: "at+jwt"` (JWTs only), whichever of `scope`, `client_id`, `sub`, `aud`, `iss`, `exp`, `iat`, `nbf`, `jti`, `sid`, `tid`, `roles`, `permissions`, `cnf` and `act` the token holds, and `username`. Refresh tokens report `token_type: "refresh_token"`, personal access tokens `token_type: "personal_access_token"`.
+`POST {issuer}/introspect` (RFC 7662) answers `{"active": false}` for anything unknown, expired, revoked, issued to another client, or belonging to an inactive user, and for ID tokens, which are not access tokens. For an active access token, JWT or opaque, it returns `active: true`, `token_type` (`DPoP` when the token carries `cnf.jkt`, else `Bearer`, certificate-bound tokens included), `typ: "at+jwt"` (JWTs only), whichever of `scope`, `client_id`, `sub`, `aud`, `iss`, `exp`, `iat`, `nbf`, `jti`, `sid`, `tid`, `roles`, `permissions`, `cnf` and `act` the token holds, and `username`. Refresh tokens report `token_type: "refresh_token"`, personal access tokens `token_type: "personal_access_token"`.
 
 ## `amr` values
 

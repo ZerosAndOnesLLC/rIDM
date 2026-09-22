@@ -38,6 +38,7 @@
 - [Adaptive authentication](admin/adaptive-auth.md)
 - [Impersonation](admin/impersonation.md)
 - [Backchannel sign-in and FAPI 2.0](admin/ciba-fapi.md)
+- [Mutual TLS](admin/mtls.md)
 - [SAML identity provider](admin/saml-idp.md)
 - [SAML identity providers (upstream)](admin/saml-upstream.md)
 - [LDAP and Active Directory](admin/ldap.md)

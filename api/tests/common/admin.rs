@@ -106,6 +106,7 @@ pub async fn token(app: &TestApp, tenant: &Tenant, user_id: Uuid, opts: TokenOpt
             amr: &["pwd".into()],
             acr: None,
             cnf_jkt: None,
+            cnf_x5t: None,
             act: None,
         },
     )

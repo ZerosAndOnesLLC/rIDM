@@ -11,6 +11,7 @@ mod kerberos;
 mod ldap;
 mod legacy_hash_cost;
 mod mfa_policy;
+mod mtls;
 mod org_admin;
 mod outbound;
 mod resource_indicators;

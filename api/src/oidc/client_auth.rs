@@ -17,6 +17,7 @@ use crate::error::{OAuthError, OAuthErrorCode};
 use crate::middleware::{TenantCtx, cors};
 use crate::models::{Client, ClientStatus, TokenEndpointAuthMethod};
 use crate::oidc::authorize::RawParams;
+use crate::oidc::mtls::{self, ClientCert};
 use crate::services::{client_keys, clients, ip_rules, rate_limit};
 use crate::state::AppState;
 
@@ -65,7 +66,8 @@ fn parse_basic(headers: &HeaderMap) -> Result<Option<(String, String)>, OAuthErr
 
 /// Authenticate the client for this request. Returns the client and the
 /// method that was used. `ip` is the client address (`client_ip_addr`) for
-/// the client-scoped IP rules and the per-client ceiling.
+/// the client-scoped IP rules and the per-client ceiling; `cert` the TLS
+/// client certificate, if the request came with one (RFC 8705).
 pub async fn authenticate(
     state: &AppState,
     tenant: &TenantCtx,
@@ -73,6 +75,7 @@ pub async fn authenticate(
     params: &RawParams,
     token_endpoint: &str,
     ip: Option<IpAddr>,
+    cert: Option<&ClientCert>,
 ) -> Result<(Arc<Client>, TokenEndpointAuthMethod), OAuthError> {
     let one = |n: &str| params.one(n).map_err(OAuthError::invalid_request);
     let basic = parse_basic(headers)?;
@@ -181,6 +184,12 @@ pub async fn authenticate(
             TokenEndpointAuthMethod::PrivateKeyJwt
         }
         (Presented::None { .. }, TokenEndpointAuthMethod::None) => TokenEndpointAuthMethod::None,
+        // RFC 8705 §2: the certificate is the credential; `client_id` names
+        // the client it must prove.
+        (Presented::None { .. }, method) if method.uses_certificate() => {
+            mtls::authenticate_client(state, tenant, &client, cert).await?;
+            method
+        }
         (Presented::None { .. }, _) => {
             return Err(invalid_client("client authentication required"));
         }
@@ -266,7 +275,14 @@ async fn verify_assertion(
     validation.validate_nbf = true;
     validation.set_issuer(&[client.client_id.as_str()]);
     // Accept the token endpoint URL or the issuer as audience (RFC 7523 §3, OIDC Core §9).
-    validation.set_audience(&[token_endpoint, &tenant.issuer(state)]);
+    // The mTLS alias of the token endpoint (RFC 8705 §5) names it too.
+    let alias = mtls::alias_base(state, &tenant.tenant.slug).map(|b| format!("{b}/token"));
+    let issuer = tenant.issuer(state);
+    let mut audiences = vec![token_endpoint, issuer.as_str()];
+    if let Some(a) = &alias {
+        audiences.push(a);
+    }
+    validation.set_audience(&audiences);
     validation.set_required_spec_claims(&["exp", "iss", "sub", "aud", "jti"]);
     let data = jsonwebtoken::decode::<Value>(assertion, &decoding, &validation)
         .map_err(|e| invalid_client(&format!("client_assertion rejected: {e}")))?;

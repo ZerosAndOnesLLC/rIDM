@@ -59,7 +59,10 @@ The container image's `HEALTHCHECK` runs `ridm-api --healthcheck` inside the con
 | `client_secret_post` | `client_id` and `client_secret` in the form body |
 | `private_key_jwt` | `client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer` and a `client_assertion` JWT signed with a key from the client's `jwks` or `jwks_uri` |
 
-`client_secret_jwt` and mutual-TLS client authentication are not implemented; mTLS is planned (Phase 13), not present.
+| `tls_client_auth` | `client_id` in the body, over a mutual-TLS connection with a certificate from one of the tenant's trusted authorities that carries the client's registered subject ([Mutual TLS](../admin/mtls.md)) |
+| `self_signed_tls_client_auth` | `client_id` in the body, over a mutual-TLS connection with a certificate registered in the client's `jwks` or `jwks_uri` (`x5c`) |
+
+The two mutual-TLS methods are offered when the deployment can receive client certificates (`MTLS_BIND` or `CLIENT_CERT_HEADER`); discovery then lists them, `tls_client_certificate_bound_access_tokens: true` and, with `MTLS_PUBLIC_URL`, the `mtls_endpoint_aliases` where they are used. `client_secret_jwt` is not implemented.
 
 ### Grant types at `/token`
 
@@ -74,7 +77,7 @@ The container image's `HEALTHCHECK` runs `ridm-api --healthcheck` inside the con
 
 A client may only use the grants in its `allowed_grants`; a known grant it is not allowed is `unauthorized_client`, an unknown one `unsupported_grant_type`. Audiences come from `resource` parameters (RFC 8707; token exchange also takes `audience`), or from the client's `allowed_audiences` when none is requested, plus the resource server of any requested scope bound to one; see [Resource servers, scopes and permissions](../concepts/resource-servers.md) and [Token claims](token-claims.md#scopes-in-the-token).
 
-The response is `{"access_token", "token_type", "expires_in", "refresh_token"?, "id_token"?, "scope"?, "issued_token_type"?}` with `Cache-Control: no-store`. `token_type` is `DPoP` when a DPoP proof bound the tokens, otherwise `Bearer`.
+The response is `{"access_token", "token_type", "expires_in", "refresh_token"?, "id_token"?, "scope"?, "issued_token_type"?}` with `Cache-Control: no-store`. `token_type` is `DPoP` when a DPoP proof bound the tokens, otherwise `Bearer` (a certificate-bound token is a `Bearer` token, checked against the connection's certificate).
 
 ### Discovery document
 
@@ -92,7 +95,9 @@ The discovery document advertises exactly what the build implements ([`api/src/o
 | `id_token_signing_alg_values_supported` | `RS256`, `RS384`, `RS512`, `ES256`, `EdDSA` |
 | `id_token_encryption_alg_values_supported` | `RSA-OAEP-256`, `RSA-OAEP` |
 | `id_token_encryption_enc_values_supported` | `A256GCM`, `A128GCM` |
-| `token_endpoint_auth_methods_supported` (also `introspection_...` and `revocation_...`) | `none`, `client_secret_basic`, `client_secret_post`, `private_key_jwt` |
+| `token_endpoint_auth_methods_supported` (also `introspection_...` and `revocation_...`) | `none`, `client_secret_basic`, `client_secret_post`, `private_key_jwt`, and `tls_client_auth`, `self_signed_tls_client_auth` when mutual TLS is configured |
+| `tls_client_certificate_bound_access_tokens` | `true` when mutual TLS is configured, absent otherwise (RFC 8705 §3.3) |
+| `mtls_endpoint_aliases` | with `MTLS_PUBLIC_URL`: `token_endpoint`, `userinfo_endpoint`, `introspection_endpoint`, `revocation_endpoint`, `pushed_authorization_request_endpoint`, `device_authorization_endpoint`, `backchannel_authentication_endpoint` under `{MTLS_PUBLIC_URL}/t/{slug}` (RFC 8705 §5) |
 | `token_endpoint_auth_signing_alg_values_supported` | `RS256`, `RS384`, `RS512`, `ES256`, `EdDSA` |
 | `request_object_signing_alg_values_supported` | the same five |
 | `authorization_signing_alg_values_supported` (JARM) | the same five |

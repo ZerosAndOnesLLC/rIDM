@@ -57,6 +57,33 @@ pub struct TlsConfig {
     pub key_path: PathBuf,
 }
 
+/// Mutual-TLS client authentication (RFC 8705). A client certificate reaches
+/// rIDM in one of two ways: over rIDM's own mTLS listener, or in a header set
+/// by a reverse proxy that terminated the TLS connection. Either one turns
+/// the feature on.
+#[derive(Debug, Clone, Default)]
+pub struct MtlsConfig {
+    /// A second listener that asks every connection for a client certificate
+    /// (without requiring one) and serves the same routes (`MTLS_BIND`).
+    pub bind_addr: Option<SocketAddr>,
+    /// Its server certificate: `MTLS_CERT`/`MTLS_KEY`, else `TLS_CERT`/`TLS_KEY`.
+    pub tls: Option<TlsConfig>,
+    /// Where clients reach the mTLS endpoints (`MTLS_PUBLIC_URL`); discovery
+    /// publishes them as `mtls_endpoint_aliases` (RFC 8705 §5).
+    pub public_url: Option<Url>,
+    /// Header a trusted proxy puts the client certificate in
+    /// (`CLIENT_CERT_HEADER`, lower-case). Only read from a
+    /// [`Config::trusted_proxies`] peer.
+    pub cert_header: Option<String>,
+}
+
+impl MtlsConfig {
+    /// Whether client certificates can reach rIDM at all.
+    pub fn enabled(&self) -> bool {
+        self.bind_addr.is_some() || self.cert_header.is_some()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Postgres connection string.
@@ -125,6 +152,7 @@ pub struct Config {
     /// PEM certificates to trust for the sink instead of the system's roots.
     pub audit_sink_ca_file: Option<PathBuf>,
     pub tls: Option<TlsConfig>,
+    pub mtls: MtlsConfig,
     pub db_pool_min: u32,
     pub db_pool_max: u32,
     /// Valkey connections per node (`REDIS_POOL_MAX`, default 32).
@@ -402,6 +430,7 @@ impl Config {
                 });
             }
         };
+        let mtls = mtls_config(tls.as_ref())?;
         let db_pool_min = parse_u32("DB_POOL_MIN", 2)?;
         let redis_pool_max = parse_u32("REDIS_POOL_MAX", 32)?.max(1);
         let db_pool_max = parse_u32("DB_POOL_MAX", 20)?;
@@ -521,6 +550,7 @@ impl Config {
             audit_sink_secret,
             audit_sink_ca_file,
             tls,
+            mtls,
             db_pool_min,
             db_pool_max,
             redis_pool_max,
@@ -555,16 +585,21 @@ impl Config {
     /// Hosts (`host[:port]`, lower-case) the API and the UI are reached on;
     /// a tenant's custom domain may not be one of them.
     pub fn primary_hosts(&self) -> Vec<String> {
-        let mut v: Vec<String> = [&self.public_url, &self.ui_url]
-            .iter()
-            .filter_map(|u| {
-                let host = u.host_str()?.to_ascii_lowercase();
-                Some(match u.port() {
-                    Some(p) => format!("{host}:{p}"),
-                    None => host,
-                })
+        let mut v: Vec<String> = [
+            Some(&self.public_url),
+            Some(&self.ui_url),
+            self.mtls.public_url.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        .filter_map(|u| {
+            let host = u.host_str()?.to_ascii_lowercase();
+            Some(match u.port() {
+                Some(p) => format!("{host}:{p}"),
+                None => host,
             })
-            .collect();
+        })
+        .collect();
         v.dedup();
         v
     }
@@ -576,6 +611,74 @@ impl Config {
             self.public_url.as_str().trim_end_matches('/')
         )
     }
+}
+
+/// `MTLS_BIND`, `MTLS_CERT`/`MTLS_KEY`, `MTLS_PUBLIC_URL`, `CLIENT_CERT_HEADER`.
+fn mtls_config(tls: Option<&TlsConfig>) -> Result<MtlsConfig, ConfigError> {
+    let bind_addr = optional("MTLS_BIND")
+        .map(|v| {
+            parse("MTLS_BIND", v, |v| {
+                v.parse::<SocketAddr>().map_err(|e| e.to_string())
+            })
+        })
+        .transpose()?;
+    let own_tls = match (optional("MTLS_CERT"), optional("MTLS_KEY")) {
+        (Some(cert), Some(key)) => Some(TlsConfig {
+            cert_path: PathBuf::from(cert),
+            key_path: PathBuf::from(key),
+        }),
+        (None, None) => None,
+        _ => {
+            return Err(ConfigError::Invalid {
+                name: "MTLS_CERT",
+                reason: "MTLS_CERT and MTLS_KEY must be set together".into(),
+            });
+        }
+    };
+    let tls = own_tls.or_else(|| tls.cloned());
+    if bind_addr.is_some() && tls.is_none() {
+        return Err(ConfigError::Invalid {
+            name: "MTLS_BIND",
+            reason: "the mTLS listener needs a server certificate: set MTLS_CERT/MTLS_KEY or TLS_CERT/TLS_KEY".into(),
+        });
+    }
+    let public_url = optional("MTLS_PUBLIC_URL")
+        .map(|v| {
+            parse("MTLS_PUBLIC_URL", v, |v| {
+                let u = Url::parse(&v).map_err(|e| e.to_string())?;
+                if u.scheme() != "https" && u.scheme() != "http" {
+                    return Err("must be an http(s) URL".to_string());
+                }
+                if u.query().is_some() || u.fragment().is_some() {
+                    return Err("must not have a query or fragment".to_string());
+                }
+                Ok(u)
+            })
+        })
+        .transpose()?;
+    let cert_header = optional("CLIENT_CERT_HEADER")
+        .map(|v| {
+            parse("CLIENT_CERT_HEADER", v, |v| {
+                let v = v.trim().to_ascii_lowercase();
+                axum::http::HeaderName::from_bytes(v.as_bytes())
+                    .map(|_| v)
+                    .map_err(|_| "not a header name".to_string())
+            })
+        })
+        .transpose()?;
+    let mtls = MtlsConfig {
+        bind_addr,
+        tls: bind_addr.and(tls),
+        public_url,
+        cert_header,
+    };
+    if mtls.public_url.is_some() && !mtls.enabled() {
+        return Err(ConfigError::Invalid {
+            name: "MTLS_PUBLIC_URL",
+            reason: "set MTLS_BIND or CLIENT_CERT_HEADER as well: nothing would carry a client certificate".into(),
+        });
+    }
+    Ok(mtls)
 }
 
 fn optional(name: &'static str) -> Option<String> {

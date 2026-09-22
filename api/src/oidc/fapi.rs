@@ -4,16 +4,16 @@
 //!
 //! * only pushed authorization requests (`/authorize` refuses the rest);
 //! * PKCE with S256 on every authorization request;
-//! * `private_key_jwt` assertions whose `aud` is the issuer, as a string;
+//! * `private_key_jwt` assertions whose `aud` is the issuer, as a string, or
+//!   mutual-TLS client authentication (RFC 8705);
 //! * every JWS the client signs (assertions, request objects, DPoP proofs)
 //!   and every one rIDM signs for it (ID tokens, access tokens, JARM
 //!   responses) uses PS256, ES256 or EdDSA (§5.4.1);
-//! * sender-constrained (DPoP) tokens;
+//! * sender-constrained tokens: DPoP, or bound to the client certificate;
 //! * refresh tokens that are not rotated (§5.3.2.1).
 //!
-//! mTLS client authentication and certificate-bound tokens are not offered
-//! yet, so DPoP is the only sender constraint and `private_key_jwt` the only
-//! client authentication.
+//! A client registered for certificate-bound tokens is sender-constrained by
+//! its certificate and needs no DPoP proof (see [`crate::oidc::mtls`]).
 
 use jsonwebtoken::Algorithm;
 

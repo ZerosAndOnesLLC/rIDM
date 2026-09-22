@@ -53,6 +53,7 @@ async fn opaque(app: &TestApp, tenant_id: Uuid, user_id: Uuid, audience: &str) -
             amr: &["pwd".into()],
             acr: None,
             cnf_jkt: None,
+            cnf_x5t: None,
             act: None,
         },
     )
@@ -230,6 +231,7 @@ async fn mappers_cannot_forge_bindings_actors_or_authorization_claims() {
             amr: &["pwd".into()],
             acr: None,
             cnf_jkt: None,
+            cnf_x5t: None,
             act: None,
         },
     )

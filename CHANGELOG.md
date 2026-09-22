@@ -203,6 +203,28 @@ release renames that heading to the version and date.
   the released image and binaries; without it a provider can be configured but
   not used. Tested against MIT Kerberos (a KDC and GSSAPI initiator in a
   container, and headless Chromium negotiating in the browser suite).
+- Mutual-TLS client authentication and certificate-bound access tokens
+  (RFC 8705). Client certificates reach rIDM on a second listener that asks
+  for them (`MTLS_BIND`, with `MTLS_CERT`/`MTLS_KEY` or the main TLS
+  certificate) or in a header from a TLS-terminating proxy
+  (`CLIENT_CERT_HEADER`, believed only from `TRUSTED_PROXIES`; PEM,
+  URL-encoded PEM or base64 DER). Two new client authentication methods:
+  `tls_client_auth`, a certificate chaining to one of the tenant's trusted
+  authorities (new console page Security → Client certificates,
+  `/admin/tenants/{slug}/mtls/trust-anchors`, `mtls_trust_anchors` in the
+  tenant document, events `mtls_trust_anchor.created`/`.deleted`) and
+  carrying the subject DN or SAN registered for the client; and
+  `self_signed_tls_client_auth`, a certificate in the client's JWK Set.
+  `tls_client_certificate_bound_access_tokens` binds a client's access
+  tokens (and a public client's refresh tokens) to its certificate
+  (`cnf.x5t#S256`); userinfo and the account and admin APIs check it, and
+  token exchange will not loosen it. With `MTLS_PUBLIC_URL`, discovery
+  publishes `mtls_endpoint_aliases` so browsers never meet a certificate
+  prompt. Dynamic registration takes the RFC 8705 metadata, and a FAPI 2.0
+  client may use mutual TLS for authentication and sender constraint in
+  place of `private_key_jwt` and DPoP. `ridm-auth` gains
+  `Validator::validate_with_certificate`, `Claims::x5t_s256` and
+  `certificate_thumbprint`. New fuzz target `client_cert`.
 
 ### Changed
 

@@ -42,7 +42,10 @@
 //!   revocation sooner should call the introspection endpoint instead.
 //! * **DPoP proofs.** A sender-constrained token (`cnf.jkt`) is refused rather
 //!   than silently downgraded to a bearer token — see
-//!   [`ValidatorBuilder::allow_sender_constrained`].
+//!   [`ValidatorBuilder::allow_sender_constrained`]. A token bound to a client
+//!   certificate (RFC 8705 `cnf.x5t#S256`) is checked when the caller hands
+//!   over the connection's certificate —
+//!   [`Validator::validate_with_certificate`] — and refused otherwise.
 //! * **Encrypted tokens.** rIDM encrypts ID tokens, never access tokens.
 //! * **Getting a token.** This is the resource-server half; a client library
 //!   is not part of it.
@@ -59,7 +62,10 @@ mod validator;
 
 pub use claims::{Claims, Confirmation};
 pub use error::{AuthError, Kind};
-pub use validator::{ACCESS_TOKEN_TYPE, DEFAULT_ALGORITHMS, Validator, ValidatorBuilder, bearer};
+pub use validator::{
+    ACCESS_TOKEN_TYPE, DEFAULT_ALGORITHMS, Validator, ValidatorBuilder, bearer,
+    certificate_thumbprint,
+};
 
 /// Re-exported so a caller can narrow [`ValidatorBuilder::algorithms`] without
 /// depending on `jsonwebtoken` directly.

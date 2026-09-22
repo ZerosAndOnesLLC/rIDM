@@ -80,6 +80,17 @@ The argon2 parameters may not go below 8 MiB, 1 iteration and 1 lane. Hashes mad
 
 Both or neither: setting one alone is a configuration error. With both, the listener speaks HTTPS (rustls); leave them unset when a reverse proxy or load balancer terminates TLS. `ridm-api --healthcheck` then probes over HTTPS, trusting exactly the first certificate in `TLS_CERT`.
 
+## Mutual TLS
+
+Client certificates for [mutual-TLS client authentication and certificate-bound tokens](../admin/mtls.md) (RFC 8705). Setting `MTLS_BIND` or `CLIENT_CERT_HEADER` turns the feature on: discovery then offers `tls_client_auth` and `self_signed_tls_client_auth` and `tls_client_certificate_bound_access_tokens`. Without either, a client registered for one of them cannot authenticate.
+
+| Variable | Type | Default | Meaning |
+|----------|------|---------|---------|
+| `MTLS_BIND` | socket address | unset | A second listener (`0.0.0.0:8443`) that serves the same routes and asks every connection for a client certificate without requiring one. The handshake proves the client holds the certificate's key; which certificates are accepted is decided per client. |
+| `MTLS_CERT` / `MTLS_KEY` | file path | `TLS_CERT` / `TLS_KEY` | That listener's server certificate and key (PEM), both or neither. `MTLS_BIND` without them or `TLS_CERT`/`TLS_KEY` is a configuration error. |
+| `MTLS_PUBLIC_URL` | URL | unset | Where clients reach the mTLS endpoints (`https://mtls.id.example.com`). Discovery publishes `{MTLS_PUBLIC_URL}/t/{slug}/token` and the other client-authenticated endpoints as `mtls_endpoint_aliases`, so browsers never meet a certificate prompt on the sign-in host. Needs `MTLS_BIND` or `CLIENT_CERT_HEADER`. |
+| `CLIENT_CERT_HEADER` | header name | unset | The header a TLS-terminating proxy puts the client certificate in (`X-Client-Cert`): PEM, URL-encoded PEM (nginx `$ssl_client_escaped_cert`) or base64 DER, leaf first, up to five certificates. **Only read from a `TRUSTED_PROXIES` peer**; the proxy must overwrite it on every request. |
+
 ## Email
 
 Deployment-wide SMTP defaults, used by tenants that have not configured their own email backend (`PUT /admin/tenants/{slug}/messaging/email`). There is no deployment-wide SMS gateway; SMS is configured per tenant. See [Email, SMS and templates](../admin/messaging.md).

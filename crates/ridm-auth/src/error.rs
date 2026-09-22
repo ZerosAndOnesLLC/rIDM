@@ -79,6 +79,13 @@ pub enum AuthError {
     #[error("the token is sender-constrained and this validator cannot verify the proof")]
     SenderConstrained,
 
+    /// The token is bound to a client certificate (RFC 8705 `cnf.x5t#S256`)
+    /// and the certificate this request came with is not that one.
+    ///
+    /// See [`Validator::validate_with_certificate`](crate::Validator::validate_with_certificate).
+    #[error("the token is bound to a client certificate this request did not present")]
+    CertificateMismatch,
+
     /// A scope the route asked for is absent.
     #[error("the token is missing scope `{0}`")]
     MissingScope(String),

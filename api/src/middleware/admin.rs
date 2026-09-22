@@ -284,7 +284,8 @@ pub(crate) fn bearer_with_scheme(headers: &HeaderMap) -> Option<(Scheme, String)
     (!token.is_empty()).then(|| (scheme, token.to_string()))
 }
 
-/// Refuse a DPoP-bound token that is not presented with a valid proof.
+/// Refuse a sender-constrained token presented without its proof: a DPoP
+/// proof, or the client certificate it is bound to.
 pub(crate) async fn require_binding(
     state: &AppState,
     tenant: &Tenant,
@@ -299,6 +300,7 @@ pub(crate) async fn require_binding(
         token,
         claims,
     };
+    let cert = crate::oidc::mtls::presented(state, &parts.extensions, &parts.headers);
     dpop::enforce_binding(
         state,
         tenant,
@@ -306,6 +308,7 @@ pub(crate) async fn require_binding(
         &parts.headers,
         &parts.method,
         &htu,
+        cert.as_ref(),
     )
     .await
     .map_err(|d| {

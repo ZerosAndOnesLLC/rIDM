@@ -96,7 +96,9 @@ reached, each with a `WWW-Authenticate` challenge and `Cache-Control: no-store`.
 * **DPoP proofs.** A sender-constrained token (`cnf.jkt`) is refused rather than
   silently downgraded to a bearer token. Turn on
   `.allow_sender_constrained(true)` only if something ahead of your API verifies
-  the proof.
+  the proof. A token bound to a client certificate (RFC 8705, `cnf.x5t#S256`)
+  is checked when you hand over the connection's certificate:
+  `validator.validate_with_certificate(token, Some(cert_der))`.
 * **Opaque access tokens.** A client registered with
   `access_token_format: opaque` receives `at_…` references, not JWTs; only
   rIDM's introspection endpoint can say what one means. An API that serves such

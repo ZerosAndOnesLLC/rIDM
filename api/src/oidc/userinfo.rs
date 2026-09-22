@@ -10,6 +10,7 @@ use serde_json::{Map, Value, json};
 use crate::middleware::TenantCtx;
 use crate::models::{Exposure, TokenKind};
 use crate::oidc::authorize::RawParams;
+use crate::oidc::mtls::{self, ClientCert, ClientCertificate};
 use crate::oidc::{bearer, dpop};
 use crate::services::claims::{ClaimContext, apply_mappers, profile_claims, scope_claims};
 use crate::services::tokens::{self, TokenClient, VerifyOptions};
@@ -23,14 +24,16 @@ pub fn router() -> Router<AppState> {
 async fn userinfo_get(
     State(state): State<AppState>,
     tenant: TenantCtx,
+    cert: ClientCertificate,
     headers: HeaderMap,
 ) -> Response {
-    handle(&state, &tenant, &headers, Method::GET, None).await
+    handle(&state, &tenant, &headers, Method::GET, None, cert.get()).await
 }
 
 async fn userinfo_post(
     State(state): State<AppState>,
     tenant: TenantCtx,
+    cert: ClientCertificate,
     headers: HeaderMap,
     body: String,
 ) -> Response {
@@ -46,6 +49,7 @@ async fn userinfo_post(
         &headers,
         Method::POST,
         body_token.as_deref(),
+        cert.get(),
     )
     .await
 }
@@ -56,6 +60,7 @@ async fn handle(
     headers: &HeaderMap,
     method: Method,
     body_token: Option<&str>,
+    cert: Option<&ClientCert>,
 ) -> Response {
     let Some((scheme, token)) = bearer::extract_with_scheme(headers, body_token) else {
         return bearer::error(
@@ -70,16 +75,28 @@ async fn handle(
         Err(Reject::Scope(d)) => return bearer::insufficient_scope(d),
         Err(Reject::Internal(e)) => return e.into_response(),
     };
-    // A DPoP-bound token must arrive under the DPoP scheme with a proof
-    // from its key that names this very token.
+    // A certificate-bound token must arrive with its certificate; a
+    // DPoP-bound one under the DPoP scheme with a proof from its key that
+    // names this very token.
+    if let Err(d) = mtls::enforce_binding(&built.token_claims, cert) {
+        return bearer::invalid_token(&d);
+    }
     let htu = dpop::htu_candidates(state, &tenant.tenant, "/userinfo");
     let presented = dpop::Presented {
         scheme,
         token: &token,
         claims: &built.token_claims,
     };
-    if let Err(d) =
-        dpop::enforce_binding(state, &tenant.tenant, presented, headers, &method, &htu).await
+    if let Err(d) = dpop::enforce_binding(
+        state,
+        &tenant.tenant,
+        presented,
+        headers,
+        &method,
+        &htu,
+        cert,
+    )
+    .await
     {
         return bearer::dpop_invalid_token(&d);
     }

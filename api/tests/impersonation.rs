@@ -281,6 +281,7 @@ async fn account_token(fx: &Fx, user: Uuid, session: Option<Uuid>, act: Option<V
             amr: &[],
             acr: None,
             cnf_jkt: None,
+            cnf_x5t: None,
             act,
         },
     )
@@ -573,6 +574,7 @@ async fn a_token_acting_for_someone_never_administers() {
             amr: &["pwd".into()],
             acr: None,
             cnf_jkt: None,
+            cnf_x5t: None,
             act: Some(json!({"sub": Uuid::now_v7().to_string()})),
         },
     )

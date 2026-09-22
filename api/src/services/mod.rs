@@ -39,6 +39,7 @@ pub mod login_flows;
 pub mod logout;
 pub mod master_key;
 pub mod messaging;
+pub mod mtls_trust_anchors;
 pub mod notifications;
 pub mod opaque_tokens;
 pub mod organizations;

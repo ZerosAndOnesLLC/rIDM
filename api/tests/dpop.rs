@@ -304,6 +304,7 @@ async fn bound_user_token_as(
             amr: &["pwd".into()],
             acr: None,
             cnf_jkt: Some(jkt),
+            cnf_x5t: None,
             act: None,
         },
     )
@@ -403,6 +404,7 @@ async fn resources_demand_the_proof_for_bound_tokens() {
             amr: &[],
             acr: None,
             cnf_jkt: None,
+            cnf_x5t: None,
             act: None,
         },
     )
@@ -539,6 +541,7 @@ async fn a_bound_refresh_token_needs_the_same_key() {
             audiences: &[],
             ttl: chrono::Duration::minutes(10),
             dpop_jkt: Some(&k.pair.kid),
+            mtls_x5t: None,
             auth_time: None,
             amr: &[],
             acr: None,

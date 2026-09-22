@@ -102,6 +102,7 @@ async fn cleanup_removes_spent_rows_past_retention_and_keeps_the_rest() {
                 audiences: &[],
                 ttl: chrono::Duration::days(30),
                 dpop_jkt: None,
+                mtls_x5t: None,
                 auth_time: None,
                 amr: &[],
                 acr: None,

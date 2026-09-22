@@ -28,11 +28,12 @@ use crate::middleware::{TenantCtx, client_ip_addr};
 use crate::models::{ClaimMapper, Client, Group, Role, SigningAlg, Tenant, User, grants};
 use crate::oidc::authorize::RawParams;
 use crate::oidc::dpop;
+use crate::oidc::mtls::{self, ClientCert, ClientCertificate};
 use crate::oidc::{client_auth, pkce};
 use crate::services::device_codes::Poll;
 use crate::services::refresh_tokens::{self, IssueRequest};
 use crate::services::tokens::{
-    self, AccessTokenRequest, IdTokenRequest, TokenClient, VerifyOptions,
+    self, AccessTokenRequest, IdTokenRequest, SenderProof, TokenClient, VerifyOptions,
 };
 use crate::services::{auth_codes, denylist, groups, roles, scopes, users};
 use crate::state::AppState;
@@ -74,6 +75,7 @@ async fn token(
     State(state): State<AppState>,
     tenant: TenantCtx,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    cert: ClientCertificate,
     headers: HeaderMap,
     body: String,
 ) -> Response {
@@ -89,7 +91,7 @@ async fn token(
         );
     }
     let params = RawParams::parse(&body);
-    let outcome = handle(&state, &tenant, &headers, &params, ip).await;
+    let outcome = handle(&state, &tenant, &headers, &params, ip, cert.get()).await;
     // Counted whatever happened, refusals included (client auth, grant, DPoP).
     let grant = params
         .one("grant_type")
@@ -116,11 +118,13 @@ async fn handle(
     headers: &HeaderMap,
     params: &RawParams,
     ip: Option<IpAddr>,
+    cert: Option<&ClientCert>,
 ) -> Result<TokenResponse, OAuthError> {
     let one = |n: &str| params.one(n).map_err(OAuthError::invalid_request);
     let token_endpoint = format!("{}/token", tenant.issuer(state));
     let (client, _method) =
-        client_auth::authenticate(state, tenant, headers, params, &token_endpoint, ip).await?;
+        client_auth::authenticate(state, tenant, headers, params, &token_endpoint, ip, cert)
+            .await?;
     // A DPoP proof binds every token of this response to the proof key; a
     // client registered for bound tokens must present one.
     let dpop_jkt = match dpop::header(headers)
@@ -151,7 +155,10 @@ async fn handle(
                 .jkt,
             )
         }
-        None if client.dpop_bound_access_tokens || client.is_fapi2() => {
+        // A FAPI client may be sender-constrained by its certificate instead.
+        None if client.dpop_bound_access_tokens
+            || (client.is_fapi2() && !client.tls_client_certificate_bound_access_tokens) =>
+        {
             return Err(OAuthError::new(
                 OAuthErrorCode::InvalidDpopProof,
                 "this client must present a DPoP proof",
@@ -159,7 +166,18 @@ async fn handle(
         }
         None => None,
     };
-    let dpop_jkt = dpop_jkt.as_deref();
+    // RFC 8705 §3: a client registered for certificate-bound tokens gets
+    // them only over a connection that carried its certificate.
+    let x5t = cert.map(ClientCert::thumbprint);
+    if client.tls_client_certificate_bound_access_tokens && x5t.is_none() {
+        return Err(OAuthError::invalid_request(
+            "this client must present its TLS client certificate",
+        ));
+    }
+    let proof = SenderProof {
+        jkt: dpop_jkt.as_deref(),
+        x5t,
+    };
     let grant =
         one("grant_type")?.ok_or_else(|| OAuthError::invalid_request("grant_type is required"))?;
     if !client.allows_grant(grant) {
@@ -175,17 +193,15 @@ async fn handle(
     let tenant_row = tenant.tenant.as_ref();
     match grant {
         grants::AUTHORIZATION_CODE => {
-            authorization_code(state, tenant_row, &client, params, dpop_jkt).await
+            authorization_code(state, tenant_row, &client, params, proof).await
         }
-        grants::REFRESH_TOKEN => refresh_token(state, tenant_row, &client, params, dpop_jkt).await,
+        grants::REFRESH_TOKEN => refresh_token(state, tenant_row, &client, params, proof).await,
         grants::CLIENT_CREDENTIALS => {
-            client_credentials(state, tenant_row, &client, params, dpop_jkt).await
+            client_credentials(state, tenant_row, &client, params, proof).await
         }
-        grants::DEVICE_CODE => device_code(state, tenant_row, &client, params, dpop_jkt).await,
-        grants::CIBA => backchannel(state, tenant_row, &client, params, dpop_jkt).await,
-        grants::TOKEN_EXCHANGE => {
-            token_exchange(state, tenant_row, &client, params, dpop_jkt).await
-        }
+        grants::DEVICE_CODE => device_code(state, tenant_row, &client, params, proof).await,
+        grants::CIBA => backchannel(state, tenant_row, &client, params, proof).await,
+        grants::TOKEN_EXCHANGE => token_exchange(state, tenant_row, &client, params, proof).await,
         _ => Err(OAuthError::code(OAuthErrorCode::UnsupportedGrantType)),
     }
 }
@@ -450,8 +466,9 @@ struct Issue<'a> {
     with_refresh: Option<Uuid>, // family to continue, if rotating
     issue_refresh: bool,
     code_for_hash: Option<String>,
-    /// Bind the tokens to a DPoP key.
-    dpop_jkt: Option<&'a str>,
+    /// What the request proved possession of: tokens are bound to the DPoP
+    /// key, and to the certificate when the client is registered for that.
+    proof: SenderProof<'a>,
     /// `act` claim of a delegated token (token exchange).
     act: Option<serde_json::Value>,
     /// Expire no later than this (token exchange: the subject token's `exp`).
@@ -515,7 +532,11 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
             auth_time: i.auth_time,
             amr: &i.amr,
             acr: i.acr.as_deref(),
-            cnf_jkt: i.dpop_jkt,
+            cnf_jkt: i.proof.jkt,
+            cnf_x5t: i
+                .proof
+                .x5t
+                .filter(|_| i.client.tls_client_certificate_bound_access_tokens),
             act: i.act.clone(),
         },
     )
@@ -579,7 +600,15 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
                 // Public clients' refresh tokens are bound to the proof key
                 // (RFC 9449 §5); confidential clients are bound by their credentials.
                 dpop_jkt: if i.client.is_public() {
-                    i.dpop_jkt
+                    i.proof.jkt
+                } else {
+                    None
+                },
+                // The same for a public client's certificate (RFC 8705 §4).
+                mtls_x5t: if i.client.is_public()
+                    && i.client.tls_client_certificate_bound_access_tokens
+                {
+                    i.proof.x5t
                 } else {
                     None
                 },
@@ -619,7 +648,7 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
 
     Ok(TokenResponse {
         access_token: at.token,
-        token_type: if i.dpop_jkt.is_some() {
+        token_type: if i.proof.jkt.is_some() {
             "DPoP"
         } else {
             "Bearer"
@@ -662,7 +691,7 @@ async fn authorization_code(
     tenant: &Tenant,
     client: &Arc<Client>,
     params: &RawParams,
-    dpop_jkt: Option<&str>,
+    proof: SenderProof<'_>,
 ) -> Result<TokenResponse, OAuthError> {
     let one = |n: &str| params.one(n).map_err(OAuthError::invalid_request);
     let code = one("code")?.ok_or_else(|| OAuthError::invalid_request("code is required"))?;
@@ -785,7 +814,7 @@ async fn authorization_code(
             with_refresh: None,
             issue_refresh: true,
             code_for_hash: Some(code_hash(code)),
-            dpop_jkt,
+            proof,
             act: record.acting.as_ref().map(|a| a.act.clone()),
             not_after: record.acting.as_ref().map(|a| a.until),
         },
@@ -799,7 +828,7 @@ async fn device_code(
     tenant: &Tenant,
     client: &Arc<Client>,
     params: &RawParams,
-    dpop_jkt: Option<&str>,
+    proof: SenderProof<'_>,
 ) -> Result<TokenResponse, OAuthError> {
     let one = |n: &str| params.one(n).map_err(OAuthError::invalid_request);
     let code = one("device_code")?
@@ -849,7 +878,7 @@ async fn device_code(
             with_refresh: None,
             issue_refresh: true,
             code_for_hash: None,
-            dpop_jkt,
+            proof,
             act: approval.acting.as_ref().map(|a| a.act.clone()),
             not_after: approval.acting.as_ref().map(|a| a.until),
         },
@@ -864,7 +893,7 @@ async fn backchannel(
     tenant: &Tenant,
     client: &Arc<Client>,
     params: &RawParams,
-    dpop_jkt: Option<&str>,
+    proof: SenderProof<'_>,
 ) -> Result<TokenResponse, OAuthError> {
     use crate::services::ciba::{self, Poll as CibaPoll};
     let one = |n: &str| params.one(n).map_err(OAuthError::invalid_request);
@@ -905,7 +934,7 @@ async fn backchannel(
             with_refresh: None,
             issue_refresh: true,
             code_for_hash: None,
-            dpop_jkt,
+            proof,
             act: None,
             not_after: None,
         },
@@ -918,7 +947,7 @@ async fn refresh_token(
     tenant: &Tenant,
     client: &Arc<Client>,
     params: &RawParams,
-    dpop_jkt: Option<&str>,
+    proof: SenderProof<'_>,
 ) -> Result<TokenResponse, OAuthError> {
     let one = |n: &str| params.one(n).map_err(OAuthError::invalid_request);
     let presented = one("refresh_token")?
@@ -936,7 +965,7 @@ async fn refresh_token(
         tenant.id,
         &client.client_id,
         presented,
-        dpop_jkt,
+        proof,
         &extra,
         requested_scopes.as_deref(),
         !client.is_fapi2(),
@@ -981,7 +1010,7 @@ async fn refresh_token(
             with_refresh: Some(rotated.record.family_id),
             issue_refresh: false,
             code_for_hash: None,
-            dpop_jkt,
+            proof,
             // An impersonated family stops when its session would have.
             not_after: rotated
                 .record
@@ -1001,7 +1030,7 @@ async fn client_credentials(
     tenant: &Tenant,
     client: &Arc<Client>,
     params: &RawParams,
-    dpop_jkt: Option<&str>,
+    proof: SenderProof<'_>,
 ) -> Result<TokenResponse, OAuthError> {
     if client.is_public() {
         return Err(OAuthError::new(
@@ -1064,7 +1093,7 @@ async fn client_credentials(
             with_refresh: None,
             issue_refresh: false,
             code_for_hash: None,
-            dpop_jkt,
+            proof,
             act: None,
             not_after: None,
         },
@@ -1082,7 +1111,7 @@ async fn token_exchange(
     tenant: &Tenant,
     client: &Arc<Client>,
     params: &RawParams,
-    dpop_jkt: Option<&str>,
+    proof: SenderProof<'_>,
 ) -> Result<TokenResponse, OAuthError> {
     let one = |n: &str| params.one(n).map_err(OAuthError::invalid_request);
     let is_access = |t: &str| t == token_types::ACCESS_TOKEN || t == token_types::JWT;
@@ -1138,11 +1167,22 @@ async fn token_exchange(
     // without this, anyone holding a stolen DPoP-bound token could exchange it
     // for an unbound one and undo the binding (RFC 9449 §5).
     if let Some(bound) = subject_claims["cnf"]["jkt"].as_str()
-        && dpop_jkt != Some(bound)
+        && proof.jkt != Some(bound)
     {
         return Err(OAuthError::new(
             OAuthErrorCode::InvalidGrant,
             "subject_token is bound to a key this request did not prove",
+        ));
+    }
+    // The same for a certificate-bound one (RFC 8705 §3): the request must
+    // come with that certificate, and what it gets is bound to it again.
+    if let Some(bound) = subject_claims["cnf"][mtls::CNF_X5T].as_str()
+        && (proof.x5t != Some(bound) || !client.tls_client_certificate_bound_access_tokens)
+    {
+        return Err(OAuthError::new(
+            OAuthErrorCode::InvalidGrant,
+            "subject_token is bound to a client certificate: exchange it over a connection \
+             with that certificate, as a client registered for certificate-bound tokens",
         ));
     }
     let actor_claims = match (one("actor_token")?, one("actor_token_type")?) {
@@ -1298,7 +1338,7 @@ async fn token_exchange(
             with_refresh: None,
             issue_refresh: false,
             code_for_hash: None,
-            dpop_jkt,
+            proof,
             act,
             not_after: Some(subject_exp),
         },

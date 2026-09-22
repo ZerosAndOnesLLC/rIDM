@@ -36,7 +36,38 @@ export const AUTH_METHODS: { value: AuthMethod; label: string }[] = [
   { value: "client_secret_basic", label: "Client secret (HTTP Basic)" },
   { value: "client_secret_post", label: "Client secret (POST body)" },
   { value: "private_key_jwt", label: "Private key JWT" },
+  { value: "tls_client_auth", label: "Mutual TLS (CA-issued certificate)" },
+  { value: "self_signed_tls_client_auth", label: "Mutual TLS (self-signed certificate)" },
 ];
+
+/** The subject a `tls_client_auth` certificate must carry (RFC 8705 §2.1.2): exactly one. */
+export const TLS_SUBJECT_FIELDS = [
+  { value: "tls_client_auth_subject_dn", label: "Subject DN", placeholder: "CN=billing,O=Acme,C=US" },
+  { value: "tls_client_auth_san_dns", label: "DNS name (SAN)", placeholder: "billing.acme.example" },
+  { value: "tls_client_auth_san_uri", label: "URI (SAN)", placeholder: "spiffe://acme.example/billing" },
+  { value: "tls_client_auth_san_ip", label: "IP address (SAN)", placeholder: "10.0.0.12" },
+  { value: "tls_client_auth_san_email", label: "Email (SAN)", placeholder: "billing@acme.example" },
+] as const;
+
+export type TlsSubjectField = (typeof TLS_SUBJECT_FIELDS)[number]["value"];
+
+/** Every subject field cleared, for switching kind or leaving `tls_client_auth`. */
+export const NO_TLS_SUBJECT: Record<TlsSubjectField, null> = {
+  tls_client_auth_subject_dn: null,
+  tls_client_auth_san_dns: null,
+  tls_client_auth_san_uri: null,
+  tls_client_auth_san_ip: null,
+  tls_client_auth_san_email: null,
+};
+
+/** Which subject field a client has set, if any. */
+export function tlsSubjectOf(c: Partial<Record<TlsSubjectField, string | null>>): { field: TlsSubjectField; value: string } | null {
+  for (const f of TLS_SUBJECT_FIELDS) {
+    const v = c[f.value];
+    if (v) return { field: f.value, value: v };
+  }
+  return null;
+}
 
 /** The type-driven defaults the API applies (`services/clients.rs::resolve`). */
 export function typeDefaults(type: ClientType): { auth: AuthMethod; grants: string[]; pkce: boolean } {

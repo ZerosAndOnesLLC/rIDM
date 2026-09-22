@@ -25,6 +25,7 @@ pub mod saml;
 pub mod services;
 pub mod state;
 pub mod telemetry;
+pub mod tls;
 pub mod util;
 
 use axum::Router;

@@ -1060,6 +1060,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/tenants/{slug}/mtls/trust-anchors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["mtls_list"];
+        put?: never;
+        /** `{name, certificate_pem}`: one CA certificate (root or intermediate). */
+        post: operations["mtls_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/mtls/trust-anchors/{anchor}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["mtls_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/tenants/{slug}/organizations": {
         parameters: {
             query?: never;
@@ -3337,6 +3370,21 @@ export interface components {
             subject_type: components["schemas"]["ClientSubjectType"];
             /** Format: uuid */
             tenant_id: string;
+            tls_client_auth_san_dns?: string | null;
+            tls_client_auth_san_email?: string | null;
+            tls_client_auth_san_ip?: string | null;
+            tls_client_auth_san_uri?: string | null;
+            /**
+             * @description The subject a `tls_client_auth` certificate must carry: exactly one
+             *     of these five is set for such a client (RFC 8705 §2.1.2). The DN is
+             *     an RFC 4514 string, most specific RDN first.
+             */
+            tls_client_auth_subject_dn?: string | null;
+            /**
+             * @description Every access token is bound to the client certificate presented at
+             *     the token endpoint (`cnf.x5t#S256`, RFC 8705 §3).
+             */
+            tls_client_certificate_bound_access_tokens: boolean;
             token_endpoint_auth_method: components["schemas"]["TokenEndpointAuthMethod"];
             tos_uri?: string | null;
             /** Format: date-time */
@@ -4718,6 +4766,37 @@ export interface components {
             recovery_codes: number;
         };
         /**
+         * @description A certificate authority whose certificates the tenant's `tls_client_auth`
+         *     clients may authenticate with (RFC 8705 §2.1). It may be a root or an
+         *     intermediate: a client's chain only has to reach it.
+         */
+        MtlsTrustAnchor: {
+            /** @description The CA certificate, PEM. */
+            certificate_pem: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @description base64url(SHA-256(DER)). */
+            fingerprint: string;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            not_after: string;
+            /** Format: date-time */
+            not_before: string;
+            /** @description RFC 4514 subject of the CA certificate. */
+            subject: string;
+            /** Format: uuid */
+            tenant_id: string;
+        };
+        /** @description A trusted client-certificate authority, keyed by its certificate. */
+        MtlsTrustAnchorDoc: {
+            /** @default  */
+            certificate_pem: string;
+            /** @default  */
+            name: string;
+        };
+        /**
          * @description The subject identifier an SP receives.
          * @enum {string}
          */
@@ -4816,6 +4895,18 @@ export interface components {
             security_profile: null | components["schemas"]["SecurityProfile"];
             /** @default null */
             subject_type: null | components["schemas"]["ClientSubjectType"];
+            /** @default null */
+            tls_client_auth_san_dns: string | null;
+            /** @default null */
+            tls_client_auth_san_email: string | null;
+            /** @default null */
+            tls_client_auth_san_ip: string | null;
+            /** @default null */
+            tls_client_auth_san_uri: string | null;
+            /** @default null */
+            tls_client_auth_subject_dn: string | null;
+            /** @default null */
+            tls_client_certificate_bound_access_tokens: boolean | null;
             /** @default null */
             token_endpoint_auth_method: null | components["schemas"]["TokenEndpointAuthMethod"];
             /** @default null */
@@ -4947,6 +5038,15 @@ export interface components {
             client_id: string | null;
             /** @default null */
             description: string | null;
+        };
+        NewMtlsTrustAnchor: {
+            /**
+             * @description One CA certificate, PEM.
+             * @default
+             */
+            certificate_pem: string;
+            /** @default  */
+            name: string;
         };
         NewOrganization: {
             attributes?: unknown;
@@ -6501,6 +6601,8 @@ export interface components {
             identity_providers?: components["schemas"]["IdentityProviderDoc"][];
             ip_rules?: components["schemas"]["IpRuleDoc"][];
             message_templates?: components["schemas"]["TemplateDoc"][];
+            /** @description Certificate authorities for `tls_client_auth` clients (RFC 8705). */
+            mtls_trust_anchors?: components["schemas"]["MtlsTrustAnchorDoc"][];
             profile_schema?: components["schemas"]["ProfileSchema"];
             resource_servers?: components["schemas"]["ResourceServerDoc"][];
             roles?: components["schemas"]["RoleDoc"][];
@@ -6774,7 +6876,7 @@ export interface components {
             username?: string | null;
         };
         /** @enum {string} */
-        TokenEndpointAuthMethod: "none" | "client_secret_basic" | "client_secret_post" | "private_key_jwt";
+        TokenEndpointAuthMethod: "none" | "client_secret_basic" | "client_secret_post" | "private_key_jwt" | "tls_client_auth" | "self_signed_tls_client_auth";
         /** @description The user's tokens and the scopes a new one may carry. */
         Tokens: {
             /** @description `account` and the admin permissions the user holds. */
@@ -12538,6 +12640,175 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Problem"];
                 };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    mtls_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MtlsTrustAnchor"][];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    mtls_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewMtlsTrustAnchor"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MtlsTrustAnchor"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Already trusted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    mtls_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                anchor: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Missing or invalid admin token */
             401: {

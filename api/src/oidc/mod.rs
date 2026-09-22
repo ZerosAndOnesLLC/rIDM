@@ -9,6 +9,7 @@ pub mod end_session;
 pub mod fapi;
 pub mod introspect;
 pub mod jar;
+pub mod mtls;
 pub mod par;
 pub mod pkce;
 pub mod redirect_uri;

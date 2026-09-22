@@ -263,6 +263,7 @@ async fn scope_can_only_narrow_and_stays_within_the_client() {
             amr: &[],
             acr: None,
             cnf_jkt: None,
+            cnf_x5t: None,
             act: None,
         },
     )

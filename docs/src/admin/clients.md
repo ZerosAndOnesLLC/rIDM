@@ -73,12 +73,14 @@ Content-Type: application/json
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `token_endpoint_auth_method` | by type | `none`, `client_secret_basic`, `client_secret_post`, `private_key_jwt`. The client must authenticate with exactly the method registered |
+| `token_endpoint_auth_method` | by type | `none`, `client_secret_basic`, `client_secret_post`, `private_key_jwt`, `tls_client_auth`, `self_signed_tls_client_auth`. The client must authenticate with exactly the method registered |
+| `tls_client_auth_subject_dn`, `tls_client_auth_san_dns`, `tls_client_auth_san_uri`, `tls_client_auth_san_ip`, `tls_client_auth_san_email` | `null` | For `tls_client_auth`, exactly one: the name its certificate must carry. See [Mutual TLS](mtls.md#registering-a-client) |
 | `jwks` | `null` | Inline JWK set (`{"keys": [...]}`) for `private_key_jwt`, signed request objects and ID token encryption |
 | `jwks_uri` | `null` | The same, fetched over HTTPS |
 
 `client_credentials` needs client authentication, so it cannot be combined with
-`none`. `private_key_jwt` needs `jwks` or `jwks_uri`.
+`none`. `private_key_jwt` needs `jwks` or `jwks_uri`; `self_signed_tls_client_auth`
+needs its certificate in `jwks` (a key's `x5c`) or a `jwks_uri`.
 
 ### Redirects, logout and CORS
 
@@ -162,11 +164,12 @@ Choose opaque tokens when the audience must not be able to read the token's cont
 or when you want every use checked centrally (revocation takes effect at the next
 introspection), and accept the introspection round trip that costs.
 
-### PAR, JAR, DPoP and FAPI 2.0
+### PAR, JAR, DPoP, mTLS and FAPI 2.0
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `dpop_bound_access_tokens` | `false` (`true` under FAPI 2.0) | Every token request must carry a DPoP proof, and the tokens are bound to its key |
+| `dpop_bound_access_tokens` | `false` (`true` under FAPI 2.0 unless certificate-bound) | Every token request must carry a DPoP proof, and the tokens are bound to its key |
+| `tls_client_certificate_bound_access_tokens` | `false` | Every token request must come over mutual TLS, and the access tokens are bound to the client certificate (RFC 8705 §3). See [Mutual TLS](mtls.md#certificate-bound-tokens) |
 | `require_pushed_authorization_requests` | `false` | `/authorize` refuses the client's requests unless they came through PAR (RFC 9126 §6) |
 | `security_profile` | `none` | `fapi2` holds the client to the FAPI 2.0 Security Profile: see [Backchannel sign-in and FAPI 2.0](ciba-fapi.md#the-fapi-20-security-profile) |
 

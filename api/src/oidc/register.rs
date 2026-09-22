@@ -56,6 +56,13 @@ pub struct Metadata {
     pub initiate_login_uri: Option<String>,
     pub require_pushed_authorization_requests: Option<bool>,
     pub dpop_bound_access_tokens: Option<bool>,
+    /// RFC 8705 §2.1.2 and §3.4.
+    pub tls_client_auth_subject_dn: Option<String>,
+    pub tls_client_auth_san_dns: Option<String>,
+    pub tls_client_auth_san_uri: Option<String>,
+    pub tls_client_auth_san_ip: Option<String>,
+    pub tls_client_auth_san_email: Option<String>,
+    pub tls_client_certificate_bound_access_tokens: Option<bool>,
     /// CIBA Core §4: `poll` or `ping` (`push` is not offered).
     pub backchannel_token_delivery_mode: Option<String>,
     pub backchannel_client_notification_endpoint: Option<String>,
@@ -119,6 +126,8 @@ pub fn to_new_client(m: &Metadata, policy: &DcrPolicy) -> Result<NewClient, AppE
         None | Some("client_secret_basic") => TokenEndpointAuthMethod::ClientSecretBasic,
         Some("client_secret_post") => TokenEndpointAuthMethod::ClientSecretPost,
         Some("private_key_jwt") => TokenEndpointAuthMethod::PrivateKeyJwt,
+        Some("tls_client_auth") => TokenEndpointAuthMethod::TlsClientAuth,
+        Some("self_signed_tls_client_auth") => TokenEndpointAuthMethod::SelfSignedTlsClientAuth,
         Some("none") => TokenEndpointAuthMethod::None,
         Some(other) => {
             return Err(bad(&format!(
@@ -242,6 +251,12 @@ pub fn to_new_client(m: &Metadata, policy: &DcrPolicy) -> Result<NewClient, AppE
             .clone(),
         security_profile: None,
         require_pushed_authorization_requests: m.require_pushed_authorization_requests,
+        tls_client_auth_subject_dn: m.tls_client_auth_subject_dn.clone(),
+        tls_client_auth_san_dns: m.tls_client_auth_san_dns.clone(),
+        tls_client_auth_san_uri: m.tls_client_auth_san_uri.clone(),
+        tls_client_auth_san_ip: m.tls_client_auth_san_ip.clone(),
+        tls_client_auth_san_email: m.tls_client_auth_san_email.clone(),
+        tls_client_certificate_bound_access_tokens: m.tls_client_certificate_bound_access_tokens,
     })
 }
 
@@ -263,6 +278,7 @@ pub fn to_metadata(state: &AppState, tenant: &TenantCtx, client: &Client) -> Val
         "dpop_bound_access_tokens": client.dpop_bound_access_tokens,
         "require_pushed_authorization_requests": client.require_pushed_authorization_requests,
         "id_token_scope_claims": client.id_token_scope_claims,
+        "tls_client_certificate_bound_access_tokens": client.tls_client_certificate_bound_access_tokens,
     });
     if let Some(mode) = client.backchannel_token_delivery_mode {
         v["backchannel_token_delivery_mode"] = json!(mode.as_str());
@@ -281,6 +297,17 @@ pub fn to_metadata(state: &AppState, tenant: &TenantCtx, client: &Client) -> Val
         (
             "backchannel_client_notification_endpoint",
             &client.backchannel_client_notification_endpoint,
+        ),
+        (
+            "tls_client_auth_subject_dn",
+            &client.tls_client_auth_subject_dn,
+        ),
+        ("tls_client_auth_san_dns", &client.tls_client_auth_san_dns),
+        ("tls_client_auth_san_uri", &client.tls_client_auth_san_uri),
+        ("tls_client_auth_san_ip", &client.tls_client_auth_san_ip),
+        (
+            "tls_client_auth_san_email",
+            &client.tls_client_auth_san_email,
         ),
     ] {
         if let Some(x) = val {

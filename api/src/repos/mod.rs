@@ -16,6 +16,7 @@ pub mod ip_rules;
 pub mod ldap;
 pub mod login_attempts;
 pub mod messages;
+pub mod mtls_trust_anchors;
 pub mod organizations;
 pub mod password_history;
 pub mod personal_access_tokens;
