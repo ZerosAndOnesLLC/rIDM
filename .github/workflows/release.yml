@@ -142,12 +142,13 @@ jobs:
           key: ${{ matrix.target }}
       - name: build
         # Native on each architecture, so musl-gcc is the target's compiler.
-        # The server with the UI compiled in and mimalloc (musl's allocator
-        # serialises threads); the CLI on its own, so it does not embed the UI.
+        # The server with the UI compiled in, Kerberos desktop sign-in and
+        # mimalloc (musl's allocator serialises threads); the CLI on its own,
+        # so it does not embed the UI.
         run: |
           triple="$(tr 'a-z-' 'A-Z_' <<<"$TARGET")"
           export "CC_${TARGET//-/_}=musl-gcc" "CARGO_TARGET_${triple}_LINKER=musl-gcc"
-          cargo build --release --locked --target "$TARGET" -p ridm-api --features embedded-ui,mimalloc
+          cargo build --release --locked --target "$TARGET" -p ridm-api --features embedded-ui,mimalloc,kerberos
           cargo build --release --locked --target "$TARGET" -p ridm-cli
       - name: check
         run: |

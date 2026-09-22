@@ -134,6 +134,7 @@ The sign-in pages drive a login flow through these routes. A flow is created by 
 | POST | `/t/{slug}/flows/{id}/sms-otp/verify` | Check the texted code. |
 | POST | `/t/{slug}/flows/{id}/passkey/start` | Passkey sign-in: discoverable-credential challenge. |
 | POST | `/t/{slug}/flows/{id}/passkey/finish` | Passkey sign-in: verify the assertion. |
+| POST | `/t/{slug}/flows/{id}/kerberos` | Kerberos desktop sign-in (HTTP Negotiate): `401` challenge, `204` when an automatic attempt is not for this client, the flow's state with a mutual-authentication token once a ticket is accepted. See [Kerberos desktop sign-in](../admin/kerberos.md). |
 | POST | `/t/{slug}/flows/{id}/mfa/totp/enroll` | Second step: start authenticator-app enrolment. |
 | POST | `/t/{slug}/flows/{id}/mfa/totp/confirm` | Second step: confirm the first code. |
 | POST | `/t/{slug}/flows/{id}/mfa/verify` | Second step: TOTP or recovery code. |

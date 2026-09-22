@@ -936,6 +936,12 @@ fn authn_context(session: &SsoSession, requested: &[String]) -> &'static str {
     }
     if session.amr.iter().any(|m| m == "pwd") {
         ns::AC_PASSWORD_PROTECTED
+    } else if session
+        .amr
+        .iter()
+        .any(|m| m == crate::services::kerberos::AMR_KERBEROS)
+    {
+        ns::AC_KERBEROS
     } else {
         ns::AC_UNSPECIFIED
     }

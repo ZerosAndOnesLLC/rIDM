@@ -113,7 +113,8 @@ export function useFlow(slug: string | null, id: string | null, accepts: readonl
         }
         throw e;
       });
-      const maybe = res as unknown as Partial<PublicFlow> & { redirect_to?: string };
+      // A step may answer with no body at all (204).
+      const maybe = (res ?? {}) as unknown as Partial<PublicFlow> & { redirect_to?: string };
       if (maybe.redirect_to) {
         redirected.current = true;
         navigate(maybe.redirect_to);

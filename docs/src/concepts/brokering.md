@@ -133,4 +133,6 @@ Events: `identity_provider.created`, `.updated` and `.deleted`,
 `identity.linked`, `identity.unlinked` and `login.brokered` (and
 `logout.upstream` when a SAML IdP's logout request ends sessions). An LDAP or
 Active Directory directory is a provider of kind `ldap` whose users sign in with the
-password form; see [LDAP and Active Directory](../admin/ldap.md).
+password form; see [LDAP and Active Directory](../admin/ldap.md). A Kerberos realm is
+a provider of kind `kerberos`: the login page asks the browser for a ticket (HTTP
+Negotiate), with no redirect; see [Kerberos desktop sign-in](../admin/kerberos.md).

@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::types::Json;
 use uuid::Uuid;
 
-use super::{LdapSettings, LdapUpstream, NameIdFormat, SloBinding};
+use super::{
+    KerberosSettings, KerberosUpstream, LdapSettings, LdapUpstream, NameIdFormat, SloBinding,
+};
 use crate::util::patch::double_option;
 
 /// The protocol an upstream provider speaks.
@@ -26,6 +28,9 @@ pub enum IdpKind {
     /// typed proves the identity (the directory owns the password), and a
     /// job syncs users and groups.
     Ldap,
+    /// Kerberos (SPNEGO): a service ticket the browser presents in an HTTP
+    /// Negotiate exchange proves the identity (desktop single sign-on).
+    Kerberos,
 }
 
 /// What happens when an upstream identity signs in for the first time and
@@ -119,19 +124,24 @@ pub struct IdentityProvider {
     #[sqlx(skip)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ldap: Option<LdapUpstream>,
+    /// The Kerberos settings of a `kerberos` provider.
+    #[sqlx(skip)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kerberos: Option<KerberosUpstream>,
 }
 
 impl IdentityProvider {
-    /// Offered on the login page. A directory has no button: its users
-    /// sign in with the password form.
+    /// Offered on the login page as a redirect button. A directory has
+    /// none (its users sign in with the password form), and neither has a
+    /// Kerberos realm (the login page negotiates with the browser).
     pub fn offered(&self) -> bool {
-        self.enabled && !self.hidden && self.kind != IdpKind::Ldap
+        self.enabled && !self.hidden && self.redirects()
     }
 
     /// Reached through a browser redirect (a login-page button, or linking
-    /// from the account console); a directory is not.
+    /// from the account console); a directory and a Kerberos realm are not.
     pub fn redirects(&self) -> bool {
-        self.kind != IdpKind::Ldap
+        !matches!(self.kind, IdpKind::Ldap | IdpKind::Kerberos)
     }
 }
 
@@ -165,6 +175,8 @@ pub struct NewIdentityProvider {
     pub saml: Option<SamlUpstreamSettings>,
     /// Required for an `ldap` provider, refused for any other.
     pub ldap: Option<LdapSettings>,
+    /// Required for a `kerberos` provider, refused for any other.
+    pub kerberos: Option<KerberosSettings>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
@@ -201,6 +213,9 @@ pub struct IdentityProviderUpdate {
     /// An `ldap` provider's settings, replaced as a whole (a missing
     /// `bind_password` keeps the stored one).
     pub ldap: Option<LdapSettings>,
+    /// A `kerberos` provider's settings, replaced as a whole (a missing
+    /// `keytab` keeps the stored one).
+    pub kerberos: Option<KerberosSettings>,
 }
 
 impl IdentityProviderUpdate {
@@ -226,6 +241,7 @@ impl IdentityProviderUpdate {
             && self.sort_order.is_none()
             && self.saml.is_none()
             && self.ldap.is_none()
+            && self.kerberos.is_none()
     }
 }
 

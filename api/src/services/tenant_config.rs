@@ -22,8 +22,8 @@ use crate::models::{
     ScopeUpdate, Tenant, TenantSettings, WebhookUpdate,
 };
 use crate::models::{
-    IdentityProviderUpdate, IdpAuthMethod, IdpKind, IdpMappers, LdapSettings, LinkPolicy,
-    NewIdentityProvider, SamlUpstreamSettings,
+    IdentityProviderUpdate, IdpAuthMethod, IdpKind, IdpMappers, KerberosNameForm, KerberosSettings,
+    LdapSettings, LinkPolicy, NewIdentityProvider, SamlUpstreamSettings,
 };
 use crate::services::admin_access::{self, Grant};
 use crate::services::messaging::TemplateBody;
@@ -266,6 +266,75 @@ pub struct IdentityProviderDoc {
     /// provider; the sync status is not configuration).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ldap: Option<LdapSettings>,
+    /// A `kerberos` provider's settings (the keytab is a secret: never
+    /// exported, kept on import, uploaded afterwards on a new provider).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kerberos: Option<KerberosDoc>,
+}
+
+/// A Kerberos provider's settings in a tenant document: the directory it
+/// uses is named by alias, so the document means the same in any tenant.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(default, deny_unknown_fields)]
+pub struct KerberosDoc {
+    pub service_principal: String,
+    pub realms: Vec<String>,
+    pub name_form: KerberosNameForm,
+    /// The alias of the LDAP provider that owns the users.
+    pub ldap_provider: Option<String>,
+    pub ldap_attribute: Option<String>,
+    pub match_username: bool,
+    pub create_users: bool,
+    pub trusted_networks: Vec<String>,
+    pub max_skew_seconds: i32,
+}
+
+impl Default for KerberosDoc {
+    fn default() -> Self {
+        let d = KerberosSettings::default();
+        Self {
+            service_principal: String::new(),
+            realms: d.realms,
+            name_form: d.name_form,
+            ldap_provider: None,
+            ldap_attribute: d.ldap_attribute,
+            match_username: d.match_username,
+            create_users: d.create_users,
+            trusted_networks: d.trusted_networks,
+            max_skew_seconds: d.max_skew_seconds,
+        }
+    }
+}
+
+impl KerberosDoc {
+    fn from_settings(s: KerberosSettings, ldap_provider: Option<String>) -> Self {
+        Self {
+            service_principal: s.service_principal.unwrap_or_default(),
+            realms: s.realms,
+            name_form: s.name_form,
+            ldap_provider,
+            ldap_attribute: s.ldap_attribute,
+            match_username: s.match_username,
+            create_users: s.create_users,
+            trusted_networks: s.trusted_networks,
+            max_skew_seconds: s.max_skew_seconds,
+        }
+    }
+
+    fn settings(&self, ldap_idp_id: Option<Uuid>) -> KerberosSettings {
+        KerberosSettings {
+            service_principal: Some(self.service_principal.clone()),
+            keytab: None,
+            realms: self.realms.clone(),
+            name_form: self.name_form,
+            ldap_idp_id,
+            ldap_attribute: self.ldap_attribute.clone(),
+            match_username: self.match_username,
+            create_users: self.create_users,
+            trusted_networks: self.trusted_networks.clone(),
+            max_skew_seconds: self.max_skew_seconds,
+        }
+    }
 }
 
 impl Default for IdentityProviderDoc {
@@ -292,6 +361,7 @@ impl Default for IdentityProviderDoc {
             sort_order: 0,
             saml: None,
             ldap: None,
+            kerberos: None,
         }
     }
 }
@@ -556,8 +626,9 @@ pub async fn export(state: &AppState, tenant: &Tenant) -> AppResult<TenantConfig
         .collect();
     ip_rules_out.sort_by(|a, b| (&a.client, &a.cidr).cmp(&(&b.client, &b.cidr)));
 
-    let mut idps_out: Vec<IdentityProviderDoc> = identity_providers::list(state, tid)
-        .await?
+    let idps = identity_providers::list(state, tid).await?;
+    let alias_of: BTreeMap<Uuid, String> = idps.iter().map(|p| (p.id, p.alias.clone())).collect();
+    let mut idps_out: Vec<IdentityProviderDoc> = idps
         .into_iter()
         .map(|p| IdentityProviderDoc {
             alias: p.alias,
@@ -581,6 +652,12 @@ pub async fn export(state: &AppState, tenant: &Tenant) -> AppResult<TenantConfig
             sort_order: p.sort_order,
             saml: p.saml.as_ref().map(|s| s.settings()),
             ldap: p.ldap.as_ref().map(|s| s.settings()),
+            kerberos: p.kerberos.as_ref().map(|k| {
+                KerberosDoc::from_settings(
+                    k.settings(),
+                    k.ldap_idp_id.and_then(|id| alias_of.get(&id).cloned()),
+                )
+            }),
         })
         .collect();
     idps_out.sort_by(|a, b| a.alias.cmp(&b.alias));
@@ -820,6 +897,19 @@ fn normalize(tenant_id: Uuid, mut doc: TenantConfig) -> AppResult<TenantConfig> 
         if let Some(mut s) = p.ldap.take() {
             s.bind_password = None;
             p.ldap = Some(identity_providers::validate_ldap(s)?);
+        }
+        if let Some(k) = p.kerberos.take() {
+            let alias = k
+                .ldap_provider
+                .as_deref()
+                .map(|a| a.trim().to_lowercase())
+                .filter(|a| !a.is_empty());
+            // A stand-in id: only whether a directory is named matters here.
+            let checked = identity_providers::validate_kerberos(
+                k.settings(alias.as_ref().map(|_| Uuid::nil())),
+                &[],
+            )?;
+            p.kerberos = Some(KerberosDoc::from_settings(checked, alias));
         }
     }
     Ok(doc)
@@ -1942,8 +2032,12 @@ pub async fn apply(
         ctx.note("ip_rule", &key, r);
     }
 
-    // Identity providers (secrets are kept, or missing on a fresh row).
-    for p in &desired.identity_providers {
+    // Identity providers (secrets are kept, or missing on a fresh row);
+    // Kerberos realms last, since they may name a directory the document
+    // creates.
+    let mut ordered: Vec<&IdentityProviderDoc> = desired.identity_providers.iter().collect();
+    ordered.sort_by_key(|p| p.kind == IdpKind::Kerberos);
+    for p in ordered {
         let key = p.alias.clone();
         let create = ctx.wants("identity_provider", &key, Op::Create);
         let update = ctx.wants("identity_provider", &key, Op::Update);
@@ -1951,6 +2045,26 @@ pub async fn apply(
             continue;
         }
         let r = async {
+            let kerberos = match &p.kerberos {
+                Some(k) => {
+                    let dir = match &k.ldap_provider {
+                        Some(alias) => Some(
+                            identity_providers::get(state, tid, alias)
+                                .await
+                                .map_err(|e| match e {
+                                    AppError::NotFound(_) => AppError::BadRequest(format!(
+                                        "kerberos.ldap_provider: no identity provider `{alias}`"
+                                    )),
+                                    other => other,
+                                })?
+                                .id,
+                        ),
+                        None => None,
+                    };
+                    Some(k.settings(dir))
+                }
+                None => None,
+            };
             let existing = identity_providers::get(state, tid, &p.alias).await;
             match existing {
                 Ok(_) => {
@@ -1981,6 +2095,7 @@ pub async fn apply(
                             sort_order: Some(p.sort_order),
                             saml: p.saml.clone(),
                             ldap: p.ldap.clone(),
+                            kerberos: kerberos.clone(),
                         },
                     )
                     .await?;
@@ -2013,6 +2128,7 @@ pub async fn apply(
                             sort_order: Some(p.sort_order),
                             saml: p.saml.clone(),
                             ldap: p.ldap.clone(),
+                            kerberos,
                         },
                     )
                     .await?;

@@ -28,6 +28,7 @@ draft of a [tenant document](../reference/tenant-document.md). Read
 | Enterprise: OpenID Connect, Microsoft Entra ID (Azure AD) | Identity provider (`oidc`, or the `microsoft` preset with your directory id in the issuer) | |
 | Enterprise: SAML, ADFS | [SAML identity provider](../admin/saml-upstream.md) (`saml`) | |
 | Enterprise: AD/LDAP | [LDAP directory](../admin/ldap.md) (`ldap`) | rIDM connects to the directory itself; there is no connector agent, so the directory's network must be reachable from rIDM |
+| AD/LDAP connector's Kerberos (Windows integrated auth) | [Kerberos provider](../admin/kerberos.md) (`kerberos`), with the LDAP directory owning the users | rIDM validates the ticket itself with the service's keytab; no agent |
 | Passwordless connections (email, SMS) | `settings.auth.magic_link`, `email_otp`, `sms_otp` | |
 | Custom database connection with "Import users to Auth0" (lazy migration) | No equivalent | rIDM cannot check a password against another system at sign-in |
 | Organizations | Not yet | Organizations are planned (Phase 12), not present |

@@ -4377,6 +4377,83 @@
         ]
       }
     },
+    "/admin/tenants/{slug}/identity-providers/kerberos-keytab": {
+      "post": {
+        "tags": [
+          "identity_providers"
+        ],
+        "summary": "Read a keytab without storing it: its entries (never a key) and the\nservices rIDM could accept tickets for with it.",
+        "operationId": "identity_providers_kerberos_keytab",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeytabBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeytabReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a keytab",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/admin/tenants/{slug}/identity-providers/presets": {
       "get": {
         "tags": [
@@ -22306,6 +22383,17 @@
               "null"
             ]
           },
+          "kerberos": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/KerberosUpstream",
+                "description": "The Kerberos settings of a `kerberos` provider."
+              }
+            ]
+          },
           "kind": {
             "$ref": "#/components/schemas/IdpKind"
           },
@@ -22427,6 +22515,18 @@
             "type": [
               "string",
               "null"
+            ],
+            "default": null
+          },
+          "kerberos": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/KerberosDoc",
+                "description": "A `kerberos` provider's settings (the keytab is a secret: never\nexported, kept on import, uploaded afterwards on a new provider)."
+              }
             ],
             "default": null
           },
@@ -22603,6 +22703,18 @@
             ],
             "default": null
           },
+          "kerberos": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/KerberosSettings",
+                "description": "A `kerberos` provider's settings, replaced as a whole (a missing\n`keytab` keeps the stored one)."
+              }
+            ],
+            "default": null
+          },
           "kind": {
             "oneOf": [
               {
@@ -22733,7 +22845,7 @@
             "properties": {
               "callback_url": {
                 "type": "string",
-                "description": "The redirect URI (OIDC, OAuth 2.0) or the assertion consumer\nservice (SAML); empty for a directory (LDAP), which has none."
+                "description": "The redirect URI (OIDC, OAuth 2.0) or the assertion consumer\nservice (SAML); empty for a directory (LDAP) or a Kerberos realm,\nwhich have none."
               },
               "saml_sp": {
                 "oneOf": [
@@ -22767,7 +22879,8 @@
           "oidc",
           "oauth2",
           "saml",
-          "ldap"
+          "ldap",
+          "kerberos"
         ]
       },
       "IdpMappers": {
@@ -23325,6 +23438,230 @@
         },
         "additionalProperties": false
       },
+      "KerberosDoc": {
+        "type": "object",
+        "description": "A Kerberos provider's settings in a tenant document: the directory it\nuses is named by alias, so the document means the same in any tenant.",
+        "properties": {
+          "create_users": {
+            "type": "boolean",
+            "default": false
+          },
+          "ldap_attribute": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "ldap_provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The alias of the LDAP provider that owns the users.",
+            "default": null
+          },
+          "match_username": {
+            "type": "boolean",
+            "default": true
+          },
+          "max_skew_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "default": 300
+          },
+          "name_form": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/KerberosNameForm"
+              }
+            ],
+            "default": "local_part"
+          },
+          "realms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "service_principal": {
+            "type": "string",
+            "default": ""
+          },
+          "trusted_networks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          }
+        },
+        "additionalProperties": false
+      },
+      "KerberosNameForm": {
+        "type": "string",
+        "description": "How a client principal names a user.",
+        "enum": [
+          "local_part",
+          "principal"
+        ]
+      },
+      "KerberosSettings": {
+        "type": "object",
+        "description": "What an administrator sets for a Kerberos provider.",
+        "properties": {
+          "create_users": {
+            "type": "boolean",
+            "description": "Without a directory: create an account (named by the name) for a\nprincipal no account matches.",
+            "default": false
+          },
+          "keytab": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The service's keytab file, base64. Write-only: never returned; left\nout on an update it is kept, an empty string clears it.",
+            "default": null,
+            "writeOnly": true
+          },
+          "ldap_attribute": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The directory attribute holding the name (`sAMAccountName` or\n`userPrincipalName` on Active Directory, `uid` or `krbPrincipalName`\nelsewhere, by the name form, when unset).",
+            "default": null
+          },
+          "ldap_idp_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "An LDAP identity provider that owns these users: the name is looked\nup in the directory and the user imported or refreshed through it.",
+            "default": null
+          },
+          "match_username": {
+            "type": "boolean",
+            "description": "Without a directory: sign in the local account whose username is the\nname.",
+            "default": true
+          },
+          "max_skew_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Allowed clock difference with clients, 30–900 seconds.",
+            "default": 300
+          },
+          "name_form": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/KerberosNameForm"
+              }
+            ],
+            "default": "local_part"
+          },
+          "realms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The client realms whose users may sign in; the service's realm when\nempty.",
+            "default": []
+          },
+          "service_principal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The service tickets are issued for, `HTTP/<host>@<REALM>`, where\n`<host>` is the name browsers use for rIDM. Taken from the keytab\nwhen it holds one service only.",
+            "default": null
+          },
+          "trusted_networks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The networks (CIDRs) from which the login page tries Kerberos on its\nown; elsewhere users click the provider's button.",
+            "default": []
+          }
+        },
+        "additionalProperties": false
+      },
+      "KerberosUpstream": {
+        "type": "object",
+        "description": "The Kerberos side of a `kerberos` identity provider.",
+        "required": [
+          "service_principal",
+          "realms",
+          "keytab_entries",
+          "keytab_set",
+          "supported",
+          "name_form",
+          "match_username",
+          "create_users",
+          "trusted_networks",
+          "max_skew_seconds"
+        ],
+        "properties": {
+          "create_users": {
+            "type": "boolean"
+          },
+          "keytab_entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KeytabEntryInfo"
+            },
+            "description": "What the stored keytab holds (never a key)."
+          },
+          "keytab_set": {
+            "type": "boolean",
+            "description": "A keytab is stored (it is never returned)."
+          },
+          "ldap_attribute": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ldap_idp_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "match_username": {
+            "type": "boolean"
+          },
+          "max_skew_seconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name_form": {
+            "$ref": "#/components/schemas/KerberosNameForm"
+          },
+          "realms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "service_principal": {
+            "type": "string"
+          },
+          "supported": {
+            "type": "boolean",
+            "description": "This build of rIDM can accept tickets (the `kerberos` feature)."
+          },
+          "trusted_networks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "KeyPolicy": {
         "type": "object",
         "description": "Signing key lifecycle policy.",
@@ -23379,6 +23716,80 @@
           "rsa-oaep-mgf1p",
           "rsa-oaep-sha256"
         ]
+      },
+      "KeytabBody": {
+        "type": "object",
+        "required": [
+          "keytab"
+        ],
+        "properties": {
+          "keytab": {
+            "type": "string",
+            "description": "A keytab file, base64."
+          }
+        },
+        "additionalProperties": false
+      },
+      "KeytabEntryInfo": {
+        "type": "object",
+        "description": "What a keytab entry says, without its key: what the admin API shows.",
+        "required": [
+          "principal",
+          "kvno",
+          "etype",
+          "etype_name",
+          "supported"
+        ],
+        "properties": {
+          "etype": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "etype_name": {
+            "type": "string",
+            "description": "e.g. `aes256-cts-hmac-sha1-96`."
+          },
+          "kvno": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "principal": {
+            "type": "string"
+          },
+          "supported": {
+            "type": "boolean",
+            "description": "rIDM can use this key (AES)."
+          }
+        }
+      },
+      "KeytabReport": {
+        "type": "object",
+        "description": "What a keytab holds, for the administrator to check before creating a\nKerberos provider with it.",
+        "required": [
+          "entries",
+          "service_principals",
+          "supported"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KeytabEntryInfo"
+            }
+          },
+          "service_principals": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The services it has an AES key for (a provider needs one of them)."
+          },
+          "supported": {
+            "type": "boolean",
+            "description": "This build of rIDM can accept tickets (the `kerberos` feature)."
+          }
+        }
       },
       "LdapEditMode": {
         "type": "string",
@@ -24787,6 +25198,18 @@
             "type": [
               "string",
               "null"
+            ],
+            "default": null
+          },
+          "kerberos": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/KerberosSettings",
+                "description": "Required for a `kerberos` provider, refused for any other."
+              }
             ],
             "default": null
           },

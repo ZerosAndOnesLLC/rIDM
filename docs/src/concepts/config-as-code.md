@@ -61,7 +61,7 @@ of configuration:
 | `message_templates` | email and SMS template overrides |
 | `webhooks` | webhook endpoints and the events they receive |
 | `ip_rules` | tenant-wide and per-client IP allow and deny rules |
-| `identity_providers` | upstream providers for brokering |
+| `identity_providers` | upstream providers for brokering, directories and Kerberos realms (without their secrets) |
 
 The complete schema is in [Tenant configuration document](../reference/tenant-document.md),
 and [`examples/demo-tenant.json`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/examples/demo-tenant.json)

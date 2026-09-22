@@ -33,6 +33,7 @@ jobs:
           - pkce
           - scim_filter
           - saml_message
+          - kerberos_token
     env:
       CARGO_TERM_COLOR: always
       CARGO_INCREMENTAL: "0"

@@ -12,6 +12,7 @@ pub mod db;
 pub mod error;
 pub mod healthcheck;
 pub mod jobs;
+pub mod kerberos;
 pub mod ldap;
 pub mod messaging;
 pub mod middleware;

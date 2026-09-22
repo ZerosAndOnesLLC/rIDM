@@ -9,11 +9,12 @@ import { Field, NumberInput, SaveIndicator, Section, SelectInput, TagsInput, Tex
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
-import { href, type IdentityProvider, type IdentityProviderPatch, type IdpPreset, type LdapSettings, type SamlUpstreamSettings } from "@/lib/console/ops";
+import { href, type IdentityProvider, type IdentityProviderPatch, type IdpPreset, type KerberosSettings, type KeytabReport, type LdapSettings, type SamlUpstreamSettings } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
 import { CreateDialog, DeleteButton, ErrorLine, Split } from "../access/common";
 import { CopyButton } from "../clients/reveal";
 import { JsonInput } from "../users/attributes";
+import { fileToBase64, KerberosUpstreamSection } from "./kerberos-upstream";
 import { LdapUpstreamSection } from "./ldap-upstream";
 import { SamlSpDetails, SamlUpstreamSection } from "./saml-upstream";
 
@@ -38,7 +39,7 @@ export function IdentityProvidersPage({ tenant, selected }: { tenant: string; se
     <>
       <PageHeader
         title="Identity providers"
-        sub="Upstream OpenID Connect, OAuth 2.0 and SAML 2.0 providers users can sign in through, and LDAP or Active Directory directories they sign in with."
+        sub="Upstream OpenID Connect, OAuth 2.0 and SAML 2.0 providers users can sign in through, LDAP or Active Directory directories they sign in with, and Kerberos realms for desktop sign-in."
         actions={
           can("ridm:idps:write") ? (
             <Button variant="primary" onClick={() => setCreating(true)}>
@@ -118,8 +119,13 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
   const [usersDn, setUsersDn] = useState("");
   const [bindDn, setBindDn] = useState("");
   const [bindPassword, setBindPassword] = useState("");
+  const [keytab, setKeytab] = useState<{ b64: string; report: KeytabReport } | null>(null);
+  const [keytabError, setKeytabError] = useState<string | null>(null);
+  const [spn, setSpn] = useState("");
+  const [networks, setNetworks] = useState<string[]>([]);
   const saml = preset === "saml";
   const ldap = preset === "ldap";
+  const kerberos = preset === "kerberos";
   const chosen = presets.data?.find((p) => p.name === preset) ?? null;
   const pickPreset = (name: string) => {
     setPreset(name);
@@ -131,8 +137,38 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
   };
   const problem = (error: { errors?: { field: string; message: string }[] | null; detail?: string | null; title: string }) =>
     new Error(error.errors?.map((e) => `${e.field} ${e.message}`).join("; ") || error.detail || error.title);
+  const onKeytab = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setKeytab(null);
+    setKeytabError(null);
+    void fileToBase64(file).then(async (b64) => {
+      // Read it first: what it holds, and which service it is for.
+      const { data, error } = await client.POST("/admin/tenants/{slug}/identity-providers/kerberos-keytab", { params: { path: { slug: tenant } }, body: { keytab: b64 } });
+      if (error) {
+        setKeytabError(problem(error).message);
+        return;
+      }
+      setKeytab({ b64, report: data });
+      setSpn(data.service_principals[0] ?? "");
+    });
+  };
   const create = useMutation({
     mutationFn: async () => {
+      if (kerberos) {
+        const { data, error } = await client.POST("/admin/tenants/{slug}/identity-providers", {
+          params: { path: { slug: tenant } },
+          body: {
+            alias: alias.trim(),
+            kind: "kerberos",
+            display_name: displayName.trim() || null,
+            kerberos: { keytab: keytab?.b64 ?? null, service_principal: spn || null, trusted_networks: networks } as KerberosSettings,
+          } as never,
+        });
+        if (error) throw problem(error);
+        return data;
+      }
       if (ldap) {
         // The vendor's defaults fill in the attributes and filters; review them on the provider page.
         const { data, error } = await client.POST("/admin/tenants/{slug}/identity-providers", {
@@ -189,12 +225,15 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
       setUsersDn("");
       setBindDn("");
       setBindPassword("");
+      setKeytab(null);
+      setSpn("");
+      setNetworks([]);
       onOpenChange(false);
       router.push(href("identity-providers", tenant, { idp: p.id }));
     },
   });
-  const needsIssuer = !saml && !ldap && (!chosen || chosen.kind === "oidc");
-  const ready = alias.trim() && (ldap ? ldapUrl.trim() && usersDn.trim() : saml ? metadataUrl.trim() || metadata.trim() : clientId.trim());
+  const needsIssuer = !saml && !ldap && !kerberos && (!chosen || chosen.kind === "oidc");
+  const ready = alias.trim() && (kerberos ? keytab && spn : ldap ? ldapUrl.trim() && usersDn.trim() : saml ? metadataUrl.trim() || metadata.trim() : clientId.trim());
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) void file.text().then(setMetadata);
@@ -204,7 +243,7 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
       open={open}
       onOpenChange={onOpenChange}
       title="New identity provider"
-      description="Pick a preset for the common providers, give an OpenID Connect issuer (its endpoints are discovered), a SAML identity provider's metadata, or an LDAP directory. Register the URLs shown afterwards with the provider."
+      description="Pick a preset for the common providers, give an OpenID Connect issuer (its endpoints are discovered), a SAML identity provider's metadata, an LDAP directory, or a Kerberos service's keytab. Register the URLs shown afterwards with the provider."
       submitLabel="Create provider"
       pending={create.isPending}
       error={create.error?.message ?? null}
@@ -216,6 +255,7 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
             <option value="">Custom (OpenID Connect)</option>
             <option value="saml">SAML 2.0</option>
             <option value="ldap">LDAP / Active Directory</option>
+            <option value="kerberos">Kerberos / SPNEGO (desktop sign-in)</option>
             {(presets.data ?? []).map((p) => (
               <option key={p.name} value={p.name}>
                 {p.display_name}
@@ -224,8 +264,8 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
           </SelectInput>
         )}
       </Field>
-      <Field label="Alias" hint={ldap ? "Lowercase letters, digits and hyphens." : "In the callback URL: lowercase letters, digits and hyphens."}>
-        {(id, by) => <TextInput id={id} aria-describedby={by} value={alias} onChange={(e) => setAlias(e.target.value)} autoFocus required placeholder={saml || ldap ? "corp" : "google"} spellCheck={false} />}
+      <Field label="Alias" hint={ldap || kerberos ? "Lowercase letters, digits and hyphens." : "In the callback URL: lowercase letters, digits and hyphens."}>
+        {(id, by) => <TextInput id={id} aria-describedby={by} value={alias} onChange={(e) => setAlias(e.target.value)} autoFocus required placeholder={kerberos ? "windows" : saml || ldap ? "corp" : "google"} spellCheck={false} />}
       </Field>
       <Field label="Display name" hint={ldap ? "Shown to administrators, and in messages to directory users." : "On the login button: “Continue with …”."}>
         {(id, by) => <TextInput id={id} aria-describedby={by} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={chosen?.display_name ?? "Company SSO"} />}
@@ -235,7 +275,38 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
           {(id, by) => <TextInput id={id} aria-describedby={by} type="url" value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder={chosen?.issuer ?? "https://idp.example.com"} spellCheck={false} />}
         </Field>
       )}
-      {ldap ? (
+      {kerberos ? (
+        <>
+          <div className="flex flex-col gap-1.5">
+            <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 self-start rounded-[var(--radius)] border border-line bg-paper px-3.5 text-[0.875rem] font-medium text-ink hover:bg-ground focus-within:outline-2 focus-within:outline-accent">
+              <input type="file" accept=".keytab,application/octet-stream" className="sr-only" onChange={onKeytab} />
+              {keytab ? "Choose another keytab" : "Choose the service's keytab"}
+            </label>
+            <p className="text-[0.8125rem] text-muted" aria-live="polite">
+              {keytabError ??
+                (keytab
+                  ? `${keytab.report.entries.length} key${keytab.report.entries.length === 1 ? "" : "s"}; ${keytab.report.service_principals.length ? `AES keys for ${keytab.report.service_principals.join(", ")}` : "no AES key rIDM can use"}.`
+                  : "Exported for HTTP/<host>@REALM with ktpass (Active Directory) or kadmin ktadd (MIT). Stored encrypted.")}
+            </p>
+          </div>
+          {keytab && keytab.report.service_principals.length > 1 && (
+            <Field label="Service principal">
+              {(id) => (
+                <SelectInput id={id} value={spn} onChange={(e) => setSpn(e.target.value)}>
+                  {keytab.report.service_principals.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </SelectInput>
+              )}
+            </Field>
+          )}
+          <Field label="Trusted networks" hint="Where the login page tries desktop sign-in on its own; elsewhere users click the button. Optional.">
+            {(id, by) => <TagsInput id={id} describedBy={by} value={networks} onChange={setNetworks} placeholder="10.0.0.0/8" />}
+          </Field>
+        </>
+      ) : ldap ? (
         <>
           <Field label="Server">
             {(id) => (
@@ -333,6 +404,19 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
     setDraft((d) => (d && d.ldap ? { ...d, ldap: { ...d.ldap, ...settings } as IdentityProvider["ldap"] } : d));
     if (editable) queue({ ldap: settings as LdapSettings });
   };
+  // And a Kerberos realm's; its keytab is uploaded on its own.
+  const updateKerberos = (settings: Omit<KerberosSettings, "keytab">) => {
+    setDraft((d) => (d && d.kerberos ? { ...d, kerberos: { ...d.kerberos, ...settings } as IdentityProvider["kerberos"] } : d));
+    if (editable) queue({ kerberos: settings as KerberosSettings });
+  };
+  const all = useQuery({
+    queryKey: ["idps", tenant],
+    queryFn: async () => {
+      const { data, error } = await client.GET("/admin/tenants/{slug}/identity-providers", { params: { path: { slug: tenant } } });
+      if (error) throw new Error(error.detail ?? error.title);
+      return data;
+    },
+  });
   const [secret, setSecret] = useState("");
   const setSecretMutation = useMutation({
     mutationFn: async (value: string | null) => {
@@ -361,6 +445,7 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
   const m = draft.mappers;
   const isSaml = draft.kind === "saml";
   const isLdap = draft.kind === "ldap";
+  const isKerberos = draft.kind === "kerberos";
   const setMapper = (patch: Partial<IdentityProvider["mappers"]>) => update({ mappers: { ...m, ...patch } });
   const submitSecret = (e: FormEvent) => {
     e.preventDefault();
@@ -372,7 +457,7 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
         <h2 className="text-[1.125rem] font-semibold text-ink">{draft.display_name}</h2>
         <SaveIndicator status={status} error={error} />
       </div>
-      {isLdap ? null : isSaml ? (
+      {isLdap || isKerberos ? null : isSaml ? (
         <SamlSpDetails provider={draft} />
       ) : (
         <Card title="Callback URL">
@@ -385,13 +470,15 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
       )}
       <Section id="idp-general" title="Provider">
         <Field label="Display name">{(fid) => <TextInput id={fid} value={draft.display_name} disabled={!editable} onChange={(e) => update({ display_name: e.target.value })} />}</Field>
-        <Field label="Alias" hint={isLdap ? "Lowercase letters, digits and hyphens." : isSaml ? "Changing it changes rIDM's entity ID and URLs: the identity provider must be told." : "Changing it changes the callback URL."}>
+        <Field label="Alias" hint={isLdap || isKerberos ? "Lowercase letters, digits and hyphens." : isSaml ? "Changing it changes rIDM's entity ID and URLs: the identity provider must be told." : "Changing it changes the callback URL."}>
           {(fid, by) => <TextInput id={fid} aria-describedby={by} value={draft.alias} disabled={!editable} spellCheck={false} onChange={(e) => update({ alias: e.target.value })} />}
         </Field>
         <Field label="Protocol">
           {(fid) => (
-            <SelectInput id={fid} value={draft.kind} disabled={!editable || isSaml || isLdap} onChange={(e) => update({ kind: e.target.value as IdentityProvider["kind"] })}>
-              {isLdap ? (
+            <SelectInput id={fid} value={draft.kind} disabled={!editable || isSaml || isLdap || isKerberos} onChange={(e) => update({ kind: e.target.value as IdentityProvider["kind"] })}>
+              {isKerberos ? (
+                <option value="kerberos">Kerberos / SPNEGO</option>
+              ) : isLdap ? (
                 <option value="ldap">LDAP / Active Directory</option>
               ) : isSaml ? (
                 <option value="saml">SAML 2.0</option>
@@ -404,15 +491,35 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
             </SelectInput>
           )}
         </Field>
-        <Field label="Order" hint={isLdap ? "Which directory is asked first about a username no account has." : "Position on the login page."}>
+        <Field label="Order" hint={isLdap ? "Which directory is asked first about a username no account has." : isKerberos ? "Which Kerberos button the login page shows when there are several." : "Position on the login page."}>
           {(fid, by) => <NumberInput id={fid} describedBy={by} value={draft.sort_order} min={-1000} max={1000} onValue={(v) => v !== null && update({ sort_order: v })} />}
         </Field>
         <div className="sm:col-span-2 flex flex-col gap-1">
           <Toggle label="Enabled" hint={isLdap ? "A disabled directory signs nobody in and is not synced." : "Disabled providers sign nobody in."} checked={draft.enabled} disabled={!editable} onChange={(v) => update({ enabled: v })} />
-          {!isLdap && <Toggle label="Hidden" hint="Not offered on the login page; reachable through a direct link only." checked={draft.hidden} disabled={!editable} onChange={(v) => update({ hidden: v })} />}
+          {!isLdap && (
+            <Toggle
+              label="Hidden"
+              hint={isKerberos ? "No button on the login page; automatic sign-in from the trusted networks goes on." : "Not offered on the login page; reachable through a direct link only."}
+              checked={draft.hidden}
+              disabled={!editable}
+              onChange={(v) => update({ hidden: v })}
+            />
+          )}
         </div>
       </Section>
-      {isLdap ? (
+      {isKerberos ? (
+        <KerberosUpstreamSection
+          tenant={tenant}
+          provider={draft}
+          providers={all.data ?? []}
+          editable={editable}
+          onChange={updateKerberos}
+          onSaved={(p) => {
+            qc.setQueryData(["idp", tenant, id], p);
+            setDraft(p);
+          }}
+        />
+      ) : isLdap ? (
         <LdapUpstreamSection
           tenant={tenant}
           provider={draft}
@@ -491,62 +598,64 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
           </Section>
         </>
       )}
-      <Section id="idp-accounts" title="Accounts" description="How an upstream identity becomes a local account, and what it fills in.">
-        <Field label="Link policy" hint={POLICY_HINT[draft.link_policy]} wide>
-          {(fid, by) => (
-            <SelectInput id={fid} aria-describedby={by} value={draft.link_policy} disabled={!editable} onChange={(e) => update({ link_policy: e.target.value as IdentityProvider["link_policy"] })}>
-              <option value="verified_email">Link by verified email</option>
-              <option value="explicit">Explicit linking only</option>
-              <option value="always_new">Always a new account</option>
-            </SelectInput>
+      {!isKerberos && (
+        <Section id="idp-accounts" title="Accounts" description="How an upstream identity becomes a local account, and what it fills in.">
+          <Field label="Link policy" hint={POLICY_HINT[draft.link_policy]} wide>
+            {(fid, by) => (
+              <SelectInput id={fid} aria-describedby={by} value={draft.link_policy} disabled={!editable} onChange={(e) => update({ link_policy: e.target.value as IdentityProvider["link_policy"] })}>
+                <option value="verified_email">Link by verified email</option>
+                <option value="explicit">Explicit linking only</option>
+                <option value="always_new">Always a new account</option>
+              </SelectInput>
+            )}
+          </Field>
+          <div className="sm:col-span-2">
+            <Toggle
+              label="Trust the provider's email addresses"
+              hint={isLdap ? "Treat the directory's addresses as verified (a directory says nothing about it). Needed to link existing accounts by email." : "Treat them as verified even without an email_verified claim."}
+              checked={draft.trust_email}
+              disabled={!editable}
+              onChange={(v) => update({ trust_email: v })}
+            />
+          </div>
+          {!isLdap && (
+            <Field label={isSaml ? "Subject attribute" : "Subject claim"} hint={isSaml ? "The stable identifier; the NameID when empty. Name an attribute for identity providers that send transient NameIDs." : "The stable identifier; sub when empty."}>
+              {(fid, by) => <TextInput id={fid} aria-describedby={by} value={m.subject ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => setMapper({ subject: e.target.value || null })} />}
+            </Field>
           )}
-        </Field>
-        <div className="sm:col-span-2">
-          <Toggle
-            label="Trust the provider's email addresses"
-            hint={isLdap ? "Treat the directory's addresses as verified (a directory says nothing about it). Needed to link existing accounts by email." : "Treat them as verified even without an email_verified claim."}
-            checked={draft.trust_email}
-            disabled={!editable}
-            onChange={(v) => update({ trust_email: v })}
-          />
-        </div>
-        {!isLdap && (
-          <Field label={isSaml ? "Subject attribute" : "Subject claim"} hint={isSaml ? "The stable identifier; the NameID when empty. Name an attribute for identity providers that send transient NameIDs." : "The stable identifier; sub when empty."}>
-            {(fid, by) => <TextInput id={fid} aria-describedby={by} value={m.subject ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => setMapper({ subject: e.target.value || null })} />}
+          <Field
+            label={isSaml || isLdap ? "Username attribute" : "Username claim"}
+            hint={
+              isLdap
+                ? "The directory attribute a username comes from; the one in Users above when empty."
+                : isSaml
+                  ? "preferred_username when empty; uid, eduPersonPrincipalName and the UPN count. The email, then alias-subject, stand in."
+                  : "preferred_username when empty; the email, then alias-subject, stand in."
+            }
+          >
+            {(fid, by) => <TextInput id={fid} aria-describedby={by} value={m.username ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => setMapper({ username: e.target.value || null })} />}
           </Field>
-        )}
-        <Field
-          label={isSaml || isLdap ? "Username attribute" : "Username claim"}
-          hint={
-            isLdap
-              ? "The directory attribute a username comes from; the one in Users above when empty."
-              : isSaml
-                ? "preferred_username when empty; uid, eduPersonPrincipalName and the UPN count. The email, then alias-subject, stand in."
-                : "preferred_username when empty; the email, then alias-subject, stand in."
-          }
-        >
-          {(fid, by) => <TextInput id={fid} aria-describedby={by} value={m.username ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => setMapper({ username: e.target.value || null })} />}
-        </Field>
-        <Field label={isSaml || isLdap ? "Email attribute" : "Email claim"} hint={isLdap ? "mail when empty." : isSaml ? "email when empty; mail and the standard attribute URIs count as email." : "email when empty."}>
-          {(fid, by) => <TextInput id={fid} aria-describedby={by} value={m.email ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => setMapper({ email: e.target.value || null })} />}
-        </Field>
-        {!isLdap && (
-          <Field label="Email verified claim" hint="email_verified when empty.">
-            {(fid, by) => <TextInput id={fid} aria-describedby={by} value={m.email_verified ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => setMapper({ email_verified: e.target.value || null })} />}
+          <Field label={isSaml || isLdap ? "Email attribute" : "Email claim"} hint={isLdap ? "mail when empty." : isSaml ? "email when empty; mail and the standard attribute URIs count as email." : "email when empty."}>
+            {(fid, by) => <TextInput id={fid} aria-describedby={by} value={m.email ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => setMapper({ email: e.target.value || null })} />}
           </Field>
-        )}
-        <Field
-          label="Profile attributes"
-          hint={
-            isLdap
-              ? 'JSON object of attribute name → directory attribute, refreshed at every sign-in and sync (and written back when the directory is writable): {"first_name": "givenName"}.'
-              : 'JSON object of attribute name → claim name, written on every sign-in: {"first_name": "given_name"}. A dot descends into an object.'
-          }
-          wide
-        >
-          {(fid, by) => <JsonInput id={fid} describedBy={by} value={Object.keys(m.attributes ?? {}).length ? m.attributes : null} disabled={!editable} onChange={(v) => setMapper({ attributes: (v as Record<string, string> | null) ?? {} })} />}
-        </Field>
-      </Section>
+          {!isLdap && (
+            <Field label="Email verified claim" hint="email_verified when empty.">
+              {(fid, by) => <TextInput id={fid} aria-describedby={by} value={m.email_verified ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => setMapper({ email_verified: e.target.value || null })} />}
+            </Field>
+          )}
+          <Field
+            label="Profile attributes"
+            hint={
+              isLdap
+                ? 'JSON object of attribute name → directory attribute, refreshed at every sign-in and sync (and written back when the directory is writable): {"first_name": "givenName"}.'
+                : 'JSON object of attribute name → claim name, written on every sign-in: {"first_name": "given_name"}. A dot descends into an object.'
+            }
+            wide
+          >
+            {(fid, by) => <JsonInput id={fid} describedBy={by} value={Object.keys(m.attributes ?? {}).length ? m.attributes : null} disabled={!editable} onChange={(v) => setMapper({ attributes: (v as Record<string, string> | null) ?? {} })} />}
+          </Field>
+        </Section>
+      )}
       {editable && <DeleteButton what="identity provider" pending={del.isPending} error={del.error?.message ?? null} onConfirm={() => del.mutate()} description={isLdap ? "Its users keep their accounts but have no password until one is set; the groups it synced stay as they are." : "Identities linked through it are removed; the users keep their accounts."} />}
     </div>
   );

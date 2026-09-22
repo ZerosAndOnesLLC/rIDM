@@ -91,6 +91,13 @@ export interface PublicFlow {
   finish_url?: string;
   /** Upstream providers offered as "Continue with …" buttons. */
   identity_providers: PublicIdp[];
+  /** Kerberos desktop sign-in, when the tenant offers it. */
+  kerberos: PublicKerberos | null;
+}
+
+export interface PublicKerberos {
+  /** The button's label; no button when null (automatic attempts only). */
+  display_name: string | null;
 }
 
 export interface PublicOrganization {

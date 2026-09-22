@@ -70,6 +70,9 @@ pub struct PublicFlow {
     pub organizations: Vec<PublicOrganization>,
     /// Upstream providers offered on the login page ("Continue with ...").
     pub identity_providers: Vec<crate::models::PublicIdentityProvider>,
+    /// Kerberos desktop sign-in (`POST /flows/{id}/kerberos`), when the
+    /// tenant has a usable Kerberos provider.
+    pub kerberos: Option<crate::services::kerberos::PublicKerberos>,
 }
 
 /// An organization offered at the `organization` stage.
@@ -348,6 +351,11 @@ pub async fn public_state(
             vec![]
         },
         identity_providers: crate::services::identity_providers::offered(state, tenant.id).await?,
+        kerberos: if flow.stage == FlowStage::Authenticate {
+            crate::services::kerberos::public(state, tenant.id).await?
+        } else {
+            None
+        },
     })
 }
 

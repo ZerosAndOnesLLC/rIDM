@@ -89,6 +89,10 @@ hickory-resolver = { version = "=0.26.3", default-features = false, features = [
 # LDAP / Active Directory upstream: async client over tokio, TLS through
 # rustls on the same aws-lc-rs provider as everything else.
 ldap3 = { version = "=0.12.1", default-features = false, features = ["tls-rustls-aws-lc-rs"] }
+# Kerberos / SPNEGO desktop sign-in (the `kerberos` feature of ridm-api): the
+# Kerberos ASN.1 messages and the RFC 3962 AES enctypes, in pure Rust, so the
+# static binaries need no system GSSAPI.
+picky-krb = "=0.12.4"
 
 # Serde / types
 serde = { version = "=1.0.229", features = ["derive"] }

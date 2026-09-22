@@ -70,6 +70,7 @@ function PreviewForm({ tenant }: { tenant: string | null }) {
     mfa: null,
     organizations: [],
     identity_providers: [],
+    kerberos: null,
   };
   const post: Post = <T,>() => new Promise<T>(() => {});
   return <Authenticate flow={flow} post={post} reload={() => Promise.resolve()} magic={null} tenant={tenant} preview />;
@@ -176,6 +177,26 @@ function usePasskeySupport(): boolean {
 
 const BROKER_ERRORS = ["denied", "upstream", "invalid_state", "email_in_use", "already_linked", "account_disabled"] as const;
 
+/** The login page's text for a Kerberos step that did not sign in. */
+function kerberosError(e: unknown): string | null {
+  if (!(e instanceof ApiError)) return null;
+  // Still 401 after the browser's turn: it had no ticket to offer.
+  if (e.status === 401) return "login.kerberos.no_ticket";
+  switch (e.code) {
+    case "kerberos_ntlm":
+    case "kerberos_unsupported":
+      return "login.kerberos.no_ticket";
+    case "kerberos_invalid":
+    case "kerberos_replay":
+      return "login.kerberos.invalid";
+    case "kerberos_no_account":
+      return "login.kerberos.no_account";
+    case "account_disabled":
+      return "login.broker.account_disabled";
+  }
+  return null;
+}
+
 function Authenticate({
   flow,
   post,
@@ -210,17 +231,61 @@ function Authenticate({
   const [error, setError] = useState<string | null>(() =>
     brokerError ? t(BROKER_ERRORS.includes(brokerError as (typeof BROKER_ERRORS)[number]) ? `login.broker.${brokerError}` : "login.broker.upstream") : null,
   );
-  const providers = flow.identity_providers ?? [];
-  const providerButtons = providers.map((idp) => (
-    <Button key={idp.alias} type="button" variant={methods.length === 0 && !passkey ? "primary" : "secondary"} disabled={busy} onClick={() => tenant && navigate(`${tenantBase(tenant)}/broker/${encodeURIComponent(idp.alias)}/start?flow=${encodeURIComponent(flow.id)}`)}>
-      {t("login.with_provider", { name: idp.display_name })}
-    </Button>
-  ));
   const [sent, setSent] = useState<Passwordless | null>(null);
   const [code, setCode] = useState("");
   const onToken = useCallback((tok: string | null) => setCaptcha(tok), []);
 
   // Opened from a magic-link email: redeem the token straight away (once).
+  // Kerberos: asked once on its own when the page opens; the server
+  // challenges only a browser on the tenant's trusted networks, and a
+  // browser without a ticket gives up quietly (204, or a final 401).
+  const [negotiating, setNegotiating] = useState(false);
+  const kerberosStarted = useRef(false);
+  const offersKerberos = Boolean(flow.kerberos);
+  useEffect(() => {
+    if (!offersKerberos || preview || magic || kerberosStarted.current) return;
+    kerberosStarted.current = true;
+    setNegotiating(true);
+    post("kerberos", { auto: true })
+      .catch((e: unknown) => {
+        // Only a ticket that named nobody (or a disabled account) is worth
+        // saying: every other failure means "no desktop sign-in here".
+        const key = kerberosError(e);
+        if (key === "login.kerberos.no_account" || key === "login.broker.account_disabled") setError(t(key));
+      })
+      .finally(() => setNegotiating(false));
+  }, [offersKerberos, preview, magic, post, t]);
+  async function signInWithKerberos() {
+    setBusy(true);
+    setError(null);
+    try {
+      await post("kerberos", { auto: false, remember_device: remember });
+    } catch (e) {
+      const key = kerberosError(e);
+      setError(key ? t(key) : errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const providers = flow.identity_providers ?? [];
+  const kerberosLabel = flow.kerberos?.display_name ?? null;
+  const providerVariant = methods.length === 0 && !passkey ? "primary" : "secondary";
+  const providerButtons = [
+    ...(kerberosLabel
+      ? [
+          <Button key="kerberos" type="button" variant={providerVariant} disabled={busy} onClick={() => void signInWithKerberos()}>
+            {t("login.with_provider", { name: kerberosLabel })}
+          </Button>,
+        ]
+      : []),
+    ...providers.map((idp) => (
+      <Button key={idp.alias} type="button" variant={providerVariant} disabled={busy} onClick={() => tenant && navigate(`${tenantBase(tenant)}/broker/${encodeURIComponent(idp.alias)}/start?flow=${encodeURIComponent(flow.id)}`)}>
+        {t("login.with_provider", { name: idp.display_name })}
+      </Button>
+    )),
+  ];
+  const hasProviders = providerButtons.length > 0;
+
   const magicStarted = useRef(false);
   useEffect(() => {
     if (!magic || magicStarted.current) return;
@@ -284,7 +349,8 @@ function Authenticate({
       <div className="flex flex-col gap-5">
         <Title sub={subtitle}>{t("login.title")}</Title>
         {error && <Alert tone="error">{error}</Alert>}
-        {passkey || providers.length > 0 ? (
+        {negotiating && <Alert tone="info">{t("login.kerberos.checking")}</Alert>}
+        {passkey || hasProviders ? (
           <>
             {passkey && <Checkbox label={t("login.remember_device")} checked={remember} onChange={(e) => setRemember(e.target.checked)} />}
             {passkeyButton}
@@ -352,6 +418,7 @@ function Authenticate({
     <div className="flex flex-col gap-5">
       <Title sub={subtitle}>{t("login.title")}</Title>
       {error && <Alert tone="error">{error}</Alert>}
+      {negotiating && <Alert tone="info">{t("login.kerberos.checking")}</Alert>}
       {flow.captcha && !error && flow.attempts > 0 && <Alert tone="info">{t("login.captcha_required")}</Alert>}
 
       {method === "password" ? (
@@ -399,7 +466,7 @@ function Authenticate({
         </form>
       )}
 
-      {(others.length > 0 || passkey || providers.length > 0) && (
+      {(others.length > 0 || passkey || hasProviders) && (
         <>
           <Divider label={t("login.or")} />
           <div className="flex flex-col gap-2">

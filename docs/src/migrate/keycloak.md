@@ -26,7 +26,7 @@ into [bulk import](../admin/users.md#bulk-import) rows. Read
 | Identity provider (OpenID Connect, social) | [Identity provider](../concepts/brokering.md) (`oidc` or `oauth2`, presets for Google, Microsoft, GitHub, Apple, GitLab) | First-broker-login flow becomes `link_policy` |
 | Identity provider (SAML) | [SAML identity provider](../admin/saml-upstream.md) (`saml`) | |
 | User federation (LDAP) | [LDAP directory](../admin/ldap.md) (`ldap`): bind authentication, periodic and on-sign-in sync, group mapping, `edit_mode` `read_only` or `writable` | Keycloak's `UNSYNCED` mode has no equivalent; users are always linked to the directory |
-| User federation (Kerberos) | Not supported | Planned (Phase 13) |
+| User federation (Kerberos), Kerberos authenticator | [Kerberos provider](../admin/kerberos.md) (`kerberos`): SPNEGO with the service's keytab, users matched by name or looked up in an LDAP provider | AES tickets only (no RC4, no RFC 8009 types); no credential delegation |
 | Required actions | See [Required actions](#required-actions) | |
 | Authentication flows | Tenant settings: `auth`, `mfa`, `mfa_methods`, `lockout`, `captcha`, `registration` | rIDM's flow is fixed; its steps are switched on and off, not rearranged |
 | Password policy | `settings.password` | See [Realm settings](#realm-settings) |

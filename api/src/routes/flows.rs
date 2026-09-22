@@ -91,6 +91,7 @@ pub fn router() -> Router<AppState> {
         .route("/t/{slug}/flows/{id}/mfa/sms/verify", post(mfa_sms_verify))
         .route("/t/{slug}/flows/{id}/passkey/start", post(passkey_start))
         .route("/t/{slug}/flows/{id}/passkey/finish", post(passkey_finish))
+        .route("/t/{slug}/flows/{id}/kerberos", post(kerberos))
         .route("/t/{slug}/flows/{id}/profile", post(profile))
         .route("/t/{slug}/flows/{id}/terms", post(terms))
         .route("/t/{slug}/flows/{id}/organization", post(organization))
@@ -622,6 +623,145 @@ async fn passkey_finish(
             (
                 StatusCode::UNAUTHORIZED,
                 axum::Json(json!({"error": INVALID_PASSKEY.0, "error_description": INVALID_PASSKEY.1, "attempts": flow.attempts})),
+            )
+                .into_response(),
+        ),
+        Err(e) => e.into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct KerberosBody {
+    csrf: String,
+    /// The login page asks on its own (not a click on the button): only a
+    /// browser on a trusted network is challenged.
+    #[serde(default)]
+    auto: bool,
+    #[serde(default)]
+    remember_device: bool,
+}
+
+/// The token of an `Authorization: Negotiate <base64>` header.
+fn negotiate_token(headers: &HeaderMap) -> Option<Vec<u8>> {
+    use base64::Engine as _;
+    let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
+    let (scheme, token) = value.split_once(' ')?;
+    if !scheme.eq_ignore_ascii_case("negotiate") || token.len() > 64 * 1024 {
+        return None;
+    }
+    base64::engine::general_purpose::STANDARD
+        .decode(token.trim())
+        .ok()
+}
+
+/// Kerberos desktop sign-in (HTTP Negotiate). Without a token the answer is
+/// a `401` challenge (or `204` when an automatic attempt is not for this
+/// browser); with one, the flow's next state, and the mutual-authentication
+/// token in `WWW-Authenticate`.
+async fn kerberos(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    Path((_, id)): Path<(String, Uuid)>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<KerberosBody>,
+) -> Response {
+    use crate::services::kerberos::{self as krb, Negotiation};
+    let flow = match flows::load(&state, tenant.id(), id).await {
+        Ok(f) => f,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = flows::check_csrf(&flow, &body.csrf) {
+        return e.into_response();
+    }
+    if flow.stage != FlowStage::Authenticate {
+        return AppError::BadRequest("flow is not at the authenticate step".into()).into_response();
+    }
+    let origin = geoip::Origin::of_request(&state, &headers, Some(peer));
+    let (ip, location) = (origin.ip_string(), origin.location);
+    let Some(token) = negotiate_token(&headers) else {
+        return match krb::challenge(&state, tenant.id(), &flow, ip.as_deref(), body.auto).await {
+            Ok(true) => {
+                let mut res = no_store(
+                    (
+                        StatusCode::UNAUTHORIZED,
+                        axum::Json(json!({
+                            "error": "negotiate",
+                            "error_description": "the browser is asked for a Kerberos ticket",
+                        })),
+                    )
+                        .into_response(),
+                );
+                res.headers_mut().insert(
+                    header::WWW_AUTHENTICATE,
+                    HeaderValue::from_static("Negotiate"),
+                );
+                res
+            }
+            Ok(false) => no_store(StatusCode::NO_CONTENT.into_response()),
+            Err(e) => e.into_response(),
+        };
+    };
+    let ctx = flows::RequestContext {
+        ip,
+        user_agent: headers
+            .get(header::USER_AGENT)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.chars().take(512).collect()),
+        existing_session: sessions::from_request(&state, &tenant.tenant, &headers)
+            .await
+            .ok()
+            .flatten(),
+        device_secret: trusted_devices::secret_from_headers(&state, &tenant.tenant, &headers),
+        remember_device: body.remember_device,
+        location,
+    };
+    match krb::negotiate(&state, &tenant, flow, &token, ctx).await {
+        Ok(Negotiation::Done { step, answer }) => {
+            let mut res = match step {
+                AuthStep::Authenticated { session, flow } => {
+                    let mut res = respond_state(&state, &tenant, &flow).await;
+                    if let Ok(v) = HeaderValue::from_str(&sessions::set_cookie_header(
+                        &state,
+                        &tenant.tenant,
+                        &session,
+                    )) {
+                        res.headers_mut().append(header::SET_COOKIE, v);
+                    }
+                    res
+                }
+                AuthStep::Blocked { redirect_to } => blocked(&redirect_to),
+                AuthStep::Rejected { .. } => {
+                    let r = krb::Refusal::AccountDisabled;
+                    no_store(
+                        (
+                            StatusCode::FORBIDDEN,
+                            axum::Json(
+                                json!({"error": r.code(), "error_description": r.message()}),
+                            ),
+                        )
+                            .into_response(),
+                    )
+                }
+            };
+            if let Some(a) = answer {
+                use base64::Engine as _;
+                let v = format!(
+                    "Negotiate {}",
+                    base64::engine::general_purpose::STANDARD.encode(a)
+                );
+                if let Ok(v) = HeaderValue::from_str(&v) {
+                    res.headers_mut().insert(header::WWW_AUTHENTICATE, v);
+                }
+            }
+            res
+        }
+        // Not a 401: a second challenge would only have the browser try the
+        // same ticket again.
+        Ok(Negotiation::Refused(r)) => no_store(
+            (
+                StatusCode::FORBIDDEN,
+                axum::Json(json!({"error": r.code(), "error_description": r.message()})),
             )
                 .into_response(),
         ),

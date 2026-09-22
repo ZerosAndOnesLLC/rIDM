@@ -180,6 +180,29 @@ release renames that heading to the version and date.
   `ridm_ldap_sync_seconds`. Console: an LDAP / Active Directory choice under
   Identity providers with a connection test, sync status and Sync now. New
   dependency `ldap3` 0.12.1 (MIT/Apache-2.0, rustls).
+- Kerberos / SPNEGO desktop sign-in: an identity provider of the new kind
+  `kerberos` (settings in `kerberos_identity_providers`; the service's keytab
+  encrypted where every provider keeps its secret, only its entries shown). The
+  login page posts to the flow's new `/kerberos` step, on its own from the
+  provider's `trusted_networks` (unless `prompt=login` or `max_age=0`) or from a
+  "Continue with …" button; rIDM answers with an HTTP Negotiate challenge, and a
+  browser holding a ticket for `HTTP/<host>` signs in without typing. Tickets are
+  validated by rIDM itself (no system GSSAPI): the service principal and keytab,
+  validity, allowed realms, the authenticator's client and clock, a replay cache
+  in Valkey; AES encryption types only; the mutual-authentication answer is sent
+  back. A principal finds its account through an LDAP provider
+  (`ldap_idp_id`, looked up by `sAMAccountName`/`uid` or the principal
+  attribute, and imported as a password sign-in would), or else its link, a
+  local username (`match_username`) or a new account (`create_users`). The
+  session's `amr` is `kerberos`, and SAML assertions state the Kerberos context
+  class. Admin API `POST …/identity-providers/kerberos-keytab` reads a keytab
+  without storing it; the tenant document carries the settings with the
+  directory named by alias. Metric `ridm_kerberos_negotiations_total`. The
+  acceptor is the new `kerberos` cargo feature (new dependency `picky-krb`
+  0.12.4, MIT/Apache-2.0, pure Rust, for the RFC 3962 AES encryption), on in
+  the released image and binaries; without it a provider can be configured but
+  not used. Tested against MIT Kerberos (a KDC and GSSAPI initiator in a
+  container, and headless Chromium negotiating in the browser suite).
 
 ### Changed
 
