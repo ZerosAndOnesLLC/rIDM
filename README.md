@@ -27,7 +27,8 @@ The source is in [`docs/`](docs/); this README stays the developer's overview.
 - **Standards, not surprises.** Authorization code + PKCE, client credentials, refresh
   token rotation with reuse detection, device flow, backchannel sign-in (CIBA), PAR,
   JAR/JARM, DCR, RP-initiated, back-channel and front-channel logout, token exchange,
-  DPoP, a per-client FAPI 2.0 Security Profile, and SAML 2.0 both ways: as an identity
+  DPoP, mutual-TLS client authentication and certificate-bound tokens, a per-client
+  FAPI 2.0 Security Profile, and SAML 2.0 both ways: as an identity
   provider and as the service provider of upstream SAML IdPs (SSO over both browser
   bindings, front-channel Single Logout). LDAP and Active Directory directories, and
   Kerberos desktop sign-in (SPNEGO). No implicit, hybrid, or password grants.
@@ -180,7 +181,8 @@ Applications that already know who the user is can ask them to sign in on their 
 a link to **Requests** in the account console, compares the binding message and approves or
 denies; the client then collects the tokens with the `urn:openid:params:grant-type:ciba`
 grant. A client can also be held to the FAPI 2.0 Security Profile (`security_profile:
-fapi2`): `private_key_jwt` with the issuer as audience, PAR only, PKCE, DPoP-bound tokens,
+fapi2`): `private_key_jwt` with the issuer as audience (or mutual TLS), PAR only, PKCE,
+DPoP- or certificate-bound tokens,
 PS256/ES256/EdDSA signatures both ways and refresh tokens that are not rotated; or just
 required to use PAR (`require_pushed_authorization_requests`). See the docs' *Backchannel
 sign-in and FAPI 2.0*.
@@ -390,6 +392,16 @@ plain bearer token, without a proof or with another key's proof is refused with 
 and the admin API. Clients registered with `dpop_bound_access_tokens` (console: client
 detail, or the DCR metadata field) must always present a proof. Server-provided nonces
 and `dpop_jkt` at `/authorize` are not implemented.
+
+**Mutual TLS (RFC 8705)** lets a client authenticate with a TLS client certificate —
+`tls_client_auth`, a certificate from one of the tenant's trusted authorities (console:
+Security → Client certificates) carrying the subject DN or SAN registered for the client,
+or `self_signed_tls_client_auth`, a certificate in the client's JWK Set — and binds a
+client's access tokens to its certificate (`tls_client_certificate_bound_access_tokens`,
+`cnf.x5t#S256`), checked wherever rIDM accepts a token. Certificates arrive on a second
+listener that asks for them (`MTLS_BIND`) or in a header from a TLS-terminating proxy
+(`CLIENT_CERT_HEADER`, trusted proxies only); with `MTLS_PUBLIC_URL` discovery lists
+`mtls_endpoint_aliases`. See the docs' *Mutual TLS*.
 
 ### Performance
 
@@ -933,7 +945,9 @@ The key set is cached and refreshed when a token names a key it has not seen, so
 `ridm key rotate` is picked up without a restart; while the issuer is unreachable the last
 good set keeps answering. `typ` must be `at+jwt`, which is what stops an ID token being
 spent as an access token, and a sender-constrained token (`cnf.jkt`) is refused rather
-than silently downgraded to a bearer one, because this crate verifies no DPoP proof. It
+than silently downgraded to a bearer one, because this crate verifies no DPoP proof. A
+certificate-bound token (`cnf.x5t#S256`) is accepted by `validate_with_certificate` when
+the caller hands over the connection's client certificate, and refused otherwise. It
 validates JWTs only: a client registered for opaque access tokens (`at_…`) sends tokens
 that only `/introspect` can read. It does not do revocation — rIDM's access tokens are
 short-lived, and an API that must react sooner should call `/introspect` instead. `api/tests/ridm_auth.rs` runs it against tokens

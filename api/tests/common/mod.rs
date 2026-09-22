@@ -362,6 +362,7 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
         audit_sink_secret: None,
         audit_sink_ca_file: None,
         tls: None,
+        mtls: Default::default(),
         db_pool_min: 1,
         db_pool_max: 8,
         redis_pool_max: 16,

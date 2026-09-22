@@ -992,6 +992,7 @@ async fn account_token(fx: &Fx, user_id: Uuid) -> String {
             amr: &["pwd".into()],
             acr: None,
             cnf_jkt: None,
+            cnf_x5t: None,
             act: None,
         },
     )

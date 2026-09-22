@@ -14,6 +14,7 @@ use crate::db;
 use crate::error::{AppError, AppResult, OAuthError, OAuthErrorCode};
 use crate::models::RefreshToken;
 use crate::repos;
+use crate::services::tokens::SenderProof;
 use crate::state::AppState;
 
 const PREFIX: &str = "rt_";
@@ -27,6 +28,9 @@ pub struct IssueRequest<'a> {
     pub ttl: Duration,
     /// Bind the family to a DPoP key (public clients presenting a proof).
     pub dpop_jkt: Option<&'a str>,
+    /// Bind the family to a client certificate (public clients registered
+    /// for certificate-bound tokens, RFC 8705 §4).
+    pub mtls_x5t: Option<&'a str>,
     /// Authentication context to repeat in every ID token minted from this
     /// family (OIDC Core §12.2).
     pub auth_time: Option<DateTime<Utc>>,
@@ -83,6 +87,7 @@ async fn insert_in(
         act: req.act.cloned(),
         expires_at,
         dpop_jkt: req.dpop_jkt.map(str::to_string),
+        mtls_x5t: req.mtls_x5t.map(str::to_string),
         consumed_at: None,
         revoked_at: None,
         created_at: now,
@@ -116,7 +121,8 @@ pub async fn issue(state: &AppState, tenant_id: Uuid, req: IssueRequest<'_>) -> 
 ///   `invalid_grant` is returned (the legitimate client's next attempt fails
 ///   too, forcing a fresh login).
 /// * bound to a DPoP key (`dpop_jkt`) and the request's proof key differs →
-///   `invalid_grant`, and the token stays unspent (RFC 9449 §5).
+///   `invalid_grant`, and the token stays unspent (RFC 9449 §5); the same
+///   for a client certificate (`mtls_x5t`, RFC 8705 §4).
 /// * issued under an SSO session that was since revoked (signed out) → the
 ///   family is revoked and `invalid_grant` is returned. Revoking a session
 ///   revokes its tokens already; this closes the window of a code exchanged
@@ -140,12 +146,12 @@ pub async fn rotate(
     tenant_id: Uuid,
     client_id: &str,
     presented: &str,
-    dpop_jkt: Option<&str>,
+    proof: SenderProof<'_>,
     resources: &[String],
     scopes: Option<&[String]>,
 ) -> Result<Issued, OAuthError> {
     redeem(
-        state, tenant_id, client_id, presented, dpop_jkt, resources, scopes, true,
+        state, tenant_id, client_id, presented, proof, resources, scopes, true,
     )
     .await
 }
@@ -158,7 +164,7 @@ pub async fn redeem(
     tenant_id: Uuid,
     client_id: &str,
     presented: &str,
-    dpop_jkt: Option<&str>,
+    proof: SenderProof<'_>,
     resources: &[String],
     scopes: Option<&[String]>,
     rotate: bool,
@@ -220,11 +226,19 @@ pub async fn redeem(
         ));
     }
     if let Some(bound) = current.dpop_jkt.as_deref()
-        && dpop_jkt != Some(bound)
+        && proof.jkt != Some(bound)
     {
         return Err(OAuthError::new(
             OAuthErrorCode::InvalidGrant,
             "refresh token is bound to another DPoP key",
+        ));
+    }
+    if let Some(bound) = current.mtls_x5t.as_deref()
+        && proof.x5t != Some(bound)
+    {
+        return Err(OAuthError::new(
+            OAuthErrorCode::InvalidGrant,
+            "refresh token is bound to another client certificate",
         ));
     }
     if let Some(extra) = resources
@@ -284,13 +298,14 @@ pub async fn redeem(
         audiences: &current.audiences,
         ttl: Duration::zero(),
         dpop_jkt: current.dpop_jkt.as_deref(),
+        mtls_x5t: current.mtls_x5t.as_deref(),
         auth_time: current.auth_time,
         amr: &current.amr,
         acr: current.acr.as_deref(),
         org_id: current.org_id,
         act: current.act.as_ref(),
     };
-    // The family keeps its absolute expiry (and its DPoP binding); rotation never extends it.
+    // The family keeps its absolute expiry (and its bindings); rotation never extends it.
     let issued = insert_in(
         &mut tx,
         tenant_id,

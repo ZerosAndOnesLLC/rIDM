@@ -14,7 +14,9 @@ const COLUMNS: &str = "id, tenant_id, client_id, name, client_type, description,
     sector_identifier_uri, require_pkce, require_consent, id_token_scope_claims, cors_origins, initiate_login_uri, \
     backchannel_logout_uri, frontchannel_logout_uri, dpop_bound_access_tokens, \
     backchannel_token_delivery_mode, backchannel_client_notification_endpoint, security_profile, \
-    require_pushed_authorization_requests, service_account_user_id, registration_access_token_hash, status, created_at, updated_at";
+    require_pushed_authorization_requests, tls_client_auth_subject_dn, tls_client_auth_san_dns, \
+    tls_client_auth_san_uri, tls_client_auth_san_ip, tls_client_auth_san_email, \
+    tls_client_certificate_bound_access_tokens, service_account_user_id, registration_access_token_hash, status, created_at, updated_at";
 
 pub async fn find_by_id<'e>(
     exec: impl PgExecutor<'e>,
@@ -56,8 +58,10 @@ pub async fn insert<'e>(exec: impl PgExecutor<'e>, c: &Client) -> Result<Client,
          cors_origins, initiate_login_uri, backchannel_logout_uri, frontchannel_logout_uri, \
          dpop_bound_access_tokens, backchannel_token_delivery_mode, \
          backchannel_client_notification_endpoint, security_profile, \
-         require_pushed_authorization_requests, service_account_user_id, \
-         registration_access_token_hash, status) VALUES (",
+         require_pushed_authorization_requests, tls_client_auth_subject_dn, \
+         tls_client_auth_san_dns, tls_client_auth_san_uri, tls_client_auth_san_ip, \
+         tls_client_auth_san_email, tls_client_certificate_bound_access_tokens, \
+         service_account_user_id, registration_access_token_hash, status) VALUES (",
     );
     let mut s = qb.separated(", ");
     s.push_bind(c.id)
@@ -98,6 +102,12 @@ pub async fn insert<'e>(exec: impl PgExecutor<'e>, c: &Client) -> Result<Client,
         .push_bind(&c.backchannel_client_notification_endpoint)
         .push_bind(c.security_profile)
         .push_bind(c.require_pushed_authorization_requests)
+        .push_bind(&c.tls_client_auth_subject_dn)
+        .push_bind(&c.tls_client_auth_san_dns)
+        .push_bind(&c.tls_client_auth_san_uri)
+        .push_bind(&c.tls_client_auth_san_ip)
+        .push_bind(&c.tls_client_auth_san_email)
+        .push_bind(c.tls_client_certificate_bound_access_tokens)
         .push_bind(c.service_account_user_id)
         .push_bind(&c.registration_access_token_hash)
         .push_bind(c.status);
@@ -275,6 +285,18 @@ pub async fn update_metadata<'e>(
         .push_bind(c.security_profile);
     qb.push(", require_pushed_authorization_requests = ")
         .push_bind(c.require_pushed_authorization_requests);
+    qb.push(", tls_client_auth_subject_dn = ")
+        .push_bind(&c.tls_client_auth_subject_dn);
+    qb.push(", tls_client_auth_san_dns = ")
+        .push_bind(&c.tls_client_auth_san_dns);
+    qb.push(", tls_client_auth_san_uri = ")
+        .push_bind(&c.tls_client_auth_san_uri);
+    qb.push(", tls_client_auth_san_ip = ")
+        .push_bind(&c.tls_client_auth_san_ip);
+    qb.push(", tls_client_auth_san_email = ")
+        .push_bind(&c.tls_client_auth_san_email);
+    qb.push(", tls_client_certificate_bound_access_tokens = ")
+        .push_bind(c.tls_client_certificate_bound_access_tokens);
     qb.push(" WHERE tenant_id = ")
         .push_bind(c.tenant_id)
         .push(" AND id = ")

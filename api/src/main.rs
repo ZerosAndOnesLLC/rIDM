@@ -118,10 +118,34 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     let _jobs = ridm_api::jobs::spawn_all(state.clone());
     let bind_addr = state.config.bind_addr;
     let tls = state.config.tls.clone();
+    let mtls = state.config.mtls.clone();
     let app = build_router(state);
 
     let handle: Handle<SocketAddr> = Handle::new();
     tokio::spawn(shutdown_signal(handle.clone()));
+
+    // The mutual-TLS listener (RFC 8705): the same routes, on a port that
+    // asks for client certificates. It stops with the main one.
+    if let (Some(addr), Some(tls)) = (mtls.bind_addr, mtls.tls.as_ref()) {
+        let config = ridm_api::tls::load(tls)?;
+        // Bound here so that a port in use stops start-up, like the main one.
+        let listener = std::net::TcpListener::bind(addr)?;
+        listener.set_nonblocking(true)?;
+        let server = axum_server::from_tcp(listener)?;
+        let app = app.clone();
+        let handle = handle.clone();
+        tracing::info!(%addr, "listening (mtls)");
+        tokio::spawn(async move {
+            if let Err(error) = server
+                .acceptor(ridm_api::tls::PeerCertAcceptor::new(config))
+                .handle(handle)
+                .serve(app.into_make_service_with_connect_info::<SocketAddr>())
+                .await
+            {
+                tracing::error!(%error, "the mtls listener stopped");
+            }
+        });
+    }
 
     match tls {
         Some(tls) => {

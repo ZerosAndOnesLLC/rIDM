@@ -116,6 +116,10 @@ Both are game over by construction, and the mitigation is operational.
 | A hostile Negotiate token crashing the server | rIDM parses SPNEGO and Kerberos DER with its own bounds-checked, non-recursive reader (never `picky-krb`'s message types, one of which unwraps); tokens are capped at 64 KiB; fuzzed |
 | A principal from a trusted foreign realm taking over a local account of the same name | Only the service's own realm is accepted unless the administrator lists others; the docs warn that `local_part` names collide across listed realms |
 | Login CSRF through the Kerberos step (an attacker page making the victim's browser negotiate) | The step belongs to a login flow and requires its CSRF token, like every flow step |
+| A caller forging a client certificate in the proxy header (`CLIENT_CERT_HEADER`) | The header is read only from a `TRUSTED_PROXIES` peer, and the documented proxy configurations overwrite it on every request; on rIDM's own mTLS listener the certificate comes from the handshake, where the client must sign with its key. Regression test `tests/mtls.rs` `a_certificate_header_is_believed_only_from_a_trusted_proxy` |
+| A certificate from the wrong CA, or a right-CA certificate for another client, authenticating as a `tls_client_auth` client | The chain must reach one of the tenant's own trust anchors, be valid now and allow client authentication (webpki), and the certificate must carry the one subject registered for the client, compared attribute by attribute in RFC 4514 order; tenants never share anchors |
+| A stolen certificate-bound access token | It carries the certificate's SHA-256 thumbprint (`cnf.x5t#S256`); userinfo and the account and admin APIs refuse it without that certificate, and token exchange will not trade it for a looser token. Regression test `tests/security/mtls.rs` |
+| A hostile client certificate or proxy header crashing the server | Headers are capped at 32 KiB and five certificates, parsed without panicking; the certificate, header and subject-DN readers are fuzzed (`client_cert`) |
 | SAML signing key rotation breaking SPs, or a stolen key | The SAML keys are separate from the JWT keys and never rotate on a timer; a rollover publishes the new certificate before it signs; keys are encrypted under the master key |
 | Downgrade of a high-assurance client | A client under the FAPI 2.0 profile is refused, at registration and on every request, anything weaker than the profile: no request outside PAR, no missing PKCE or DPoP, no RSA-PKCS1 or HMAC signatures, no client assertion addressed to anything but the issuer |
 
@@ -226,8 +230,10 @@ Recorded rather than hidden; each is either scheduled or a deliberate trade-off.
   optional in RFC 9449 and would tighten binding further.
 - **The `claims` request parameter is not implemented.** Discovery says so. Scopes cover
   the same claims.
-- **No mutual-TLS client authentication or certificate-bound tokens (RFC 8705).** DPoP is
-  the only sender constraint, including for FAPI 2.0 clients; mTLS is Phase 13.
+- **Client certificates are not checked for revocation.** Neither CRLs nor OCSP are
+  consulted for `tls_client_auth`; an administrator cuts a certificate off by removing
+  its authority or changing the client's registered subject, so client certificates
+  should be short-lived.
 - **CIBA requests cannot be signed and take no user code.** Both are optional in CIBA
   Core; a client asking for either at registration is refused.
 - **SAML logout is front-channel only.** SPs are logged out through the user's browser;

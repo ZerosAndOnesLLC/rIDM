@@ -17,9 +17,9 @@ use uuid::Uuid;
 use crate::error::{AppError, AppResult};
 use crate::models::{
     ClientStatus, GroupUpdate, IpRuleAction, IpRuleUpdate, MessageChannel, NewClaimMapper,
-    NewClient, NewGroup, NewIpRule, NewPermission, NewResourceServer, NewRole, NewScope,
-    NewWebhook, Principal, ProfileSchema, ResourceServerUpdate, RoleUpdate, STANDARD_SCOPES,
-    ScopeUpdate, Tenant, TenantSettings, WebhookUpdate,
+    NewClient, NewGroup, NewIpRule, NewMtlsTrustAnchor, NewPermission, NewResourceServer, NewRole,
+    NewScope, NewWebhook, Principal, ProfileSchema, ResourceServerUpdate, RoleUpdate,
+    STANDARD_SCOPES, ScopeUpdate, Tenant, TenantSettings, WebhookUpdate,
 };
 use crate::models::{
     IdentityProviderUpdate, IdpAuthMethod, IdpKind, IdpMappers, KerberosNameForm, KerberosSettings,
@@ -31,8 +31,8 @@ use crate::services::saml_sps::{self, SamlSpInput};
 use crate::services::tenants::TenantUpdate;
 use crate::services::{
     admin_console, claim_mappers, clients, groups, identity_providers, ip_rules,
-    messaging as messaging_admin, profile_schema, resource_servers, roles, scopes, tenants,
-    webhooks,
+    messaging as messaging_admin, mtls_trust_anchors, profile_schema, resource_servers, roles,
+    scopes, tenants, webhooks,
 };
 use crate::state::AppState;
 
@@ -65,6 +65,9 @@ pub struct TenantConfig {
     pub webhooks: Vec<WebhookDoc>,
     #[serde(default)]
     pub ip_rules: Vec<IpRuleDoc>,
+    /// Certificate authorities for `tls_client_auth` clients (RFC 8705).
+    #[serde(default)]
+    pub mtls_trust_anchors: Vec<MtlsTrustAnchorDoc>,
     /// Upstream providers without their client secrets (set those after an import).
     #[serde(default)]
     pub identity_providers: Vec<IdentityProviderDoc>,
@@ -366,6 +369,25 @@ impl Default for IdentityProviderDoc {
     }
 }
 
+/// A trusted client-certificate authority, keyed by its certificate.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(default, deny_unknown_fields)]
+pub struct MtlsTrustAnchorDoc {
+    pub name: String,
+    pub certificate_pem: String,
+}
+
+impl MtlsTrustAnchorDoc {
+    /// The certificate's `x5t#S256`, or the PEM itself when it does not parse
+    /// (normalization refuses such a document before it gets this far).
+    fn key(&self) -> String {
+        crate::oidc::mtls::parse_header(&self.certificate_pem)
+            .and_then(|d| d.into_iter().next())
+            .map(|der| crate::oidc::mtls::thumbprint(&der))
+            .unwrap_or_else(|| self.certificate_pem.clone())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct IpRuleDoc {
@@ -626,6 +648,16 @@ pub async fn export(state: &AppState, tenant: &Tenant) -> AppResult<TenantConfig
         .collect();
     ip_rules_out.sort_by(|a, b| (&a.client, &a.cidr).cmp(&(&b.client, &b.cidr)));
 
+    let mut anchors_out: Vec<MtlsTrustAnchorDoc> = mtls_trust_anchors::list(state, tid)
+        .await?
+        .into_iter()
+        .map(|a| MtlsTrustAnchorDoc {
+            name: a.name,
+            certificate_pem: a.certificate_pem,
+        })
+        .collect();
+    anchors_out.sort_by_key(MtlsTrustAnchorDoc::key);
+
     let idps = identity_providers::list(state, tid).await?;
     let alias_of: BTreeMap<Uuid, String> = idps.iter().map(|p| (p.id, p.alias.clone())).collect();
     let mut idps_out: Vec<IdentityProviderDoc> = idps
@@ -679,6 +711,7 @@ pub async fn export(state: &AppState, tenant: &Tenant) -> AppResult<TenantConfig
         message_templates: templates_out,
         webhooks: webhooks_out,
         ip_rules: ip_rules_out,
+        mtls_trust_anchors: anchors_out,
         identity_providers: idps_out,
         saml_service_providers: saml_out,
     })
@@ -864,6 +897,18 @@ fn normalize(tenant_id: Uuid, mut doc: TenantConfig) -> AppResult<TenantConfig> 
     for r in &mut doc.ip_rules {
         r.cidr = ip_rules::normalize_cidr(&r.cidr)?;
     }
+    for a in &mut doc.mtls_trust_anchors {
+        let checked = mtls_trust_anchors::inspect(
+            tenant_id,
+            NewMtlsTrustAnchor {
+                name: a.name.clone(),
+                certificate_pem: a.certificate_pem.clone(),
+            },
+        )
+        .map_err(|e| AppError::BadRequest(format!("mtls_trust_anchors: `{}`: {e}", a.name)))?;
+        a.name = checked.name;
+        a.certificate_pem = checked.certificate_pem;
+    }
     for r in &mut doc.roles {
         r.composites.sort();
         r.composites.dedup();
@@ -1020,6 +1065,14 @@ pub async fn plan(
         &current.ip_rules,
         &desired.ip_rules,
         |r| role_ref(&r.cidr, r.client.as_deref()),
+        |_| true,
+    )?;
+    diff_collection(
+        &mut plan,
+        "mtls_trust_anchor",
+        &current.mtls_trust_anchors,
+        &desired.mtls_trust_anchors,
+        MtlsTrustAnchorDoc::key,
         |_| true,
     )?;
     diff_collection(
@@ -2032,6 +2085,39 @@ pub async fn apply(
         ctx.note("ip_rule", &key, r);
     }
 
+    // Trusted client-certificate authorities: there is nothing to edit but
+    // the name, so an update replaces the row.
+    for anchor in &desired.mtls_trust_anchors {
+        let key = anchor.key();
+        let create = ctx.wants("mtls_trust_anchor", &key, Op::Create);
+        let update = ctx.wants("mtls_trust_anchor", &key, Op::Update);
+        if !create && !update {
+            continue;
+        }
+        let r = async {
+            if let Some(old) = mtls_trust_anchors::list(state, tid)
+                .await?
+                .into_iter()
+                .find(|x| x.fingerprint == key)
+            {
+                mtls_trust_anchors::delete(state, tid, ctx.actor.clone(), old.id).await?;
+            }
+            mtls_trust_anchors::create(
+                state,
+                tid,
+                ctx.actor.clone(),
+                NewMtlsTrustAnchor {
+                    name: anchor.name.clone(),
+                    certificate_pem: anchor.certificate_pem.clone(),
+                },
+            )
+            .await?;
+            Ok(())
+        }
+        .await;
+        ctx.note("mtls_trust_anchor", &key, r);
+    }
+
     // Identity providers (secrets are kept, or missing on a fresh row);
     // Kerberos realms last, since they may name a directory the document
     // creates.
@@ -2154,6 +2240,18 @@ pub async fn apply(
         for key in ctx.deletes("identity_provider") {
             let r = identity_providers::delete(state, tid, ctx.actor.clone(), &key).await;
             ctx.note("identity_provider", &key, r);
+        }
+        for key in ctx.deletes("mtls_trust_anchor") {
+            let r = async {
+                let a = mtls_trust_anchors::list(state, tid)
+                    .await?
+                    .into_iter()
+                    .find(|x| x.fingerprint == key)
+                    .ok_or(AppError::NotFound("trust anchor"))?;
+                mtls_trust_anchors::delete(state, tid, ctx.actor.clone(), a.id).await
+            }
+            .await;
+            ctx.note("mtls_trust_anchor", &key, r);
         }
         for key in ctx.deletes("ip_rule") {
             let r = async {

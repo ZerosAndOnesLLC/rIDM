@@ -81,6 +81,8 @@ those of the event's `kind` document (next to `type`).
 | `webhook.delivery_dead` | `webhook_id`, `delivery_id`, `event_name` |
 | `scim_token.created`, `scim_token.revoked` | `token_id` |
 | `ip_rule.created`, `ip_rule.updated`, `ip_rule.deleted` | `rule_id` |
+| `mtls_trust_anchor.created` | `anchor_id`, `fingerprint` |
+| `mtls_trust_anchor.deleted` | `anchor_id` |
 | `identity_provider.created`, `identity_provider.updated`, `identity_provider.deleted` | `idp_id` |
 | `identity.linked` | `user_id`, `idp_id`, `external_subject` |
 | `identity.unlinked` | `user_id`, `idp_id` |

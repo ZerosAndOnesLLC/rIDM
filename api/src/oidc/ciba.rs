@@ -18,6 +18,7 @@ use crate::models::{BackchannelDeliveryMode, Client, User, UserStatus, grants};
 use crate::oidc::authorize::RawParams;
 use crate::oidc::client_auth;
 use crate::oidc::device::requested_resources;
+use crate::oidc::mtls::{ClientCert, ClientCertificate};
 use crate::services::ciba::{self, Acknowledgement, Start};
 use crate::services::tokens::{self, VerifyOptions};
 use crate::services::{scopes, users};
@@ -34,6 +35,7 @@ pub async fn backchannel_authentication(
     State(state): State<AppState>,
     tenant: TenantCtx,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    cert: ClientCertificate,
     headers: HeaderMap,
     body: String,
 ) -> Response {
@@ -43,7 +45,7 @@ pub async fn backchannel_authentication(
         .and_then(|v| v.to_str().ok())
         .is_some_and(|ct| ct.starts_with("application/x-www-form-urlencoded"));
     let outcome = if is_form {
-        handle(&state, &tenant, &headers, &body, ip).await
+        handle(&state, &tenant, &headers, &body, ip, cert.get()).await
     } else {
         Err(OAuthError::invalid_request(
             "content type must be application/x-www-form-urlencoded",
@@ -71,12 +73,14 @@ async fn handle(
     headers: &HeaderMap,
     body: &str,
     ip: Option<IpAddr>,
+    cert: Option<&ClientCert>,
 ) -> Result<Acknowledgement, OAuthError> {
     let params = RawParams::parse(body);
     let one = |n: &str| params.one(n).map_err(OAuthError::invalid_request);
     let token_endpoint = format!("{}/token", tenant.issuer(state));
     let (client, _) =
-        client_auth::authenticate(state, tenant, headers, &params, &token_endpoint, ip).await?;
+        client_auth::authenticate(state, tenant, headers, &params, &token_endpoint, ip, cert)
+            .await?;
     if !client.allows_grant(grants::CIBA) {
         return Err(OAuthError::new(
             OAuthErrorCode::UnauthorizedClient,

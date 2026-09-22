@@ -34,6 +34,7 @@ jobs:
           - scim_filter
           - saml_message
           - kerberos_token
+          - client_cert
     env:
       CARGO_TERM_COLOR: always
       CARGO_INCREMENTAL: "0"

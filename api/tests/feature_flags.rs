@@ -72,6 +72,7 @@ async fn user_token(app: &TestApp, scopes: &[&str], org_id: Option<Uuid>) -> (St
             amr: &[],
             acr: None,
             cnf_jkt: None,
+            cnf_x5t: None,
             act: None,
         },
     )

@@ -190,8 +190,19 @@ pub struct AccessTokenRequest<'a> {
     pub org_id: Option<Uuid>,
     /// DPoP key thumbprint the token is bound to (`cnf.jkt`, RFC 9449 §6.1).
     pub cnf_jkt: Option<&'a str>,
+    /// Client certificate thumbprint the token is bound to (`cnf.x5t#S256`,
+    /// RFC 8705 §3.1).
+    pub cnf_x5t: Option<&'a str>,
     /// Acting party of a delegated token (`act`, RFC 8693 §4.1).
     pub act: Option<Value>,
+}
+
+/// What a token request proved possession of: the key of a DPoP proof
+/// (its thumbprint) and the TLS client certificate (its `x5t#S256`).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SenderProof<'a> {
+    pub jkt: Option<&'a str>,
+    pub x5t: Option<&'a str>,
 }
 
 pub struct IdTokenRequest<'a> {
@@ -414,8 +425,15 @@ pub async fn issue_access_token(
     if let Some(acr) = req.acr {
         claims.insert("acr".into(), json!(acr));
     }
+    let mut cnf = serde_json::Map::new();
     if let Some(jkt) = req.cnf_jkt {
-        claims.insert("cnf".into(), json!({ "jkt": jkt }));
+        cnf.insert("jkt".into(), json!(jkt));
+    }
+    if let Some(x5t) = req.cnf_x5t {
+        cnf.insert(crate::oidc::mtls::CNF_X5T.into(), json!(x5t));
+    }
+    if !cnf.is_empty() {
+        claims.insert("cnf".into(), Value::Object(cnf));
     }
     if let Some(act) = req.act {
         claims.insert("act".into(), act);

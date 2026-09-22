@@ -8002,6 +8002,238 @@
         ]
       }
     },
+    "/admin/tenants/{slug}/mtls/trust-anchors": {
+      "get": {
+        "tags": [
+          "mtls"
+        ],
+        "operationId": "mtls_list",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MtlsTrustAnchor"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "mtls"
+        ],
+        "summary": "`{name, certificate_pem}`: one CA certificate (root or intermediate).",
+        "operationId": "mtls_create",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewMtlsTrustAnchor"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MtlsTrustAnchor"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already trusted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/mtls/trust-anchors/{anchor}": {
+      "delete": {
+        "tags": [
+          "mtls"
+        ],
+        "operationId": "mtls_delete",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "anchor",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/admin/tenants/{slug}/organizations": {
       "get": {
         "tags": [
@@ -21041,6 +21273,7 @@
           "dpop_bound_access_tokens",
           "security_profile",
           "require_pushed_authorization_requests",
+          "tls_client_certificate_bound_access_tokens",
           "status",
           "created_at",
           "updated_at"
@@ -21243,6 +21476,41 @@
           "tenant_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "tls_client_auth_san_dns": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls_client_auth_san_email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls_client_auth_san_ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls_client_auth_san_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls_client_auth_subject_dn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The subject a `tls_client_auth` certificate must carry: exactly one\nof these five is set for such a client (RFC 8705 §2.1.2). The DN is\nan RFC 4514 string, most specific RDN first."
+          },
+          "tls_client_certificate_bound_access_tokens": {
+            "type": "boolean",
+            "description": "Every access token is bound to the client certificate presented at\nthe token endpoint (`cnf.x5t#S256`, RFC 8705 §3)."
           },
           "token_endpoint_auth_method": {
             "$ref": "#/components/schemas/TokenEndpointAuthMethod"
@@ -24789,6 +25057,73 @@
           }
         }
       },
+      "MtlsTrustAnchor": {
+        "type": "object",
+        "description": "A certificate authority whose certificates the tenant's `tls_client_auth`\nclients may authenticate with (RFC 8705 §2.1). It may be a root or an\nintermediate: a client's chain only has to reach it.",
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "certificate_pem",
+          "subject",
+          "fingerprint",
+          "not_before",
+          "not_after",
+          "created_at"
+        ],
+        "properties": {
+          "certificate_pem": {
+            "type": "string",
+            "description": "The CA certificate, PEM."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fingerprint": {
+            "type": "string",
+            "description": "base64url(SHA-256(DER))."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "not_after": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "not_before": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "subject": {
+            "type": "string",
+            "description": "RFC 4514 subject of the CA certificate."
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "MtlsTrustAnchorDoc": {
+        "type": "object",
+        "description": "A trusted client-certificate authority, keyed by its certificate.",
+        "properties": {
+          "certificate_pem": {
+            "type": "string",
+            "default": ""
+          },
+          "name": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "additionalProperties": false
+      },
       "NameIdFormat": {
         "type": "string",
         "description": "The subject identifier an SP receives.",
@@ -25077,6 +25412,48 @@
               {
                 "$ref": "#/components/schemas/ClientSubjectType"
               }
+            ],
+            "default": null
+          },
+          "tls_client_auth_san_dns": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "tls_client_auth_san_email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "tls_client_auth_san_ip": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "tls_client_auth_san_uri": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "tls_client_auth_subject_dn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "tls_client_certificate_bound_access_tokens": {
+            "type": [
+              "boolean",
+              "null"
             ],
             "default": null
           },
@@ -25448,6 +25825,21 @@
               "null"
             ],
             "default": null
+          }
+        },
+        "additionalProperties": false
+      },
+      "NewMtlsTrustAnchor": {
+        "type": "object",
+        "properties": {
+          "certificate_pem": {
+            "type": "string",
+            "description": "One CA certificate, PEM.",
+            "default": ""
+          },
+          "name": {
+            "type": "string",
+            "default": ""
           }
         },
         "additionalProperties": false
@@ -29538,6 +29930,13 @@
               "$ref": "#/components/schemas/TemplateDoc"
             }
           },
+          "mtls_trust_anchors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MtlsTrustAnchorDoc"
+            },
+            "description": "Certificate authorities for `tls_client_auth` clients (RFC 8705)."
+          },
           "profile_schema": {
             "$ref": "#/components/schemas/ProfileSchema"
           },
@@ -30081,7 +30480,9 @@
           "none",
           "client_secret_basic",
           "client_secret_post",
-          "private_key_jwt"
+          "private_key_jwt",
+          "tls_client_auth",
+          "self_signed_tls_client_auth"
         ]
       },
       "Tokens": {
@@ -30899,6 +31300,10 @@
     {
       "name": "ip_rules",
       "description": "IP allow and deny rules"
+    },
+    {
+      "name": "mtls",
+      "description": "Certificate authorities for mutual-TLS client authentication"
     },
     {
       "name": "identity_providers",

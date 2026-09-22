@@ -34,6 +34,11 @@ pub enum TokenEndpointAuthMethod {
     ClientSecretBasic,
     ClientSecretPost,
     PrivateKeyJwt,
+    /// A certificate from a CA the tenant trusts, carrying the subject
+    /// registered for the client (RFC 8705 §2.1).
+    TlsClientAuth,
+    /// A certificate registered in the client's JWK Set (RFC 8705 §2.2).
+    SelfSignedTlsClientAuth,
 }
 
 impl TokenEndpointAuthMethod {
@@ -43,7 +48,14 @@ impl TokenEndpointAuthMethod {
             Self::ClientSecretBasic => "client_secret_basic",
             Self::ClientSecretPost => "client_secret_post",
             Self::PrivateKeyJwt => "private_key_jwt",
+            Self::TlsClientAuth => "tls_client_auth",
+            Self::SelfSignedTlsClientAuth => "self_signed_tls_client_auth",
         }
+    }
+
+    /// Authenticated by the TLS client certificate (RFC 8705 §2).
+    pub fn uses_certificate(self) -> bool {
+        matches!(self, Self::TlsClientAuth | Self::SelfSignedTlsClientAuth)
     }
 
     pub fn uses_secret(self) -> bool {
@@ -114,9 +126,9 @@ impl BackchannelDeliveryMode {
 pub enum SecurityProfile {
     #[default]
     None,
-    /// FAPI 2.0 Security Profile: `private_key_jwt`, PAR, PKCE S256,
-    /// DPoP-bound tokens, HTTPS redirects, ES256/EdDSA signatures, no
-    /// refresh token rotation.
+    /// FAPI 2.0 Security Profile: `private_key_jwt` or mTLS client
+    /// authentication, PAR, PKCE S256, DPoP- or certificate-bound tokens,
+    /// HTTPS redirects, ES256/EdDSA signatures, no refresh token rotation.
     Fapi2,
 }
 
@@ -215,6 +227,17 @@ pub struct Client {
     /// Authorization requests must come through PAR (RFC 9126 §6); always
     /// so under the FAPI 2.0 profile.
     pub require_pushed_authorization_requests: bool,
+    /// The subject a `tls_client_auth` certificate must carry: exactly one
+    /// of these five is set for such a client (RFC 8705 §2.1.2). The DN is
+    /// an RFC 4514 string, most specific RDN first.
+    pub tls_client_auth_subject_dn: Option<String>,
+    pub tls_client_auth_san_dns: Option<String>,
+    pub tls_client_auth_san_uri: Option<String>,
+    pub tls_client_auth_san_ip: Option<String>,
+    pub tls_client_auth_san_email: Option<String>,
+    /// Every access token is bound to the client certificate presented at
+    /// the token endpoint (`cnf.x5t#S256`, RFC 8705 §3).
+    pub tls_client_certificate_bound_access_tokens: bool,
     pub service_account_user_id: Option<Uuid>,
     #[serde(skip)]
     pub registration_access_token_hash: Option<Vec<u8>>,
@@ -304,4 +327,10 @@ pub struct NewClient {
     pub backchannel_client_notification_endpoint: Option<String>,
     pub security_profile: Option<SecurityProfile>,
     pub require_pushed_authorization_requests: Option<bool>,
+    pub tls_client_auth_subject_dn: Option<String>,
+    pub tls_client_auth_san_dns: Option<String>,
+    pub tls_client_auth_san_uri: Option<String>,
+    pub tls_client_auth_san_ip: Option<String>,
+    pub tls_client_auth_san_email: Option<String>,
+    pub tls_client_certificate_bound_access_tokens: Option<bool>,
 }

@@ -488,6 +488,14 @@ pub enum EventKind {
     IpRuleDeleted {
         rule_id: Uuid,
     },
+    /// A certificate authority for `tls_client_auth` clients was added.
+    MtlsTrustAnchorCreated {
+        anchor_id: Uuid,
+        fingerprint: String,
+    },
+    MtlsTrustAnchorDeleted {
+        anchor_id: Uuid,
+    },
 
     // Identity brokering
     IdentityProviderCreated {
@@ -650,6 +658,8 @@ impl EventKind {
             Self::IpRuleCreated { .. } => "ip_rule.created",
             Self::IpRuleUpdated { .. } => "ip_rule.updated",
             Self::IpRuleDeleted { .. } => "ip_rule.deleted",
+            Self::MtlsTrustAnchorCreated { .. } => "mtls_trust_anchor.created",
+            Self::MtlsTrustAnchorDeleted { .. } => "mtls_trust_anchor.deleted",
             Self::IdentityProviderCreated { .. } => "identity_provider.created",
             Self::IdentityProviderUpdated { .. } => "identity_provider.updated",
             Self::IdentityProviderDeleted { .. } => "identity_provider.deleted",

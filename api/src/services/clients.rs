@@ -142,22 +142,25 @@ fn resolve_backchannel(
 
 /// What the FAPI 2.0 Security Profile (§5.3.2) asks of a client, checked
 /// where it can be at registration: a confidential client authenticating
-/// with `private_key_jwt` (mTLS is not offered), no grant outside the
-/// profile, and no switching off PKCE or DPoP. HTTPS redirects are checked
-/// with the redirect URIs.
+/// with `private_key_jwt` or mutual TLS, no grant outside the profile, PKCE
+/// on, and sender-constrained tokens (DPoP or the client certificate).
+/// HTTPS redirects are checked with the redirect URIs.
 fn check_fapi2(
     client_type: ClientType,
     auth_method: TokenEndpointAuthMethod,
     allowed_grants: &[String],
     require_pkce: Option<bool>,
-    dpop_bound: Option<bool>,
+    (dpop_bound, tls_bound): (bool, bool),
 ) -> AppResult<()> {
     let refuse = |why: &str| Err(AppError::BadRequest(format!("FAPI 2.0 profile: {why}")));
     if !matches!(client_type, ClientType::Web | ClientType::Machine) {
         return refuse("the client must be confidential (web or machine)");
     }
-    if auth_method != TokenEndpointAuthMethod::PrivateKeyJwt {
-        return refuse("token_endpoint_auth_method must be private_key_jwt");
+    if auth_method != TokenEndpointAuthMethod::PrivateKeyJwt && !auth_method.uses_certificate() {
+        return refuse(
+            "token_endpoint_auth_method must be private_key_jwt, tls_client_auth or \
+             self_signed_tls_client_auth",
+        );
     }
     if let Some(g) = allowed_grants.iter().find(|g| {
         !matches!(
@@ -173,10 +176,41 @@ fn check_fapi2(
     if require_pkce == Some(false) {
         return refuse("PKCE cannot be switched off");
     }
-    if dpop_bound == Some(false) {
-        return refuse("access tokens must be DPoP-bound");
+    if !dpop_bound && !tls_bound {
+        return refuse("access tokens must be DPoP-bound or certificate-bound");
     }
     Ok(())
+}
+
+/// The subject fields of a `tls_client_auth` client (RFC 8705 §2.1.2),
+/// trimmed: exactly one for that method, none for any other.
+type TlsSubject = [Option<String>; 5];
+
+fn resolve_tls_subject(
+    auth_method: TokenEndpointAuthMethod,
+    fields: [&Option<String>; 5],
+) -> AppResult<TlsSubject> {
+    let clean = |v: &Option<String>| {
+        v.as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+    let subject = fields.map(clean);
+    let set = subject.iter().filter(|v| v.is_some()).count();
+    match auth_method {
+        TokenEndpointAuthMethod::TlsClientAuth if set != 1 => Err(AppError::BadRequest(
+            "tls_client_auth needs exactly one of tls_client_auth_subject_dn, \
+             tls_client_auth_san_dns, tls_client_auth_san_uri, tls_client_auth_san_ip and \
+             tls_client_auth_san_email"
+                .into(),
+        )),
+        TokenEndpointAuthMethod::TlsClientAuth => Ok(subject),
+        _ if set > 0 => Err(AppError::BadRequest(
+            "the tls_client_auth_* subject fields are only used with tls_client_auth".into(),
+        )),
+        _ => Ok(subject),
+    }
 }
 
 /// SAML service providers are clients too, but their settings are SAML
@@ -239,6 +273,16 @@ pub fn resolve(
             ClientType::Saml => unreachable!("refused above"),
         };
     let auth_method = input.token_endpoint_auth_method.unwrap_or(default_auth);
+    let tls_subject = resolve_tls_subject(
+        auth_method,
+        [
+            &input.tls_client_auth_subject_dn,
+            &input.tls_client_auth_san_dns,
+            &input.tls_client_auth_san_uri,
+            &input.tls_client_auth_san_ip,
+            &input.tls_client_auth_san_email,
+        ],
+    )?;
     let allowed_grants = input
         .allowed_grants
         .unwrap_or_else(|| default_grants.iter().map(|s| s.to_string()).collect());
@@ -272,15 +316,35 @@ pub fn resolve(
         input.backchannel_token_delivery_mode,
         input.backchannel_client_notification_endpoint.clone(),
     )?;
+    if auth_method == TokenEndpointAuthMethod::SelfSignedTlsClientAuth {
+        let inline_has_cert = input.jwks.as_ref().is_some_and(|j| {
+            j["keys"]
+                .as_array()
+                .is_some_and(|keys| keys.iter().any(|k| k["x5c"][0].is_string()))
+        });
+        if !inline_has_cert && input.jwks_uri.is_none() {
+            return Err(AppError::BadRequest(
+                "self_signed_tls_client_auth requires the certificate in jwks (x5c) or a jwks_uri"
+                    .into(),
+            ));
+        }
+    }
     let security_profile = input.security_profile.unwrap_or_default();
     let fapi2 = security_profile == SecurityProfile::Fapi2;
+    let tls_bound = input
+        .tls_client_certificate_bound_access_tokens
+        .unwrap_or(false);
+    // A FAPI client binds with DPoP unless it asked for its certificate.
+    let dpop_bound = input
+        .dpop_bound_access_tokens
+        .unwrap_or(fapi2 && !tls_bound);
     if fapi2 {
         check_fapi2(
             client_type,
             auth_method,
             &allowed_grants,
             input.require_pkce,
-            input.dpop_bound_access_tokens,
+            (dpop_bound, tls_bound),
         )?;
     }
     let needs_redirect = allowed_grants
@@ -361,6 +425,7 @@ pub fn resolve(
         (vec![], None)
     };
 
+    let [dn, san_dns, san_uri, san_ip, san_email] = tls_subject;
     let now = Utc::now();
     let client = Client {
         id: Uuid::now_v7(),
@@ -396,19 +461,26 @@ pub fn resolve(
         initiate_login_uri: input.initiate_login_uri,
         backchannel_logout_uri: input.backchannel_logout_uri,
         frontchannel_logout_uri: input.frontchannel_logout_uri,
-        dpop_bound_access_tokens: input.dpop_bound_access_tokens.unwrap_or(fapi2),
+        dpop_bound_access_tokens: dpop_bound,
         backchannel_token_delivery_mode: delivery_mode,
         backchannel_client_notification_endpoint: notification_endpoint,
         security_profile,
         require_pushed_authorization_requests: input
             .require_pushed_authorization_requests
             .unwrap_or(false),
+        tls_client_auth_subject_dn: dn,
+        tls_client_auth_san_dns: san_dns,
+        tls_client_auth_san_uri: san_uri,
+        tls_client_auth_san_ip: san_ip,
+        tls_client_auth_san_email: san_email,
+        tls_client_certificate_bound_access_tokens: tls_bound,
         service_account_user_id: None,
         registration_access_token_hash: None,
         status: ClientStatus::Active,
         created_at: now,
         updated_at: now,
     };
+    crate::oidc::mtls::validate_registered_subject(&client).map_err(AppError::BadRequest)?;
     Ok((client, secret))
 }
 

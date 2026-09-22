@@ -11,6 +11,7 @@ use ridm_api::models::{
 use ridm_api::services::password::{self, SetPasswordOptions, VerifyOutcome};
 use ridm_api::services::refresh_tokens::{self, IssueRequest};
 use ridm_api::services::tenants::{self, TenantUpdate};
+use ridm_api::services::tokens::SenderProof;
 use ridm_api::services::{clients, users};
 use ridm_api::state::AppState;
 use ridm_core::events::Actor;
@@ -137,6 +138,7 @@ async fn password_reset_by_email_token() {
             audiences: &[],
             ttl: chrono::Duration::days(1),
             dpop_jkt: None,
+            mtls_x5t: None,
             auth_time: None,
             amr: &[],
             acr: None,
@@ -233,9 +235,17 @@ async fn password_reset_by_email_token() {
         VerifyOutcome::Invalid
     );
     assert!(
-        refresh_tokens::rotate(&app.state, tid, "spa", &rt.token, None, &[], None)
-            .await
-            .is_err(),
+        refresh_tokens::rotate(
+            &app.state,
+            tid,
+            "spa",
+            &rt.token,
+            SenderProof::default(),
+            &[],
+            None
+        )
+        .await
+        .is_err(),
         "refresh tokens revoked by the reset"
     );
 

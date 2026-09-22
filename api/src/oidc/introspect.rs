@@ -19,6 +19,7 @@ use crate::error::{OAuthError, OAuthErrorCode};
 use crate::middleware::{TenantCtx, client_ip_addr};
 use crate::oidc::authorize::RawParams;
 use crate::oidc::client_auth;
+use crate::oidc::mtls::{ClientCert, ClientCertificate};
 use crate::services::tokens::{self, VerifyOptions};
 use crate::state::AppState;
 
@@ -30,12 +31,13 @@ async fn introspect(
     State(state): State<AppState>,
     tenant: TenantCtx,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    cert: ClientCertificate,
     headers: HeaderMap,
     body: String,
 ) -> Response {
     let ip = client_ip_addr(&state, &headers, Some(peer));
     let params = RawParams::parse(&body);
-    let mut res = match handle(&state, &tenant, &headers, &params, ip).await {
+    let mut res = match handle(&state, &tenant, &headers, &params, ip, cert.get()).await {
         Ok(v) => axum::Json(v).into_response(),
         Err(e) => e.into_response(),
     };
@@ -50,10 +52,12 @@ async fn handle(
     headers: &HeaderMap,
     params: &RawParams,
     ip: Option<IpAddr>,
+    cert: Option<&ClientCert>,
 ) -> Result<Value, OAuthError> {
     let token_endpoint = format!("{}/token", tenant.issuer(state));
     let (client, method) =
-        client_auth::authenticate(state, tenant, headers, params, &token_endpoint, ip).await?;
+        client_auth::authenticate(state, tenant, headers, params, &token_endpoint, ip, cert)
+            .await?;
     if method == crate::models::TokenEndpointAuthMethod::None {
         return Err(OAuthError::new(
             OAuthErrorCode::InvalidClient,
@@ -154,7 +158,8 @@ async fn handle(
     }
     let mut out = json!({
         "active": true,
-        "token_type": if claims.get("cnf").is_some() { "DPoP" } else { "Bearer" },
+        // A certificate-bound token is still a bearer token by scheme (RFC 8705 §3).
+        "token_type": if claims.get("cnf").and_then(|c| c.get("jkt")).is_some() { "DPoP" } else { "Bearer" },
     });
     // RFC 9068 names JWT access tokens; an opaque one has no JOSE type.
     if !crate::services::opaque_tokens::looks_like(token) {

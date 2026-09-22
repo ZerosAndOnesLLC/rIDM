@@ -21,6 +21,7 @@ use url::Url;
 use crate::error::AppError;
 use crate::models::Tenant;
 use crate::oidc::bearer::Scheme;
+use crate::oidc::mtls::{self, ClientCert};
 use crate::services::keys;
 use crate::state::AppState;
 
@@ -67,6 +68,10 @@ pub fn htu_candidates(state: &AppState, tenant: &Tenant, rest: &str) -> Vec<Stri
     let mut v = vec![primary];
     if let Some(host) = &tenant.settings.custom_domain {
         v.push(format!("https://{host}{rest}"));
+    }
+    // The endpoint's mTLS alias (RFC 8705 §5).
+    if let Some(base) = mtls::alias_base(state, &tenant.slug) {
+        v.push(format!("{base}{rest}"));
     }
     v
 }
@@ -215,9 +220,10 @@ pub struct Presented<'a> {
     pub claims: &'a Map<String, Value>,
 }
 
-/// At a resource: a bound token must come as `Authorization: DPoP` with a
-/// proof from the same key that also names the token (`ath`). Unbound
-/// tokens pass under either scheme.
+/// At a resource: a DPoP-bound token must come as `Authorization: DPoP`
+/// with a proof from the same key that also names the token (`ath`), and a
+/// certificate-bound one over a connection with that client certificate
+/// (RFC 8705 §3). Unbound tokens pass under either scheme.
 pub async fn enforce_binding(
     state: &AppState,
     tenant: &Tenant,
@@ -225,7 +231,9 @@ pub async fn enforce_binding(
     headers: &HeaderMap,
     method: &Method,
     htu: &[String],
+    cert: Option<&ClientCert>,
 ) -> Result<(), String> {
+    mtls::enforce_binding(presented.claims, cert)?;
     let Some(expected) = bound_jkt(presented.claims) else {
         return Ok(());
     };

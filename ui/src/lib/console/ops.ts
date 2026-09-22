@@ -10,6 +10,7 @@ export type AuditEvent = Schemas["AuditEvent"];
 export type Webhook = Schemas["Webhook"];
 export type WebhookDelivery = Schemas["WebhookDelivery"];
 export type IpRule = Schemas["IpRule"];
+export type MtlsTrustAnchor = Schemas["MtlsTrustAnchor"];
 export type ScimToken = Schemas["ScimToken"];
 export type InitialAccessToken = Schemas["InitialAccessToken"];
 export type TemplateView = Schemas["TemplateView"];
@@ -52,7 +53,7 @@ export const EVENT_NAMES = [
   "invitation.accepted", "invitation.created", "invitation.revoked",
   "login.brokered", "login.failed", "login.new_device", "login.passwordless_sent", "login.succeeded",
   "logout.upstream",
-  "master_key.rotated", "mfa.changed",
+  "master_key.rotated", "mfa.changed", "mtls_trust_anchor.created", "mtls_trust_anchor.deleted",
   "risk.blocked", "risk.step_up",
   "saml_key.created", "saml_key.status_changed",
   "role.assigned", "role.composite_added", "role.composite_removed", "role.created", "role.deleted", "role.unassigned", "role.updated",

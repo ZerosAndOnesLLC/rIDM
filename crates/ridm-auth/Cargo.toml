@@ -14,10 +14,12 @@ rust-version.workspace = true
 # graphs, so — unlike the rest of the workspace — it asks for compatible ranges
 # rather than exact versions. The workspace lockfile still pins what CI builds.
 [dependencies]
+base64 = "0.23.1"
 jsonwebtoken = { version = "11.0.0", features = ["aws_lc_rs"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["json"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
+sha2 = "0.11.0"
 thiserror = "2.0.20"
 tokio = { version = "1.53.1", features = ["sync", "time"] }
 tracing = "0.1.44"

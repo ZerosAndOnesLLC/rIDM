@@ -15,6 +15,7 @@ use crate::error::OAuthError;
 use crate::middleware::{TenantCtx, client_ip_addr};
 use crate::oidc::authorize::RawParams;
 use crate::oidc::client_auth;
+use crate::oidc::mtls::{ClientCert, ClientCertificate};
 use crate::services::tokens::{self, VerifyOptions};
 use crate::services::{denylist, opaque_tokens, refresh_tokens};
 use crate::state::AppState;
@@ -27,12 +28,13 @@ async fn revoke(
     State(state): State<AppState>,
     tenant: TenantCtx,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    cert: ClientCertificate,
     headers: HeaderMap,
     body: String,
 ) -> Response {
     let ip = client_ip_addr(&state, &headers, Some(peer));
     let params = RawParams::parse(&body);
-    let mut res = match handle(&state, &tenant, &headers, &params, ip).await {
+    let mut res = match handle(&state, &tenant, &headers, &params, ip, cert.get()).await {
         Ok(()) => StatusCode::OK.into_response(),
         Err(e) => e.into_response(),
     };
@@ -47,10 +49,12 @@ async fn handle(
     headers: &HeaderMap,
     params: &RawParams,
     ip: Option<IpAddr>,
+    cert: Option<&ClientCert>,
 ) -> Result<(), OAuthError> {
     let token_endpoint = format!("{}/token", tenant.issuer(state));
     let (client, _) =
-        client_auth::authenticate(state, tenant, headers, params, &token_endpoint, ip).await?;
+        client_auth::authenticate(state, tenant, headers, params, &token_endpoint, ip, cert)
+            .await?;
     let token = params
         .one("token")
         .map_err(OAuthError::invalid_request)?

@@ -209,6 +209,7 @@ async fn account_token_in(fx: &Fx, user_id: Uuid, with_session: bool) -> String 
             acr: None,
             org_id: None,
             cnf_jkt: None,
+            cnf_x5t: None,
             act: None,
         },
     )
@@ -1044,6 +1045,7 @@ async fn only_the_user_themselves_can_answer() {
             acr: None,
             org_id: None,
             cnf_jkt: None,
+            cnf_x5t: None,
             act: Some(serde_json::json!({"sub": fx.bob.to_string(), "iss": "x"})),
         },
     )

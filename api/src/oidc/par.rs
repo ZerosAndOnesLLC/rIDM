@@ -20,6 +20,7 @@ use crate::error::{AppError, OAuthError, OAuthErrorCode};
 use crate::middleware::{TenantCtx, client_ip_addr};
 use crate::models::Client;
 use crate::oidc::authorize::{self, Failure, RawParams};
+use crate::oidc::mtls::{ClientCert, ClientCertificate};
 use crate::oidc::{client_auth, jar};
 use crate::services::login_flows::AuthRequest;
 use crate::state::AppState;
@@ -41,12 +42,13 @@ async fn par(
     State(state): State<AppState>,
     tenant: TenantCtx,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    cert: ClientCertificate,
     headers: HeaderMap,
     body: String,
 ) -> Response {
     let ip = client_ip_addr(&state, &headers, Some(peer));
     let params = RawParams::parse(&body);
-    let mut res = match handle(&state, &tenant, &headers, &params, ip).await {
+    let mut res = match handle(&state, &tenant, &headers, &params, ip, cert.get()).await {
         Ok((request_uri, expires_in)) => (
             StatusCode::CREATED,
             axum::Json(serde_json::json!({"request_uri": request_uri, "expires_in": expires_in})),
@@ -65,10 +67,12 @@ async fn handle(
     headers: &HeaderMap,
     params: &RawParams,
     ip: Option<IpAddr>,
+    cert: Option<&ClientCert>,
 ) -> Result<(String, u64), OAuthError> {
     let token_endpoint = format!("{}/token", tenant.issuer(state));
     let (client, _) =
-        client_auth::authenticate(state, tenant, headers, params, &token_endpoint, ip).await?;
+        client_auth::authenticate(state, tenant, headers, params, &token_endpoint, ip, cert)
+            .await?;
     if params.one("request_uri").ok().flatten().is_some() {
         return Err(OAuthError::invalid_request(
             "request_uri is not allowed in a pushed request",

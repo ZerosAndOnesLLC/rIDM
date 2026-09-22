@@ -59,6 +59,16 @@ The image's `--healthcheck` probe follows the listener: with `TLS_CERT` set it s
 https and trusts exactly that certificate (see
 [Container image](container.md#health-checks)).
 
+## Client certificates (mutual TLS)
+
+Clients that authenticate with a TLS certificate (RFC 8705) need whatever terminates TLS
+to ask for one. Either run rIDM's own mTLS listener on a second port (`MTLS_BIND`), or
+have the proxy request the certificate on a separate host and forward it in a header
+(`CLIENT_CERT_HEADER`), which rIDM believes only from `TRUSTED_PROXIES`. Keep that host
+apart from the one users sign in on (`MTLS_PUBLIC_URL`), so browsers never show a
+certificate picker. nginx, Caddy and Traefik snippets are in
+[Mutual TLS](../admin/mtls.md#getting-certificates-to-ridm).
+
 ## TRUSTED_PROXIES and the client address
 
 The client address feeds IP rules, every per-address rate limit, login-attempt records,

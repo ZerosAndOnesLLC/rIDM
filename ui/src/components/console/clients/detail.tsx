@@ -10,7 +10,22 @@ import { Badge, Button, IconButton, Modal, PageHeader } from "@/components/conso
 import { Spinner } from "@/components/ui";
 import { formatDate } from "@/i18n";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
-import { ALL_GRANTS, AUTH_METHODS, CIBA_GRANT, GRANT_LABELS, playgroundHref, typeLabel, usesSecret, type AuthMethod, type ClientView, type NewClient } from "@/lib/console/clients";
+import {
+  ALL_GRANTS,
+  AUTH_METHODS,
+  CIBA_GRANT,
+  GRANT_LABELS,
+  NO_TLS_SUBJECT,
+  playgroundHref,
+  TLS_SUBJECT_FIELDS,
+  tlsSubjectOf,
+  typeLabel,
+  usesSecret,
+  type AuthMethod,
+  type ClientView,
+  type NewClient,
+  type TlsSubjectField,
+} from "@/lib/console/clients";
 import { useConsole } from "@/lib/console/session";
 import { AudiencePicker, CheckList, ScopePicker } from "./pickers";
 import { CopyButton, RevealModal, type Revealed } from "./reveal";
@@ -87,6 +102,8 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
 
   const c = draft;
   const sections = useMemo(() => (c ? { c } : null), [c]);
+  // `tls_client_auth` is saved together with its subject, which the API requires.
+  const [pendingTls, setPendingTls] = useState(false);
   if (query.isError) {
     return (
       <>
@@ -100,6 +117,10 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
   if (!c || !sections) return <Spinner label="Loading client…" />;
   const grantsOk = !(c.token_endpoint_auth_method === "none" && c.allowed_grants.includes("client_credentials"));
   const fapi = c.security_profile === "fapi2";
+  const certBound = c.tls_client_certificate_bound_access_tokens;
+  // Under FAPI 2.0 one sender constraint is required: DPoP unless the certificate binds.
+  const fapiNeedsDpop = fapi && !certBound;
+  const authMethod: AuthMethod = pendingTls ? "tls_client_auth" : c.token_endpoint_auth_method;
 
   return (
     <>
@@ -163,9 +184,23 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
             disabled={!editable}
           />
           <div className="flex flex-col gap-4">
-            <Field label="Client authentication" hint={usesSecret(c.token_endpoint_auth_method) ? "Secrets are managed below." : c.token_endpoint_auth_method === "private_key_jwt" ? "Needs a JWKS or JWKS URI (Tokens & keys)." : "Public client: no credential, PKCE required."} error={grantsOk ? null : "Client credentials need client authentication."}>
+            <Field label="Client authentication" hint={authHint(authMethod)} error={grantsOk ? null : "Client credentials need client authentication."}>
               {(fid, by) => (
-                <SelectInput id={fid} aria-describedby={by} value={c.token_endpoint_auth_method} disabled={!editable} onChange={(e) => update({ token_endpoint_auth_method: e.target.value as AuthMethod })}>
+                <SelectInput
+                  id={fid}
+                  aria-describedby={by}
+                  value={authMethod}
+                  disabled={!editable}
+                  onChange={(e) => {
+                    const m = e.target.value as AuthMethod;
+                    if (m === "tls_client_auth" && !tlsSubjectOf(c)) {
+                      setPendingTls(true);
+                      return;
+                    }
+                    setPendingTls(false);
+                    update(m === "tls_client_auth" ? { token_endpoint_auth_method: m } : { token_endpoint_auth_method: m, ...NO_TLS_SUBJECT });
+                  }}
+                >
                   {AUTH_METHODS.map((m) => (
                     <option key={m.value} value={m.value}>
                       {m.label}
@@ -174,9 +209,31 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
                 </SelectInput>
               )}
             </Field>
-            <Field label="Security profile" hint={fapi ? "FAPI 2.0: private key JWT, pushed requests, PKCE, DPoP-bound tokens, HTTPS redirects, ES256/EdDSA signatures, no refresh rotation." : "No profile beyond the settings below."}>
+            {authMethod === "tls_client_auth" && (
+              <TlsSubject
+                c={c}
+                editable={editable}
+                pending={pendingTls}
+                onSave={(patch) => {
+                  setPendingTls(false);
+                  update(patch);
+                }}
+              />
+            )}
+            <Field
+              label="Security profile"
+              hint={fapi ? "FAPI 2.0: private key JWT or mutual TLS, pushed requests, PKCE, DPoP- or certificate-bound tokens, HTTPS redirects, ES256/EdDSA signatures, no refresh rotation." : "No profile beyond the settings below."}
+            >
               {(fid, by) => (
-                <SelectInput id={fid} aria-describedby={by} value={c.security_profile} disabled={!editable} onChange={(e) => update(e.target.value === "fapi2" ? { security_profile: "fapi2", require_pkce: true, dpop_bound_access_tokens: true } : { security_profile: "none" })}>
+                <SelectInput
+                  id={fid}
+                  aria-describedby={by}
+                  value={c.security_profile}
+                  disabled={!editable}
+                  onChange={(e) =>
+                    update(e.target.value === "fapi2" ? { security_profile: "fapi2", require_pkce: true, ...(certBound ? {} : { dpop_bound_access_tokens: true }) } : { security_profile: "none" })
+                  }
+                >
                   <option value="none">None</option>
                   <option value="fapi2">FAPI 2.0 Security Profile</option>
                 </SelectInput>
@@ -219,7 +276,20 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
               </Field>
             )}
             <Toggle label="Require PKCE" checked={c.require_pkce || fapi} disabled={!editable || fapi} onChange={(v) => update({ require_pkce: v })} />
-            <Toggle label="DPoP-bound access tokens" hint="Every token request must carry a DPoP proof; the tokens only work with that key (RFC 9449)." checked={c.dpop_bound_access_tokens || fapi} disabled={!editable || fapi} onChange={(v) => update({ dpop_bound_access_tokens: v })} />
+            <Toggle
+              label="DPoP-bound access tokens"
+              hint="Every token request must carry a DPoP proof; the tokens only work with that key (RFC 9449)."
+              checked={c.dpop_bound_access_tokens || fapiNeedsDpop}
+              disabled={!editable || fapiNeedsDpop}
+              onChange={(v) => update({ dpop_bound_access_tokens: v })}
+            />
+            <Toggle
+              label="Certificate-bound access tokens"
+              hint="Token requests must come over mutual TLS; the tokens only work with the client certificate they were issued to (RFC 8705)."
+              checked={certBound}
+              disabled={!editable || (fapi && !c.dpop_bound_access_tokens)}
+              onChange={(v) => update({ tls_client_certificate_bound_access_tokens: v })}
+            />
             <Toggle
               label="Require pushed authorization requests"
               hint="Refuse authorization requests that did not come through PAR (RFC 9126)."
@@ -291,6 +361,79 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
         {editable && c.client_id !== "ridm-admin-console" && <DeleteClient tenant={tenant} c={c} onDeleted={() => router.push(`/console/clients/?tenant=${encodeURIComponent(tenant)}`)} />}
       </div>
       <RevealModal revealed={revealed} onClose={() => setRevealed(null)} />
+    </>
+  );
+}
+
+function authHint(m: AuthMethod): string {
+  switch (m) {
+    case "client_secret_basic":
+    case "client_secret_post":
+      return "Secrets are managed below.";
+    case "private_key_jwt":
+      return "Needs a JWKS or JWKS URI (Tokens & keys).";
+    case "tls_client_auth":
+      return "A certificate from a certificate authority listed under Client certificates, carrying the subject below.";
+    case "self_signed_tls_client_auth":
+      return "The client's own certificate, registered in its JWKS (x5c) or at its JWKS URI (Tokens & keys).";
+    default:
+      return "Public client: no credential, PKCE required.";
+  }
+}
+
+/** The one subject a `tls_client_auth` certificate must carry (RFC 8705 §2.1.2). */
+function TlsSubject({ c, editable, pending, onSave }: { c: ClientView; editable: boolean; pending: boolean; onSave: (p: Patch) => void }) {
+  const current = tlsSubjectOf(c);
+  const [field, setField] = useState<TlsSubjectField>(current?.field ?? "tls_client_auth_subject_dn");
+  const [value, setValue] = useState(current?.value ?? "");
+  const save = (f: TlsSubjectField, v: string) => {
+    if (!v.trim()) return;
+    onSave({ ...(pending ? { token_endpoint_auth_method: "tls_client_auth" } : {}), ...NO_TLS_SUBJECT, [f]: v.trim() });
+  };
+  const meta = TLS_SUBJECT_FIELDS.find((f) => f.value === field)!;
+  return (
+    <>
+      <Field label="Certificate subject" hint="Which name in the certificate identifies this client.">
+        {(fid, by) => (
+          <SelectInput
+            id={fid}
+            aria-describedby={by}
+            value={field}
+            disabled={!editable}
+            onChange={(e) => {
+              const f = e.target.value as TlsSubjectField;
+              setField(f);
+              save(f, value);
+            }}
+          >
+            {TLS_SUBJECT_FIELDS.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
+          </SelectInput>
+        )}
+      </Field>
+      <Field
+        label={meta.label}
+        hint={field === "tls_client_auth_subject_dn" ? "RFC 4514, most specific first: openssl x509 -noout -subject -nameopt RFC2253" : "Matched exactly (DNS names and emails without regard to case)."}
+        error={pending && !value.trim() ? "Enter the subject to switch to mutual TLS." : null}
+      >
+        {(fid, by) => (
+          <TextInput
+            id={fid}
+            aria-describedby={by}
+            value={value}
+            spellCheck={false}
+            placeholder={meta.placeholder}
+            disabled={!editable}
+            onChange={(e) => {
+              setValue(e.target.value);
+              save(field, e.target.value);
+            }}
+          />
+        )}
+      </Field>
     </>
   );
 }

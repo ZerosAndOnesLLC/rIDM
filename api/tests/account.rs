@@ -170,6 +170,7 @@ async fn token(fx: &Fx, user_id: Uuid, auth: Auth) -> String {
             acr: auth.acr,
             org_id: None,
             cnf_jkt: None,
+            cnf_x5t: None,
             act: None,
         },
     )

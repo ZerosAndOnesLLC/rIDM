@@ -235,7 +235,7 @@ Every check `ridm-auth` makes:
 | `alg` is asymmetric, allowed, and matches the published key | `invalid_token` |
 | `iss` is the configured issuer, `aud` contains the configured audience | `invalid_token` |
 | `exp` and `nbf`, with 60 seconds of leeway | `invalid_token` |
-| no `cnf` (a DPoP-bound token is refused, not downgraded) | `invalid_token` |
+| no `cnf` (a DPoP-bound token is refused, not downgraded; a certificate-bound one passes `validate_with_certificate` with its certificate) | `invalid_token` |
 | the scopes, permissions and roles the guard or builder asked for | `insufficient_scope` |
 
 It does not check revocation: a verified token is accepted until it expires.

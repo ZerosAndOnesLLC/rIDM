@@ -26,6 +26,7 @@ Of the built-in roles only `ridm:owner` holds `ridm:tenants:import`; `ridm:admin
   "message_templates": [],
   "webhooks": [],
   "ip_rules": [],
+  "mtls_trust_anchors": [],
   "identity_providers": [],
   "saml_service_providers": []
 }
@@ -193,6 +194,10 @@ Keyed by `name`: `name`, `url`, `events` (exact names, prefixes such as `user.*`
 
 Keyed by `cidr`, or `client_id/cidr` for a client's rule: `cidr` (normalised, so `10.0.0.1/8` compares equal to `10.0.0.0/8`), `action` (`allow` or `deny`, default `deny`), `client` (a `client_id`, or absent for a tenant-wide rule), `description`.
 
+### `mtls_trust_anchors`
+
+The certificate authorities `tls_client_auth` clients may present certificates from ([Mutual TLS](../admin/mtls.md#trusting-certificate-authorities)), keyed by the certificate's SHA-256 thumbprint: `name` and `certificate_pem` (one CA certificate). An import refuses a certificate that is not a CA or has expired; a changed `name` replaces the entry.
+
 ### `identity_providers`
 
 Keyed by `alias` (lower-cased).
@@ -267,7 +272,7 @@ A dry run and an apply both answer `200` with the same shape:
 
 | Field | Meaning |
 |-------|---------|
-| `changes[].resource` | `tenant`, `profile_schema`, `resource_server`, `scope`, `client`, `role`, `group`, `claim_mapper`, `message_template`, `webhook`, `ip_rule`, `identity_provider` |
+| `changes[].resource` | `tenant`, `profile_schema`, `resource_server`, `scope`, `client`, `role`, `group`, `claim_mapper`, `message_template`, `webhook`, `ip_rule`, `mtls_trust_anchor`, `identity_provider` |
 | `changes[].key` | the natural key |
 | `changes[].op` | `create`, `update`, `delete` |
 | `changes[].fields` | for updates: `{field, from, to}` for each top-level field that differs |

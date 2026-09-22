@@ -354,6 +354,11 @@ pub fn ip_rules(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:ip_rules")
 }
 
+/// The tenant's certificate authorities for `tls_client_auth` clients.
+pub fn mtls_trust_anchors(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:mtls_trust_anchors")
+}
+
 /// A resource server by identifier (the token endpoint's audience lookup).
 pub fn resource_server(tenant_id: Uuid, identifier: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:rs:{identifier}")

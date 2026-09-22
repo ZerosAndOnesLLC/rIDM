@@ -29,6 +29,7 @@ const PAGES: [string, string, string][] = [
   ["messaging email", `/console/messaging/?tenant=${TENANT}&tab=email`, "Messaging"],
   ["messaging sms", `/console/messaging/?tenant=${TENANT}&tab=sms`, "Messaging"],
   ["messaging log", `/console/messaging/?tenant=${TENANT}&tab=log`, "Messaging"],
+  ["client certificates", `/console/client-certificates/?tenant=${TENANT}`, "Client certificates"],
 ];
 
 async function settled(page: Page, heading: string) {

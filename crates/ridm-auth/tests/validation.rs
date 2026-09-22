@@ -358,6 +358,42 @@ async fn expiry_is_enforced_but_clock_skew_within_the_leeway_is_forgiven() {
 }
 
 #[tokio::test]
+async fn a_certificate_bound_token_needs_its_certificate() {
+    let issuer = Issuer::start().await;
+    let validator = issuer.validator().discover().await.unwrap();
+    let cert = b"not really DER, but the thumbprint is all that is compared";
+    let other = b"another certificate";
+
+    let mut bound = issuer.claims();
+    bound["cnf"] = json!({ "x5t#S256": ridm_auth::certificate_thumbprint(cert) });
+    let token = access_token(&bound);
+
+    let e = validator.validate(&token).await.unwrap_err();
+    assert!(matches!(e, AuthError::SenderConstrained), "{e}");
+    let e = validator
+        .validate_with_certificate(&token, Some(other))
+        .await
+        .unwrap_err();
+    assert!(matches!(e, AuthError::CertificateMismatch), "{e}");
+    let claims = validator
+        .validate_with_certificate(&token, Some(cert))
+        .await
+        .unwrap();
+    assert_eq!(
+        claims.x5t_s256(),
+        Some(ridm_auth::certificate_thumbprint(cert).as_str())
+    );
+
+    // Bound to a DPoP key as well: the certificate settles only half of it.
+    bound["cnf"]["jkt"] = json!("0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I");
+    let e = validator
+        .validate_with_certificate(&access_token(&bound), Some(cert))
+        .await
+        .unwrap_err();
+    assert!(matches!(e, AuthError::SenderConstrained), "{e}");
+}
+
+#[tokio::test]
 async fn a_sender_constrained_token_is_refused_unless_the_caller_opts_in() {
     let issuer = Issuer::start().await;
     let validator = issuer.validator().discover().await.unwrap();

@@ -6,6 +6,7 @@
 //! endpoints exist, and the contract test (Phase 3.10) checks that every
 //! advertised endpoint answers.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -176,6 +177,13 @@ pub struct ProviderMetadata {
     pub frontchannel_logout_session_supported: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dpop_signing_alg_values_supported: Option<Vec<&'static str>>,
+    /// RFC 8705 §3.3.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tls_client_certificate_bound_access_tokens: Option<bool>,
+    /// RFC 8705 §5: where the endpoints that take a client certificate are
+    /// reached with one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mtls_endpoint_aliases: Option<BTreeMap<&'static str, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub op_policy_uri: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -188,12 +196,22 @@ fn signing_algs() -> Vec<&'static str> {
     SigningAlg::ALL.iter().map(|a| a.as_str()).collect()
 }
 
+/// What the deployment offers of mutual TLS (RFC 8705).
+#[derive(Debug, Clone, Default)]
+pub struct Mtls {
+    /// Client certificates can reach rIDM (`MTLS_BIND` or `CLIENT_CERT_HEADER`).
+    pub enabled: bool,
+    /// `{MTLS_PUBLIC_URL}/t/{slug}`, the base of the endpoint aliases.
+    pub alias_base: Option<String>,
+}
+
 /// Build the metadata for a tenant. `issuer` already reflects a custom domain.
 pub fn build(
     tenant: &Tenant,
     issuer: &str,
     scope_names: Vec<String>,
     caps: &Capabilities,
+    mtls: &Mtls,
 ) -> ProviderMetadata {
     let ep = |path: &str| format!("{issuer}{path}");
     let mut response_modes = vec!["query", "fragment"];
@@ -213,12 +231,44 @@ pub fn build(
     if caps.ciba {
         grant_types.push(crate::models::grants::CIBA);
     }
-    let auth_methods = vec![
+    let mut auth_methods = vec![
         "none",
         "client_secret_basic",
         "client_secret_post",
         "private_key_jwt",
     ];
+    if mtls.enabled {
+        auth_methods.extend(["tls_client_auth", "self_signed_tls_client_auth"]);
+    }
+    let aliases = mtls
+        .alias_base
+        .as_ref()
+        .filter(|_| mtls.enabled)
+        .map(|base| {
+            let alias = |path: &str| format!("{base}{path}");
+            let mut m = BTreeMap::from([("token_endpoint", alias("/token"))]);
+            for (on, key, path) in [
+                (caps.userinfo, "userinfo_endpoint", "/userinfo"),
+                (caps.introspection, "introspection_endpoint", "/introspect"),
+                (caps.revocation, "revocation_endpoint", "/revoke"),
+                (caps.par, "pushed_authorization_request_endpoint", "/par"),
+                (
+                    caps.device,
+                    "device_authorization_endpoint",
+                    "/device_authorization",
+                ),
+                (
+                    caps.ciba,
+                    "backchannel_authentication_endpoint",
+                    "/bc-authorize",
+                ),
+            ] {
+                if on {
+                    m.insert(key, alias(path));
+                }
+            }
+            m
+        });
     let mut prompts = vec!["none", "login", "consent", "select_account"];
     if caps.authorization_code {
         prompts.push("create");
@@ -282,6 +332,8 @@ pub fn build(
         // The proof verifier's own list, so discovery never promises less (or
         // more) than `/token` accepts.
         dpop_signing_alg_values_supported: caps.dpop.then(|| crate::oidc::dpop::ALGS.to_vec()),
+        tls_client_certificate_bound_access_tokens: mtls.enabled.then_some(true),
+        mtls_endpoint_aliases: aliases,
         op_policy_uri: tenant.settings.registration.privacy_url.clone(),
         op_tos_uri: tenant.settings.registration.terms_url.clone(),
         service_documentation: branding.support_url.clone(),
@@ -299,6 +351,10 @@ pub async fn load(state: &AppState, tenant: &TenantCtx) -> Result<Arc<CachedDocu
     let issuer = tenant.issuer(state);
     let t = tenant.tenant.clone();
     let st = state.clone();
+    let mtls = Mtls {
+        enabled: state.config.mtls.enabled(),
+        alias_base: crate::oidc::mtls::alias_base(state, &t.slug),
+    };
     let doc = state
         .cache
         .get_or_load(
@@ -310,7 +366,7 @@ pub async fn load(state: &AppState, tenant: &TenantCtx) -> Result<Arc<CachedDocu
                     .iter()
                     .map(|s| s.name.clone())
                     .collect();
-                let body = serde_json::to_string(&build(&t, &issuer, names, &CAPABILITIES))?;
+                let body = serde_json::to_string(&build(&t, &issuer, names, &CAPABILITIES, &mtls))?;
                 let etag = format!(
                     "\"{}\"",
                     hex::encode(&Sha256::digest(body.as_bytes())[..16])

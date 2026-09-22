@@ -84,13 +84,17 @@ pub struct Claims {
 }
 
 /// The `cnf` claim. `jkt` is the thumbprint of the DPoP key the token is bound
-/// to (RFC 9449 §6).
+/// to (RFC 9449 §6); `x5t#S256` the thumbprint of the client certificate
+/// (RFC 8705 §3.1).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Confirmation {
     /// The RFC 7638 thumbprint of the key the token is bound to.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jkt: Option<String>,
+    /// base64url(SHA-256) of the DER client certificate the token is bound to.
+    #[serde(rename = "x5t#S256", default, skip_serializing_if = "Option::is_none")]
+    pub x5t_s256: Option<String>,
     /// Any other confirmation method the token carried.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -193,6 +197,12 @@ impl Claims {
     /// The DPoP key thumbprint this token is bound to, if any.
     pub fn jkt(&self) -> Option<&str> {
         self.cnf.as_ref()?.jkt.as_deref()
+    }
+
+    /// The client certificate thumbprint (`x5t#S256`) this token is bound
+    /// to, if any.
+    pub fn x5t_s256(&self) -> Option<&str> {
+        self.cnf.as_ref()?.x5t_s256.as_deref()
     }
 }
 

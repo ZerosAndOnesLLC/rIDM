@@ -197,6 +197,7 @@ async fn token(fx: &Fx, user_id: Uuid, age_secs: i64) -> (String, Uuid) {
             amr: &["pwd".into()],
             acr: None,
             cnf_jkt: None,
+            cnf_x5t: None,
             act: None,
         },
     )
