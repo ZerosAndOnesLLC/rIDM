@@ -31,6 +31,7 @@ shipped, they do not change. The main families:
 | `user.*` | `user.created`, `user.registered`, `user.password_changed`, `user.email_verified`, `user.locked` |
 | `login.*` | `login.succeeded`, `login.failed`, `login.new_device`, `login.brokered`, `login.passwordless_sent` |
 | `logout.*` | `logout.upstream` ([SAML identity providers](../admin/saml-upstream.md#single-logout)) |
+| `directory.*` | `directory.synced` ([LDAP and Active Directory](../admin/ldap.md#sync)) |
 | `session.*`, `device.*` | `session.created`, `session.revoked`, `device.trusted`, `device.revoked` |
 | `token.*` | `token.revoked`, `token.refresh_reuse_detected` |
 | `mfa.*` | `mfa.changed` |

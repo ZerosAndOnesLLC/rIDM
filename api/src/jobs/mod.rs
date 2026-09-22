@@ -3,6 +3,7 @@ pub mod audit_sink;
 pub mod audit_verify;
 pub mod cleanup;
 pub mod key_rotation;
+pub mod ldap_sync;
 pub mod leader;
 pub mod message_delivery;
 pub mod saml_metadata;

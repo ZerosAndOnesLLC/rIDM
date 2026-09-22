@@ -52,3 +52,5 @@ rustls = { workspace = true }
 reqwest = { workspace = true, features = ["cookies", "query"] }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
+ldap3 = { workspace = true }
+rcgen = { workspace = true }

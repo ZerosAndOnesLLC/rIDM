@@ -39,7 +39,7 @@ async fn list_identities(
     let available = identity_providers::list(&state, ctx.tenant.id)
         .await?
         .iter()
-        .filter(|p| p.enabled && !linked.iter().any(|l| l.idp_id == p.id))
+        .filter(|p| p.enabled && p.redirects() && !linked.iter().any(|l| l.idp_id == p.id))
         .map(PublicIdentityProvider::from)
         .collect();
     Ok(Json(Identities { linked, available }))
@@ -69,7 +69,9 @@ async fn start_link(
 ) -> AppResult<Json<LinkStart>> {
     ctx.require_recent(&state).await?;
     let idp = identity_providers::get(&state, ctx.tenant.id, &body.alias).await?;
-    if !idp.enabled {
+    // A directory identity is linked by signing in with the directory
+    // password, not through a redirect.
+    if !idp.enabled || !idp.redirects() {
         return Err(AppError::NotFound("identity provider"));
     }
     let return_to = body

@@ -158,6 +158,28 @@ release renames that heading to the version and date.
   daily (`…/{alias}/saml/refresh` does it now); metrics
   `ridm_saml_sp_responses_total`, `ridm_saml_metadata_refresh_total`. Console:
   a SAML choice under Identity providers and its settings page.
+- LDAP / Active Directory upstream: an identity provider of the new kind `ldap`
+  (settings in `ldap_identity_providers`; the service account's bind password
+  encrypted where every provider keeps its secret). Directory users sign in with
+  the password form: rIDM binds as their entry (found by `entryUUID` or
+  `objectGUID`) and keeps no local password, so a password changed or an account
+  disabled in the directory counts at once; an identifier no account has is looked
+  up in the tenant's directories and imported through the link policy on a
+  successful bind. The new `ldap_sync` job runs each directory's incremental
+  sync (`modifyTimestamp` / `whenChanged`) on its interval and a full one daily,
+  which also disables users who left the directory (or are disabled in AD) and
+  enables them when they return; a full pass that reads nothing disables nobody.
+  Directory groups become rIDM groups the directory owns (AD ranged `member`
+  values read in full). `edit_mode: writable` writes password changes and resets
+  (Password Modify, or `unicodePwd` on AD), email and mapped attributes to the
+  directory first; `read_only` refuses them. Connections go over LDAPS or
+  StartTLS (plain LDAP for loopback only) with an optional pinned CA, through the
+  SSRF-checked resolver (private networks need `OUTBOUND_ALLOW_NETWORKS`).
+  Admin API `POST …/identity-providers/{idp}/ldap/test` and `…/ldap/sync`;
+  event `directory.synced`; metrics `ridm_ldap_syncs_total`,
+  `ridm_ldap_sync_seconds`. Console: an LDAP / Active Directory choice under
+  Identity providers with a connection test, sync status and Sync now. New
+  dependency `ldap3` 0.12.1 (MIT/Apache-2.0, rustls).
 
 ### Changed
 

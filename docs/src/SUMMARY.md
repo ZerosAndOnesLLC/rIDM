@@ -40,6 +40,7 @@
 - [Backchannel sign-in and FAPI 2.0](admin/ciba-fapi.md)
 - [SAML identity provider](admin/saml-idp.md)
 - [SAML identity providers (upstream)](admin/saml-upstream.md)
+- [LDAP and Active Directory](admin/ldap.md)
 - [Feature flags](admin/feature-flags.md)
 - [Email, SMS and templates](admin/messaging.md)
 - [SCIM provisioning](admin/scim.md)

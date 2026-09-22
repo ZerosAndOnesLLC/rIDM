@@ -18,8 +18,8 @@ use crate::cache::keys;
 use crate::db;
 use crate::error::{AppError, AppResult, FieldError};
 use crate::models::{
-    IdentityProvider, IdentityProviderUpdate, IdpAuthMethod, IdpKind, IdpMappers, LinkPolicy,
-    NewIdentityProvider, PublicIdentityProvider, SamlUpstreamSettings,
+    IdentityProvider, IdentityProviderUpdate, IdpAuthMethod, IdpKind, IdpMappers, LdapEditMode,
+    LdapSettings, LinkPolicy, NewIdentityProvider, PublicIdentityProvider, SamlUpstreamSettings,
 };
 use crate::repos;
 use crate::state::AppState;
@@ -156,7 +156,8 @@ pub fn validate_alias(raw: &str) -> AppResult<String> {
         && a.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
         && a != "presets"
         && a != "discover"
-        && a != "saml-metadata";
+        && a != "saml-metadata"
+        && a != "ldap-test";
     if ok {
         Ok(a)
     } else {
@@ -451,6 +452,7 @@ struct Resolved {
     mappers: IdpMappers,
     sort_order: i32,
     saml: Option<SamlUpstreamSettings>,
+    ldap: Option<LdapSettings>,
 }
 
 fn opt(s: Option<String>) -> Option<String> {
@@ -503,8 +505,14 @@ async fn finish(mut r: Resolved, has_secret: bool) -> AppResult<Resolved> {
     if r.kind == IdpKind::Saml {
         return finish_saml(r);
     }
+    if r.kind == IdpKind::Ldap {
+        return finish_ldap(r);
+    }
     if r.saml.is_some() {
         return Err(field_error("saml", "is only for a provider of kind `saml`"));
+    }
+    if r.ldap.is_some() {
+        return Err(field_error("ldap", "is only for a provider of kind `ldap`"));
     }
     if r.client_id.trim().is_empty() {
         return Err(AppError::Validation(vec![FieldError {
@@ -560,6 +568,7 @@ async fn finish(mut r: Resolved, has_secret: bool) -> AppResult<Resolved> {
             }
         }
         IdpKind::Saml => unreachable!("finished by finish_saml"),
+        IdpKind::Ldap => unreachable!("finished by finish_ldap"),
         IdpKind::Oauth2 => {
             for (name, present) in [
                 ("authorization_endpoint", r.authorization_endpoint.is_some()),
@@ -603,6 +612,9 @@ fn finish_saml(mut r: Resolved) -> AppResult<Resolved> {
         .saml
         .take()
         .ok_or_else(|| field_error("saml", "is required for a provider of kind `saml`"))?;
+    if r.ldap.is_some() {
+        return Err(field_error("ldap", "is only for a provider of kind `ldap`"));
+    }
     r.saml = Some(validate_saml(settings)?);
     r.preset = None;
     r.issuer = None;
@@ -615,6 +627,172 @@ fn finish_saml(mut r: Resolved) -> AppResult<Resolved> {
     r.scopes = vec![];
     r.pkce = false;
     Ok(r)
+}
+
+/// A directory has none of the OAuth fields either; its settings are
+/// checked and the mappers default to its username attribute and `mail`.
+fn finish_ldap(mut r: Resolved) -> AppResult<Resolved> {
+    let settings = r
+        .ldap
+        .take()
+        .ok_or_else(|| field_error("ldap", "is required for a provider of kind `ldap`"))?;
+    if r.saml.is_some() {
+        return Err(field_error("saml", "is only for a provider of kind `saml`"));
+    }
+    let settings = validate_ldap(settings)?;
+    let m = &mut r.mappers;
+    m.subject = None;
+    m.email_verified = None;
+    for (field, name) in [
+        ("mappers.username", &mut m.username),
+        ("mappers.email", &mut m.email),
+    ] {
+        if let Some(n) = name {
+            *n = n.trim().to_string();
+            crate::ldap::check_attribute(n).map_err(|e| field_error(field, &e))?;
+        }
+    }
+    m.username
+        .get_or_insert_with(|| settings.username_attribute.clone().unwrap_or_default());
+    m.email.get_or_insert_with(|| "mail".into());
+    for (attr, name) in &mut m.attributes {
+        if !crate::services::profile_schema::is_valid_attribute_name(attr) {
+            return Err(field_error(
+                &format!("mappers.attributes.{attr}"),
+                "attribute names match ^[a-zA-Z][a-zA-Z0-9_]{0,63}$",
+            ));
+        }
+        *name = name.trim().to_string();
+        crate::ldap::check_attribute(name)
+            .map_err(|e| field_error(&format!("mappers.attributes.{attr}"), &e))?;
+    }
+    r.ldap = Some(settings);
+    r.preset = None;
+    r.issuer = None;
+    r.authorization_endpoint = None;
+    r.token_endpoint = None;
+    r.userinfo_endpoint = None;
+    r.jwks_uri = None;
+    r.client_id = String::new();
+    r.token_endpoint_auth_method = IdpAuthMethod::None;
+    r.scopes = vec![];
+    r.pkce = false;
+    Ok(r)
+}
+
+/// Check and normalize a directory's settings, filling in the vendor's
+/// defaults for every attribute and filter left out.
+pub fn validate_ldap(mut s: LdapSettings) -> AppResult<LdapSettings> {
+    let (host, _, tls) = crate::ldap::check_url(&s.url).map_err(|e| field_error("ldap.url", &e))?;
+    s.url = s.url.trim().trim_end_matches('/').to_string();
+    if tls {
+        s.starttls = false;
+    } else if !s.starttls && !crate::ldap::is_loopback(&host) {
+        return Err(field_error(
+            "ldap.url",
+            "plain ldap:// sends passwords in the clear: use ldaps:// or StartTLS (plain is accepted for loopback hosts only)",
+        ));
+    }
+    s.ca_certificate = opt(s.ca_certificate);
+    if let Some(pem) = &s.ca_certificate {
+        crate::ldap::parse_ca(pem).map_err(|e| field_error("ldap.ca_certificate", &e))?;
+    }
+    s.bind_dn = opt(s.bind_dn);
+    if let Some(dn) = &s.bind_dn {
+        crate::ldap::check_dn(dn).map_err(|e| field_error("ldap.bind_dn", &e))?;
+    }
+    s.users_dn = s.users_dn.trim().to_string();
+    crate::ldap::check_dn(&s.users_dn).map_err(|e| field_error("ldap.users_dn", &e))?;
+    let v = s.vendor;
+    let filter = |field: &str, value: Option<String>, default: &str| -> AppResult<String> {
+        let f = opt(value).unwrap_or_else(|| default.to_string());
+        crate::ldap::check_filter(&f).map_err(|e| field_error(field, &e))?;
+        Ok(f)
+    };
+    let attribute = |field: &str, value: Option<String>, default: &str| -> AppResult<String> {
+        let a = opt(value).unwrap_or_else(|| default.to_string());
+        crate::ldap::check_attribute(&a).map_err(|e| field_error(field, &e))?;
+        Ok(a)
+    };
+    s.user_object_filter = Some(filter(
+        "ldap.user_object_filter",
+        s.user_object_filter,
+        v.default_user_object_filter(),
+    )?);
+    let username = attribute(
+        "ldap.username_attribute",
+        s.username_attribute,
+        v.default_username_attribute(),
+    )?;
+    s.uuid_attribute = Some(attribute(
+        "ldap.uuid_attribute",
+        s.uuid_attribute,
+        v.default_uuid_attribute(),
+    )?);
+    let mut login: Vec<String> = vec![];
+    for a in &s.login_attributes {
+        let a = a.trim().to_string();
+        crate::ldap::check_attribute(&a).map_err(|e| field_error("ldap.login_attributes", &e))?;
+        if !login.iter().any(|l| l.eq_ignore_ascii_case(&a)) {
+            login.push(a);
+        }
+    }
+    if login.is_empty() {
+        login = vec![username.clone(), "mail".into()];
+    }
+    if login.len() > 5 {
+        return Err(field_error(
+            "ldap.login_attributes",
+            "at most five attributes",
+        ));
+    }
+    s.login_attributes = login;
+    s.username_attribute = Some(username);
+    if s.sync_interval_minutes != 0 && !(5..=10080).contains(&s.sync_interval_minutes) {
+        return Err(field_error(
+            "ldap.sync_interval_minutes",
+            "must be 0 (off) or 5-10080 minutes",
+        ));
+    }
+    if !(1..=720).contains(&s.full_sync_interval_hours) {
+        return Err(field_error(
+            "ldap.full_sync_interval_hours",
+            "must be 1-720 hours",
+        ));
+    }
+    if !(1..=60).contains(&s.timeout_secs) {
+        return Err(field_error("ldap.timeout_secs", "must be 1-60 seconds"));
+    }
+    s.groups_dn = opt(s.groups_dn);
+    if let Some(dn) = &s.groups_dn {
+        crate::ldap::check_dn(dn).map_err(|e| field_error("ldap.groups_dn", &e))?;
+    }
+    s.group_object_filter = Some(filter(
+        "ldap.group_object_filter",
+        s.group_object_filter,
+        v.default_group_object_filter(),
+    )?);
+    s.group_name_attribute = Some(attribute(
+        "ldap.group_name_attribute",
+        s.group_name_attribute,
+        "cn",
+    )?);
+    let member_default = match s.group_membership {
+        crate::models::LdapMembership::Dn => "member",
+        crate::models::LdapMembership::Username => "memberUid",
+    };
+    s.group_member_attribute = Some(attribute(
+        "ldap.group_member_attribute",
+        s.group_member_attribute,
+        member_default,
+    )?);
+    if s.edit_mode == LdapEditMode::Writable && s.bind_dn.is_none() {
+        return Err(field_error(
+            "ldap.edit_mode",
+            "a writable directory needs a bind DN: rIDM writes as that service account",
+        ));
+    }
+    Ok(s)
 }
 
 /// Check and normalize a SAML provider's settings: https endpoints,
@@ -795,6 +973,7 @@ fn from_new(input: NewIdentityProvider) -> AppResult<Resolved> {
         mappers,
         sort_order: input.sort_order.unwrap_or(0),
         saml: input.saml,
+        ldap: input.ldap,
     })
 }
 
@@ -820,13 +999,17 @@ fn from_existing(idp: &IdentityProvider) -> Resolved {
         mappers: idp.mappers.0.clone(),
         sort_order: idp.sort_order,
         saml: idp.saml.as_ref().map(|s| s.settings()),
+        ldap: idp.ldap.as_ref().map(|s| s.settings()),
     }
 }
 
 async fn invalidate(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
     state
         .cache
-        .invalidate(&[keys::identity_providers(tenant_id)])
+        .invalidate(&[
+            keys::identity_providers(tenant_id),
+            keys::ldap_directories(tenant_id),
+        ])
         .await
 }
 
@@ -838,6 +1021,16 @@ pub async fn list(state: &AppState, tenant_id: Uuid) -> AppResult<Vec<IdentityPr
         for r in &mut rows {
             if let Some(i) = saml.iter().position(|s| s.idp_id == r.id) {
                 r.saml = Some(saml.swap_remove(i));
+            }
+        }
+    }
+    if rows.iter().any(|r| r.kind == IdpKind::Ldap) {
+        let mut ldap = repos::identity_providers::list_ldap(&mut *tx, tenant_id).await?;
+        for r in &mut rows {
+            if let Some(i) = ldap.iter().position(|s| s.idp_id == r.id) {
+                let mut l = ldap.swap_remove(i);
+                l.bind_password_set = r.client_secret_set;
+                r.ldap = Some(l);
             }
         }
     }
@@ -859,8 +1052,41 @@ pub async fn get(state: &AppState, tenant_id: Uuid, key: &str) -> AppResult<Iden
     if row.kind == IdpKind::Saml {
         row.saml = repos::identity_providers::find_saml(&mut *tx, tenant_id, row.id).await?;
     }
+    if row.kind == IdpKind::Ldap {
+        row.ldap = repos::identity_providers::find_ldap(&mut *tx, tenant_id, row.id)
+            .await?
+            .map(|mut l| {
+                l.bind_password_set = row.client_secret_set;
+                l
+            });
+    }
     tx.commit().await?;
     Ok(row)
+}
+
+/// The tenant's enabled directories (the password step looks unknown
+/// identifiers up in them), cached: most tenants have none.
+pub async fn directories(state: &AppState, tenant_id: Uuid) -> AppResult<Vec<Uuid>> {
+    let db = state.db.clone();
+    let cached: Option<Arc<Vec<Uuid>>> = state
+        .cache
+        .get_or_load(
+            &keys::ldap_directories(tenant_id),
+            OFFERED_TTL,
+            || async move {
+                let mut tx = db::tenant_tx(&db, tenant_id).await?;
+                let rows = repos::identity_providers::list(&mut *tx, tenant_id).await?;
+                tx.commit().await?;
+                Ok(Some(
+                    rows.iter()
+                        .filter(|p| p.enabled && p.kind == IdpKind::Ldap)
+                        .map(|p| p.id)
+                        .collect::<Vec<_>>(),
+                ))
+            },
+        )
+        .await?;
+    Ok(cached.map(|v| v.as_ref().clone()).unwrap_or_default())
 }
 
 /// Providers offered on the login page (enabled, not hidden), cached.
@@ -893,13 +1119,30 @@ pub async fn create(
     actor: Actor,
     input: NewIdentityProvider,
 ) -> AppResult<IdentityProvider> {
-    let secret = input
-        .client_secret
-        .clone()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
+    let is_ldap = input.kind == Some(IdpKind::Ldap);
+    if is_ldap && input.client_secret.is_some() {
+        return Err(field_error(
+            "client_secret",
+            "a directory's service account password is `ldap.bind_password`",
+        ));
+    }
+    let secret = if is_ldap {
+        input
+            .ldap
+            .as_ref()
+            .and_then(|l| l.bind_password.as_ref())
+            .map(|p| p.0.clone())
+            .filter(|p| !p.is_empty())
+    } else {
+        input
+            .client_secret
+            .clone()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    };
     let r = finish(from_new(input)?, secret.is_some()).await?;
     check_unsolicited_target(state, tenant_id, r.saml.as_ref()).await?;
+    check_ldap_secret(r.ldap.as_ref(), secret.is_some())?;
     let id = Uuid::now_v7();
     let enc = encrypt_secret(state, tenant_id, id, secret.as_deref().unwrap_or("")).await?;
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
@@ -940,6 +1183,11 @@ pub async fn create(
     let mut row = row;
     if let Some(saml) = &r.saml {
         row.saml = Some(store_saml(&mut tx, tenant_id, row.id, saml).await?);
+    }
+    if let Some(ldap) = &r.ldap {
+        let mut l = store_ldap(&mut tx, tenant_id, row.id, ldap).await?;
+        l.bind_password_set = row.client_secret_set;
+        row.ldap = Some(l);
     }
     tx.commit().await?;
     invalidate(state, tenant_id).await?;
@@ -1028,10 +1276,32 @@ pub async fn update(
     if let Some(v) = patch.saml {
         r.saml = Some(v);
     }
+    // A directory's bind password travels in its settings: left out it is
+    // kept, an empty string clears it.
+    let ldap_password: Option<Option<String>> = patch
+        .ldap
+        .as_ref()
+        .and_then(|l| l.bind_password.as_ref())
+        .map(|p| Some(p.0.clone()).filter(|p| !p.is_empty()));
+    if let Some(v) = patch.ldap {
+        r.ldap = Some(v);
+    }
     if (r.kind == IdpKind::Saml) != (existing.kind == IdpKind::Saml) {
         return Err(field_error(
             "kind",
             "a provider cannot change to or from SAML; create another one",
+        ));
+    }
+    if (r.kind == IdpKind::Ldap) != (existing.kind == IdpKind::Ldap) {
+        return Err(field_error(
+            "kind",
+            "a provider cannot change to or from LDAP; create another one",
+        ));
+    }
+    if r.kind == IdpKind::Ldap && patch.client_secret.is_some() {
+        return Err(field_error(
+            "client_secret",
+            "a directory's service account password is `ldap.bind_password`",
         ));
     }
     // A new issuer means new endpoints unless the patch names them.
@@ -1049,15 +1319,20 @@ pub async fn update(
             r.userinfo_endpoint = None;
         }
     }
-    let secret: Option<Option<String>> = patch
-        .client_secret
-        .map(|s| s.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()));
+    let secret: Option<Option<String>> = if r.kind == IdpKind::Ldap {
+        ldap_password
+    } else {
+        patch
+            .client_secret
+            .map(|s| s.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()))
+    };
     let has_secret = match &secret {
         Some(s) => s.is_some(),
         None => existing.client_secret_set,
     };
     let r = finish(r, has_secret).await?;
     check_unsolicited_target(state, tenant_id, r.saml.as_ref()).await?;
+    check_ldap_secret(r.ldap.as_ref(), has_secret)?;
     let enc = match &secret {
         Some(s) => {
             Some(encrypt_secret(state, tenant_id, existing.id, s.as_deref().unwrap_or("")).await?)
@@ -1105,6 +1380,11 @@ pub async fn update(
     if let Some(saml) = &r.saml {
         row.saml = Some(store_saml(&mut tx, tenant_id, row.id, saml).await?);
     }
+    if let Some(ldap) = &r.ldap {
+        let mut l = store_ldap(&mut tx, tenant_id, row.id, ldap).await?;
+        l.bind_password_set = row.client_secret_set;
+        row.ldap = Some(l);
+    }
     tx.commit().await?;
     invalidate(state, tenant_id).await?;
     if row.jwks_uri != existing.jwks_uri {
@@ -1134,6 +1414,37 @@ async fn store_saml(
             ),
             other => other,
         })
+}
+
+/// A bind password means nothing without a bind DN to bind as. (A bind DN
+/// without its password is accepted: a tenant document creates the
+/// provider, the password is set afterwards.)
+fn check_ldap_secret(ldap: Option<&LdapSettings>, has_password: bool) -> AppResult<()> {
+    match ldap {
+        Some(l) if has_password && l.bind_dn.is_none() => Err(field_error(
+            "ldap.bind_password",
+            "is only used with a bind DN",
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// Write a directory's settings; the parent group for synced groups must
+/// be one of the tenant's.
+async fn store_ldap(
+    tx: &mut crate::db::Tx,
+    tenant_id: Uuid,
+    idp_id: Uuid,
+    ldap: &LdapSettings,
+) -> AppResult<crate::models::LdapUpstream> {
+    if let Some(parent) = ldap.group_parent_id
+        && repos::groups::find_by_id(&mut **tx, tenant_id, parent)
+            .await?
+            .is_none()
+    {
+        return Err(field_error("ldap.group_parent_id", "no such group"));
+    }
+    Ok(repos::identity_providers::upsert_ldap(&mut **tx, tenant_id, idp_id, ldap).await?)
 }
 
 /// Delete a provider and, through the database, the identities linked to

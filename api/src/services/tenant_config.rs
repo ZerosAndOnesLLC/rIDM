@@ -22,8 +22,8 @@ use crate::models::{
     ScopeUpdate, Tenant, TenantSettings, WebhookUpdate,
 };
 use crate::models::{
-    IdentityProviderUpdate, IdpAuthMethod, IdpKind, IdpMappers, LinkPolicy, NewIdentityProvider,
-    SamlUpstreamSettings,
+    IdentityProviderUpdate, IdpAuthMethod, IdpKind, IdpMappers, LdapSettings, LinkPolicy,
+    NewIdentityProvider, SamlUpstreamSettings,
 };
 use crate::services::admin_access::{self, Grant};
 use crate::services::messaging::TemplateBody;
@@ -261,6 +261,11 @@ pub struct IdentityProviderDoc {
     /// status is not configuration).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub saml: Option<SamlUpstreamSettings>,
+    /// An `ldap` provider's directory settings (the bind password is a
+    /// secret: never exported, kept on import, set afterwards on a new
+    /// provider; the sync status is not configuration).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ldap: Option<LdapSettings>,
 }
 
 impl Default for IdentityProviderDoc {
@@ -286,6 +291,7 @@ impl Default for IdentityProviderDoc {
             mappers: IdpMappers::default(),
             sort_order: 0,
             saml: None,
+            ldap: None,
         }
     }
 }
@@ -574,6 +580,7 @@ pub async fn export(state: &AppState, tenant: &Tenant) -> AppResult<TenantConfig
             mappers: p.mappers.0,
             sort_order: p.sort_order,
             saml: p.saml.as_ref().map(|s| s.settings()),
+            ldap: p.ldap.as_ref().map(|s| s.settings()),
         })
         .collect();
     idps_out.sort_by(|a, b| a.alias.cmp(&b.alias));
@@ -807,6 +814,12 @@ fn normalize(tenant_id: Uuid, mut doc: TenantConfig) -> AppResult<TenantConfig> 
         // in the document is no change.
         if let Some(s) = p.saml.take() {
             p.saml = Some(identity_providers::validate_saml(s)?);
+        }
+        // Defaults filled in as they are stored, so leaving one out of the
+        // document is no change.
+        if let Some(mut s) = p.ldap.take() {
+            s.bind_password = None;
+            p.ldap = Some(identity_providers::validate_ldap(s)?);
         }
     }
     Ok(doc)
@@ -1967,6 +1980,7 @@ pub async fn apply(
                             mappers: Some(p.mappers.clone()),
                             sort_order: Some(p.sort_order),
                             saml: p.saml.clone(),
+                            ldap: p.ldap.clone(),
                         },
                     )
                     .await?;
@@ -1998,10 +2012,16 @@ pub async fn apply(
                             mappers: Some(p.mappers.clone()),
                             sort_order: Some(p.sort_order),
                             saml: p.saml.clone(),
+                            ldap: p.ldap.clone(),
                         },
                     )
                     .await?;
-                    if p.kind != IdpKind::Saml {
+                    let needs_secret = match p.kind {
+                        IdpKind::Saml => false,
+                        IdpKind::Ldap => p.ldap.as_ref().is_some_and(|l| l.bind_dn.is_some()),
+                        _ => true,
+                    };
+                    if needs_secret {
                         ctx.report.secrets.identity_providers.push(p.alias.clone());
                     }
                 }

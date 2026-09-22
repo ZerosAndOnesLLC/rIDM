@@ -182,6 +182,17 @@ pub async fn begin(
         }]));
     }
     if contact == Contact::Email {
+        // A directory that owns the address says no before a code is sent.
+        crate::services::ldap::check_profile_change(
+            state,
+            tenant.id,
+            user,
+            &UserUpdate {
+                email: Some(Some(destination.clone())),
+                ..Default::default()
+            },
+        )
+        .await?;
         let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
         let taken = repos::users::find_by_email(&mut *tx, tenant.id, &destination)
             .await?

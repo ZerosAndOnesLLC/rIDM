@@ -4769,6 +4769,208 @@
         ]
       }
     },
+    "/admin/tenants/{slug}/identity-providers/{idp}/ldap/sync": {
+      "post": {
+        "tags": [
+          "identity_providers"
+        ],
+        "summary": "Sync a directory's users and groups now, as the periodic job does.",
+        "operationId": "identity_providers_ldap_sync",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "idp",
+            "in": "path",
+            "description": "Row id or alias",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LdapSyncBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LdapSyncStats"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not an LDAP provider",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A sync of this directory is already running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The directory could not be reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/tenants/{slug}/identity-providers/{idp}/ldap/test": {
+      "post": {
+        "tags": [
+          "identity_providers"
+        ],
+        "summary": "Connect to a directory as its service account and read a few users\n(and groups): what a sign-in and a sync would see. Nothing is stored.",
+        "operationId": "identity_providers_ldap_test",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Tenant slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "idp",
+            "in": "path",
+            "description": "Row id or alias",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What the test found; `error` says what failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not an LDAP provider",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/admin/tenants/{slug}/identity-providers/{idp}/saml/refresh": {
       "post": {
         "tags": [
@@ -22107,6 +22309,17 @@
           "kind": {
             "$ref": "#/components/schemas/IdpKind"
           },
+          "ldap": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LdapUpstream",
+                "description": "The directory settings of an `ldap` provider."
+              }
+            ]
+          },
           "link_policy": {
             "$ref": "#/components/schemas/LinkPolicy"
           },
@@ -22224,6 +22437,18 @@
               }
             ],
             "default": "oidc"
+          },
+          "ldap": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LdapSettings",
+                "description": "An `ldap` provider's directory settings (the bind password is a\nsecret: never exported, kept on import, set afterwards on a new\nprovider; the sync status is not configuration)."
+              }
+            ],
+            "default": null
           },
           "link_policy": {
             "oneOf": [
@@ -22389,6 +22614,18 @@
             ],
             "default": null
           },
+          "ldap": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LdapSettings",
+                "description": "An `ldap` provider's settings, replaced as a whole (a missing\n`bind_password` keeps the stored one)."
+              }
+            ],
+            "default": null
+          },
           "link_policy": {
             "oneOf": [
               {
@@ -22496,7 +22733,7 @@
             "properties": {
               "callback_url": {
                 "type": "string",
-                "description": "The redirect URI (OIDC, OAuth 2.0) or the assertion consumer\nservice (SAML)."
+                "description": "The redirect URI (OIDC, OAuth 2.0) or the assertion consumer\nservice (SAML); empty for a directory (LDAP), which has none."
               },
               "saml_sp": {
                 "oneOf": [
@@ -22529,7 +22766,8 @@
         "enum": [
           "oidc",
           "oauth2",
-          "saml"
+          "saml",
+          "ldap"
         ]
       },
       "IdpMappers": {
@@ -23140,6 +23378,442 @@
         "enum": [
           "rsa-oaep-mgf1p",
           "rsa-oaep-sha256"
+        ]
+      },
+      "LdapEditMode": {
+        "type": "string",
+        "description": "Whether rIDM writes back to the directory.",
+        "enum": [
+          "read_only",
+          "writable"
+        ]
+      },
+      "LdapMembership": {
+        "type": "string",
+        "description": "What a group's member attribute holds.",
+        "enum": [
+          "dn",
+          "username"
+        ]
+      },
+      "LdapScope": {
+        "type": "string",
+        "enum": [
+          "subtree",
+          "one"
+        ]
+      },
+      "LdapSettings": {
+        "type": "object",
+        "description": "What an administrator sets for a directory. Attributes and filters left\nout take the vendor's defaults.",
+        "properties": {
+          "bind_dn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The service account that searches (and, when writable, writes);\nnone searches anonymously.",
+            "default": null
+          },
+          "bind_password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The service account's password. Write-only: never returned; left\nout on an update it is kept, an empty string clears it.",
+            "default": null,
+            "writeOnly": true
+          },
+          "ca_certificate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "PEM certificate(s) the directory's certificate must chain to (an\ninternal CA); none trusts the platform's roots.",
+            "default": null
+          },
+          "edit_mode": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LdapEditMode"
+              }
+            ],
+            "default": "read_only"
+          },
+          "full_sync_interval_hours": {
+            "type": "integer",
+            "format": "int32",
+            "description": "A full sync, which also disables the users who left the directory\n(or were disabled in it), every this many hours (1–720).",
+            "default": 24
+          },
+          "group_member_attribute": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The attribute listing a group's members (`member`, `memberUid`).",
+            "default": null
+          },
+          "group_membership": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LdapMembership"
+              }
+            ],
+            "default": "dn"
+          },
+          "group_name_attribute": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The attribute a synced group's name comes from (`cn`).",
+            "default": null
+          },
+          "group_object_filter": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "group_parent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The rIDM group synced groups are created under; none makes them\ntop-level.",
+            "default": null
+          },
+          "groups_dn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where groups are searched; none turns group sync off.",
+            "default": null
+          },
+          "login_attributes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The attributes a sign-in identifier is matched against; the username\nattribute and `mail` when empty.",
+            "default": []
+          },
+          "search_scope": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LdapScope"
+              }
+            ],
+            "default": "subtree"
+          },
+          "starttls": {
+            "type": "boolean",
+            "description": "Upgrade an `ldap://` connection with StartTLS.",
+            "default": false
+          },
+          "sync_interval_minutes": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Incremental sync every this many minutes (5–10080); 0 turns the\nperiodic sync off (users are still imported and refreshed when they\nsign in).",
+            "default": 60
+          },
+          "timeout_secs": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Seconds a connection or an operation may take (1–60).",
+            "default": 10
+          },
+          "url": {
+            "type": "string",
+            "description": "`ldaps://host[:port]`, or `ldap://host[:port]` with `starttls`.\nPlain `ldap://` is accepted for loopback hosts only.",
+            "default": ""
+          },
+          "user_object_filter": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Which entries are users, e.g. `(objectClass=inetOrgPerson)`.",
+            "default": null
+          },
+          "username_attribute": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The attribute a new account's username comes from (`uid`,\n`sAMAccountName`).",
+            "default": null
+          },
+          "users_dn": {
+            "type": "string",
+            "description": "Where users are searched.",
+            "default": ""
+          },
+          "uuid_attribute": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The attribute that never changes for an entry (`entryUUID`,\n`objectGUID`): what the linked identity is keyed by.",
+            "default": null
+          },
+          "vendor": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LdapVendor"
+              }
+            ],
+            "default": "other"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LdapSyncBody": {
+        "type": "object",
+        "properties": {
+          "full": {
+            "type": "boolean",
+            "description": "A full pass (which also disables the users who left the directory)\nrather than the incremental one that is due.",
+            "default": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "LdapSyncStats": {
+        "type": "object",
+        "description": "What one sync pass did.",
+        "properties": {
+          "created": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0,
+            "minimum": 0
+          },
+          "disabled": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Disabled because the entry left the directory or was disabled there.",
+            "default": 0,
+            "minimum": 0
+          },
+          "enabled": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Enabled again because the entry came back.",
+            "default": 0,
+            "minimum": 0
+          },
+          "full": {
+            "type": "boolean",
+            "description": "A full pass (it may disable users); otherwise incremental.",
+            "default": false
+          },
+          "groups_created": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0,
+            "minimum": 0
+          },
+          "groups_deleted": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0,
+            "minimum": 0
+          },
+          "groups_updated": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0,
+            "minimum": 0
+          },
+          "memberships_added": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0,
+            "minimum": 0
+          },
+          "memberships_removed": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0,
+            "minimum": 0
+          },
+          "read": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Directory user entries read.",
+            "default": 0,
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Entries that could not be imported (no usable uuid or username, or\nthe link policy refused them); the log says why.",
+            "default": 0,
+            "minimum": 0
+          },
+          "updated": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0,
+            "minimum": 0
+          }
+        }
+      },
+      "LdapUpstream": {
+        "type": "object",
+        "description": "The directory side of an `ldap` identity provider.",
+        "required": [
+          "url",
+          "starttls",
+          "vendor",
+          "bind_password_set",
+          "users_dn",
+          "user_object_filter",
+          "search_scope",
+          "username_attribute",
+          "login_attributes",
+          "uuid_attribute",
+          "edit_mode",
+          "sync_interval_minutes",
+          "full_sync_interval_hours",
+          "group_object_filter",
+          "group_name_attribute",
+          "group_member_attribute",
+          "group_membership",
+          "timeout_secs"
+        ],
+        "properties": {
+          "bind_dn": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bind_password_set": {
+            "type": "boolean",
+            "description": "A bind password is stored (it is never returned)."
+          },
+          "ca_certificate": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "edit_mode": {
+            "$ref": "#/components/schemas/LdapEditMode"
+          },
+          "full_sync_interval_hours": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "group_member_attribute": {
+            "type": "string"
+          },
+          "group_membership": {
+            "$ref": "#/components/schemas/LdapMembership"
+          },
+          "group_name_attribute": {
+            "type": "string"
+          },
+          "group_object_filter": {
+            "type": "string"
+          },
+          "group_parent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "groups_dn": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_full_sync_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_sync_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_sync_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the last sync failed, until one succeeds."
+          },
+          "last_sync_stats": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LdapSyncStats"
+              }
+            ]
+          },
+          "login_attributes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "search_scope": {
+            "$ref": "#/components/schemas/LdapScope"
+          },
+          "starttls": {
+            "type": "boolean"
+          },
+          "sync_interval_minutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "timeout_secs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "url": {
+            "type": "string"
+          },
+          "user_object_filter": {
+            "type": "string"
+          },
+          "username_attribute": {
+            "type": "string"
+          },
+          "users_dn": {
+            "type": "string"
+          },
+          "uuid_attribute": {
+            "type": "string"
+          },
+          "vendor": {
+            "$ref": "#/components/schemas/LdapVendor"
+          }
+        }
+      },
+      "LdapVendor": {
+        "type": "string",
+        "description": "Which directory server it is: it picks the defaults (attributes,\nfilters) and how a password is written.",
+        "enum": [
+          "active_directory",
+          "openldap",
+          "other"
         ]
       },
       "LinkPolicy": {
@@ -24123,6 +24797,18 @@
               },
               {
                 "$ref": "#/components/schemas/IdpKind"
+              }
+            ],
+            "default": null
+          },
+          "ldap": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LdapSettings",
+                "description": "Required for an `ldap` provider, refused for any other."
               }
             ],
             "default": null
@@ -28867,6 +29553,47 @@
           "disabled"
         ]
       },
+      "TestReport": {
+        "type": "object",
+        "description": "What a connection test found.",
+        "required": [
+          "connected",
+          "bound",
+          "users",
+          "groups"
+        ],
+        "properties": {
+          "bound": {
+            "type": "boolean",
+            "description": "The service account's bind succeeded (true without a bind DN)."
+          },
+          "connected": {
+            "type": "boolean",
+            "description": "The connection (and TLS) was established."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What went wrong, when something did."
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Up to five group names, when group sync is on."
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TestUser"
+            },
+            "description": "Up to five users under the base."
+          }
+        }
+      },
       "TestSend": {
         "type": "object",
         "required": [
@@ -28892,6 +29619,36 @@
           },
           "to": {
             "type": "string"
+          }
+        }
+      },
+      "TestUser": {
+        "type": "object",
+        "description": "A few directory users as a test sees them.",
+        "required": [
+          "dn"
+        ],
+        "properties": {
+          "dn": {
+            "type": "string"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

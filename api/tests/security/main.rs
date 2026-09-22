@@ -7,6 +7,7 @@ mod common;
 mod broker_binding;
 mod bulk_import;
 mod custom_domains;
+mod ldap;
 mod legacy_hash_cost;
 mod mfa_policy;
 mod org_admin;

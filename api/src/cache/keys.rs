@@ -295,6 +295,11 @@ pub fn identity_providers(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:idps")
 }
 
+/// The ids of a tenant's enabled LDAP directories, for the password step.
+pub fn ldap_directories(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:idps:ldap")
+}
+
 /// A pending device authorization (RFC 8628), by the device code's hash.
 pub fn device_code(tenant_id: Uuid, device_hash: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:device:{device_hash}")

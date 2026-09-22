@@ -14,6 +14,7 @@
 #![allow(dead_code)]
 
 pub mod admin;
+pub mod ldap;
 
 use std::net::SocketAddr;
 use std::sync::LazyLock;

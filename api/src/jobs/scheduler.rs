@@ -39,6 +39,12 @@ pub fn spawn_all(state: AppState) -> Vec<tokio::task::JoinHandle<()>> {
         ),
         spawn_periodic(
             state.clone(),
+            crate::jobs::ldap_sync::JOB_NAME,
+            Duration::from_secs(300),
+            |s| async move { crate::jobs::ldap_sync::run_once(&s).await.map(|_| ()) },
+        ),
+        spawn_periodic(
+            state.clone(),
             "user_purge",
             Duration::from_secs(24 * 3600),
             |s| async move { crate::jobs::user_purge::run_once(&s).await.map(|_| ()) },

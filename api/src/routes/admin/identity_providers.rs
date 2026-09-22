@@ -9,9 +9,11 @@ use utoipa_axum::routes;
 use crate::error::{AppError, AppResult};
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
 use crate::models::{
-    IdentityProvider, IdentityProviderUpdate, IdpKind, NewIdentityProvider, SamlUpstreamSettings,
+    IdentityProvider, IdentityProviderUpdate, IdpKind, LdapSyncStats, NewIdentityProvider,
+    SamlUpstreamSettings,
 };
 use crate::services::identity_providers::{self, Discovery, Preset};
+use crate::services::ldap::{self, TestReport};
 use crate::services::saml_sp;
 use crate::state::AppState;
 
@@ -23,6 +25,8 @@ pub fn identity_providers_router() -> OpenApiRouter<AppState> {
         .routes(routes!(list, create))
         .routes(routes!(get_one, update, delete))
         .routes(routes!(saml_refresh))
+        .routes(routes!(ldap_test))
+        .routes(routes!(ldap_sync))
 }
 
 const P_READ: &str = "ridm:idps:read";
@@ -40,7 +44,7 @@ pub struct IdentityProviderView {
     #[serde(flatten)]
     pub provider: IdentityProvider,
     /// The redirect URI (OIDC, OAuth 2.0) or the assertion consumer
-    /// service (SAML).
+    /// service (SAML); empty for a directory (LDAP), which has none.
     pub callback_url: String,
     /// What a SAML IdP is configured with: rIDM's SP entity ID and URLs.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -73,6 +77,13 @@ fn view(
                 acs_url: ep.acs_url,
                 slo_url: ep.slo_url,
             }),
+        };
+    }
+    if p.kind == IdpKind::Ldap {
+        return IdentityProviderView {
+            provider: p,
+            callback_url: String::new(),
+            saml_sp: None,
         };
     }
     let issuer = crate::services::tokens::issuer(state, tenant);
@@ -235,4 +246,42 @@ async fn delete(
     admin.require(tenant.id, P_WRITE)?;
     identity_providers::delete(&state, tenant.id, admin.actor(), &idp).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Connect to a directory as its service account and read a few users
+/// (and groups): what a sign-in and a sync would see. Nothing is stored.
+#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/{idp}/ldap/test", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug"), ("idp" = String, Path, description = "Row id or alias")), responses((status = 200, body = TestReport, description = "What the test found; `error` says what failed"), (status = 400, description = "Not an LDAP provider", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+async fn ldap_test(
+    State(state): State<AppState>,
+    admin: AdminCtx,
+    AdminTenantPath(tenant): AdminTenantPath,
+    Path(IdpPath { idp }): Path<IdpPath>,
+) -> AppResult<Json<TestReport>> {
+    admin.require(tenant.id, P_WRITE)?;
+    let dir = ldap::directory(identity_providers::get(&state, tenant.id, &idp).await?)?;
+    Ok(Json(ldap::test(&state, &dir).await?))
+}
+
+#[derive(Deserialize, Default, utoipa::ToSchema)]
+#[serde(default, deny_unknown_fields)]
+pub struct LdapSyncBody {
+    /// A full pass (which also disables the users who left the directory)
+    /// rather than the incremental one that is due.
+    pub full: bool,
+}
+
+/// Sync a directory's users and groups now, as the periodic job does.
+#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/{idp}/ldap/sync", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug"), ("idp" = String, Path, description = "Row id or alias")), request_body = LdapSyncBody, responses((status = 200, body = LdapSyncStats), (status = 400, description = "Not an LDAP provider", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 409, description = "A sync of this directory is already running", body = crate::error::Problem), (status = 503, description = "The directory could not be reached", body = crate::error::Problem)), security(("bearer" = [])))]
+async fn ldap_sync(
+    State(state): State<AppState>,
+    admin: AdminCtx,
+    AdminTenantPath(tenant): AdminTenantPath,
+    Path(IdpPath { idp }): Path<IdpPath>,
+    Json(body): Json<LdapSyncBody>,
+) -> AppResult<Json<LdapSyncStats>> {
+    admin.require(tenant.id, P_WRITE)?;
+    let dir = ldap::directory(identity_providers::get(&state, tenant.id, &idp).await?)?;
+    Ok(Json(
+        ldap::sync(&state, tenant.id, dir.idp.id, body.full).await?,
+    ))
 }

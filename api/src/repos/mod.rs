@@ -13,6 +13,7 @@ pub mod identity_providers;
 pub mod initial_access_tokens;
 pub mod invitations;
 pub mod ip_rules;
+pub mod ldap;
 pub mod login_attempts;
 pub mod messages;
 pub mod organizations;

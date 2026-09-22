@@ -53,7 +53,7 @@ fall back to a weaker flow.
 Some things are not built yet, and this book says so where you would look for
 them: a production compose profile, release binaries and signed images, and
 backup and upgrade guides are planned for the first release;
-organizations, adaptive authentication, SAML, LDAP and Kerberos come after it.
+Kerberos desktop sign-in comes after it.
 
 ## How this book is organised
 

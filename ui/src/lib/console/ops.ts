@@ -19,6 +19,10 @@ export type IdentityProviderPatch = Partial<Schemas["IdentityProviderUpdate"]>;
 export type IdpPreset = Schemas["Preset"];
 export type SamlUpstream = Schemas["SamlUpstream"];
 export type SamlUpstreamSettings = Schemas["SamlUpstreamSettings"];
+export type LdapUpstream = Schemas["LdapUpstream"];
+export type LdapSettings = Schemas["LdapSettings"];
+export type LdapSyncStats = Schemas["LdapSyncStats"];
+export type LdapTestReport = Schemas["TestReport"];
 export type SamlIdp = Schemas["IdpView"];
 export type SamlKey = Schemas["SamlKeyView"];
 export type SamlSp = Schemas["SamlSpView"];
@@ -35,6 +39,7 @@ export const EVENT_NAMES = [
   "claim_mapper.created", "claim_mapper.deleted", "claim_mapper.updated",
   "client.created", "client.deleted", "client.secret_rotated", "client.updated",
   "consent.granted", "consent.revoked", "device.revoked", "device.trusted",
+  "directory.synced",
   "group.created", "group.deleted", "group.member_added", "group.member_removed", "group.updated",
   "organization.created", "organization.deleted", "organization.domain_added", "organization.domain_removed",
   "organization.domain_verified", "organization.member_added", "organization.member_removed", "organization.updated",
