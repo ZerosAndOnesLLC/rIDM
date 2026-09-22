@@ -1,7 +1,7 @@
 import { chromium, expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { alertOf, authorizeUrl, clearTenantCache, consoleLogin, expectAccessible, finishAuthorization, loadState, tenantId, tenantSql, TENANT } from "./helpers";
@@ -161,15 +161,26 @@ test.describe("Kerberos desktop sign-in", () => {
     // ticket cache; localhost is the only server it negotiates with.
     const browser = await chromium.launch({
       args: ["--auth-server-allowlist=localhost", "--disable-auth-negotiate-cname-lookup"],
-      env: { ...process.env, KRB5_CONFIG: join(DIR, "krb5.conf"), KRB5CCNAME: `FILE:${join(DIR, "cc")}` },
+      env: { ...process.env, KRB5_CONFIG: join(DIR, "krb5.conf"), KRB5CCNAME: `FILE:${join(DIR, "cc")}`, KRB5_TRACE: join(DIR, "trace.log") },
     });
     try {
       const context = await browser.newContext({ baseURL: s.ui });
       const page = await context.newPage();
+      // What the Kerberos step answered, and what MIT's library did, to
+      // say why when the sign-in does not happen.
+      const answers: string[] = [];
+      page.on("response", (r) => {
+        if (r.url().endsWith("/kerberos")) answers.push(`${r.status()} ${r.request().headers()["authorization"] ? "with a token" : "without a token"}`);
+      });
       await page.goto(authorizeUrl(s));
       // No typing: the login page negotiates, rIDM accepts the ticket and
       // creates the account; the tenant's terms come next for a new one.
-      await expect(page.getByRole("heading", { name: "Terms of service" })).toBeVisible({ timeout: 20_000 });
+      try {
+        await expect(page.getByRole("heading", { name: "Terms of service" })).toBeVisible({ timeout: 20_000 });
+      } catch (e) {
+        const trace = existsSync(join(DIR, "trace.log")) ? readFileSync(join(DIR, "trace.log"), "utf8").slice(-4000) : "no GSSAPI trace (the library was not used)";
+        throw new Error(`${e}\nKerberos step answers: ${answers.join(", ") || "none"}\n${trace}`);
+      }
       await page.getByRole("checkbox").check();
       await page.getByRole("button", { name: "I accept" }).click();
       await finishAuthorization(page);
