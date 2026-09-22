@@ -174,6 +174,19 @@ release renames that heading to the version and date.
 
 ### Fixed
 
+- Brokered sign-ins through OpenID Connect and OAuth 2.0 providers are now
+  bound to the browser that started them: a `SameSite=Lax` cookie set at
+  `/broker/{alias}/start` must come back to the callback, so a callback URL
+  opened in another browser no longer signs it in to someone else's account
+  (login CSRF). Posted callbacks (`form_post`, Apple) are parked and continued
+  by a same-site GET at `…/callback?continue=`.
+- The SAML IdP's front-channel logout page, shown when OIDC front-channel
+  logout URLs have to be framed, dropped the auto-posting form of a
+  POST-binding SP's `LogoutResponse`; the form is now embedded and submitted
+  after the frames.
+- A sign-out started by a downstream SAML SP now reaches the upstream SAML IdP
+  that brokered the session before the SP is answered.
+
 - Dynamic registration accepted `require_pushed_authorization_requests` and
   dropped it; it is now stored and enforced.
 - The legacy password verifier took its iteration count from the stored hash

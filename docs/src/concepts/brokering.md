@@ -50,9 +50,15 @@ link on the partner's intranet.
    [login flow](flows-and-sessions.md).
 2. rIDM redirects to the provider's authorization endpoint with a fresh
    `state` (whose record in Valkey remembers the flow), a `nonce` and a PKCE
-   challenge.
+   challenge, and sets a short-lived `SameSite=Lax` cookie binding the sign-in
+   to this browser.
 3. The provider returns the browser to `/t/{slug}/broker/{alias}/callback`
-   (GET, or POST for providers using `form_post`, such as Apple).
+   (GET, or POST for providers using `form_post`, such as Apple; a posted
+   answer is kept for a moment and continued by a same-site GET to
+   `…/callback?continue=`, since a cross-site POST carries no `Lax` cookie).
+   The callback signs in only the browser holding the binding cookie: a
+   callback URL someone else obtained, opened in another browser, is refused
+   with `broker_error=invalid_state` (login CSRF).
 4. rIDM redeems the code. For `oidc` providers it verifies the ID token's
    signature against the provider's JWKS (cached for an hour, refetched once
    for an unknown `kid`), its issuer, audience, expiry and nonce. For `oauth2`

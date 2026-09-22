@@ -23,7 +23,7 @@
 //! * [`refresh_metadata`] re-reads an IdP's metadata URL: its endpoints and
 //!   certificates replace the stored ones (the daily job and the admin API).
 
-use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use chrono::Utc;
 use redis::AsyncCommands as _;
@@ -186,45 +186,8 @@ struct PendingRequest {
     idp_id: Uuid,
     mode: Mode,
     request_id: String,
-    /// The hash of the browser's binding cookie.
+    /// The hash of the browser's binding cookie (`broker::binding_cookie`).
     browser: String,
-}
-
-/// The cookie that binds an SP-initiated sign-in to the browser that
-/// started it. The same-site GET after the assertion consumer service must
-/// present it, so a `continue` link someone else obtained signs nobody in
-/// (login CSRF). It is `SameSite=Lax`: the IdP's cross-site POST does not
-/// carry it, the GET that follows does.
-fn browser_cookie_name(state: &AppState, slug: &str) -> String {
-    crate::services::sessions::tenant_cookie_name(state.config.cookie_secure, "ridm_saml_sp", slug)
-}
-
-fn browser_cookie(state: &AppState, tenant: &Tenant, value: &str, max_age: i64) -> String {
-    crate::services::sessions::cookie_header(
-        state.config.cookie_secure,
-        &browser_cookie_name(state, &tenant.slug),
-        value,
-        max_age,
-    )
-}
-
-/// The binding cookie a request carries.
-pub fn browser_binding(state: &AppState, tenant: &Tenant, headers: &HeaderMap) -> Option<String> {
-    let name = browser_cookie_name(state, &tenant.slug);
-    headers
-        .get_all(header::COOKIE)
-        .iter()
-        .filter_map(|v| v.to_str().ok())
-        .flat_map(|line| line.split(';'))
-        .filter_map(|kv| kv.trim().split_once('='))
-        .find(|(k, _)| *k == name)
-        .map(|(_, v)| v.trim().to_string())
-        .filter(|v| !v.is_empty() && v.len() <= 128)
-}
-
-/// A `Set-Cookie` value that removes the binding cookie.
-pub fn clear_browser_binding(state: &AppState, tenant: &Tenant) -> String {
-    browser_cookie(state, tenant, "", 0)
 }
 
 /// Send the browser to the IdP with an `AuthnRequest`.
@@ -257,7 +220,7 @@ pub async fn start(
         now: Utc::now(),
     });
     let relay = random_token();
-    let browser = random_token();
+    let (browser, browser_hash) = broker::new_binding();
     put(
         state,
         key(tenant.id(), "request", &hashed(&relay)),
@@ -265,7 +228,7 @@ pub async fn start(
             idp_id: idp.id,
             mode,
             request_id,
-            browser: hashed(&browser),
+            browser: browser_hash,
         },
         REQUEST_TTL_SECS,
     )
@@ -296,12 +259,7 @@ pub async fn start(
         }
     };
     let mut res = html_headers(res);
-    let cookie = browser_cookie(
-        state,
-        &tenant.tenant,
-        &browser,
-        (REQUEST_TTL_SECS + PARKED_TTL_SECS) as i64,
-    );
+    let cookie = broker::binding_cookie(state, &tenant.tenant, &browser, broker::BINDING_TTL_SECS);
     if let Ok(v) = HeaderValue::from_str(&cookie) {
         res.headers_mut().append(header::SET_COOKIE, v);
     }
@@ -637,7 +595,7 @@ pub async fn resume(
         ..
     } = parked;
     if let Some(expected) = bound_to
-        && browser.map(hashed).as_deref() != Some(expected.as_str())
+        && !broker::binding_matches(browser, &expected)
     {
         tracing::warn!(provider = %idp.alias, "a SAML sign-in was continued by another browser than the one that started it");
         let flow_id = match &continues {

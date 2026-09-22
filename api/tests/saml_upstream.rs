@@ -1049,3 +1049,110 @@ async fn saml_settings_are_refused_on_other_kinds_and_required_on_saml() {
         .unwrap();
     assert_eq!(res.status(), 400);
 }
+
+#[tokio::test]
+async fn a_downstream_sps_sign_out_reaches_the_upstream_idp_before_it_is_answered() {
+    let fx = fixture().await;
+    // The SP tenant is itself an IdP to a downstream SAML application.
+    let down = "https://down.example";
+    saml_sps::create(
+        &fx.app.state,
+        fx.sp.id,
+        Actor::System,
+        saml_sps::SamlSpInput {
+            name: "Downstream".into(),
+            entity_id: down.into(),
+            acs_urls: vec![format!("{down}/acs")],
+            slo_url: Some(format!("{down}/slo")),
+            ..saml_sps::SamlSpInput::default()
+        },
+    )
+    .await
+    .unwrap();
+    let http = browser();
+    let flow = sign_in(&http, &fx).await;
+    let sp_session = flow.session_id.unwrap();
+    let idp_session = idp_session(&fx).await.expect("an IdP session");
+
+    // The downstream app signs in through the brokered session.
+    let sso = fx.at(&fx.sp, "/saml/sso");
+    let req = format!(
+        r#"<samlp:AuthnRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="_d1" Version="2.0" IssueInstant="{}" Destination="{sso}"><saml:Issuer>{down}</saml:Issuer></samlp:AuthnRequest>"#,
+        protocol::instant(chrono::Utc::now())
+    );
+    let res = http
+        .get(binding::to_redirect(&sso, Kind::Request, &req, None, None).unwrap())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        200,
+        "signed in already: the response is posted at once"
+    );
+    let (_, fields) = form(&res.text().await.unwrap());
+    let xml = String::from_utf8(STANDARD.decode(&fields["SAMLResponse"]).unwrap()).unwrap();
+    let doc = ridm_api::saml::xml::parse(&xml).unwrap();
+    let text = |local: &str| {
+        doc.descendants()
+            .find(|n| n.is_element() && n.tag_name().name() == local)
+            .unwrap()
+    };
+    let name_id = ridm_api::saml::xml::text_of(text("NameID"));
+    let format = text("NameID").attribute("Format").unwrap().to_string();
+    let index = text("AuthnStatement")
+        .attribute("SessionIndex")
+        .unwrap()
+        .to_string();
+
+    // It signs out at the SP tenant.
+    let slo = fx.at(&fx.sp, "/saml/slo");
+    let logout = protocol::logout_request(
+        down,
+        &slo,
+        &protocol::NameId {
+            value: name_id,
+            format: Some(format),
+            sp_name_qualifier: None,
+        },
+        Some(&index),
+        chrono::Utc::now(),
+    )
+    .to_string();
+    let res = http
+        .get(binding::to_redirect(&slo, Kind::Request, &logout, Some("rs"), None).unwrap())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 303);
+    assert!(!session_live(&fx, &fx.sp, sp_session).await);
+    // Before answering, the browser goes through the upstream IdP…
+    let out = location(&res);
+    assert!(
+        out.contains(&format!("/broker/{ALIAS}/saml/slo/out/")),
+        "{out}"
+    );
+    let res = http.get(&out).send().await.unwrap();
+    let to_idp = location(&res);
+    assert!(
+        to_idp.starts_with(&fx.at(&fx.idp, "/saml/slo?SAMLRequest=")),
+        "{to_idp}"
+    );
+    let res = http.get(&to_idp).send().await.unwrap();
+    assert!(
+        !session_live(&fx, &fx.idp, idp_session).await,
+        "the IdP session ended"
+    );
+    let res = http.get(location(&res)).send().await.unwrap();
+    // …then back to finish: the downstream app gets its LogoutResponse.
+    let back = location(&res);
+    assert!(back.contains("/saml/slo/chain/"), "{back}");
+    let res = http.get(&back).send().await.unwrap();
+    let answer = location(&res);
+    assert!(
+        answer.starts_with(&format!("{down}/slo?SAMLResponse=")),
+        "{answer}"
+    );
+    let received = binding::from_redirect(answer.split_once('?').unwrap().1).unwrap();
+    assert_eq!(received.relay_state.as_deref(), Some("rs"));
+}

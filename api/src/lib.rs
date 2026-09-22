@@ -1,6 +1,11 @@
 //! rIDM API library crate. The binary in `main.rs` is a thin wrapper so that
 //! integration tests can build the same router in-process.
 
+// The `Send` check of the deepest async handlers (account and admin
+// extractors through the cache layer) needs more than the default 128 on
+// nightly, which warns that it will become an error.
+#![recursion_limit = "256"]
+
 pub mod cache;
 pub mod config;
 pub mod db;

@@ -4,6 +4,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod broker_binding;
 mod bulk_import;
 mod custom_domains;
 mod legacy_hash_cost;

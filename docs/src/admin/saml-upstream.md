@@ -108,7 +108,7 @@ A response is accepted only when all of the following hold:
   AES-CBC, RSA-OAEP).
 
 A failure `Status` from the IdP (the user cancelled, `NoPassive`, …) brings the user back
-to the login page with `broker_error=access_denied` or `upstream_error`. The reason for
+to the login page with `broker_error=denied` or `upstream`. The reason for
 any refusal is logged, not shown.
 
 The response arrives as a cross-site POST, which carries no `SameSite=Lax` cookie. rIDM
@@ -116,6 +116,8 @@ therefore checks it at once, parks the proven identity for five minutes, and con
 a same-site `…/saml/acs?continue=` link, where the session and trusted-device cookies are
 sent. That link works only in the browser that started the sign-in: a cookie set at
 `/broker/{alias}/start` binds them, so a link handed to someone else signs nobody in.
+OpenID Connect and OAuth 2.0 providers are bound the same way (see
+[Identity brokering](../concepts/brokering.md#what-happens-at-sign-in)).
 
 ## Who the user is
 
@@ -168,10 +170,13 @@ rIDM keeps the NameID and `SessionIndex` of every session brokered through a SAM
   a signed `LogoutRequest` for the session, and the IdP's answer takes the browser on to
   where the sign-out was going.
 
-Both are front-channel: they need the user's browser. A session that ends without one
-(expiry, an administrator revoking it, a password change) does not reach the IdP, and a
-sign-out that a downstream SAML application starts ends rIDM's session without reaching
-the upstream IdP either.
+- **A downstream SAML application signs the user out** (a `LogoutRequest` at rIDM's IdP
+  endpoint): after the session's other SAML applications, the browser goes through the
+  upstream IdP too, and only then does the application get its `LogoutResponse`.
+
+All of these are front-channel: they need the user's browser. A session that ends without
+one (expiry, an administrator revoking it, a password change) does not reach the IdP;
+there is no SOAP back channel.
 
 ## Keeping the metadata current
 

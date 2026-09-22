@@ -83,7 +83,25 @@ async fn start_inner(
     if idp.kind == IdpKind::Saml {
         return saml_sp::start(state, tenant, &idp, mode).await;
     }
-    Ok(redirect(&broker::start(state, tenant, &idp, mode).await?))
+    let (url, browser) = broker::start(state, tenant, &idp, mode).await?;
+    let mut res = redirect(&url);
+    if let Ok(v) = HeaderValue::from_str(&broker::binding_cookie(
+        state,
+        &tenant.tenant,
+        &browser,
+        broker::BINDING_TTL_SECS,
+    )) {
+        res.headers_mut().append(header::SET_COOKIE, v);
+    }
+    Ok(res)
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct ContinueQuery {
+    /// A posted answer parked by [`callback_post`].
+    #[serde(rename = "continue")]
+    resume: Option<Uuid>,
 }
 
 async fn callback_get(
@@ -91,9 +109,19 @@ async fn callback_get(
     tenant: TenantCtx,
     Path((_, alias)): Path<(String, String)>,
     Query(params): Query<CallbackParams>,
+    Query(cont): Query<ContinueQuery>,
     ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
     headers: HeaderMap,
 ) -> Response {
+    let params = match cont.resume {
+        Some(id) => match broker::unpark_callback(&state, tenant.id(), id).await {
+            Ok(Some(p)) => p,
+            // Gone: an unknown state, answered as such.
+            Ok(None) => CallbackParams::default(),
+            Err(e) => return e.into_response(),
+        },
+        None => params,
+    };
     finish(state, tenant, alias, params, peer, headers).await
 }
 
@@ -101,11 +129,17 @@ async fn callback_post(
     State(state): State<AppState>,
     tenant: TenantCtx,
     Path((_, alias)): Path<(String, String)>,
-    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
-    headers: HeaderMap,
     Form(params): Form<CallbackParams>,
 ) -> Response {
-    finish(state, tenant, alias, params, peer, headers).await
+    // A cross-site POST carries no `SameSite=Lax` cookie: the answer is
+    // kept and continued by a same-site GET, which does.
+    match broker::park_callback(&state, tenant.id(), &params).await {
+        Ok(id) => redirect(&format!(
+            "{}?continue={id}",
+            broker::callback_url(&state, &tenant, &alias)
+        )),
+        Err(e) => e.into_response(),
+    }
 }
 
 /// The account console page a link returns to: a path on the UI, never a
@@ -179,10 +213,18 @@ async fn finish(
         Err(e) => return e.into_response(),
     };
     let ctx = request_context(&state, &tenant, &headers, peer).await;
-    match broker::callback(&state, &tenant, &idp, params, ctx).await {
-        Ok(outcome) => render(&state, &tenant, &idp.alias, outcome),
-        Err(e) => e.into_response(),
+    let browser = broker::browser_binding(&state, &tenant.tenant, &headers);
+    let mut res =
+        match broker::callback(&state, &tenant, &idp, params, browser.as_deref(), ctx).await {
+            Ok(outcome) => render(&state, &tenant, &idp.alias, outcome),
+            Err(e) => return e.into_response(),
+        };
+    if browser.is_some()
+        && let Ok(v) = HeaderValue::from_str(&broker::binding_cookie(&state, &tenant.tenant, "", 0))
+    {
+        res.headers_mut().append(header::SET_COOKIE, v);
     }
+    res
 }
 
 /// Where the browser goes after a brokered sign-in or link, whatever the

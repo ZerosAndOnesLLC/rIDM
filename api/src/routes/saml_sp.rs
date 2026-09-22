@@ -28,7 +28,7 @@ use crate::oidc::authorize::RawParams;
 use crate::routes::broker::{redirect, render, request_context};
 use crate::routes::saml::{bad, post_message};
 use crate::saml::binding;
-use crate::services::broker::Outcome;
+use crate::services::broker::{self, Outcome};
 use crate::services::saml_sp::{self, AcsStep, Resumed};
 use crate::services::{identity_providers, sessions};
 use crate::state::AppState;
@@ -155,7 +155,7 @@ async fn acs_continue(
         return bad("the assertion consumer service takes an HTTP-POST SAMLResponse");
     };
     let ctx = request_context(&state, &tenant, &headers, peer).await;
-    let browser = saml_sp::browser_binding(&state, &tenant.tenant, &headers);
+    let browser = broker::browser_binding(&state, &tenant.tenant, &headers);
     let mut res = match saml_sp::resume(&state, &tenant, &idp, id, browser.as_deref(), ctx).await {
         Ok(Resumed::Broker(outcome)) => render(&state, &tenant, &idp.alias, outcome),
         Ok(Resumed::Landed { session, to }) => {
@@ -172,8 +172,7 @@ async fn acs_continue(
         Err(e) => return e.into_response(),
     };
     if browser.is_some()
-        && let Ok(v) =
-            HeaderValue::from_str(&saml_sp::clear_browser_binding(&state, &tenant.tenant))
+        && let Ok(v) = HeaderValue::from_str(&broker::binding_cookie(&state, &tenant.tenant, "", 0))
     {
         res.headers_mut().append(header::SET_COOKIE, v);
     }
