@@ -9,11 +9,12 @@ import { Field, NumberInput, SaveIndicator, Section, SelectInput, TagsInput, Tex
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
-import { href, type IdentityProvider, type IdentityProviderPatch, type IdpPreset, type SamlUpstreamSettings } from "@/lib/console/ops";
+import { href, type IdentityProvider, type IdentityProviderPatch, type IdpPreset, type LdapSettings, type SamlUpstreamSettings } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
 import { CreateDialog, DeleteButton, ErrorLine, Split } from "../access/common";
 import { CopyButton } from "../clients/reveal";
 import { JsonInput } from "../users/attributes";
+import { LdapUpstreamSection } from "./ldap-upstream";
 import { SamlSpDetails, SamlUpstreamSection } from "./saml-upstream";
 
 const POLICY_HINT: Record<IdentityProvider["link_policy"], string> = {
@@ -37,7 +38,7 @@ export function IdentityProvidersPage({ tenant, selected }: { tenant: string; se
     <>
       <PageHeader
         title="Identity providers"
-        sub="Upstream OpenID Connect, OAuth 2.0 and SAML 2.0 providers users can sign in through."
+        sub="Upstream OpenID Connect, OAuth 2.0 and SAML 2.0 providers users can sign in through, and LDAP or Active Directory directories they sign in with."
         actions={
           can("ridm:idps:write") ? (
             <Button variant="primary" onClick={() => setCreating(true)}>
@@ -112,7 +113,13 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
   const [secret, setSecret] = useState("");
   const [metadataUrl, setMetadataUrl] = useState("");
   const [metadata, setMetadata] = useState("");
+  const [vendor, setVendor] = useState<LdapSettings["vendor"]>("active_directory");
+  const [ldapUrl, setLdapUrl] = useState("");
+  const [usersDn, setUsersDn] = useState("");
+  const [bindDn, setBindDn] = useState("");
+  const [bindPassword, setBindPassword] = useState("");
   const saml = preset === "saml";
+  const ldap = preset === "ldap";
   const chosen = presets.data?.find((p) => p.name === preset) ?? null;
   const pickPreset = (name: string) => {
     setPreset(name);
@@ -126,6 +133,20 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
     new Error(error.errors?.map((e) => `${e.field} ${e.message}`).join("; ") || error.detail || error.title);
   const create = useMutation({
     mutationFn: async () => {
+      if (ldap) {
+        // The vendor's defaults fill in the attributes and filters; review them on the provider page.
+        const { data, error } = await client.POST("/admin/tenants/{slug}/identity-providers", {
+          params: { path: { slug: tenant } },
+          body: {
+            alias: alias.trim(),
+            kind: "ldap",
+            display_name: displayName.trim() || null,
+            ldap: { vendor, url: ldapUrl.trim(), users_dn: usersDn.trim(), bind_dn: bindDn.trim() || null, bind_password: bindPassword || null },
+          } as never,
+        });
+        if (error) throw problem(error);
+        return data;
+      }
       if (saml) {
         // The IdP's metadata fills in everything; the URL is kept for the daily refresh.
         const read = await client.POST("/admin/tenants/{slug}/identity-providers/saml-metadata", {
@@ -164,12 +185,16 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
       setPreset("");
       setMetadataUrl("");
       setMetadata("");
+      setLdapUrl("");
+      setUsersDn("");
+      setBindDn("");
+      setBindPassword("");
       onOpenChange(false);
       router.push(href("identity-providers", tenant, { idp: p.id }));
     },
   });
-  const needsIssuer = !saml && (!chosen || chosen.kind === "oidc");
-  const ready = alias.trim() && (saml ? metadataUrl.trim() || metadata.trim() : clientId.trim());
+  const needsIssuer = !saml && !ldap && (!chosen || chosen.kind === "oidc");
+  const ready = alias.trim() && (ldap ? ldapUrl.trim() && usersDn.trim() : saml ? metadataUrl.trim() || metadata.trim() : clientId.trim());
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) void file.text().then(setMetadata);
@@ -179,7 +204,7 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
       open={open}
       onOpenChange={onOpenChange}
       title="New identity provider"
-      description="Pick a preset for the common providers, give an OpenID Connect issuer (its endpoints are discovered), or a SAML identity provider's metadata. Register the URLs shown afterwards with the provider."
+      description="Pick a preset for the common providers, give an OpenID Connect issuer (its endpoints are discovered), a SAML identity provider's metadata, or an LDAP directory. Register the URLs shown afterwards with the provider."
       submitLabel="Create provider"
       pending={create.isPending}
       error={create.error?.message ?? null}
@@ -190,6 +215,7 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
           <SelectInput id={id} aria-describedby={by} value={preset} onChange={(e) => pickPreset(e.target.value)}>
             <option value="">Custom (OpenID Connect)</option>
             <option value="saml">SAML 2.0</option>
+            <option value="ldap">LDAP / Active Directory</option>
             {(presets.data ?? []).map((p) => (
               <option key={p.name} value={p.name}>
                 {p.display_name}
@@ -198,10 +224,10 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
           </SelectInput>
         )}
       </Field>
-      <Field label="Alias" hint="In the callback URL: lowercase letters, digits and hyphens.">
-        {(id, by) => <TextInput id={id} aria-describedby={by} value={alias} onChange={(e) => setAlias(e.target.value)} autoFocus required placeholder={saml ? "corp" : "google"} spellCheck={false} />}
+      <Field label="Alias" hint={ldap ? "Lowercase letters, digits and hyphens." : "In the callback URL: lowercase letters, digits and hyphens."}>
+        {(id, by) => <TextInput id={id} aria-describedby={by} value={alias} onChange={(e) => setAlias(e.target.value)} autoFocus required placeholder={saml || ldap ? "corp" : "google"} spellCheck={false} />}
       </Field>
-      <Field label="Display name" hint="On the login button: “Continue with …”.">
+      <Field label="Display name" hint={ldap ? "Shown to administrators, and in messages to directory users." : "On the login button: “Continue with …”."}>
         {(id, by) => <TextInput id={id} aria-describedby={by} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={chosen?.display_name ?? "Company SSO"} />}
       </Field>
       {needsIssuer && (
@@ -209,7 +235,31 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
           {(id, by) => <TextInput id={id} aria-describedby={by} type="url" value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder={chosen?.issuer ?? "https://idp.example.com"} spellCheck={false} />}
         </Field>
       )}
-      {saml ? (
+      {ldap ? (
+        <>
+          <Field label="Server">
+            {(id) => (
+              <SelectInput id={id} value={vendor} onChange={(e) => setVendor(e.target.value as LdapSettings["vendor"])}>
+                <option value="active_directory">Active Directory</option>
+                <option value="openldap">OpenLDAP</option>
+                <option value="other">Other LDAP</option>
+              </SelectInput>
+            )}
+          </Field>
+          <Field label="URL" hint="ldaps://host:636; StartTLS and a private CA are set on the provider page.">
+            {(id, by) => <TextInput id={id} aria-describedby={by} value={ldapUrl} onChange={(e) => setLdapUrl(e.target.value)} required placeholder="ldaps://dc1.corp.example" spellCheck={false} />}
+          </Field>
+          <Field label="Users DN" hint="The base users are searched under.">
+            {(id, by) => <TextInput id={id} aria-describedby={by} value={usersDn} onChange={(e) => setUsersDn(e.target.value)} required placeholder="ou=people,dc=corp,dc=example" spellCheck={false} />}
+          </Field>
+          <Field label="Bind DN" hint="The service account rIDM searches as; empty searches anonymously.">
+            {(id, by) => <TextInput id={id} aria-describedby={by} value={bindDn} onChange={(e) => setBindDn(e.target.value)} placeholder="cn=ridm,ou=services,dc=corp,dc=example" spellCheck={false} />}
+          </Field>
+          <Field label="Bind password" hint="Stored encrypted and never shown again.">
+            {(id, by) => <TextInput id={id} aria-describedby={by} type="password" value={bindPassword} disabled={!bindDn.trim()} onChange={(e) => setBindPassword(e.target.value)} autoComplete="new-password" />}
+          </Field>
+        </>
+      ) : saml ? (
         <>
           <Field label="Metadata URL" hint="Where the identity provider publishes its metadata; rIDM re-reads it daily.">
             {(id, by) => <TextInput id={id} aria-describedby={by} type="url" value={metadataUrl} onChange={(e) => setMetadataUrl(e.target.value)} placeholder="https://idp.example.com/saml/metadata" spellCheck={false} />}
@@ -278,6 +328,11 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
     setDraft((d) => (d && d.saml ? { ...d, saml: { ...d.saml, ...settings } } : d));
     if (editable) queue({ saml: settings });
   };
+  // So are a directory's; its bind password and sync status have their own controls.
+  const updateLdap = (settings: Omit<LdapSettings, "bind_password">) => {
+    setDraft((d) => (d && d.ldap ? { ...d, ldap: { ...d.ldap, ...settings } as IdentityProvider["ldap"] } : d));
+    if (editable) queue({ ldap: settings as LdapSettings });
+  };
   const [secret, setSecret] = useState("");
   const setSecretMutation = useMutation({
     mutationFn: async (value: string | null) => {
@@ -305,6 +360,7 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
   if (!draft) return <Spinner label="Loading…" />;
   const m = draft.mappers;
   const isSaml = draft.kind === "saml";
+  const isLdap = draft.kind === "ldap";
   const setMapper = (patch: Partial<IdentityProvider["mappers"]>) => update({ mappers: { ...m, ...patch } });
   const submitSecret = (e: FormEvent) => {
     e.preventDefault();
@@ -316,7 +372,7 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
         <h2 className="text-[1.125rem] font-semibold text-ink">{draft.display_name}</h2>
         <SaveIndicator status={status} error={error} />
       </div>
-      {isSaml ? (
+      {isLdap ? null : isSaml ? (
         <SamlSpDetails provider={draft} />
       ) : (
         <Card title="Callback URL">
@@ -329,13 +385,15 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
       )}
       <Section id="idp-general" title="Provider">
         <Field label="Display name">{(fid) => <TextInput id={fid} value={draft.display_name} disabled={!editable} onChange={(e) => update({ display_name: e.target.value })} />}</Field>
-        <Field label="Alias" hint={isSaml ? "Changing it changes rIDM's entity ID and URLs: the identity provider must be told." : "Changing it changes the callback URL."}>
+        <Field label="Alias" hint={isLdap ? "Lowercase letters, digits and hyphens." : isSaml ? "Changing it changes rIDM's entity ID and URLs: the identity provider must be told." : "Changing it changes the callback URL."}>
           {(fid, by) => <TextInput id={fid} aria-describedby={by} value={draft.alias} disabled={!editable} spellCheck={false} onChange={(e) => update({ alias: e.target.value })} />}
         </Field>
         <Field label="Protocol">
           {(fid) => (
-            <SelectInput id={fid} value={draft.kind} disabled={!editable || isSaml} onChange={(e) => update({ kind: e.target.value as IdentityProvider["kind"] })}>
-              {isSaml ? (
+            <SelectInput id={fid} value={draft.kind} disabled={!editable || isSaml || isLdap} onChange={(e) => update({ kind: e.target.value as IdentityProvider["kind"] })}>
+              {isLdap ? (
+                <option value="ldap">LDAP / Active Directory</option>
+              ) : isSaml ? (
                 <option value="saml">SAML 2.0</option>
               ) : (
                 <>
@@ -346,15 +404,26 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
             </SelectInput>
           )}
         </Field>
-        <Field label="Order" hint="Position on the login page.">
+        <Field label="Order" hint={isLdap ? "Which directory is asked first about a username no account has." : "Position on the login page."}>
           {(fid, by) => <NumberInput id={fid} describedBy={by} value={draft.sort_order} min={-1000} max={1000} onValue={(v) => v !== null && update({ sort_order: v })} />}
         </Field>
         <div className="sm:col-span-2 flex flex-col gap-1">
-          <Toggle label="Enabled" hint="Disabled providers sign nobody in." checked={draft.enabled} disabled={!editable} onChange={(v) => update({ enabled: v })} />
-          <Toggle label="Hidden" hint="Not offered on the login page; reachable through a direct link only." checked={draft.hidden} disabled={!editable} onChange={(v) => update({ hidden: v })} />
+          <Toggle label="Enabled" hint={isLdap ? "A disabled directory signs nobody in and is not synced." : "Disabled providers sign nobody in."} checked={draft.enabled} disabled={!editable} onChange={(v) => update({ enabled: v })} />
+          {!isLdap && <Toggle label="Hidden" hint="Not offered on the login page; reachable through a direct link only." checked={draft.hidden} disabled={!editable} onChange={(v) => update({ hidden: v })} />}
         </div>
       </Section>
-      {isSaml ? (
+      {isLdap ? (
+        <LdapUpstreamSection
+          tenant={tenant}
+          provider={draft}
+          editable={editable}
+          onChange={updateLdap}
+          onSaved={(p) => {
+            qc.setQueryData(["idp", tenant, id], p);
+            setDraft(p);
+          }}
+        />
+      ) : isSaml ? (
         <SamlUpstreamSection
           tenant={tenant}
           provider={draft}
@@ -433,25 +502,52 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
           )}
         </Field>
         <div className="sm:col-span-2">
-          <Toggle label="Trust the provider's email addresses" hint="Treat them as verified even without an email_verified claim." checked={draft.trust_email} disabled={!editable} onChange={(v) => update({ trust_email: v })} />
+          <Toggle
+            label="Trust the provider's email addresses"
+            hint={isLdap ? "Treat the directory's addresses as verified (a directory says nothing about it). Needed to link existing accounts by email." : "Treat them as verified even without an email_verified claim."}
+            checked={draft.trust_email}
+            disabled={!editable}
+            onChange={(v) => update({ trust_email: v })}
+          />
         </div>
-        <Field label={isSaml ? "Subject attribute" : "Subject claim"} hint={isSaml ? "The stable identifier; the NameID when empty. Name an attribute for identity providers that send transient NameIDs." : "The stable identifier; sub when empty."}>
-          {(fid, by) => <TextInput id={fid} aria-describedby={by} value={m.subject ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => setMapper({ subject: e.target.value || null })} />}
-        </Field>
-        <Field label={isSaml ? "Username attribute" : "Username claim"} hint={isSaml ? "preferred_username when empty; uid, eduPersonPrincipalName and the UPN count. The email, then alias-subject, stand in." : "preferred_username when empty; the email, then alias-subject, stand in."}>
+        {!isLdap && (
+          <Field label={isSaml ? "Subject attribute" : "Subject claim"} hint={isSaml ? "The stable identifier; the NameID when empty. Name an attribute for identity providers that send transient NameIDs." : "The stable identifier; sub when empty."}>
+            {(fid, by) => <TextInput id={fid} aria-describedby={by} value={m.subject ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => setMapper({ subject: e.target.value || null })} />}
+          </Field>
+        )}
+        <Field
+          label={isSaml || isLdap ? "Username attribute" : "Username claim"}
+          hint={
+            isLdap
+              ? "The directory attribute a username comes from; the one in Users above when empty."
+              : isSaml
+                ? "preferred_username when empty; uid, eduPersonPrincipalName and the UPN count. The email, then alias-subject, stand in."
+                : "preferred_username when empty; the email, then alias-subject, stand in."
+          }
+        >
           {(fid, by) => <TextInput id={fid} aria-describedby={by} value={m.username ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => setMapper({ username: e.target.value || null })} />}
         </Field>
-        <Field label={isSaml ? "Email attribute" : "Email claim"} hint={isSaml ? "email when empty; mail and the standard attribute URIs count as email." : "email when empty."}>
+        <Field label={isSaml || isLdap ? "Email attribute" : "Email claim"} hint={isLdap ? "mail when empty." : isSaml ? "email when empty; mail and the standard attribute URIs count as email." : "email when empty."}>
           {(fid, by) => <TextInput id={fid} aria-describedby={by} value={m.email ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => setMapper({ email: e.target.value || null })} />}
         </Field>
-        <Field label="Email verified claim" hint="email_verified when empty.">
-          {(fid, by) => <TextInput id={fid} aria-describedby={by} value={m.email_verified ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => setMapper({ email_verified: e.target.value || null })} />}
-        </Field>
-        <Field label="Profile attributes" hint='JSON object of attribute name → claim name, written on every sign-in: {"first_name": "given_name"}. A dot descends into an object.' wide>
+        {!isLdap && (
+          <Field label="Email verified claim" hint="email_verified when empty.">
+            {(fid, by) => <TextInput id={fid} aria-describedby={by} value={m.email_verified ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => setMapper({ email_verified: e.target.value || null })} />}
+          </Field>
+        )}
+        <Field
+          label="Profile attributes"
+          hint={
+            isLdap
+              ? 'JSON object of attribute name → directory attribute, refreshed at every sign-in and sync (and written back when the directory is writable): {"first_name": "givenName"}.'
+              : 'JSON object of attribute name → claim name, written on every sign-in: {"first_name": "given_name"}. A dot descends into an object.'
+          }
+          wide
+        >
           {(fid, by) => <JsonInput id={fid} describedBy={by} value={Object.keys(m.attributes ?? {}).length ? m.attributes : null} disabled={!editable} onChange={(v) => setMapper({ attributes: (v as Record<string, string> | null) ?? {} })} />}
         </Field>
       </Section>
-      {editable && <DeleteButton what="identity provider" pending={del.isPending} error={del.error?.message ?? null} onConfirm={() => del.mutate()} description="Identities linked through it are removed; the users keep their accounts." />}
+      {editable && <DeleteButton what="identity provider" pending={del.isPending} error={del.error?.message ?? null} onConfirm={() => del.mutate()} description={isLdap ? "Its users keep their accounts but have no password until one is set; the groups it synced stay as they are." : "Identities linked through it are removed; the users keep their accounts."} />}
     </div>
   );
 }

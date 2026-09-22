@@ -625,6 +625,43 @@ export interface paths {
         patch: operations["identity_providers_update"];
         trace?: never;
     };
+    "/admin/tenants/{slug}/identity-providers/{idp}/ldap/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync a directory's users and groups now, as the periodic job does. */
+        post: operations["identity_providers_ldap_sync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tenants/{slug}/identity-providers/{idp}/ldap/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect to a directory as its service account and read a few users
+         *     (and groups): what a sign-in and a sync would see. Nothing is stored.
+         */
+        post: operations["identity_providers_ldap_test"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/tenants/{slug}/identity-providers/{idp}/saml/refresh": {
         parameters: {
             query?: never;
@@ -3658,6 +3695,7 @@ export interface components {
             issuer?: string | null;
             jwks_uri?: string | null;
             kind: components["schemas"]["IdpKind"];
+            ldap?: null | components["schemas"]["LdapUpstream"];
             link_policy: components["schemas"]["LinkPolicy"];
             mappers: components["schemas"]["IdpMappers"];
             pkce: boolean;
@@ -3696,6 +3734,8 @@ export interface components {
             jwks_uri: string | null;
             /** @default oidc */
             kind: components["schemas"]["IdpKind"];
+            /** @default null */
+            ldap: null | components["schemas"]["LdapSettings"];
             /** @default verified_email */
             link_policy: components["schemas"]["LinkPolicy"];
             /**
@@ -3755,6 +3795,8 @@ export interface components {
             /** @default null */
             kind: null | components["schemas"]["IdpKind"];
             /** @default null */
+            ldap: null | components["schemas"]["LdapSettings"];
+            /** @default null */
             link_policy: null | components["schemas"]["LinkPolicy"];
             /** @default null */
             mappers: null | components["schemas"]["IdpMappers"];
@@ -3782,7 +3824,7 @@ export interface components {
         IdentityProviderView: components["schemas"]["IdentityProvider"] & {
             /**
              * @description The redirect URI (OIDC, OAuth 2.0) or the assertion consumer
-             *     service (SAML).
+             *     service (SAML); empty for a directory (LDAP), which has none.
              */
             callback_url: string;
             saml_sp?: null | components["schemas"]["SamlSpInfo"];
@@ -3796,7 +3838,7 @@ export interface components {
          * @description The protocol an upstream provider speaks.
          * @enum {string}
          */
-        IdpKind: "oidc" | "oauth2" | "saml";
+        IdpKind: "oidc" | "oauth2" | "saml" | "ldap";
         /**
          * @description Where the identity's fields come from in the upstream claims (ID token,
          *     then userinfo). Values are claim names; a dot descends into an object.
@@ -4049,6 +4091,253 @@ export interface components {
          * @enum {string}
          */
         KeyTransport: "rsa-oaep-mgf1p" | "rsa-oaep-sha256";
+        /**
+         * @description Whether rIDM writes back to the directory.
+         * @enum {string}
+         */
+        LdapEditMode: "read_only" | "writable";
+        /**
+         * @description What a group's member attribute holds.
+         * @enum {string}
+         */
+        LdapMembership: "dn" | "username";
+        /** @enum {string} */
+        LdapScope: "subtree" | "one";
+        /**
+         * @description What an administrator sets for a directory. Attributes and filters left
+         *     out take the vendor's defaults.
+         */
+        LdapSettings: {
+            /**
+             * @description The service account that searches (and, when writable, writes);
+             *     none searches anonymously.
+             * @default null
+             */
+            bind_dn: string | null;
+            /**
+             * @description The service account's password. Write-only: never returned; left
+             *     out on an update it is kept, an empty string clears it.
+             * @default null
+             */
+            bind_password: string | null;
+            /**
+             * @description PEM certificate(s) the directory's certificate must chain to (an
+             *     internal CA); none trusts the platform's roots.
+             * @default null
+             */
+            ca_certificate: string | null;
+            /** @default read_only */
+            edit_mode: components["schemas"]["LdapEditMode"];
+            /**
+             * Format: int32
+             * @description A full sync, which also disables the users who left the directory
+             *     (or were disabled in it), every this many hours (1–720).
+             * @default 24
+             */
+            full_sync_interval_hours: number;
+            /**
+             * @description The attribute listing a group's members (`member`, `memberUid`).
+             * @default null
+             */
+            group_member_attribute: string | null;
+            /** @default dn */
+            group_membership: components["schemas"]["LdapMembership"];
+            /**
+             * @description The attribute a synced group's name comes from (`cn`).
+             * @default null
+             */
+            group_name_attribute: string | null;
+            /** @default null */
+            group_object_filter: string | null;
+            /**
+             * Format: uuid
+             * @description The rIDM group synced groups are created under; none makes them
+             *     top-level.
+             * @default null
+             */
+            group_parent_id: string | null;
+            /**
+             * @description Where groups are searched; none turns group sync off.
+             * @default null
+             */
+            groups_dn: string | null;
+            /**
+             * @description The attributes a sign-in identifier is matched against; the username
+             *     attribute and `mail` when empty.
+             * @default []
+             */
+            login_attributes: string[];
+            /** @default subtree */
+            search_scope: components["schemas"]["LdapScope"];
+            /**
+             * @description Upgrade an `ldap://` connection with StartTLS.
+             * @default false
+             */
+            starttls: boolean;
+            /**
+             * Format: int32
+             * @description Incremental sync every this many minutes (5–10080); 0 turns the
+             *     periodic sync off (users are still imported and refreshed when they
+             *     sign in).
+             * @default 60
+             */
+            sync_interval_minutes: number;
+            /**
+             * Format: int32
+             * @description Seconds a connection or an operation may take (1–60).
+             * @default 10
+             */
+            timeout_secs: number;
+            /**
+             * @description `ldaps://host[:port]`, or `ldap://host[:port]` with `starttls`.
+             *     Plain `ldap://` is accepted for loopback hosts only.
+             * @default
+             */
+            url: string;
+            /**
+             * @description Which entries are users, e.g. `(objectClass=inetOrgPerson)`.
+             * @default null
+             */
+            user_object_filter: string | null;
+            /**
+             * @description The attribute a new account's username comes from (`uid`,
+             *     `sAMAccountName`).
+             * @default null
+             */
+            username_attribute: string | null;
+            /**
+             * @description Where users are searched.
+             * @default
+             */
+            users_dn: string;
+            /**
+             * @description The attribute that never changes for an entry (`entryUUID`,
+             *     `objectGUID`): what the linked identity is keyed by.
+             * @default null
+             */
+            uuid_attribute: string | null;
+            /** @default other */
+            vendor: components["schemas"]["LdapVendor"];
+        };
+        LdapSyncBody: {
+            /**
+             * @description A full pass (which also disables the users who left the directory)
+             *     rather than the incremental one that is due.
+             * @default false
+             */
+            full: boolean;
+        };
+        /** @description What one sync pass did. */
+        LdapSyncStats: {
+            /**
+             * Format: int64
+             * @default 0
+             */
+            created: number;
+            /**
+             * Format: int64
+             * @description Disabled because the entry left the directory or was disabled there.
+             * @default 0
+             */
+            disabled: number;
+            /**
+             * Format: int64
+             * @description Enabled again because the entry came back.
+             * @default 0
+             */
+            enabled: number;
+            /**
+             * @description A full pass (it may disable users); otherwise incremental.
+             * @default false
+             */
+            full: boolean;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            groups_created: number;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            groups_deleted: number;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            groups_updated: number;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            memberships_added: number;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            memberships_removed: number;
+            /**
+             * Format: int64
+             * @description Directory user entries read.
+             * @default 0
+             */
+            read: number;
+            /**
+             * Format: int64
+             * @description Entries that could not be imported (no usable uuid or username, or
+             *     the link policy refused them); the log says why.
+             * @default 0
+             */
+            skipped: number;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            updated: number;
+        };
+        /** @description The directory side of an `ldap` identity provider. */
+        LdapUpstream: {
+            bind_dn?: string | null;
+            /** @description A bind password is stored (it is never returned). */
+            bind_password_set: boolean;
+            ca_certificate?: string | null;
+            edit_mode: components["schemas"]["LdapEditMode"];
+            /** Format: int32 */
+            full_sync_interval_hours: number;
+            group_member_attribute: string;
+            group_membership: components["schemas"]["LdapMembership"];
+            group_name_attribute: string;
+            group_object_filter: string;
+            /** Format: uuid */
+            group_parent_id?: string | null;
+            groups_dn?: string | null;
+            /** Format: date-time */
+            last_full_sync_at?: string | null;
+            /** Format: date-time */
+            last_sync_at?: string | null;
+            /** @description Why the last sync failed, until one succeeds. */
+            last_sync_error?: string | null;
+            last_sync_stats?: null | components["schemas"]["LdapSyncStats"];
+            login_attributes: string[];
+            search_scope: components["schemas"]["LdapScope"];
+            starttls: boolean;
+            /** Format: int32 */
+            sync_interval_minutes: number;
+            /** Format: int32 */
+            timeout_secs: number;
+            url: string;
+            user_object_filter: string;
+            username_attribute: string;
+            users_dn: string;
+            uuid_attribute: string;
+            vendor: components["schemas"]["LdapVendor"];
+        };
+        /**
+         * @description Which directory server it is: it picks the defaults (attributes,
+         *     filters) and how a password is written.
+         * @enum {string}
+         */
+        LdapVendor: "active_directory" | "openldap" | "other";
         /**
          * @description What happens when an upstream identity signs in for the first time and
          *     a local account with the same email address exists.
@@ -4405,6 +4694,8 @@ export interface components {
             jwks_uri: string | null;
             /** @default null */
             kind: null | components["schemas"]["IdpKind"];
+            /** @default null */
+            ldap: null | components["schemas"]["LdapSettings"];
             /** @default null */
             link_policy: null | components["schemas"]["LinkPolicy"];
             /** @default null */
@@ -6282,6 +6573,19 @@ export interface components {
         };
         /** @enum {string} */
         TenantStatus: "active" | "disabled";
+        /** @description What a connection test found. */
+        TestReport: {
+            /** @description The service account's bind succeeded (true without a bind DN). */
+            bound: boolean;
+            /** @description The connection (and TLS) was established. */
+            connected: boolean;
+            /** @description What went wrong, when something did. */
+            error?: string | null;
+            /** @description Up to five group names, when group sync is on. */
+            groups: string[];
+            /** @description Up to five users under the base. */
+            users: components["schemas"]["TestUser"][];
+        };
         TestSend: {
             to: string;
         };
@@ -6289,6 +6593,13 @@ export interface components {
             /** @description Backend that took the message (`smtp`, `http`, `mock`). */
             sender: string;
             to: string;
+        };
+        /** @description A few directory users as a test sees them. */
+        TestUser: {
+            dn: string;
+            email?: string | null;
+            subject?: string | null;
+            username?: string | null;
         };
         /** @enum {string} */
         TokenEndpointAuthMethod: "none" | "client_secret_basic" | "client_secret_post" | "private_key_jwt";
@@ -9816,6 +10127,149 @@ export interface operations {
             };
             /** @description Alias in use */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_ldap_sync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                /** @description Row id or alias */
+                idp: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LdapSyncBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LdapSyncStats"];
+                };
+            };
+            /** @description Not an LDAP provider */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A sync of this directory is already running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The directory could not be reached */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    identity_providers_ldap_test: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+                /** @description Row id or alias */
+                idp: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What the test found; `error` says what failed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestReport"];
+                };
+            };
+            /** @description Not an LDAP provider */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

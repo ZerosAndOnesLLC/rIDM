@@ -26,7 +26,8 @@ draft of a [tenant document](../reference/tenant-document.md). Read
 | Database connection | Local users with passwords | |
 | Social connections | [Identity providers](../concepts/brokering.md): presets for Google, Microsoft, GitHub, Apple and GitLab; any other OpenID Connect or OAuth 2.0 provider configured by hand | |
 | Enterprise: OpenID Connect, Microsoft Entra ID (Azure AD) | Identity provider (`oidc`, or the `microsoft` preset with your directory id in the issuer) | |
-| Enterprise: SAML, AD/LDAP, ADFS | Not supported | SAML and LDAP are planned (Phase 13), not present |
+| Enterprise: SAML, ADFS | [SAML identity provider](../admin/saml-upstream.md) (`saml`) | |
+| Enterprise: AD/LDAP | [LDAP directory](../admin/ldap.md) (`ldap`) | rIDM connects to the directory itself; there is no connector agent, so the directory's network must be reachable from rIDM |
 | Passwordless connections (email, SMS) | `settings.auth.magic_link`, `email_otp`, `sms_otp` | |
 | Custom database connection with "Import users to Auth0" (lazy migration) | No equivalent | rIDM cannot check a password against another system at sign-in |
 | Organizations | Not yet | Organizations are planned (Phase 12), not present |

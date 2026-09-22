@@ -86,6 +86,9 @@ lettre = { version = "=0.11.23", default-features = false, features = ["tokio1",
 handlebars = "=6.4.4"
 # DNS, for organization domain verification (TXT lookups only).
 hickory-resolver = { version = "=0.26.3", default-features = false, features = ["tokio", "system-config"] }
+# LDAP / Active Directory upstream: async client over tokio, TLS through
+# rustls on the same aws-lc-rs provider as everything else.
+ldap3 = { version = "=0.12.1", default-features = false, features = ["tls-rustls-aws-lc-rs"] }
 
 # Serde / types
 serde = { version = "=1.0.229", features = ["derive"] }

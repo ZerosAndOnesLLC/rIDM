@@ -32,6 +32,7 @@ pub mod ip_rules;
 pub mod jwe;
 pub mod key_encryptor;
 pub mod keys;
+pub mod ldap;
 pub mod locale;
 pub mod login_flows;
 pub mod logout;

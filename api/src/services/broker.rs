@@ -777,7 +777,7 @@ async fn verify_id_token(
 /// The local user for an upstream identity: the one linked to it, else by
 /// the provider's link policy an existing account with the same verified
 /// email, or a new account.
-async fn resolve_user(
+pub(crate) async fn resolve_user(
     state: &AppState,
     tenant: &crate::models::Tenant,
     idp: &IdentityProvider,
@@ -964,7 +964,7 @@ async fn create_user(
 
 /// Write the mapped attributes on every sign-in (imports and mappers may
 /// set any attribute); a refusal is logged, never fatal.
-async fn apply_mappers(
+pub(crate) async fn apply_mappers(
     state: &AppState,
     tenant_id: Uuid,
     idp: &IdentityProvider,

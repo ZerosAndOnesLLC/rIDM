@@ -598,10 +598,22 @@ pub async fn password_step(
         }
     }
 
-    let user = users::find_by_identifier(state, tid, &identifier).await?;
+    let mut user = users::find_by_identifier(state, tid, &identifier).await?;
+    // No local account: one of the tenant's directories may know the
+    // identifier, and a bind with this password imports the user.
+    let mut directory_verified = false;
+    if user.is_none()
+        && let Some(u) =
+            crate::services::ldap::sign_in_unknown(state, &tenant.tenant, &identifier, &password)
+                .await?
+    {
+        user = Some(u);
+        directory_verified = true;
+    }
     let verdict = match &user {
         Some(u) if u.status == UserStatus::Disabled => Err("disabled"),
         Some(u) if u.is_locked_now() => Err("locked"),
+        Some(u) if directory_verified => Ok(u.must_change_password),
         Some(u) => match password::verify_and_upgrade(
             state,
             tid,

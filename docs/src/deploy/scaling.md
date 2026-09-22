@@ -42,6 +42,7 @@ time-to-live so a node that dies mid-pass cannot hold it forever.
 | `key_rotation` | 1 h | 10 min | Rotates and retires signing keys per each tenant's key policy |
 | `audit_retention` | 24 h | 30 min | Creates upcoming audit partitions, purges audit rows past the tenant's retention |
 | `saml_metadata_refresh` | 1 h | 1 h | Re-reads the metadata URL of SAML identity providers last read more than a day ago |
+| `ldap_sync` | 5 min | 1 h | Syncs the LDAP directories whose sync interval has passed (each directory also holds its own lock while it syncs) |
 | `user_purge` | 24 h | 30 min | Hard-deletes soft-deleted users past the tenant's retention |
 | `webhook_delivery` | 30 s | 2 min | Retries webhook deliveries whose backoff has elapsed |
 | `message_delivery` | 30 s | 2 min | Sends queued and retrying email and SMS |

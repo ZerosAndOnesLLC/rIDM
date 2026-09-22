@@ -76,6 +76,7 @@ flate2 = { workspace = true }
 
 reqwest = { workspace = true }
 hickory-resolver = { workspace = true }
+ldap3 = { workspace = true }
 lettre = { workspace = true }
 handlebars = { workspace = true }
 

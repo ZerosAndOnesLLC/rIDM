@@ -131,5 +131,6 @@ environment and the secrets set there afterwards.
 
 Events: `identity_provider.created`, `.updated` and `.deleted`,
 `identity.linked`, `identity.unlinked` and `login.brokered` (and
-`logout.upstream` when a SAML IdP's logout request ends sessions). Brokering
-from LDAP directories is planned, not present.
+`logout.upstream` when a SAML IdP's logout request ends sessions). An LDAP or
+Active Directory directory is a provider of kind `ldap` whose users sign in with the
+password form; see [LDAP and Active Directory](../admin/ldap.md).

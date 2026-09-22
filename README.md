@@ -547,6 +547,7 @@ skips the pass. Every pass is counted and timed (`ridm_job_runs_total`,
 | `key_rotation` | 1 h | rotates and retires signing keys per the tenant key policy |
 | `audit_retention` | 24 h | creates upcoming audit partitions (through `audit_ensure_partitions`, see below), drops expired chain prefixes; a failure to create partitions does not stop the purge |
 | `saml_metadata_refresh` | 1 h | re-reads SAML identity providers' metadata URLs once a day |
+| `ldap_sync` | 5 min | syncs LDAP directories whose interval has passed (incremental, and full on its own interval) |
 | `user_purge` | 24 h | hard-deletes soft-deleted users past the tenant's retention |
 | `webhook_delivery` | 30 s | retries webhook deliveries whose backoff elapsed (prompt delivery happens on the event) |
 | `message_delivery` | 30 s | sends queued and retrying email/SMS |
@@ -815,7 +816,12 @@ it) and `explicit` refuse with `broker_error=email_in_use` on the login page, wh
 `{alias}-{subject}`; mapped attributes are written on every sign-in, and the login flow
 then continues like any other first factor (second step, profile completion for required
 attributes, terms, consent). Events: `identity_provider.*`, `identity.linked`,
-`identity.unlinked`, `login.brokered`, `logout.upstream` (a SAML IdP's logout request). Upstream endpoints must use https (plain http is
+`identity.unlinked`, `login.brokered`, `logout.upstream` (a SAML IdP's logout request),
+`directory.synced` (an LDAP sync pass). An LDAP / Active Directory directory is a provider
+of kind `ldap`: its users sign in with the password form (rIDM binds as them, keeping no
+local password), are imported on first sign-in and by the `ldap_sync` job with their
+groups, are disabled when they leave the directory, and a `writable` directory takes
+password and profile changes back (docs: *LDAP and Active Directory*). Upstream endpoints must use https (plain http is
 accepted for loopback hosts, for development and tests); providers export and import
 with the tenant configuration without their secrets.
 

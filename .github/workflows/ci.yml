@@ -227,6 +227,15 @@ jobs:
       mailpit:
         image: axllent/mailpit:v1.31.1
         ports: ["1025:1025", "8025:8025"]
+      # The directory the LDAP upstream spec seeds with ldapadd.
+      openldap:
+        image: osixia/openldap:1.5.0
+        env:
+          LDAP_ORGANISATION: Example
+          LDAP_DOMAIN: example.org
+          LDAP_ADMIN_PASSWORD: admin-Passw0rd
+          LDAP_TLS: "false"
+        ports: ["1389:389"]
     env:
       DATABASE_URL: postgres://ridm:ridm@localhost:5432/ridm
       REDIS_URL: redis://localhost:6379
@@ -245,8 +254,8 @@ jobs:
       - name: playwright browsers
         working-directory: ui
         run: npx playwright install --with-deps chromium
-      - name: redis-cli (protocol-compatible client; global setup clears the tenant cache in Valkey)
-        run: sudo apt-get update -q && sudo apt-get install -y -q redis-tools
+      - name: redis-cli (protocol-compatible client; global setup clears the tenant cache in Valkey) and ldap-utils (the LDAP spec seeds its directory)
+        run: sudo apt-get update -q && sudo apt-get install -y -q redis-tools ldap-utils
       # The suite drives the artifact that ships: the static export compiled
       # into the API (embedded UI mode), everything on one origin.
       - name: build ui (static export, same origin)

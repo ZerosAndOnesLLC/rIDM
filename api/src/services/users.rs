@@ -174,6 +174,16 @@ pub async fn update_as(
             Some(&before.attributes),
         )?);
     }
+    // A directory user's username, email and mapped attributes belong to
+    // the directory: written there first when it is writable, refused when
+    // it is read-only. rIDM's own sync (the system actor) is the exception.
+    // Directory users have no local password, so others skip the lookup.
+    if before.password_hash.is_none()
+        && !matches!(actor, Actor::System)
+        && (patch.username.is_some() || patch.email.is_some() || patch.attributes.is_some())
+    {
+        crate::services::ldap::write_profile(state, tenant_id, &before, &patch).await?;
+    }
     let user = repos::users::update(&mut *tx, tenant_id, id, &patch)
         .await
         .map_err(|e| match AppError::from_db(e) {

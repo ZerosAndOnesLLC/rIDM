@@ -5,8 +5,8 @@ use sqlx::{PgExecutor, QueryBuilder};
 use uuid::Uuid;
 
 use crate::models::{
-    IdentityProvider, IdpAuthMethod, IdpKind, IdpMappers, LinkPolicy, SamlUpstream,
-    SamlUpstreamSettings, SloBinding,
+    IdentityProvider, IdpAuthMethod, IdpKind, IdpMappers, LdapSettings, LdapUpstream, LinkPolicy,
+    SamlUpstream, SamlUpstreamSettings, SloBinding,
 };
 
 const COLUMNS: &str = "id, tenant_id, alias, kind, display_name, preset, enabled, hidden, issuer, \
@@ -396,4 +396,108 @@ pub async fn due_metadata_refresh<'e>(
     .bind(limit)
     .fetch_all(exec)
     .await
+}
+
+const LDAP_COLUMNS: &str = "idp_id, tenant_id, url, starttls, ca_certificate, vendor, bind_dn, \
+    users_dn, user_object_filter, search_scope, username_attribute, login_attributes, \
+    uuid_attribute, edit_mode, sync_interval_minutes, full_sync_interval_hours, groups_dn, \
+    group_object_filter, group_name_attribute, group_member_attribute, group_membership, \
+    group_parent_id, timeout_secs, last_sync_at, last_full_sync_at, last_sync_error, \
+    last_sync_stats, sync_cursor, created_at, updated_at";
+
+/// The directory settings of a provider.
+pub async fn find_ldap<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    idp_id: Uuid,
+) -> Result<Option<LdapUpstream>, sqlx::Error> {
+    let sql = format!(
+        "SELECT {LDAP_COLUMNS} FROM ldap_identity_providers WHERE tenant_id = $1 AND idp_id = $2"
+    );
+    sqlx::query_as(sqlx::AssertSqlSafe(sql))
+        .bind(tenant_id)
+        .bind(idp_id)
+        .fetch_optional(exec)
+        .await
+}
+
+/// Every directory's settings in the tenant (a tenant has a handful).
+pub async fn list_ldap<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+) -> Result<Vec<LdapUpstream>, sqlx::Error> {
+    let sql = format!(
+        "SELECT {LDAP_COLUMNS} FROM ldap_identity_providers WHERE tenant_id = $1 LIMIT 1000"
+    );
+    sqlx::query_as(sqlx::AssertSqlSafe(sql))
+        .bind(tenant_id)
+        .fetch_all(exec)
+        .await
+}
+
+/// Insert or replace a provider's directory settings (validated: every
+/// defaultable attribute is filled in). The sync status is kept, except
+/// that a new URL, base or uuid attribute restarts incremental sync.
+pub async fn upsert_ldap<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    idp_id: Uuid,
+    s: &LdapSettings,
+) -> Result<LdapUpstream, sqlx::Error> {
+    let sql = format!(
+        "INSERT INTO ldap_identity_providers (idp_id, tenant_id, url, starttls, ca_certificate, \
+         vendor, bind_dn, users_dn, user_object_filter, search_scope, username_attribute, \
+         login_attributes, uuid_attribute, edit_mode, sync_interval_minutes, \
+         full_sync_interval_hours, groups_dn, group_object_filter, group_name_attribute, \
+         group_member_attribute, group_membership, group_parent_id, timeout_secs) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, \
+         $18, $19, $20, $21, $22, $23) \
+         ON CONFLICT (idp_id) DO UPDATE SET \
+         sync_cursor = CASE WHEN ldap_identity_providers.url = EXCLUDED.url \
+             AND ldap_identity_providers.users_dn = EXCLUDED.users_dn \
+             AND ldap_identity_providers.uuid_attribute = EXCLUDED.uuid_attribute \
+             THEN ldap_identity_providers.sync_cursor END, \
+         url = EXCLUDED.url, starttls = EXCLUDED.starttls, \
+         ca_certificate = EXCLUDED.ca_certificate, vendor = EXCLUDED.vendor, \
+         bind_dn = EXCLUDED.bind_dn, users_dn = EXCLUDED.users_dn, \
+         user_object_filter = EXCLUDED.user_object_filter, \
+         search_scope = EXCLUDED.search_scope, \
+         username_attribute = EXCLUDED.username_attribute, \
+         login_attributes = EXCLUDED.login_attributes, \
+         uuid_attribute = EXCLUDED.uuid_attribute, edit_mode = EXCLUDED.edit_mode, \
+         sync_interval_minutes = EXCLUDED.sync_interval_minutes, \
+         full_sync_interval_hours = EXCLUDED.full_sync_interval_hours, \
+         groups_dn = EXCLUDED.groups_dn, group_object_filter = EXCLUDED.group_object_filter, \
+         group_name_attribute = EXCLUDED.group_name_attribute, \
+         group_member_attribute = EXCLUDED.group_member_attribute, \
+         group_membership = EXCLUDED.group_membership, \
+         group_parent_id = EXCLUDED.group_parent_id, timeout_secs = EXCLUDED.timeout_secs \
+         RETURNING {LDAP_COLUMNS}"
+    );
+    sqlx::query_as(sqlx::AssertSqlSafe(sql))
+        .bind(idp_id)
+        .bind(tenant_id)
+        .bind(&s.url)
+        .bind(s.starttls)
+        .bind(&s.ca_certificate)
+        .bind(s.vendor)
+        .bind(&s.bind_dn)
+        .bind(&s.users_dn)
+        .bind(s.user_object_filter.as_deref().unwrap_or_default())
+        .bind(s.search_scope)
+        .bind(s.username_attribute.as_deref().unwrap_or_default())
+        .bind(&s.login_attributes)
+        .bind(s.uuid_attribute.as_deref().unwrap_or_default())
+        .bind(s.edit_mode)
+        .bind(s.sync_interval_minutes)
+        .bind(s.full_sync_interval_hours)
+        .bind(&s.groups_dn)
+        .bind(s.group_object_filter.as_deref().unwrap_or_default())
+        .bind(s.group_name_attribute.as_deref().unwrap_or_default())
+        .bind(s.group_member_attribute.as_deref().unwrap_or_default())
+        .bind(s.group_membership)
+        .bind(s.group_parent_id)
+        .bind(s.timeout_secs)
+        .fetch_one(exec)
+        .await
 }

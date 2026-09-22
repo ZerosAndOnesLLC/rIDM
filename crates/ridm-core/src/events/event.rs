@@ -524,6 +524,19 @@ pub enum EventKind {
         /// The provider's alias.
         provider: String,
     },
+    /// An LDAP directory sync pass finished (users it disabled or enabled
+    /// also emit `user.updated`).
+    DirectorySynced {
+        idp_id: Uuid,
+        /// The provider's alias.
+        provider: String,
+        /// A full pass (it may disable users); otherwise incremental.
+        full: bool,
+        created: u64,
+        updated: u64,
+        disabled: u64,
+        enabled: u64,
+    },
 
     // Personal access tokens
     PersonalTokenCreated {
@@ -644,6 +657,7 @@ impl EventKind {
             Self::IdentityUnlinked { .. } => "identity.unlinked",
             Self::BrokeredLogin { .. } => "login.brokered",
             Self::UpstreamLogout { .. } => "logout.upstream",
+            Self::DirectorySynced { .. } => "directory.synced",
             Self::PersonalTokenCreated { .. } => "personal_token.created",
             Self::PersonalTokenRevoked { .. } => "personal_token.revoked",
         }

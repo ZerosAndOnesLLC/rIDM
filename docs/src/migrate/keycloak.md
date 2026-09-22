@@ -24,8 +24,9 @@ into [bulk import](../admin/users.md#bulk-import) rows. Read
 | User attributes, user profile (declarative) | [Profile schema](../admin/users.md#profile-schema) and user `attributes` | Undeclared attributes are refused unless `allow_undeclared` is on |
 | Protocol mapper | [Claim mapper](../concepts/users-groups-roles.md#claims-from-users-groups-and-roles) | See [Protocol mappers](#protocol-mappers) |
 | Identity provider (OpenID Connect, social) | [Identity provider](../concepts/brokering.md) (`oidc` or `oauth2`, presets for Google, Microsoft, GitHub, Apple, GitLab) | First-broker-login flow becomes `link_policy` |
-| Identity provider (SAML) | Not supported | SAML is planned (Phase 13), not present |
-| User federation (LDAP, Kerberos) | Not supported | Planned (Phase 13). Import the users instead; their passwords live in the directory and cannot be exported, so they need a reset |
+| Identity provider (SAML) | [SAML identity provider](../admin/saml-upstream.md) (`saml`) | |
+| User federation (LDAP) | [LDAP directory](../admin/ldap.md) (`ldap`): bind authentication, periodic and on-sign-in sync, group mapping, `edit_mode` `read_only` or `writable` | Keycloak's `UNSYNCED` mode has no equivalent; users are always linked to the directory |
+| User federation (Kerberos) | Not supported | Planned (Phase 13) |
 | Required actions | See [Required actions](#required-actions) | |
 | Authentication flows | Tenant settings: `auth`, `mfa`, `mfa_methods`, `lockout`, `captcha`, `registration` | rIDM's flow is fixed; its steps are switched on and off, not rearranged |
 | Password policy | `settings.password` | See [Realm settings](#realm-settings) |

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::types::Json;
 use uuid::Uuid;
 
-use super::{NameIdFormat, SloBinding};
+use super::{LdapSettings, LdapUpstream, NameIdFormat, SloBinding};
 use crate::util::patch::double_option;
 
 /// The protocol an upstream provider speaks.
@@ -22,6 +22,10 @@ pub enum IdpKind {
     /// SAML 2.0: a signed assertion posted to rIDM's assertion consumer
     /// service proves the identity (rIDM is the service provider).
     Saml,
+    /// LDAP or Active Directory: a bind as the user with the password they
+    /// typed proves the identity (the directory owns the password), and a
+    /// job syncs users and groups.
+    Ldap,
 }
 
 /// What happens when an upstream identity signs in for the first time and
@@ -111,12 +115,23 @@ pub struct IdentityProvider {
     #[sqlx(skip)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub saml: Option<SamlUpstream>,
+    /// The directory settings of an `ldap` provider.
+    #[sqlx(skip)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ldap: Option<LdapUpstream>,
 }
 
 impl IdentityProvider {
-    /// Offered on the login page.
+    /// Offered on the login page. A directory has no button: its users
+    /// sign in with the password form.
     pub fn offered(&self) -> bool {
-        self.enabled && !self.hidden
+        self.enabled && !self.hidden && self.kind != IdpKind::Ldap
+    }
+
+    /// Reached through a browser redirect (a login-page button, or linking
+    /// from the account console); a directory is not.
+    pub fn redirects(&self) -> bool {
+        self.kind != IdpKind::Ldap
     }
 }
 
@@ -148,6 +163,8 @@ pub struct NewIdentityProvider {
     pub sort_order: Option<i32>,
     /// Required for a `saml` provider, refused for any other.
     pub saml: Option<SamlUpstreamSettings>,
+    /// Required for an `ldap` provider, refused for any other.
+    pub ldap: Option<LdapSettings>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
@@ -181,6 +198,9 @@ pub struct IdentityProviderUpdate {
     pub sort_order: Option<i32>,
     /// A `saml` provider's settings, replaced as a whole.
     pub saml: Option<SamlUpstreamSettings>,
+    /// An `ldap` provider's settings, replaced as a whole (a missing
+    /// `bind_password` keeps the stored one).
+    pub ldap: Option<LdapSettings>,
 }
 
 impl IdentityProviderUpdate {
@@ -205,6 +225,7 @@ impl IdentityProviderUpdate {
             && self.mappers.is_none()
             && self.sort_order.is_none()
             && self.saml.is_none()
+            && self.ldap.is_none()
     }
 }
 

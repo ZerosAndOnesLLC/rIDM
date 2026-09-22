@@ -374,7 +374,11 @@ async fn verify_blocking(
 /// Refuse a password known from breach corpora. The lookup failing (the
 /// deployment cannot reach the corpus) is logged and lets the password
 /// through: an outage must not block sign-ups and resets.
-async fn check_breached(state: &AppState, tenant_id: Uuid, password: &str) -> AppResult<()> {
+pub(crate) async fn check_breached(
+    state: &AppState,
+    tenant_id: Uuid,
+    password: &str,
+) -> AppResult<()> {
     let Some(checker) = &state.breach else {
         tracing::debug!(%tenant_id, "breached-password check requested but disabled for this deployment");
         return Ok(());
@@ -406,6 +410,15 @@ pub async fn set_password(
     password: Zeroizing<String>,
     opts: SetPasswordOptions,
 ) -> AppResult<()> {
+    // A directory user's password lives in the directory (written there
+    // when it is writable, refused when it is read-only).
+    if crate::services::ldap::set_password(
+        state, tenant_id, policy, &actor, user_id, &password, opts,
+    )
+    .await?
+    {
+        return Ok(());
+    }
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let user = repos::users::find_by_id(&mut *tx, tenant_id, user_id)
         .await?
@@ -540,6 +553,15 @@ pub async fn import_hash(
             "unsupported password hash format".into(),
         ));
     }
+    // A local hash would outrank the directory at sign-in.
+    if crate::services::ldap::directory_of_user(state, tenant_id, user_id)
+        .await?
+        .is_some()
+    {
+        return Err(AppError::BadRequest(
+            "the user's password is managed by a directory".into(),
+        ));
+    }
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let ok =
         repos::users::set_password(&mut *tx, tenant_id, user_id, stored_hash, algo, false, None)
@@ -573,6 +595,19 @@ pub async fn verify_and_upgrade(
     password: Zeroizing<String>,
 ) -> AppResult<VerifyOutcome> {
     let Some(stored) = user.password_hash.clone() else {
+        // A directory user has no local hash: the directory decides, by a
+        // bind as their entry.
+        if let Some(valid) =
+            crate::services::ldap::verify_password(state, tenant_id, user, &password).await?
+        {
+            return Ok(if valid {
+                VerifyOutcome::Valid {
+                    must_change: user.must_change_password,
+                }
+            } else {
+                VerifyOutcome::Invalid
+            });
+        }
         // Burn comparable time so "no password" is not distinguishable by timing.
         let _ = verify_blocking(state.hasher.clone(), password, DUMMY_HASH.to_string()).await;
         return Ok(VerifyOutcome::Invalid);
