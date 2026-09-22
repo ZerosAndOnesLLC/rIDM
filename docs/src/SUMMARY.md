@@ -39,6 +39,7 @@
 - [Impersonation](admin/impersonation.md)
 - [Backchannel sign-in and FAPI 2.0](admin/ciba-fapi.md)
 - [SAML identity provider](admin/saml-idp.md)
+- [SAML identity providers (upstream)](admin/saml-upstream.md)
 - [Feature flags](admin/feature-flags.md)
 - [Email, SMS and templates](admin/messaging.md)
 - [SCIM provisioning](admin/scim.md)

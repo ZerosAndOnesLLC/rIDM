@@ -245,7 +245,7 @@ pub struct CallbackParams {
 }
 
 /// What upstream said about the person.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Identity {
     pub subject: String,
     pub email: Option<String>,
@@ -345,7 +345,31 @@ pub async fn callback(
             return Ok(failed(BrokerError::Upstream));
         }
     };
-    match rec.mode {
+    conclude(state, tenant, idp, rec.mode, identity, ctx).await
+}
+
+/// Finish what `mode` started with a proven upstream identity: sign in to
+/// the login flow (resolving or creating the local user by the provider's
+/// link policy) or link it to the account-console user. Shared by every
+/// provider kind; SAML reaches it from its assertion consumer service.
+pub async fn conclude(
+    state: &AppState,
+    tenant: &TenantCtx,
+    idp: &IdentityProvider,
+    mode: Mode,
+    identity: Identity,
+    ctx: RequestContext,
+) -> AppResult<Outcome> {
+    let (flow_id, return_to) = match &mode {
+        Mode::Flow { flow_id } => (Some(*flow_id), None),
+        Mode::Link { return_to, .. } => (None, return_to.clone()),
+    };
+    let failed = |error: BrokerError| Outcome::Failed {
+        flow_id,
+        return_to: return_to.clone(),
+        error,
+    };
+    match mode {
         Mode::Flow { flow_id } => {
             let flow = flows::load(state, tenant.id(), flow_id).await?;
             if !matches!(flow.stage, FlowStage::Authenticate | FlowStage::Register) {
@@ -481,15 +505,25 @@ async fn prove(
             }
         }
     }
+    identity_from_claims(idp, claims, verified_subject)
+        .ok_or_else(|| AppError::Unavailable("no usable subject claim".into()))
+}
+
+/// Read the identity out of upstream claims by the provider's mappers:
+/// `verified_subject` (what the provider's signature vouches for) wins over
+/// the subject mapper. `None` when there is no usable subject.
+pub fn identity_from_claims(
+    idp: &IdentityProvider,
+    claims: Map<String, Value>,
+    verified_subject: Option<String>,
+) -> Option<Identity> {
     let m = &idp.mappers.0;
     let subject = match verified_subject {
         Some(s) => s,
-        None => claim(&claims, m.subject.as_deref().unwrap_or("sub"))
-            .and_then(scalar_text)
-            .ok_or_else(|| AppError::Unavailable("no subject claim".into()))?,
+        None => claim(&claims, m.subject.as_deref().unwrap_or("sub")).and_then(scalar_text)?,
     };
     if subject.is_empty() || subject.len() > 512 {
-        return Err(AppError::Unavailable("unusable subject claim".into()));
+        return None;
     }
     let email = claim(&claims, m.email.as_deref().unwrap_or("email"))
         .and_then(Value::as_str)
@@ -506,7 +540,7 @@ async fn prove(
     )
     .and_then(scalar_text)
     .filter(|u| !u.trim().is_empty());
-    Ok(Identity {
+    Some(Identity {
         subject,
         email,
         email_verified,

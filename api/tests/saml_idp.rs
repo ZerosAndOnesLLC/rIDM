@@ -923,7 +923,7 @@ async fn sp_initiated_logout_walks_the_other_sps_then_answers() {
             format: Some(at_a.name_id_format.clone()),
             sp_name_qualifier: None,
         },
-        &at_a.session_index,
+        Some(&at_a.session_index),
         Utc::now(),
     )
     .to_string();
@@ -1327,7 +1327,7 @@ async fn slo_binding_post_and_unknown_answers() {
             format: Some(at.name_id_format.clone()),
             sp_name_qualifier: None,
         },
-        &at.session_index,
+        Some(&at.session_index),
         Utc::now(),
     )
     .to_document();

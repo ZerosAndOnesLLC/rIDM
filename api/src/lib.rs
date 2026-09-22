@@ -107,6 +107,11 @@ fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
             Style::Html,
         ))
         .merge(limited(
+            routes::saml_sp::router(),
+            Category::Flows,
+            Style::Html,
+        ))
+        .merge(limited(
             routes::impersonation::router(),
             Category::Flows,
             Style::Html,

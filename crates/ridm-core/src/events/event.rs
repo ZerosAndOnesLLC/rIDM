@@ -517,6 +517,13 @@ pub enum EventKind {
         /// The provider's alias.
         provider: String,
     },
+    /// An upstream SAML identity provider's `LogoutRequest` ended sessions
+    /// it had brokered.
+    UpstreamLogout {
+        idp_id: Uuid,
+        /// The provider's alias.
+        provider: String,
+    },
 
     // Personal access tokens
     PersonalTokenCreated {
@@ -636,6 +643,7 @@ impl EventKind {
             Self::IdentityLinked { .. } => "identity.linked",
             Self::IdentityUnlinked { .. } => "identity.unlinked",
             Self::BrokeredLogin { .. } => "login.brokered",
+            Self::UpstreamLogout { .. } => "logout.upstream",
             Self::PersonalTokenCreated { .. } => "personal_token.created",
             Self::PersonalTokenRevoked { .. } => "personal_token.revoked",
         }

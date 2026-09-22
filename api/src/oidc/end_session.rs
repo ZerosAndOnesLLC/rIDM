@@ -224,6 +224,14 @@ async fn decide(
             post_logout.as_deref(),
             state_param.as_deref(),
         );
+        // Downstream SAML SPs first, then the upstream IdP, then on.
+        let target = crate::services::saml_sp::logout_upstream(
+            state,
+            &tenant.tenant,
+            outcome.saml_upstream.take(),
+            target,
+        )
+        .await?;
         let target = crate::services::saml_idp::logout_through(
             state,
             &tenant.tenant,
@@ -410,6 +418,18 @@ async fn confirm(
         flow.post_logout_redirect_uri.as_deref(),
         flow.state.as_deref(),
     );
+    // Downstream SAML SPs first, then the upstream IdP, then on.
+    let target = match crate::services::saml_sp::logout_upstream(
+        &state,
+        &tenant.tenant,
+        outcome.saml_upstream.take(),
+        target,
+    )
+    .await
+    {
+        Ok(t) => t,
+        Err(e) => return e.into_response(),
+    };
     let target = match crate::services::saml_idp::logout_through(
         &state,
         &tenant.tenant,

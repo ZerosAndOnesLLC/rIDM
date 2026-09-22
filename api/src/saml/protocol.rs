@@ -389,12 +389,13 @@ pub fn response(
         .child_opt(body)
 }
 
-/// A `samlp:LogoutRequest` to an SP.
+/// A `samlp:LogoutRequest`: rIDM as an IdP to an SP, or as an SP to an
+/// upstream IdP (`issuer` is rIDM's entity ID either way).
 pub fn logout_request(
-    idp_entity_id: &str,
+    issuer: &str,
     destination: &str,
     name_id: &NameId,
-    session_index: &str,
+    session_index: Option<&str>,
     now: DateTime<Utc>,
 ) -> El {
     El::new("samlp:LogoutRequest")
@@ -405,14 +406,14 @@ pub fn logout_request(
         .attr("IssueInstant", instant(now))
         .attr("Destination", destination)
         .attr("NotOnOrAfter", instant(now + chrono::Duration::minutes(5)))
-        .child(issuer_el(idp_entity_id))
+        .child(issuer_el(issuer))
         .child(
             El::new("saml:NameID")
                 .attr_opt("Format", name_id.format.as_deref())
                 .attr_opt("SPNameQualifier", name_id.sp_name_qualifier.as_deref())
                 .text(&name_id.value),
         )
-        .child(El::new("samlp:SessionIndex").text(session_index))
+        .child_opt(session_index.map(|i| El::new("samlp:SessionIndex").text(i)))
 }
 
 /// A `samlp:LogoutResponse` to an SP.
@@ -544,7 +545,8 @@ mod tests {
             format: Some(ns::nameid::PERSISTENT.into()),
             sp_name_qualifier: None,
         };
-        let req = logout_request("https://idp", "https://sp/slo", &nid, "_s1", now).to_string();
+        let req =
+            logout_request("https://idp", "https://sp/slo", &nid, Some("_s1"), now).to_string();
         let doc = parse(&req).unwrap();
         let parsed = parse_logout_request(&doc).unwrap();
         assert_eq!(parsed.name_id, nid);

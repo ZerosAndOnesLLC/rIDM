@@ -6,18 +6,23 @@ use serde::{Deserialize, Serialize};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
-use crate::models::{IdentityProvider, IdentityProviderUpdate, NewIdentityProvider};
+use crate::models::{
+    IdentityProvider, IdentityProviderUpdate, IdpKind, NewIdentityProvider, SamlUpstreamSettings,
+};
 use crate::services::identity_providers::{self, Discovery, Preset};
+use crate::services::saml_sp;
 use crate::state::AppState;
 
 pub fn identity_providers_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(presets))
         .routes(routes!(discover))
+        .routes(routes!(saml_metadata))
         .routes(routes!(list, create))
         .routes(routes!(get_one, update, delete))
+        .routes(routes!(saml_refresh))
 }
 
 const P_READ: &str = "ridm:idps:read";
@@ -34,7 +39,22 @@ struct IdpPath {
 pub struct IdentityProviderView {
     #[serde(flatten)]
     pub provider: IdentityProvider,
+    /// The redirect URI (OIDC, OAuth 2.0) or the assertion consumer
+    /// service (SAML).
     pub callback_url: String,
+    /// What a SAML IdP is configured with: rIDM's SP entity ID and URLs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub saml_sp: Option<SamlSpInfo>,
+}
+
+/// rIDM as the service provider of one SAML IdP.
+#[derive(Serialize, utoipa::ToSchema)]
+pub struct SamlSpInfo {
+    pub entity_id: String,
+    /// rIDM's SP metadata, to give the IdP (the entity ID is this URL).
+    pub metadata_url: String,
+    pub acs_url: String,
+    pub slo_url: String,
 }
 
 fn view(
@@ -42,14 +62,25 @@ fn view(
     tenant: &crate::models::Tenant,
     p: IdentityProvider,
 ) -> IdentityProviderView {
-    let issuer = match &tenant.settings.custom_domain {
-        Some(host) => format!("https://{host}"),
-        None => state.config.issuer_for(&tenant.slug),
-    };
+    if p.kind == IdpKind::Saml {
+        let ep = saml_sp::endpoints(state, tenant, &p.alias);
+        return IdentityProviderView {
+            provider: p,
+            callback_url: ep.acs_url.clone(),
+            saml_sp: Some(SamlSpInfo {
+                entity_id: ep.entity_id,
+                metadata_url: ep.metadata_url,
+                acs_url: ep.acs_url,
+                slo_url: ep.slo_url,
+            }),
+        };
+    }
+    let issuer = crate::services::tokens::issuer(state, tenant);
     let callback_url = format!("{issuer}/broker/{}/callback", p.alias);
     IdentityProviderView {
         provider: p,
         callback_url,
+        saml_sp: None,
     }
 }
 
@@ -77,6 +108,65 @@ async fn discover(
 ) -> AppResult<Json<Discovery>> {
     admin.require(tenant.id, P_WRITE)?;
     Ok(Json(identity_providers::discover(&body.issuer).await?))
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SamlMetadataBody {
+    /// The IdP's metadata document (pasted or uploaded).
+    #[serde(default)]
+    pub metadata: Option<String>,
+    /// Or where to fetch it; it is kept as the provider's `metadata_url`.
+    #[serde(default)]
+    pub url: Option<String>,
+}
+
+/// Read an IdP's SAML metadata into the settings of a new `saml`
+/// provider, for the administrator to review before creating it. Nothing
+/// is stored.
+#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/saml-metadata", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug")), request_body = SamlMetadataBody, responses((status = 200, body = SamlUpstreamSettings), (status = 400, description = "Not usable IdP metadata", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 503, description = "The metadata URL could not be read", body = crate::error::Problem)), security(("bearer" = [])))]
+async fn saml_metadata(
+    admin: AdminCtx,
+    AdminTenantPath(tenant): AdminTenantPath,
+    Json(body): Json<SamlMetadataBody>,
+) -> AppResult<Json<SamlUpstreamSettings>> {
+    admin.require(tenant.id, P_WRITE)?;
+    let (text, url) = match (body.metadata, body.url) {
+        (Some(m), None) => (m, None),
+        (None, Some(u)) => {
+            let u = identity_providers::validate_endpoint("url", &u)?;
+            (
+                identity_providers::get_text("SAML metadata", &u).await?,
+                Some(u),
+            )
+        }
+        _ => {
+            return Err(AppError::BadRequest(
+                "send the metadata document or its URL".into(),
+            ));
+        }
+    };
+    Ok(Json(identity_providers::saml_settings_from_metadata(
+        &text, url,
+    )?))
+}
+
+/// Re-read a SAML provider's metadata URL now, as the daily job does.
+#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/{idp}/saml/refresh", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug"), ("idp" = String, Path, description = "Row id or alias")), responses((status = 200, body = IdentityProviderView), (status = 400, description = "Not a SAML provider with a metadata URL, or its metadata is unusable", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 503, description = "The metadata URL could not be read", body = crate::error::Problem)), security(("bearer" = [])))]
+async fn saml_refresh(
+    State(state): State<AppState>,
+    admin: AdminCtx,
+    AdminTenantPath(tenant): AdminTenantPath,
+    Path(IdpPath { idp }): Path<IdpPath>,
+) -> AppResult<Json<IdentityProviderView>> {
+    admin.require(tenant.id, P_WRITE)?;
+    let row = identity_providers::get(&state, tenant.id, &idp).await?;
+    if row.kind != IdpKind::Saml {
+        return Err(AppError::BadRequest("not a SAML identity provider".into()));
+    }
+    saml_sp::refresh_metadata(&state, tenant.id, &row).await?;
+    let row = identity_providers::get(&state, tenant.id, &idp).await?;
+    Ok(Json(view(&state, &tenant, row)))
 }
 
 #[utoipa::path(get, path = "/admin/tenants/{slug}/identity-providers", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Vec<IdentityProviderView>), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]

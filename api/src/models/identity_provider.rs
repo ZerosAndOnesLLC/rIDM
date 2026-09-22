@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::types::Json;
 use uuid::Uuid;
 
+use super::{NameIdFormat, SloBinding};
 use crate::util::patch::double_option;
 
 /// The protocol an upstream provider speaks.
@@ -18,6 +19,9 @@ pub enum IdpKind {
     Oidc,
     /// Plain OAuth 2.0: the userinfo endpoint describes the identity.
     Oauth2,
+    /// SAML 2.0: a signed assertion posted to rIDM's assertion consumer
+    /// service proves the identity (rIDM is the service provider).
+    Saml,
 }
 
 /// What happens when an upstream identity signs in for the first time and
@@ -103,6 +107,10 @@ pub struct IdentityProvider {
     pub sort_order: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// The SAML settings of a `saml` provider.
+    #[sqlx(skip)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub saml: Option<SamlUpstream>,
 }
 
 impl IdentityProvider {
@@ -138,6 +146,8 @@ pub struct NewIdentityProvider {
     pub trust_email: Option<bool>,
     pub mappers: Option<IdpMappers>,
     pub sort_order: Option<i32>,
+    /// Required for a `saml` provider, refused for any other.
+    pub saml: Option<SamlUpstreamSettings>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
@@ -169,6 +179,8 @@ pub struct IdentityProviderUpdate {
     pub trust_email: Option<bool>,
     pub mappers: Option<IdpMappers>,
     pub sort_order: Option<i32>,
+    /// A `saml` provider's settings, replaced as a whole.
+    pub saml: Option<SamlUpstreamSettings>,
 }
 
 impl IdentityProviderUpdate {
@@ -192,6 +204,123 @@ impl IdentityProviderUpdate {
             && self.trust_email.is_none()
             && self.mappers.is_none()
             && self.sort_order.is_none()
+            && self.saml.is_none()
+    }
+}
+
+/// What an administrator sets for a SAML identity provider.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(default, deny_unknown_fields)]
+pub struct SamlUpstreamSettings {
+    /// The IdP's entity ID, the `Issuer` of its messages.
+    pub entity_id: String,
+    /// Its single sign-on service.
+    pub sso_url: String,
+    /// How `AuthnRequest`s reach it.
+    pub sso_binding: SloBinding,
+    /// Its single logout service; none leaves sign-out local.
+    pub slo_url: Option<String>,
+    pub slo_binding: SloBinding,
+    /// base64 (or PEM) certificates it signs with; several during its
+    /// key rollover. Nothing unsigned is accepted, so one is required.
+    pub signing_certificates: Vec<String>,
+    /// The NameID format to ask for (`NameIDPolicy`); none leaves it to
+    /// the IdP.
+    pub name_id_format: Option<NameIdFormat>,
+    /// Sign `AuthnRequest`s and `LogoutRequest`s with the tenant's SAML key.
+    pub sign_requests: bool,
+    /// The assertion itself must be signed; a signed `Response` around an
+    /// unsigned assertion is refused.
+    pub want_assertions_signed: bool,
+    /// Refuse assertions that are not encrypted (to the tenant's SAML key).
+    pub require_encrypted_assertions: bool,
+    /// Ask the IdP to authenticate the user again (`ForceAuthn`).
+    pub force_authn: bool,
+    /// Authentication context classes to ask for (Comparison `exact`).
+    pub authn_context_class_refs: Vec<String>,
+    /// Accept unsolicited responses (IdP-initiated sign-in).
+    pub allow_unsolicited: bool,
+    /// Where an unsolicited sign-in lands: this client's
+    /// `initiate_login_uri`; the account console when unset.
+    pub unsolicited_client_id: Option<String>,
+    /// The IdP's metadata URL, refreshed daily: its endpoints and
+    /// certificates replace the ones above.
+    pub metadata_url: Option<String>,
+}
+
+impl Default for SamlUpstreamSettings {
+    fn default() -> Self {
+        Self {
+            entity_id: String::new(),
+            sso_url: String::new(),
+            sso_binding: SloBinding::Redirect,
+            slo_url: None,
+            slo_binding: SloBinding::Redirect,
+            signing_certificates: vec![],
+            name_id_format: None,
+            sign_requests: true,
+            want_assertions_signed: true,
+            require_encrypted_assertions: false,
+            force_authn: false,
+            authn_context_class_refs: vec![],
+            allow_unsolicited: false,
+            unsolicited_client_id: None,
+            metadata_url: None,
+        }
+    }
+}
+
+/// The SAML side of a `saml` identity provider.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct SamlUpstream {
+    #[serde(skip)]
+    pub idp_id: Uuid,
+    #[serde(skip)]
+    pub tenant_id: Uuid,
+    pub entity_id: String,
+    pub sso_url: String,
+    pub sso_binding: SloBinding,
+    pub slo_url: Option<String>,
+    pub slo_binding: SloBinding,
+    pub signing_certificates: Vec<String>,
+    pub name_id_format: Option<NameIdFormat>,
+    pub sign_requests: bool,
+    pub want_assertions_signed: bool,
+    pub require_encrypted_assertions: bool,
+    pub force_authn: bool,
+    pub authn_context_class_refs: Vec<String>,
+    pub allow_unsolicited: bool,
+    pub unsolicited_client_id: Option<String>,
+    pub metadata_url: Option<String>,
+    /// When the metadata URL was last read successfully.
+    pub metadata_refreshed_at: Option<DateTime<Utc>>,
+    /// Why the last refresh failed, until one succeeds.
+    pub metadata_error: Option<String>,
+    #[serde(skip)]
+    pub created_at: DateTime<Utc>,
+    #[serde(skip)]
+    pub updated_at: DateTime<Utc>,
+}
+
+impl SamlUpstream {
+    pub fn settings(&self) -> SamlUpstreamSettings {
+        SamlUpstreamSettings {
+            entity_id: self.entity_id.clone(),
+            sso_url: self.sso_url.clone(),
+            sso_binding: self.sso_binding,
+            slo_url: self.slo_url.clone(),
+            slo_binding: self.slo_binding,
+            signing_certificates: self.signing_certificates.clone(),
+            name_id_format: self.name_id_format,
+            sign_requests: self.sign_requests,
+            want_assertions_signed: self.want_assertions_signed,
+            require_encrypted_assertions: self.require_encrypted_assertions,
+            force_authn: self.force_authn,
+            authn_context_class_refs: self.authn_context_class_refs.clone(),
+            allow_unsolicited: self.allow_unsolicited,
+            unsolicited_client_id: self.unsolicited_client_id.clone(),
+            metadata_url: self.metadata_url.clone(),
+        }
     }
 }
 

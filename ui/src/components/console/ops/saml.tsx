@@ -354,13 +354,27 @@ function AttributeRows({ value, disabled, onChange }: { value: SamlAttribute[]; 
   );
 }
 
-function Certificates({ value, disabled, onChange }: { value: string[]; disabled: boolean; onChange: (v: string[]) => void }) {
+export function Certificates({
+  value,
+  disabled,
+  onChange,
+  label = "Request signing certificates",
+  hint = "Signatures on the SP\u2019s requests are checked against these; list two during the SP\u2019s own key rollover.",
+  empty = "None: signatures are not checked.",
+}: {
+  value: string[];
+  disabled: boolean;
+  onChange: (v: string[]) => void;
+  label?: string;
+  hint?: string;
+  empty?: string;
+}) {
   const [pem, setPem] = useState("");
   return (
     <div className="sm:col-span-2 flex flex-col gap-2">
-      <span className="text-[0.8125rem] font-medium text-ink">Request signing certificates</span>
-      <p className="text-[0.8125rem] text-muted">Signatures on the SP&rsquo;s requests are checked against these; list two during the SP&rsquo;s own key rollover.</p>
-      {value.length === 0 && <p className="text-[0.8125rem] text-muted">None: signatures are not checked.</p>}
+      <span className="text-[0.8125rem] font-medium text-ink">{label}</span>
+      <p className="text-[0.8125rem] text-muted">{hint}</p>
+      {value.length === 0 && <p className="text-[0.8125rem] text-muted">{empty}</p>}
       {value.map((c, i) => (
         <div key={c} className="flex items-center gap-2 rounded-[var(--radius)] border border-line px-2 py-1.5">
           <code className="min-w-0 flex-1 truncate font-mono text-[0.75rem] text-muted">{c}</code>

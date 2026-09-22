@@ -88,6 +88,11 @@ pub struct LogoutOutcome {
     /// one they keep their own sessions until those expire.
     #[serde(skip)]
     pub saml_participants: Vec<crate::services::saml_idp::Participant>,
+    /// The upstream SAML IdP that brokered the session: a caller with a
+    /// browser sends it a `LogoutRequest` (`saml_sp::logout_upstream`);
+    /// without one the IdP keeps its session.
+    #[serde(skip)]
+    pub saml_upstream: Option<crate::services::saml_sp::UpstreamSession>,
 }
 
 /// Terminate a session everywhere it is known: the SSO session, the refresh
@@ -105,6 +110,7 @@ pub async fn end_session(
     let participants = sessions::clients_of(state, tenant.id, session_id).await?;
     let saml_participants =
         crate::services::saml_idp::participants(state, tenant.id, session_id).await?;
+    let saml_upstream = crate::services::saml_sp::upstream_of(state, tenant.id, session_id).await?;
     let session = sessions::get(state, tenant.id, session_id, &tenant.settings.session).await?;
     let ended = sessions::revoke(state, tenant.id, session_id).await?;
 
@@ -115,6 +121,7 @@ pub async fn end_session(
     let mut outcome = LogoutOutcome {
         ended,
         saml_participants,
+        saml_upstream,
         ..Default::default()
     };
     let Some(session) = session else {

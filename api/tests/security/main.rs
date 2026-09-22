@@ -11,6 +11,7 @@ mod mfa_policy;
 mod org_admin;
 mod outbound;
 mod resource_indicators;
+mod saml_upstream;
 mod scim_membership;
 mod session_cookies;
 mod session_revocation;

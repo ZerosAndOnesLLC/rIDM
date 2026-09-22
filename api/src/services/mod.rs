@@ -56,6 +56,7 @@ pub mod risk;
 pub mod roles;
 pub mod saml_idp;
 pub mod saml_keys;
+pub mod saml_sp;
 pub mod saml_sps;
 pub mod scim;
 pub mod scim_tokens;

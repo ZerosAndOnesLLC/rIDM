@@ -200,7 +200,7 @@ Keyed by `alias` (lower-cased).
 | Field | Default | Meaning |
 |-------|---------|---------|
 | `alias` | | the provider's name in `/broker/{alias}/...` |
-| `kind` | `oidc` | or `oauth2` |
+| `kind` | `oidc` | or `oauth2`, `saml` |
 | `display_name` | | button label |
 | `preset` | `null` | `google`, `microsoft`, `github`, `apple`, `gitlab` |
 | `enabled`, `hidden` | `true`, `false` | |
@@ -213,8 +213,9 @@ Keyed by `alias` (lower-cased).
 | `trust_email` | `false` | |
 | `mappers` | `{}` | `subject`, `username`, `email`, `email_verified` (claim names) and `attributes` (profile attribute → claim) |
 | `sort_order` | 0 | |
+| `saml` | absent | a `saml` provider's settings: `entity_id`, `sso_url`, `sso_binding`, `slo_url`, `slo_binding`, `signing_certificates`, `name_id_format`, `sign_requests`, `want_assertions_signed`, `require_encrypted_assertions`, `force_authn`, `authn_context_class_refs`, `allow_unsolicited`, `unsolicited_client_id`, `metadata_url` (see [SAML identity providers](../admin/saml-upstream.md#settings)); the metadata refresh status is not part of the document. Certificates may be PEM or base64 and compare as stored |
 
-The client secret is never part of the document. An update keeps the stored secret; a provider created by an import has none, and the report lists its alias under `secrets.identity_providers` so you can set it (`PATCH .../identity-providers/{alias}` with `client_secret`). See [Identity brokering](../concepts/brokering.md).
+A SAML provider has no client id, secret or OAuth endpoints (they export empty) and is never listed under `secrets`. The client secret is never part of the document. An update keeps the stored secret; a provider created by an import has none, and the report lists its alias under `secrets.identity_providers` so you can set it (`PATCH .../identity-providers/{alias}` with `client_secret`). See [Identity brokering](../concepts/brokering.md).
 
 ### `saml_service_providers`
 

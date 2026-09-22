@@ -32,6 +32,7 @@ those of the event's `kind` document (next to `type`).
 | `login.passwordless_sent` | `user_id`, `method` |
 | `login.new_device` | `user_id`, `session_id` |
 | `login.brokered` | `user_id`, `idp_id`, `provider` |
+| `logout.upstream` | `idp_id`, `provider` |
 | `mfa.changed` | `user_id`, `change` |
 | `risk.step_up` | `user_id`, `score`, `signals`, `country` |
 | `risk.blocked` | `user_id`, `score`, `signals`, `country` |

@@ -15,12 +15,13 @@ attributes, consent) still apply to brokered sign-ins.
 
 Identity providers are configured per tenant (admin console: Identity
 providers; admin API: `/admin/tenants/{slug}/identity-providers`). Each has an
-`alias`, used in its URLs, and one of two kinds:
+`alias`, used in its URLs, and one of three kinds:
 
 | Kind | How the identity is proved |
 |------|----------------------------|
 | `oidc` | an ID token, verified against the provider's published keys |
 | `oauth2` | the provider's userinfo endpoint, read with the access token |
+| `saml` | a signed SAML assertion posted to rIDM's assertion consumer service; see [SAML identity providers (upstream)](../admin/saml-upstream.md) |
 
 A **preset** (`google`, `microsoft`, `github`, `apple`, `gitlab`) fills in the
 kind, endpoints, scopes and claim mappings the provider needs; for any other
@@ -123,5 +124,6 @@ without their client secrets, so a tenant can be reproduced in another
 environment and the secrets set there afterwards.
 
 Events: `identity_provider.created`, `.updated` and `.deleted`,
-`identity.linked`, `identity.unlinked` and `login.brokered`. Brokering from
-SAML and LDAP directories is planned, not present.
+`identity.linked`, `identity.unlinked` and `login.brokered` (and
+`logout.upstream` when a SAML IdP's logout request ends sessions). Brokering
+from LDAP directories is planned, not present.

@@ -12,6 +12,7 @@ use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use ridm_core::providers::Encrypted;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 use crate::cache::keys as cache_keys;
 use crate::db;
@@ -240,6 +241,48 @@ pub async fn signer(state: &AppState, tenant: &Tenant) -> AppResult<Arc<Signer>>
         .l1()
         .insert(cache_key, signer.clone(), SIGNER_L1_TTL);
     Ok(signer)
+}
+
+/// The private keys (PKCS#8 DER) of every published certificate, active
+/// first: an upstream IdP may encrypt assertions to any certificate in
+/// rIDM's SP metadata, including one being rolled in or out. Each is
+/// decrypted once per node and kept in the L1 cache.
+pub async fn decryption_keys(
+    state: &AppState,
+    tenant: &Tenant,
+) -> AppResult<Vec<Arc<Zeroizing<Vec<u8>>>>> {
+    ensure_active(state, tenant).await?;
+    let mut views = list(state, tenant.id).await?;
+    views.sort_by_key(|k| k.status != SamlKeyStatus::Active);
+    let l1 = state.cache.l1();
+    let cache_key = |id: Uuid| format!("{}:pkcs8", cache_keys::saml_key_material(id));
+    let mut out = Vec::with_capacity(views.len());
+    let mut rows: Option<Vec<SamlSigningKey>> = None;
+    for v in &views {
+        if let Some(k) = l1.get::<Zeroizing<Vec<u8>>>(&cache_key(v.id)) {
+            out.push(k);
+            continue;
+        }
+        if rows.is_none() {
+            let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
+            rows = Some(repos::saml::list_keys(&mut *tx, tenant.id).await?);
+            tx.commit().await?;
+        }
+        let Some(row) = rows.as_ref().and_then(|r| r.iter().find(|k| k.id == v.id)) else {
+            continue;
+        };
+        let encrypted = Encrypted::from_bytes(&row.private_key_enc)
+            .map_err(|e| AppError::Internal(format!("stored key blob: {e}")))?;
+        let pkcs8 = state
+            .key_encryptor
+            .decrypt(&encrypted, &aad_for(tenant.id, row.id))
+            .await
+            .map_err(|e| AppError::Internal(format!("key decryption: {e}")))?;
+        let key = Arc::new(Zeroizing::new(pkcs8.to_vec()));
+        l1.insert(cache_key(v.id), key.clone(), SIGNER_L1_TTL);
+        out.push(key);
+    }
+    Ok(out)
 }
 
 /// Start a rollover: a new key, published at once, signing nothing yet.

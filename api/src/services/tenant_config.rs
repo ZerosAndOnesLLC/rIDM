@@ -23,6 +23,7 @@ use crate::models::{
 };
 use crate::models::{
     IdentityProviderUpdate, IdpAuthMethod, IdpKind, IdpMappers, LinkPolicy, NewIdentityProvider,
+    SamlUpstreamSettings,
 };
 use crate::services::admin_access::{self, Grant};
 use crate::services::messaging::TemplateBody;
@@ -256,6 +257,10 @@ pub struct IdentityProviderDoc {
     pub trust_email: bool,
     pub mappers: IdpMappers,
     pub sort_order: i32,
+    /// A `saml` provider's settings (`metadata_url` included; the refresh
+    /// status is not configuration).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub saml: Option<SamlUpstreamSettings>,
 }
 
 impl Default for IdentityProviderDoc {
@@ -280,6 +285,7 @@ impl Default for IdentityProviderDoc {
             trust_email: false,
             mappers: IdpMappers::default(),
             sort_order: 0,
+            saml: None,
         }
     }
 }
@@ -567,6 +573,7 @@ pub async fn export(state: &AppState, tenant: &Tenant) -> AppResult<TenantConfig
             trust_email: p.trust_email,
             mappers: p.mappers.0,
             sort_order: p.sort_order,
+            saml: p.saml.as_ref().map(|s| s.settings()),
         })
         .collect();
     idps_out.sort_by(|a, b| a.alias.cmp(&b.alias));
@@ -796,6 +803,11 @@ fn normalize(tenant_id: Uuid, mut doc: TenantConfig) -> AppResult<TenantConfig> 
     }
     for p in &mut doc.identity_providers {
         p.alias = p.alias.trim().to_lowercase();
+        // Stored normalized (base64 certificates, trimmed URLs), so a PEM
+        // in the document is no change.
+        if let Some(s) = p.saml.take() {
+            p.saml = Some(identity_providers::validate_saml(s)?);
+        }
     }
     Ok(doc)
 }
@@ -1954,6 +1966,7 @@ pub async fn apply(
                             trust_email: Some(p.trust_email),
                             mappers: Some(p.mappers.clone()),
                             sort_order: Some(p.sort_order),
+                            saml: p.saml.clone(),
                         },
                     )
                     .await?;
@@ -1984,10 +1997,13 @@ pub async fn apply(
                             trust_email: Some(p.trust_email),
                             mappers: Some(p.mappers.clone()),
                             sort_order: Some(p.sort_order),
+                            saml: p.saml.clone(),
                         },
                     )
                     .await?;
-                    ctx.report.secrets.identity_providers.push(p.alias.clone());
+                    if p.kind != IdpKind::Saml {
+                        ctx.report.secrets.identity_providers.push(p.alias.clone());
+                    }
                 }
                 Err(e) => return Err(e),
             }

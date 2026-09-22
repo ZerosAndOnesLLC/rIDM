@@ -1223,7 +1223,7 @@ async fn step(state: &AppState, tenant: &TenantCtx, mut chain: LogoutChain) -> R
                 format: Some(p.name_id_format.clone()),
                 sp_name_qualifier: p.sp_name_qualifier.clone(),
             },
-            &p.session_index,
+            Some(&p.session_index),
             Utc::now(),
         );
         let request_id = request.attribute("ID").unwrap_or_default().to_string();
