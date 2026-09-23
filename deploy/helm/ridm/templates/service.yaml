@@ -17,3 +17,25 @@ spec:
       protocol: TCP
   selector:
     {{- include "ridm.selectorLabels" . | nindent 4 }}
+{{- if .Values.mtls.listener.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ridm.fullname" . }}-mtls
+  labels:
+    {{- include "ridm.labels" . | nindent 4 }}
+  {{- with .Values.mtls.listener.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.mtls.listener.service.type }}
+  ports:
+    - name: mtls
+      port: {{ .Values.mtls.listener.service.port }}
+      targetPort: mtls
+      protocol: TCP
+  selector:
+    {{- include "ridm.selectorLabels" . | nindent 4 }}
+{{- end }}

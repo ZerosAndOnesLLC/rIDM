@@ -201,14 +201,33 @@ jobs:
         with:
           tool: cargo-llvm-cov
       - name: cargo llvm-cov
-        # The 80% floor applies to services/, oidc/, flows/ and middleware/ (plan §6);
-        # --fail-under-lines is enabled once those modules exist.
         run: |
           cargo llvm-cov --workspace --all-features --locked \
             --ignore-filename-regex '(tests?/|build\.rs|main\.rs)' \
             --lcov --output-path lcov.info
           cargo llvm-cov report --summary-only | tee coverage-summary.txt
           cargo llvm-cov report --summary-only >> "$GITHUB_STEP_SUMMARY"
+      - name: coverage floor
+        # Plan §6: line coverage of services/ (the login flows live there),
+        # oidc/ and middleware/ stays at or above 80%, each on its own.
+        run: |
+          awk '
+            match($1, /^api\/src\/(services|oidc|middleware)\//) {
+              dir = substr($1, 1, RLENGTH); lines[dir] += $8; missed[dir] += $9
+            }
+            END {
+              n = split("api/src/services/ api/src/oidc/ api/src/middleware/", dirs, " ")
+              for (i = 1; i <= n; i++) {
+                d = dirs[i]; l = lines[d]
+                pct = l ? 100 * (l - missed[d]) / l : 0
+                printf "%s: %.2f%% of %d lines\n", d, pct, l
+                if (l == 0 || pct < 80) fail = 1
+              }
+              exit fail
+            }' coverage-summary.txt > coverage-floor.txt && status=0 || status=$?
+          cat coverage-floor.txt
+          cat coverage-floor.txt >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
       - uses: actions/upload-artifact@v7
         with:
           name: coverage

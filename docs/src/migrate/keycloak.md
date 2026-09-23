@@ -38,7 +38,7 @@ into [bulk import](../admin/users.md#bulk-import) rows. Read
 | Offline access, offline sessions | The `offline_access` scope | A refresh token granted `offline_access` outlives the SSO session's timeouts (not an explicit sign-out); without it, it ends with the session. Each resource server can refuse it with `allow_offline_access: false` |
 | Authorization services (resources, policies, permissions, UMA) | Not supported | rIDM's authorization model is roles granting permissions on resource servers; there is no policy engine or UMA |
 | Custom SPIs (authenticators, mappers, storage) | Not supported | Rebuild the behaviour with claim mappers, webhooks or in the application |
-| SAML clients | Not supported | Planned (Phase 13) |
+| SAML clients | [SAML service providers](../admin/saml-idp.md) | Registered by hand or from metadata; signing keys are rIDM's own, not the realm's |
 
 ## Exporting a realm
 

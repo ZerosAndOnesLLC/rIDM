@@ -402,20 +402,21 @@ Tests are a deliverable of every sub-phase, not a phase of their own. Each phase
 |-------|---------|-------|------|
 | Unit | `cargo test`, mock provider traits from `ridm-core::test_support` | every crate | every PR (required) |
 | Integration (HTTP) | testcontainers (Postgres 18, Redis 8), real axum router, shared seeded fixture; the `ridm` binary run against it | `api/tests/`, `crates/*/tests/` | every PR (required) |
-| Tenant isolation | every admin/account/OIDC endpoint invoked cross-tenant; direct RLS bypass attempts | `api/tests/isolation/` | every PR (required) |
-| Security suite | named negative cases (see phase bullets); grows with every finding | `api/tests/security/` | every PR (required) |
-| Contract | discovery document vs registered routes; generated TS client vs live OpenAPI; SCIM schema | `api/tests/contract/`, `ui/` | every PR (required) |
-| Migration | apply all migrations to seeded snapshot; constraints, indexes, row counts; downgrade not supported (documented) | `api/tests/migrations/` | every PR (required) |
+| Tenant isolation | every admin/account/OIDC endpoint invoked cross-tenant; direct RLS bypass attempts | `api/tests/isolation.rs`, `api/tests/admin_matrix.rs` | every PR, in `integration` (required) |
+| Security suite | named negative cases (see phase bullets); grows with every finding | `api/tests/security/` | every PR, in `integration` (required) |
+| Contract | discovery document vs registered routes; generated TS client vs live OpenAPI; SCIM schema | `api/tests/openapi.rs`, `api/tests/security/`, `ui/e2e/openapi-contract.spec.ts` | every PR, in `integration` and `ui-e2e` (required) |
+| Migration | apply all migrations to seeded snapshot; constraints, indexes, row counts; every `tenant_id` table has forced RLS; downgrade not supported (documented) | `api/tests/migrations.rs` | every PR, in `integration` (required) |
 | UI e2e | Playwright against docker-compose stack (Mailpit for email, CDP virtual authenticator for passkeys); axe-core a11y on every page | `ui/e2e/` | every PR (required) |
 | Conformance | OpenID Foundation conformance suite (Docker): basic OP, config, PKCE, RP-initiated logout, back-channel logout, DCR, FAPI2 (post-v1) | `.github/workflows/conformance.yml` | **every PR (required)**; full profile matrix nightly |
 | Fuzz | cargo-fuzz: authorize params, JWT decode, redirect_uri matcher, PKCE, SCIM filter parser | `api/fuzz/` | **every PR, 60 s per target (required)**; 4 h per target weekly |
 | Load | k6 scripts with documented baseline (target 5k token req/s per node, p99 < 50 ms `/token`) | `perf/` | **every PR smoke with thresholds (required)**; full baseline on release |
 | Examples | the three example RPs against the docker-compose stack from the built image: `ridm bootstrap --issue-token`, `examples/setup.sh`, then sign-ins in headless Chromium (SSO across apps, permissions allowed and refused, back-channel logout) | `examples/smoke/` | **every PR (required)** |
 | Packaging | Helm lint (`static`); kind smoke deploy (`helm-smoke`); image boots, migrates, `/readyz`, and upgrades from the previous release tag, which then still runs on the migrated schema (`packaging`) | `.github/workflows/ci.yml`, `deploy/helm/smoke/`, `deploy/upgrade-smoke/` | **every PR (required)** |
-| Coverage | cargo-llvm-cov; floor 80% on `services/`, `oidc/`, `flows/`, `middleware/`; PR fails if below floor | CI | every PR (required) |
-| Static | clippy `-D warnings`, `cargo audit`, `cargo deny`, ESLint, `tsc --noEmit` | CI | every PR (required) |
+| Coverage | cargo-llvm-cov; line floor 80% on each of `api/src/services/` (the login flows live there), `api/src/oidc/`, `api/src/middleware/`; PR fails if below floor | CI (`coverage`) | every PR (required) |
+| Static | clippy `-D warnings`, `cargo audit`, `cargo deny`, ESLint, `tsc --noEmit` | CI (`static`) | every PR (required) |
+| UI build | the console/account static export that the API embeds | CI (`ui-build`) | every PR (required) |
 
-Required status checks on `main` (branch protection): `unit`, `integration`, `isolation`, `security`, `contract`, `migration`, `ui-e2e`, `conformance`, `fuzz-smoke`, `load-smoke`, `packaging`, `helm-smoke`, `examples-smoke`, `coverage`, `static`. Adding a suite means adding it to this list and to branch protection in the same PR.
+Required status checks on `main` (branch protection), one per CI job: `static`, `unit`, `integration`, `coverage`, `ui-build`, `ui-e2e`, `load-smoke`, `fuzz-smoke`, `packaging`, `helm-smoke`, `examples-smoke` (the `ci` workflow) and `conformance`. Isolation, security, contract and migration suites run inside `integration` (and `ui-e2e` for the TS client contract). Adding a suite means adding it to this list and to branch protection in the same PR.
 
 Conventions
 - Integration tests use one shared Postgres/Redis container per test binary; each test creates its own tenant slug so tests run in parallel without interference.

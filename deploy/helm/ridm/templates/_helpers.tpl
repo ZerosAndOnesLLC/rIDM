@@ -147,6 +147,15 @@ caller's Secret or `secret` (where an inline key lives).
 {{- if and $v.bootstrap.enabled (not (or $v.bootstrap.adminPassword $v.bootstrap.existingSecret.name)) -}}
 {{- fail "bootstrap.adminPassword or bootstrap.existingSecret.name is required when bootstrap.enabled" -}}
 {{- end -}}
+{{- if and $v.mtls.listener.enabled (not $v.mtls.listener.tlsSecret) -}}
+{{- fail "mtls.listener.tlsSecret is required when mtls.listener.enabled" -}}
+{{- end -}}
+{{- if and $v.mtls.publicUrl (not (or $v.mtls.listener.enabled $v.mtls.clientCertHeader)) -}}
+{{- fail "mtls.publicUrl needs mtls.listener.enabled or mtls.clientCertHeader: nothing would carry a client certificate" -}}
+{{- end -}}
+{{- if and $v.mtls.clientCertHeader (not $v.trustedProxies) -}}
+{{- fail "mtls.clientCertHeader needs trustedProxies: the header is read only from a trusted proxy" -}}
+{{- end -}}
 {{- end }}
 
 {{/* Plain (non-secret) environment, shared by the pods and the migration Job. */}}

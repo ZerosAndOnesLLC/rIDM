@@ -72,6 +72,12 @@ owner (`ridm:owner` in `master`) so the console specs can sign in as them. Setti
 | `embedded-routes` | embedded UI mode only (skipped under `next dev`): every page in `src/app` answers at its trailing-slash URL with its HTML and `index.txt` payload, the slash-less URL redirects (308) there keeping the query, every `/_next/static` asset the pages reference resolves as `immutable`, and paths that are no page get the export's 404 |
 | `a11y` | error, device, invite, verify and logout pages, and login without a tenant |
 | `openapi-contract` | the live `/openapi.json` equals the committed `api/openapi.json` the typed admin client is generated from; the `openapi-fetch` client reaches the live API and types its 401 problem body |
+| `ciba` | backchannel sign-in (CIBA): a dynamically registered client names the user at `/bc-authorize`, the user follows the emailed link to the account console's Requests page, compares the binding message and approves, the client collects tokens with the CIBA grant |
+| `organizations` | a member of two organizations picks one while signing in; with one organization it is chosen silently and shown in the account console; an organization's administrator sees only their own organization |
+| `console-saml-upstream` | SAML identity provider upstream with the tenant as its own upstream: provider added from the IdP metadata URL, rIDM's SP metadata registered as a service provider, the login page's "Continue with …" round trip posting a signed response, account linked by verified email |
+| `console-ldap-upstream` | LDAP directory upstream against a seeded OpenLDAP: directory added in the console, connection tested, group sync turned on and run; a directory user signs in with the password form |
+| `kerberos` | Kerberos/SPNEGO against a real MIT KDC container: realm added from the exported keytab, a browser without a ticket gets the login page, a desktop holding a ticket signs in on its own |
+| `console-mtls` | mutual TLS: a certificate authority added, a bad one refused, removed; a client switched to mutual TLS once its certificate subject is entered |
 
 OTP second factors and the device page get their journeys with the rest of Phases 7 and 8.
 

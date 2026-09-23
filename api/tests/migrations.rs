@@ -38,6 +38,34 @@ const TENANT_TABLES: &[&str] = &[
     "sso_sessions",
     "trusted_devices",
     "user_login_locations",
+    "audit_chains",
+    "audit_events",
+    "ciba_requests",
+    "dcr_initial_access_tokens",
+    "device_codes",
+    "federated_identities",
+    "identity_providers",
+    "ip_rules",
+    "kerberos_identity_providers",
+    "ldap_group_links",
+    "ldap_identity_providers",
+    "mtls_trust_anchors",
+    "personal_access_tokens",
+    "saml_identity_providers",
+    "saml_service_providers",
+    "saml_signing_keys",
+    "scim_tokens",
+    "webhook_deliveries",
+    "webhooks",
+];
+
+/// Indexes on tenant tables that deliberately do not lead with tenant_id.
+const GLOBAL_LOOKUP_INDEXES: &[&str] = &[
+    // A presented token is found by its hash before its tenant is known.
+    "personal_access_tokens_token_hash_key",
+    "scim_tokens_token_hash_key",
+    // Verification and the sink walk one chain by sequence.
+    "audit_events_chain_seq_idx",
 ];
 
 /// Create a throwaway database (needs a superuser/CREATEDB admin URL) and
@@ -124,6 +152,21 @@ async fn migrations_apply_cleanly_and_are_idempotent() {
             .unwrap();
             assert!(has_tenant, "{t} has no tenant_id column");
         }
+        // Every table with a tenant_id (partitions aside) is in the list, so
+        // a new one cannot skip the checks above.
+        let mut with_tenant: Vec<String> = sqlx::query_scalar(
+            "SELECT c.relname::text FROM pg_class c \
+             JOIN pg_namespace n ON n.oid = c.relnamespace \
+             JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'tenant_id' \
+             WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relispartition",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        with_tenant.sort();
+        let mut listed: Vec<String> = TENANT_TABLES.iter().map(|t| t.to_string()).collect();
+        listed.sort();
+        assert_eq!(listed, with_tenant, "TENANT_TABLES and the schema disagree");
         // tenants is global: no RLS.
         let (rls, _): (bool, bool) = sqlx::query_as(
             "SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE relname = 'tenants'",
@@ -142,13 +185,15 @@ async fn migrations_apply_cleanly_and_are_idempotent() {
         assert_eq!(count, 1);
         assert_eq!(id, Some(ridm_api::models::MASTER_TENANT_ID));
 
-        // Every tenant-scoped index leads with tenant_id (performance rule).
+        // Every tenant-scoped index leads with tenant_id (performance rule),
+        // except lookups that run before the tenant is known.
         let offenders: Vec<String> = sqlx::query_scalar(
             "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' \
              AND tablename = ANY($1) AND indexdef NOT LIKE '%(tenant_id%' \
-             AND indexname NOT LIKE '%_pkey'",
+             AND indexname NOT LIKE '%_pkey' AND indexname <> ALL($2)",
         )
         .bind(TENANT_TABLES)
+        .bind(GLOBAL_LOOKUP_INDEXES)
         .fetch_all(&pool)
         .await
         .unwrap();

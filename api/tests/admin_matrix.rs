@@ -28,12 +28,17 @@ const SOURCES: &[(&str, &str)] = &[
     ("dcr", include_str!("../src/routes/admin/dcr.rs")),
     ("groups", include_str!("../src/routes/admin/groups.rs")),
     (
+        "identity_providers",
+        include_str!("../src/routes/admin/identity_providers.rs"),
+    ),
+    (
         "invitations",
         include_str!("../src/routes/admin/invitations.rs"),
     ),
     ("ip_rules", include_str!("../src/routes/admin/ip_rules.rs")),
     ("keys", include_str!("../src/routes/admin/keys.rs")),
     ("mappers", include_str!("../src/routes/admin/mappers.rs")),
+    ("mtls", include_str!("../src/routes/admin/mtls.rs")),
     (
         "organizations",
         include_str!("../src/routes/admin/organizations.rs"),
@@ -47,6 +52,8 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../src/routes/admin/resource_servers.rs"),
     ),
     ("roles", include_str!("../src/routes/admin/roles.rs")),
+    ("saml", include_str!("../src/routes/admin/saml.rs")),
+    ("scim", include_str!("../src/routes/admin/scim.rs")),
     ("scopes", include_str!("../src/routes/admin/scopes.rs")),
     ("stats", include_str!("../src/routes/admin/stats.rs")),
     (
@@ -57,6 +64,24 @@ const SOURCES: &[(&str, &str)] = &[
     ("users", include_str!("../src/routes/admin/users.rs")),
     ("webhooks", include_str!("../src/routes/admin/webhooks.rs")),
 ];
+
+/// `SOURCES` names every admin route module, so none escapes the matrix.
+#[test]
+fn every_admin_route_module_is_in_the_matrix() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src/routes/admin");
+    let mut on_disk: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .filter_map(|e| {
+            let name = e.unwrap().file_name().into_string().unwrap();
+            let stem = name.strip_suffix(".rs")?.to_string();
+            (stem != "mod").then_some(stem)
+        })
+        .collect();
+    on_disk.sort();
+    let mut listed: Vec<String> = SOURCES.iter().map(|(n, _)| n.to_string()).collect();
+    listed.sort();
+    assert_eq!(listed, on_disk, "SOURCES and src/routes/admin disagree");
+}
 
 #[derive(Debug, Clone, PartialEq)]
 enum Needs {
@@ -209,6 +234,10 @@ fn body_for(op: &Operation) -> Option<Value> {
         }
         (_, "create_permission") => json!({"name": "m:read"}),
         (_, "impersonate") => json!({"reason": "matrix"}),
+        // Refused before any fetch: nothing listens on port 1.
+        (_, "discover") => json!({"issuer": "https://127.0.0.1:1"}),
+        (_, "kerberos_keytab") => json!({"keytab": ""}),
+        (_, "import_metadata") => json!({"metadata": "<x/>"}),
         _ => json!({}),
     })
 }

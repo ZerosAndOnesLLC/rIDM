@@ -109,6 +109,40 @@ tls:
         clientAuthType: RequestClientCert
 ```
 
+### Kubernetes
+
+The Helm chart's `mtls` values cover both ways. Behind an ingress controller or
+gateway that asks for the client certificate without verifying its chain and forwards
+it, as the proxies above do, name its header:
+
+```yaml
+trustedProxies: 10.0.0.0/8        # the controller's pod network
+mtls:
+  publicUrl: https://mtls.id.example.com
+  clientCertHeader: X-Client-Cert
+```
+
+For rIDM's own listener, the chart mounts a `kubernetes.io/tls` Secret, sets
+`MTLS_BIND=0.0.0.0:8443` with its certificate, and adds a second Service
+(`<release>-mtls`) for it. That Service has to be reached at layer 4 (a
+`LoadBalancer`, or an ingress controller's TLS passthrough): an ingress that terminates
+TLS would take the client certificate with it.
+
+```yaml
+mtls:
+  publicUrl: https://mtls.id.example.com
+  listener:
+    enabled: true
+    tlsSecret: ridm-mtls-tls
+    service:
+      type: LoadBalancer
+      annotations:
+        service.beta.kubernetes.io/aws-load-balancer-type: nlb
+```
+
+The chart refuses `publicUrl` without either, a listener without its Secret, and a
+header without `trustedProxies`.
+
 ### Endpoint aliases
 
 Asking for a certificate on the host users sign in on makes browsers with a
