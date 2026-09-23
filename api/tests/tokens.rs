@@ -328,15 +328,24 @@ async fn expired_tokens_and_revoked_keys_are_rejected() {
         "client credentials use the client id as subject"
     );
     assert_eq!(decode_payload(&at.token)["aud"], "cli");
-    // `exp` has second granularity and a token is still valid during its
-    // expiry second, so wait comfortably past it.
-    tokio::time::sleep(Duration::from_millis(2500)).await;
+    // The same token, re-signed by the tenant's key with an `exp` already
+    // past (rather than waiting out a real one).
+    let mut claims = decode_payload(&at.token).as_object().unwrap().clone();
+    let past = chrono::Utc::now().timestamp() - 60;
+    claims.insert("exp".into(), json!(past));
+    claims.insert("iat".into(), json!(past - 60));
+    let key = keys::ensure_active(&fx.app.state, fx.tenant.id, &fx.tenant.settings.keys)
+        .await
+        .unwrap();
+    let expired = tokens::sign(&fx.app.state, &key, "at+jwt", &claims)
+        .await
+        .unwrap();
     let strict = VerifyOptions {
         leeway_secs: 0,
         ..Default::default()
     };
     assert!(matches!(
-        tokens::verify(&fx.app.state, &fx.tenant, &at.token, &strict).await,
+        tokens::verify(&fx.app.state, &fx.tenant, &expired, &strict).await,
         Err(AppError::Unauthorized)
     ));
     // Introspection-style verification of expired tokens still checks the signature.
@@ -346,9 +355,18 @@ async fn expired_tokens_and_revoked_keys_are_rejected() {
         ..Default::default()
     };
     assert!(
-        tokens::verify(&fx.app.state, &fx.tenant, &at.token, &lenient)
+        tokens::verify(&fx.app.state, &fx.tenant, &expired, &lenient)
             .await
             .is_ok()
+    );
+    let mut forged = expired.clone();
+    forged.pop();
+    forged.push(if expired.ends_with('A') { 'B' } else { 'A' });
+    assert!(
+        tokens::verify(&fx.app.state, &fx.tenant, &forged, &lenient)
+            .await
+            .is_err(),
+        "allow_expired still checks the signature"
     );
 
     // Rotate then revoke the old key: its tokens stop verifying at once.

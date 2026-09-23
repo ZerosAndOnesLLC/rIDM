@@ -27,6 +27,10 @@ embedded-ui = []
 # under a multi-threaded server's load. glibc builds, the image among them,
 # have no need of it.
 mimalloc = ["dep:mimalloc"]
+# Test doubles the integration tests and the fuzz targets drive (the
+# miniature KDC in `kerberos::testing`). Never in a shipped build; the
+# dev-dependency on this package below turns it on for `cargo test`.
+test-support = []
 # Kerberos / SPNEGO desktop sign-in: the ticket acceptor behind
 # `/t/{slug}/kerberos/negotiate`. Without it a `kerberos` identity provider can
 # still be configured (tenant documents stay portable between builds) but
@@ -134,6 +138,7 @@ rust-embed = { workspace = true }
 
 [dev-dependencies]
 ridm-core = { workspace = true, features = ["test-support"] }
+ridm-api = { path = ".", features = ["test-support"] }
 # The published relying-party crate, tested against the tokens this server
 # really issues (`tests/ridm_auth.rs`).
 ridm-auth = { path = "../crates/ridm-auth", version = "0.1.0", default-features = false }

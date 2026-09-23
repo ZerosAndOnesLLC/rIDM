@@ -330,11 +330,38 @@ async fn admin_runs_the_webhook_lifecycle_with_signed_deliveries() {
         Some(&json!({"username": "unhooked"})),
     )
     .await;
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // Barrier: the dispatcher takes events in order, so once a later ping
+    // to another webhook arrives, user.created has been dispatched.
+    let (_, marker, _) = call(
+        &app,
+        Method::POST,
+        &base,
+        Some(&t),
+        Some(&json!({"name": "marker", "url": hook, "events": ["webhook.test"]})),
+    )
+    .await;
+    let marker = marker["id"].as_str().unwrap().to_string();
+    call(
+        &app,
+        Method::POST,
+        &format!("{base}/{marker}/test"),
+        Some(&t),
+        None,
+    )
+    .await;
+    for _ in 0..200 {
+        if inbox.lock().unwrap().hits.len() > before {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
     ridm_api::jobs::webhook_delivery::run_once(&app.state)
         .await
         .unwrap();
-    assert_eq!(inbox.lock().unwrap().hits.len(), before);
+    let hits = inbox.lock().unwrap();
+    assert_eq!(hits.hits.len(), before + 1, "only the marker's ping");
+    assert_eq!(hits.hits[before].0["x-ridm-event"], "webhook.test");
+    drop(hits);
 
     let (status, _, _) = call(
         &app,

@@ -4824,6 +4824,7 @@ dependencies = [
  "redis",
  "regex",
  "reqwest",
+ "ridm-api",
  "ridm-auth",
  "ridm-core",
  "roxmltree",

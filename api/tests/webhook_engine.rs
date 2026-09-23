@@ -196,8 +196,32 @@ async fn a_dead_letter_raises_an_event_and_can_be_bulk_redelivered() {
     })
     .await
     .expect("dead-letter event");
-    // ... and never itself becomes a delivery (no endless chain).
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // ... and never itself becomes a delivery (no endless chain). Barrier:
+    // the dispatcher takes events in order, so once a later event reaches a
+    // webhook of its own, the dead-letter event has been dispatched.
+    webhooks::create(
+        &app.state,
+        app.tenant.id,
+        Actor::System,
+        NewWebhook {
+            name: "marker".into(),
+            url: app.url("/_test/hook"),
+            events: vec!["user.created".into()],
+            enabled: Some(true),
+            headers: None,
+            max_attempts: Some(1),
+        },
+    )
+    .await
+    .unwrap();
+    app.state.events.publish(Event::new(
+        Some(app.tenant.id),
+        Actor::System,
+        EventKind::UserCreated {
+            user_id: Uuid::nil(),
+        },
+    ));
+    wait_until(&inbox, |h| h.iter().any(|(e, _)| e == "user.created")).await;
     let t = admin_token(&app, app.tenant.id, ADMIN_ROLE).await;
     let base = format!("/admin/tenants/{}/webhooks/{id}", app.tenant.slug);
     let (_, all, _) = get_json(&app, &format!("{base}/deliveries"), Some(&t)).await;

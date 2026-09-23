@@ -39,6 +39,25 @@ async fn fixture(policy: SessionPolicy) -> (TestApp, ridm_api::models::Tenant, U
     (app, tenant, user.id)
 }
 
+/// Polls until the session is gone (true) or 5 s pass (false): the
+/// timeouts are whole seconds, so a fixed sleep would only guess.
+async fn gone_within<F, Fut>(lookup: F) -> bool
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<
+            Output = ridm_api::error::AppResult<Option<ridm_api::services::sessions::SsoSession>>,
+        >,
+{
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while std::time::Instant::now() < deadline {
+        if lookup().await.unwrap().is_none() {
+            return true;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    false
+}
+
 fn new_session<'a>(uid: Uuid, policy: &'a SessionPolicy) -> NewSession<'a> {
     NewSession {
         user_id: uid,
@@ -146,12 +165,8 @@ async fn idle_and_absolute_timeouts_end_sessions() {
             .unwrap()
             .is_some()
     );
-    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
     assert!(
-        sessions::get(&app.state, tenant.id, s.id, p)
-            .await
-            .unwrap()
-            .is_none(),
+        gone_within(|| sessions::get(&app.state, tenant.id, s.id, p)).await,
         "idle timeout"
     );
     assert!(
@@ -178,12 +193,8 @@ async fn idle_and_absolute_timeouts_end_sessions() {
             .unwrap()
             .is_some()
     );
-    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
     assert!(
-        sessions::get(&app2.state, tenant2.id, s.id, p2)
-            .await
-            .unwrap()
-            .is_none(),
+        gone_within(|| sessions::get(&app2.state, tenant2.id, s.id, p2)).await,
         "absolute timeout"
     );
 }
