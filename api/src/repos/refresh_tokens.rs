@@ -1,6 +1,5 @@
 //! Tenant-scoped refresh token queries (run inside a tenant-bound transaction).
 
-use chrono::{DateTime, Utc};
 use sqlx::PgExecutor;
 use uuid::Uuid;
 
@@ -172,21 +171,4 @@ pub async fn list_live_for_user<'e>(
         .push_bind(user_id)
         .push(" AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > now() ORDER BY created_at DESC");
     qb.build_query_as::<RefreshToken>().fetch_all(exec).await
-}
-
-/// Delete rows that can never be used again and are older than `older_than`.
-pub async fn purge<'e>(
-    exec: impl PgExecutor<'e>,
-    tenant_id: Uuid,
-    older_than: DateTime<Utc>,
-) -> Result<u64, sqlx::Error> {
-    Ok(sqlx::query(
-        "DELETE FROM refresh_tokens WHERE tenant_id = $1 AND (expires_at < $2 \
-         OR (revoked_at IS NOT NULL AND revoked_at < $2) OR (consumed_at IS NOT NULL AND consumed_at < $2))",
-    )
-    .bind(tenant_id)
-    .bind(older_than)
-    .execute(exec)
-    .await?
-    .rows_affected())
 }

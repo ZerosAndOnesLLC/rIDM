@@ -41,18 +41,3 @@ pub async fn failures_from_ip<'e>(
     .fetch_one(exec)
     .await
 }
-
-pub async fn purge<'e>(
-    exec: impl PgExecutor<'e>,
-    tenant_id: Uuid,
-    older_than: DateTime<Utc>,
-) -> Result<u64, sqlx::Error> {
-    Ok(
-        sqlx::query("DELETE FROM login_attempts WHERE tenant_id = $1 AND created_at < $2")
-            .bind(tenant_id)
-            .bind(older_than)
-            .execute(exec)
-            .await?
-            .rows_affected(),
-    )
-}

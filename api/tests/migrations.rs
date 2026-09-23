@@ -66,7 +66,29 @@ const GLOBAL_LOOKUP_INDEXES: &[&str] = &[
     "scim_tokens_token_hash_key",
     // Verification and the sink walk one chain by sequence.
     "audit_events_chain_seq_idx",
+    // The hourly cleanup deletes stale rows of every tenant at once.
+    "refresh_tokens_purge_idx",
+    "sso_sessions_purge_idx",
+    "login_attempts_purge_idx",
+    "outbound_messages_purge_idx",
+    "webhook_deliveries_purge_idx",
+    "device_codes_purge_idx",
+    "ciba_requests_purge_idx",
+    "invitations_purge_idx",
+    "trusted_devices_purge_idx",
+    "personal_access_tokens_purge_idx",
+    "scim_tokens_purge_idx",
+    // The delivery jobs poll every tenant's queue for what is due.
+    "outbound_messages_live_idx",
+    "webhook_deliveries_live_idx",
+    // Master-key rotation walks one key generation across every tenant.
+    "credentials_key_version_idx",
 ];
+
+/// The first migration written under the online-migration rules that
+/// [`new_migrations_do_not_block_writes`] enforces; older ones predate them
+/// and cannot change (their checksums are recorded in every database).
+const ONLINE_RULES_SINCE: i64 = 20260923220219;
 
 /// Create a throwaway database (needs a superuser/CREATEDB admin URL) and
 /// return a URL pointing at it. `None` when we only have an ordinary role.
@@ -201,6 +223,14 @@ async fn migrations_apply_cleanly_and_are_idempotent() {
             offenders.is_empty(),
             "indexes not leading with tenant_id: {offenders:?}"
         );
+        // A concurrent build that failed leaves an INVALID index behind.
+        let invalid: Vec<String> = sqlx::query_scalar(
+            "SELECT indexrelid::regclass::text FROM pg_index WHERE NOT indisvalid",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert!(invalid.is_empty(), "invalid indexes: {invalid:?}");
 
         // Seeded snapshot, then re-run: no new migrations, data intact.
         let tid = Uuid::now_v7();
@@ -317,6 +347,135 @@ async fn migration_files_are_well_formed() {
             m.description
         );
     }
+}
+
+/// The statements of a migration, comments and dollar-quoted bodies removed,
+/// upper-cased and with whitespace collapsed.
+fn statements(sql: &str) -> Vec<String> {
+    let mut code = String::new();
+    for line in sql.lines() {
+        code.push_str(line.split("--").next().unwrap_or(""));
+        code.push('\n');
+    }
+    // Function bodies may hold anything; their text is not a statement here.
+    let mut outside = String::new();
+    for (i, part) in code.split("$$").enumerate() {
+        if i % 2 == 0 {
+            outside.push_str(part);
+        }
+    }
+    outside
+        .split(';')
+        .map(|s| {
+            s.split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .to_uppercase()
+        })
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Migrations run while the previous release is serving (see *Upgrading*), so
+/// from [`ONLINE_RULES_SINCE`] on none may block writes to an existing table
+/// for longer than an instant:
+/// - an index on an existing table is built (or dropped) `CONCURRENTLY`, in
+///   a `-- no-transaction` migration holding that one statement (Postgres
+///   refuses `CONCURRENTLY` inside a transaction, and several statements in
+///   one simple query are one); a partitioned table cannot be indexed
+///   concurrently, so its migration must say why blocking it is safe;
+/// - a foreign key added to an existing table is `NOT VALID`, validated by a
+///   later migration (validation does not block writes);
+/// - a column added to an existing table has no volatile default, which
+///   would rewrite the table.
+#[test]
+fn new_migrations_do_not_block_writes() {
+    const VOLATILE: &[&str] = &[
+        "GEN_RANDOM_UUID(",
+        "GEN_RANDOM_BYTES(",
+        "RANDOM(",
+        "CLOCK_TIMESTAMP(",
+        "UUID_GENERATE",
+    ];
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        let version: i64 = name.split('_').next().unwrap().parse().unwrap();
+        if version < ONLINE_RULES_SINCE {
+            continue;
+        }
+        checked += 1;
+        let sql = std::fs::read_to_string(&path).unwrap();
+        let no_transaction = sql.starts_with("-- no-transaction");
+        let stmts = statements(&sql);
+        // Tables this migration creates are new: nothing reads or writes them yet.
+        let created: Vec<String> = stmts
+            .iter()
+            .filter_map(|s| s.strip_prefix("CREATE TABLE "))
+            .filter_map(|s| {
+                s.trim_start_matches("IF NOT EXISTS ")
+                    .split([' ', '('])
+                    .next()
+            })
+            .map(str::to_string)
+            .collect();
+        let is_new = |table: &str| created.iter().any(|c| c == table);
+        let partitioned_ok = sql.contains("partitioned");
+        if no_transaction {
+            assert_eq!(
+                stmts.len(),
+                1,
+                "{name}: a no-transaction migration holds one statement"
+            );
+        }
+        for s in &stmts {
+            if s.starts_with("CREATE INDEX") || s.starts_with("CREATE UNIQUE INDEX") {
+                let table = s
+                    .split(" ON ")
+                    .nth(1)
+                    .and_then(|r| r.trim_start_matches("ONLY ").split([' ', '(']).next())
+                    .unwrap_or_default();
+                if is_new(table) {
+                    continue;
+                }
+                assert!(
+                    (s.contains(" INDEX CONCURRENTLY ") && no_transaction) || partitioned_ok,
+                    "{name}: `{s}` must be CREATE INDEX CONCURRENTLY in a -- no-transaction migration"
+                );
+            }
+            if s.starts_with("DROP INDEX") {
+                assert!(
+                    (s.starts_with("DROP INDEX CONCURRENTLY ") && no_transaction) || partitioned_ok,
+                    "{name}: `{s}` must be DROP INDEX CONCURRENTLY in a -- no-transaction migration"
+                );
+            }
+            if let Some(rest) = s.strip_prefix("ALTER TABLE ") {
+                let table = rest
+                    .trim_start_matches("ONLY ")
+                    .split(' ')
+                    .next()
+                    .unwrap_or_default();
+                if is_new(table) {
+                    continue;
+                }
+                if s.contains(" FOREIGN KEY ") {
+                    assert!(
+                        s.contains(" NOT VALID"),
+                        "{name}: `{s}` must add the foreign key NOT VALID and validate it in a later migration"
+                    );
+                }
+                if s.contains(" ADD COLUMN ") && s.contains(" DEFAULT ") {
+                    assert!(
+                        !VOLATILE.iter().any(|v| s.contains(v)),
+                        "{name}: `{s}` has a volatile default, which rewrites the table: add the column, then backfill"
+                    );
+                }
+            }
+        }
+    }
+    assert!(checked > 0, "no migration since {ONLINE_RULES_SINCE} found");
 }
 
 /// The two-role layout of `deploy/postgres/init-app-role.sh` on a throwaway

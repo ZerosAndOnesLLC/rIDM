@@ -177,16 +177,3 @@ pub async fn browser_history<'e>(
     .fetch_one(exec)
     .await
 }
-
-pub async fn purge<'e>(
-    exec: impl PgExecutor<'e>,
-    tenant_id: Uuid,
-    older_than: chrono::DateTime<chrono::Utc>,
-) -> Result<u64, sqlx::Error> {
-    Ok(sqlx::query("DELETE FROM sso_sessions WHERE tenant_id = $1 AND (expires_at < $2 OR (revoked_at IS NOT NULL AND revoked_at < $2))")
-        .bind(tenant_id)
-        .bind(older_than)
-        .execute(exec)
-        .await?
-        .rows_affected())
-}

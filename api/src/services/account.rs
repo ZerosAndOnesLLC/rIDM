@@ -190,14 +190,52 @@ pub async fn delete_own(state: &AppState, tenant: &Tenant, user: &User) -> AppRe
 
 /// Remove soft-deleted users older than `retention_days` (everything
 /// attached to them cascades). Returns the number of rows purged.
+///
+/// Users go in batches, each in its own transaction, so the cascade into
+/// every attached table stays bounded. A batch that fails is retried one
+/// user at a time: a row that cannot be removed is logged and left for the
+/// next pass instead of holding back the rest of the tenant.
 pub async fn purge_deleted(
     state: &AppState,
     tenant_id: Uuid,
     retention_days: u32,
 ) -> AppResult<u64> {
+    const BATCH: i64 = 500;
     let cutoff = Utc::now() - Duration::days(i64::from(retention_days));
+    let mut purged = 0;
+    let mut after = None;
+    loop {
+        let mut tx = db::read_tx(&state.db, tenant_id).await?;
+        let ids = repos::users::deleted_before(&mut *tx, tenant_id, cutoff, after, BATCH).await?;
+        tx.commit().await?;
+        let Some(last) = ids.last().copied() else {
+            break;
+        };
+        after = Some(last);
+        match purge_ids(state, tenant_id, &ids).await {
+            Ok(n) => purged += n,
+            Err(err) => {
+                tracing::warn!(tenant = %tenant_id, error = %err, "user purge batch failed; retrying one by one");
+                for id in &ids {
+                    match purge_ids(state, tenant_id, std::slice::from_ref(id)).await {
+                        Ok(n) => purged += n,
+                        Err(err) => {
+                            tracing::error!(tenant = %tenant_id, user = %id, error = %err, "deleted user could not be purged")
+                        }
+                    }
+                }
+            }
+        }
+        if (ids.len() as i64) < BATCH {
+            break;
+        }
+    }
+    Ok(purged)
+}
+
+async fn purge_ids(state: &AppState, tenant_id: Uuid, ids: &[Uuid]) -> AppResult<u64> {
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    let n = repos::users::purge_deleted(&mut *tx, tenant_id, cutoff).await?;
+    let n = repos::users::purge_ids(&mut *tx, tenant_id, ids).await?;
     tx.commit().await?;
     Ok(n)
 }

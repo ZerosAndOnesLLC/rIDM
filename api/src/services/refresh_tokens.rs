@@ -410,14 +410,6 @@ pub async fn list_live_for_user(
     Ok(rows)
 }
 
-/// Remove dead rows older than `retention` (called by the cleanup job).
-pub async fn purge(state: &AppState, tenant_id: Uuid, retention: Duration) -> AppResult<u64> {
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    let n = repos::refresh_tokens::purge(&mut *tx, tenant_id, Utc::now() - retention).await?;
-    tx.commit().await?;
-    Ok(n)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

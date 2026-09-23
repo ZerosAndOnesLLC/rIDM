@@ -199,20 +199,50 @@ pub async fn soft_delete<'e>(
     Ok(res.rows_affected() > 0)
 }
 
-/// Remove soft-deleted rows older than `before`; attached rows cascade.
-pub async fn purge_deleted<'e>(
+/// Up to `limit` soft-deleted users deleted before `before`, in id order
+/// after `after` (a keyset cursor, so a row that cannot be purged is passed
+/// over rather than fetched again).
+pub async fn deleted_before<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
     before: DateTime<Utc>,
+    after: Option<Uuid>,
+    limit: i64,
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("SELECT id FROM users WHERE tenant_id = ");
+    qb.push_bind(tenant_id)
+        .push(" AND deleted_at IS NOT NULL AND deleted_at < ")
+        .push_bind(before);
+    if let Some(after) = after {
+        qb.push(" AND id > ").push_bind(after);
+    }
+    qb.push(" ORDER BY id LIMIT ").push_bind(limit);
+    qb.build_query_scalar().fetch_all(exec).await
+}
+
+/// Remove these soft-deleted users for good; attached rows cascade.
+pub async fn purge_ids<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    ids: &[Uuid],
 ) -> Result<u64, sqlx::Error> {
     let res = sqlx::query(
-        "DELETE FROM users WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND deleted_at < $2",
+        "DELETE FROM users WHERE tenant_id = $1 AND id = ANY($2) AND deleted_at IS NOT NULL",
     )
     .bind(tenant_id)
-    .bind(before)
+    .bind(ids)
     .execute(exec)
     .await?;
     Ok(res.rows_affected())
+}
+
+/// Tenants with at least one soft-deleted user, across tenants (bypass
+/// transaction): the daily purge visits only these. Reads the partial
+/// `users_tenant_deleted_idx`, which holds deleted users only.
+pub async fn tenants_with_deleted<'e>(exec: impl PgExecutor<'e>) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar("SELECT DISTINCT tenant_id FROM users WHERE deleted_at IS NOT NULL")
+        .fetch_all(exec)
+        .await
 }
 
 pub async fn hard_delete<'e>(
