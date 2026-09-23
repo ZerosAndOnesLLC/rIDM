@@ -24,6 +24,7 @@ use zeroize::Zeroizing;
 
 use crate::error::{AppError, AppResult};
 use crate::middleware::client_ip;
+use crate::middleware::security_headers::no_store;
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
 use crate::models::{
     Consent, Credential, Group, LinkedIdentity, NewUser, PersonalAccessToken, Principal, Role,
@@ -143,14 +144,6 @@ struct CreatedUser {
     user: User,
     #[serde(skip_serializing_if = "Option::is_none")]
     temporary_password: Option<String>,
-}
-
-fn no_store(mut res: Response) -> Response {
-    if let Ok(v) = "no-store".parse() {
-        res.headers_mut()
-            .insert(axum::http::header::CACHE_CONTROL, v);
-    }
-    res
 }
 
 /// Body: every `NewUser` field plus `password` or `temporary_password: true`.

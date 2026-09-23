@@ -164,7 +164,11 @@ pub async fn resend(
         .ok_or(AppError::NotFound("invitation"))?;
     tx.commit().await?;
     send_email(state, tenant, &inv, &token, 7).await?;
-    let _ = actor;
+    state.events.publish(Event::new(
+        Some(tenant.id),
+        actor,
+        EventKind::InvitationResent { invitation_id: id },
+    ));
     Ok(inv)
 }
 

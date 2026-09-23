@@ -398,8 +398,7 @@ impl IntoResponse for OAuthError {
         };
         let mut response = (status, axum::Json(&self)).into_response();
         let headers = response.headers_mut();
-        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-        headers.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+        crate::middleware::security_headers::set_no_store(headers);
         if let Some(secs) = self.retry_after_secs
             && let Ok(v) = HeaderValue::from_str(&secs.to_string())
         {

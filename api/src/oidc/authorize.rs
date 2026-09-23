@@ -950,8 +950,7 @@ fn redirect_to_ui(state: &AppState, tenant: &TenantCtx, page: &str, flow_id: Uui
         &[("tenant", tenant.slug()), ("flow", &flow_id.to_string())],
     );
     let mut res = Redirect::to(&url).into_response();
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(res.headers_mut());
     res
 }
 
@@ -1017,8 +1016,7 @@ pub fn deliver(redirect_uri: &str, mode: ResponseMode, params: &[(&str, String)]
         }
     };
     let h = res.headers_mut();
-    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    h.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+    crate::middleware::security_headers::set_no_store(h);
     h.insert(
         header::REFERRER_POLICY,
         HeaderValue::from_static("no-referrer"),

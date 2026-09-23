@@ -6,7 +6,6 @@
 use axum::Router;
 use axum::extract::{Request, State};
 use axum::http::request::Parts;
-use axum::http::{HeaderValue, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use serde::Serialize;
@@ -38,8 +37,7 @@ async fn list(State(state): State<AppState>, tenant: TenantCtx, req: Request) ->
     match features_of(&state, &tenant, &mut parts).await {
         Ok(f) => {
             let mut res = axum::Json(f).into_response();
-            res.headers_mut()
-                .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+            crate::middleware::security_headers::set_no_store(res.headers_mut());
             res
         }
         Err(e) => e.into_response(),

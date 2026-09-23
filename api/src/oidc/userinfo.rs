@@ -2,7 +2,7 @@
 
 use axum::Router;
 use axum::extract::State;
-use axum::http::{HeaderMap, HeaderValue, Method, header};
+use axum::http::{HeaderMap, Method};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use serde_json::{Map, Value, json};
@@ -101,8 +101,7 @@ async fn handle(
         return bearer::dpop_invalid_token(&d);
     }
     let mut res = axum::Json(Value::Object(built.userinfo)).into_response();
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(res.headers_mut());
     res
 }
 

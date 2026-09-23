@@ -6,7 +6,7 @@
 
 use axum::Router;
 use axum::extract::{ConnectInfo, State};
-use axum::http::{HeaderMap, HeaderValue, header};
+use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use chrono::Utc;
@@ -46,8 +46,7 @@ async fn verify(
         Ok(v) => axum::Json(v).into_response(),
         Err(e) => e.into_response(),
     };
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(res.headers_mut());
     res
 }
 

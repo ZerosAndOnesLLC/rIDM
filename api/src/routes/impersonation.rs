@@ -36,7 +36,7 @@ struct StartQuery {
 fn redirect(url: &str, cookie: Option<String>) -> Response {
     let mut res = Redirect::to(url).into_response();
     let headers = res.headers_mut();
-    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(headers);
     // The ticket is in this page's URL; the next page must not see it.
     headers.insert(
         header::REFERRER_POLICY,

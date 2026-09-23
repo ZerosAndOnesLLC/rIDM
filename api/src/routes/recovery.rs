@@ -2,7 +2,7 @@
 
 use axum::Router;
 use axum::extract::State;
-use axum::http::{HeaderValue, StatusCode, header};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use serde::Deserialize;
@@ -10,6 +10,7 @@ use serde_json::json;
 use zeroize::Zeroizing;
 
 use crate::middleware::TenantCtx;
+use crate::middleware::security_headers::no_store;
 use crate::services::recovery;
 use crate::state::AppState;
 
@@ -21,12 +22,6 @@ pub fn router() -> Router<AppState> {
             "/t/{slug}/verification/email/resend",
             post(resend_verification),
         )
-}
-
-fn no_store(mut res: Response) -> Response {
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    res
 }
 
 #[derive(Deserialize)]

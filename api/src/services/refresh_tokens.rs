@@ -197,7 +197,7 @@ pub async fn redeem(
         let count =
             repos::refresh_tokens::revoke_family(&mut *tx, tenant_id, current.family_id).await?;
         tx.commit().await?;
-        tracing::warn!(tenant = %tenant_id, family = %current.family_id, client = %client_id, "refresh token reuse detected; family revoked");
+        tracing::warn!(tenant = %tenant_id, family = %current.family_id, client = %client_id, revoked = count, "refresh token reuse detected; family revoked");
         state.events.publish(Event::new(
             Some(tenant_id),
             Actor::Client { id: Uuid::nil() },
@@ -207,7 +207,6 @@ pub async fn redeem(
                 user_id: current.user_id,
             },
         ));
-        let _ = count;
         return Err(OAuthError::new(
             OAuthErrorCode::InvalidGrant,
             "refresh token reuse detected",

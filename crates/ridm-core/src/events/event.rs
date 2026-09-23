@@ -244,6 +244,10 @@ pub enum EventKind {
     InvitationRevoked {
         invitation_id: Uuid,
     },
+    /// A fresh link was sent (the old one stops working).
+    InvitationResent {
+        invitation_id: Uuid,
+    },
 
     // Authentication
     PasswordResetRequested {
@@ -618,6 +622,7 @@ impl EventKind {
             Self::InvitationCreated { .. } => "invitation.created",
             Self::InvitationAccepted { .. } => "invitation.accepted",
             Self::InvitationRevoked { .. } => "invitation.revoked",
+            Self::InvitationResent { .. } => "invitation.resent",
             Self::PasswordResetRequested { .. } => "user.password_reset_requested",
             Self::PasswordResetCompleted { .. } => "user.password_reset_completed",
             Self::PasswordlessSent { .. } => "login.passwordless_sent",

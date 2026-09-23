@@ -16,6 +16,7 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::error::AppError;
+use crate::middleware::security_headers::no_store;
 use crate::middleware::{TenantCtx, client_ip};
 use crate::services::flows::{self, AuthStep, ConsentOutcome};
 use crate::services::login_flows::FlowStage;
@@ -98,12 +99,6 @@ pub fn router() -> Router<AppState> {
         .route("/t/{slug}/flows/{id}/consent", post(consent))
         .route("/t/{slug}/flows/{id}/cancel", post(cancel))
         .route("/t/{slug}/flows/{id}/finish", get(finish))
-}
-
-fn no_store(mut res: Response) -> Response {
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    res
 }
 
 /// The public state as JSON, with `finish_url` once the flow is done.
@@ -1093,8 +1088,7 @@ async fn finish(
                     .expect("the device page is a valid url");
                 u.query_pairs_mut().append_pair("done", "1");
                 let mut res = axum::response::Redirect::to(u.as_str()).into_response();
-                res.headers_mut()
-                    .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+                crate::middleware::security_headers::set_no_store(res.headers_mut());
                 if let Some(v) = device_cookie
                     .as_deref()
                     .and_then(|c| HeaderValue::from_str(c).ok())

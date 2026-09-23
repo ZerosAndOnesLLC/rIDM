@@ -76,7 +76,6 @@ async fn confirm(
             Err(e) => return e.into_response(),
         }
     }
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(res.headers_mut());
     res
 }

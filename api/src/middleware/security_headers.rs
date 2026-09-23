@@ -14,6 +14,20 @@ use axum::response::Response;
 
 use crate::state::AppState;
 
+/// Mark a response as never to be stored (tokens, secrets, one-time pages):
+/// `Cache-Control: no-store`, plus `Pragma: no-cache` for HTTP/1.0 caches
+/// (RFC 6749 §5.1).
+pub fn set_no_store(headers: &mut axum::http::HeaderMap) {
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+}
+
+/// [`set_no_store`] on `res`.
+pub fn no_store(mut res: Response) -> Response {
+    set_no_store(res.headers_mut());
+    res
+}
+
 /// Content security policy for the HTML pages the API renders itself
 /// (inline styles only; no scripts, no framing, no navigation targets).
 pub const HTML_PAGE_CSP: &str = "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";

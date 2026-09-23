@@ -139,7 +139,7 @@ async fn first_sighting(state: &AppState, k: String, ttl: u64) -> AppResult<bool
 
 fn html_headers(mut res: Response) -> Response {
     let h = res.headers_mut();
-    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(h);
     h.insert(
         header::REFERRER_POLICY,
         HeaderValue::from_static("no-referrer"),

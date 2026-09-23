@@ -59,8 +59,7 @@ pub fn error(status: StatusCode, code: &str, description: &str) -> Response {
     if let Ok(v) = HeaderValue::from_str(&value) {
         res.headers_mut().insert(header::WWW_AUTHENTICATE, v);
     }
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(res.headers_mut());
     res
 }
 

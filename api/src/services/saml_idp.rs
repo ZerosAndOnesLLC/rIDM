@@ -120,7 +120,7 @@ fn saml_page(status: StatusCode, err: &SamlError) -> Response {
 
 fn html_headers(res: &mut Response) {
     let h = res.headers_mut();
-    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(h);
     h.insert(
         header::REFERRER_POLICY,
         HeaderValue::from_static("no-referrer"),

@@ -52,7 +52,7 @@ export const EVENT_NAMES = [
   "identity_provider.created", "identity_provider.deleted", "identity_provider.updated",
   "impersonation.ended", "impersonation.requested", "impersonation.started",
   "ip_rule.created", "ip_rule.deleted", "ip_rule.updated",
-  "invitation.accepted", "invitation.created", "invitation.revoked",
+  "invitation.accepted", "invitation.created", "invitation.resent", "invitation.revoked",
   "login.brokered", "login.failed", "login.new_device", "login.passwordless_sent", "login.succeeded",
   "logout.upstream",
   "master_key.generation_created", "master_key.rotated", "mfa.changed", "mtls_trust_anchor.created", "mtls_trust_anchor.deleted",

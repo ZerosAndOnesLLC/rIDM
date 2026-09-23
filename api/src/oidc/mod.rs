@@ -7,6 +7,7 @@ pub mod discovery;
 pub mod dpop;
 pub mod end_session;
 pub mod fapi;
+pub mod form;
 pub mod introspect;
 pub mod jar;
 pub mod mtls;

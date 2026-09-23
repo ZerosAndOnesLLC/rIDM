@@ -167,6 +167,27 @@ async fn discovery_endpoints_are_all_served() {
     }
 }
 
+/// The form-post endpoints refuse any other body, before client auth.
+#[tokio::test]
+async fn form_endpoints_refuse_other_content_types() {
+    let fx = fixture().await;
+    for path in ["/token", "/introspect", "/revoke", "/par", "/bc-authorize"] {
+        let res = fx
+            .app
+            .http
+            .post(fx.app.tenant_url(path))
+            .header("content-type", "application/json")
+            .body(r#"{"token":"x"}"#)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 400, "{path}");
+        assert_eq!(res.headers()["cache-control"], "no-store", "{path}");
+        let body: Value = res.json().await.unwrap();
+        assert_eq!(body["error"], "invalid_request", "{path}: {body}");
+    }
+}
+
 #[tokio::test]
 async fn nonce_is_bound_to_the_authorization_request() {
     let fx = fixture().await;

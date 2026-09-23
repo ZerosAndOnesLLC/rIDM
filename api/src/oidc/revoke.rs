@@ -6,7 +6,7 @@ use std::net::{IpAddr, SocketAddr};
 
 use axum::Router;
 use axum::extract::{ConnectInfo, State};
-use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use chrono::{DateTime, Utc};
@@ -15,6 +15,7 @@ use crate::error::OAuthError;
 use crate::middleware::{TenantCtx, client_ip_addr};
 use crate::oidc::authorize::RawParams;
 use crate::oidc::client_auth;
+use crate::oidc::form::FormParams;
 use crate::oidc::mtls::{ClientCert, ClientCertificate};
 use crate::services::tokens::{self, VerifyOptions};
 use crate::services::{denylist, opaque_tokens, refresh_tokens};
@@ -30,16 +31,14 @@ async fn revoke(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     cert: ClientCertificate,
     headers: HeaderMap,
-    body: String,
+    FormParams(params): FormParams,
 ) -> Response {
     let ip = client_ip_addr(&state, &headers, Some(peer));
-    let params = RawParams::parse(&body);
     let mut res = match handle(&state, &tenant, &headers, &params, ip, cert.get()).await {
         Ok(()) => StatusCode::OK.into_response(),
         Err(e) => e.into_response(),
     };
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(res.headers_mut());
     res
 }
 
@@ -51,7 +50,7 @@ async fn handle(
     ip: Option<IpAddr>,
     cert: Option<&ClientCert>,
 ) -> Result<(), OAuthError> {
-    let token_endpoint = format!("{}/token", tenant.issuer(state));
+    let token_endpoint = tenant.token_endpoint(state);
     let (client, _) =
         client_auth::authenticate(state, tenant, headers, params, &token_endpoint, ip, cert)
             .await?;

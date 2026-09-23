@@ -73,8 +73,7 @@ async fn logout_flow(
         "dir": crate::services::locale::direction(&locale),
     }))
     .into_response();
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(res.headers_mut());
     res
 }
 
@@ -263,8 +262,7 @@ async fn decide(
         &[("tenant", tenant.slug()), ("flow", &flow.id.to_string())],
     );
     let mut res = Redirect::to(&url).into_response();
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(res.headers_mut());
     Ok(res)
 }
 
@@ -355,7 +353,7 @@ fn finish(
     if let Ok(v) = HeaderValue::from_str(&sessions::clear_cookie_header(state, &tenant.tenant)) {
         h.append(header::SET_COOKIE, v);
     }
-    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(h);
     res
 }
 
@@ -450,7 +448,6 @@ async fn confirm(
     if let Ok(v) = HeaderValue::from_str(&sessions::clear_cookie_header(&state, &tenant.tenant)) {
         res.headers_mut().append(header::SET_COOKIE, v);
     }
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(res.headers_mut());
     res
 }

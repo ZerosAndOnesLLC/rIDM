@@ -3,7 +3,7 @@
 
 use axum::Router;
 use axum::extract::{Path, State};
-use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use serde::{Deserialize, Serialize};
@@ -92,8 +92,7 @@ fn error(status: StatusCode, error: &'static str, description: impl Into<String>
         }),
     )
         .into_response();
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(res.headers_mut());
     res
 }
 
@@ -390,8 +389,7 @@ async fn register(
         doc["client_secret_expires_at"] = json!(0);
     }
     let mut res = (StatusCode::CREATED, axum::Json(doc)).into_response();
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(res.headers_mut());
     res
 }
 
@@ -433,8 +431,7 @@ async fn read(
         Err(r) => return *r,
     };
     let mut res = axum::Json(to_metadata(&state, &tenant, &client)).into_response();
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(res.headers_mut());
     res
 }
 
@@ -491,8 +488,7 @@ async fn update(
                 doc["client_secret_expires_at"] = json!(0);
             }
             let mut res = axum::Json(doc).into_response();
-            res.headers_mut()
-                .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+            crate::middleware::security_headers::set_no_store(res.headers_mut());
             res
         }
         Err(e) => metadata_error(e),

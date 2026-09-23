@@ -67,6 +67,7 @@ those of the event's `kind` document (next to `type`).
 | `invitation.created` | `invitation_id`, `email` |
 | `invitation.accepted` | `invitation_id`, `user_id` |
 | `invitation.revoked` | `invitation_id` |
+| `invitation.resent` | `invitation_id` |
 | `scope.created`, `scope.updated`, `scope.deleted` | `scope_id` |
 | `claim_mapper.created`, `claim_mapper.updated`, `claim_mapper.deleted` | `mapper_id` |
 | `resource_server.created`, `resource_server.updated`, `resource_server.deleted` | `resource_server_id` |
