@@ -1158,7 +1158,13 @@ pub async fn create_group(
     .await?;
     if let Err(e) = set_members(state, tenant.id, &actor, &g, &members).await {
         // Leave no half-made group behind.
-        let _ = groups::delete(state, tenant.id, actor, g.id).await;
+        if let Err(cleanup) = groups::delete(state, tenant.id, actor, g.id).await {
+            tracing::error!(
+                group_id = %g.id,
+                error = %cleanup,
+                "SCIM: could not remove a half-made group"
+            );
+        }
         return Err(e);
     }
     group_doc(state, base, tenant.id, &g).await

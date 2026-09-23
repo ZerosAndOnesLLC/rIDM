@@ -22,7 +22,6 @@ use utoipa_axum::routes;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
-use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::middleware::client_ip;
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
@@ -30,7 +29,6 @@ use crate::models::{
     Consent, Credential, Group, LinkedIdentity, NewUser, PersonalAccessToken, Principal, Role,
     TrustedDevice, User, UserFilter, UserStatus, UserUpdate,
 };
-use crate::repos;
 use crate::routes::admin::AuditFilterQuery;
 use crate::services::admin_access::{self, Grant};
 use crate::services::bulk_users::{self, ExportFormat, ImportReport};
@@ -595,9 +593,7 @@ async fn credentials(
 ) -> AppResult<Json<Credentials>> {
     admin.require(tenant.id, P_READ)?;
     let u = load(&state, tenant.id, user).await?;
-    let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
-    let rows = repos::credentials::list_for_user(&mut *tx, tenant.id, user).await?;
-    tx.commit().await?;
+    let rows = crate::services::totp::credentials_of(&state, tenant.id, user).await?;
     Ok(Json(Credentials {
         password: PasswordSummary::from(&u),
         credentials: rows,

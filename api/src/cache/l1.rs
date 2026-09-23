@@ -1,58 +1,88 @@
 //! In-process cache in front of Redis for the hottest read-mostly objects
-//! (tenants, clients, keys). Short TTL; evicted immediately on invalidation
-//! messages from any node.
+//! (tenants, clients, keys, users). Short TTL; evicted immediately on
+//! invalidation messages from any node. Bounded by entry count: past it the
+//! least useful entries go, so a node with many per-user keys neither grows
+//! without bound nor pays a sweep on every insert.
 
 use std::any::Any;
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use moka::Expiry;
+use moka::sync::Cache;
+
+/// Entries a node keeps at most.
+const MAX_ENTRIES: u64 = 100_000;
+
+#[derive(Clone)]
 struct Entry {
-    expires_at: Instant,
+    ttl: Duration,
     value: Arc<dyn Any + Send + Sync>,
 }
 
-#[derive(Default)]
+/// Each entry lives for the TTL it was inserted with.
+struct PerEntryTtl;
+
+impl Expiry<String, Entry> for PerEntryTtl {
+    fn expire_after_create(&self, _key: &String, entry: &Entry, _now: Instant) -> Option<Duration> {
+        Some(entry.ttl)
+    }
+
+    fn expire_after_update(
+        &self,
+        _key: &String,
+        entry: &Entry,
+        _now: Instant,
+        _current: Option<Duration>,
+    ) -> Option<Duration> {
+        Some(entry.ttl)
+    }
+}
+
 pub struct L1Cache {
-    entries: RwLock<HashMap<String, Entry>>,
+    entries: Cache<String, Entry>,
+}
+
+impl Default for L1Cache {
+    fn default() -> Self {
+        Self::with_capacity(MAX_ENTRIES)
+    }
 }
 
 impl L1Cache {
-    pub fn get<T: Send + Sync + 'static>(&self, key: &str) -> Option<Arc<T>> {
-        let guard = self.entries.read().expect("l1 cache poisoned");
-        let entry = guard.get(key)?;
-        if entry.expires_at <= Instant::now() {
-            return None;
+    pub fn with_capacity(max_entries: u64) -> Self {
+        Self {
+            entries: Cache::builder()
+                .max_capacity(max_entries)
+                .expire_after(PerEntryTtl)
+                .build(),
         }
-        entry.value.clone().downcast::<T>().ok()
+    }
+
+    pub fn get<T: Send + Sync + 'static>(&self, key: &str) -> Option<Arc<T>> {
+        self.entries.get(key)?.value.downcast::<T>().ok()
     }
 
     pub fn insert<T: Send + Sync + 'static>(&self, key: String, value: Arc<T>, ttl: Duration) {
-        let mut guard = self.entries.write().expect("l1 cache poisoned");
-        // Opportunistic sweep so the map cannot grow without bound.
-        if guard.len() > 10_000 {
-            let now = Instant::now();
-            guard.retain(|_, e| e.expires_at > now);
+        if ttl.is_zero() {
+            self.entries.invalidate(&key);
+            return;
         }
-        guard.insert(
-            key,
-            Entry {
-                expires_at: Instant::now() + ttl,
-                value,
-            },
-        );
+        self.entries.insert(key, Entry { ttl, value });
     }
 
     pub fn remove(&self, key: &str) {
-        self.entries.write().expect("l1 cache poisoned").remove(key);
+        self.entries.invalidate(key);
     }
 
     pub fn clear(&self) {
-        self.entries.write().expect("l1 cache poisoned").clear();
+        self.entries.invalidate_all();
     }
 
+    /// Entries held (after pending evictions are applied).
     pub fn len(&self) -> usize {
-        self.entries.read().expect("l1 cache poisoned").len()
+        self.entries.run_pending_tasks();
+        self.entries.entry_count() as usize
     }
 
     pub fn is_empty(&self) -> bool {
@@ -72,7 +102,19 @@ mod tests {
         assert!(c.get::<String>("k").is_none(), "wrong type must miss");
         c.insert("e".into(), Arc::new(1u32), Duration::ZERO);
         assert!(c.get::<u32>("e").is_none());
+        c.insert("s".into(), Arc::new(1u32), Duration::from_millis(20));
+        std::thread::sleep(Duration::from_millis(40));
+        assert!(c.get::<u32>("s").is_none(), "expires after its own ttl");
         c.remove("k");
         assert!(c.get::<u32>("k").is_none());
+    }
+
+    #[test]
+    fn stays_within_its_capacity() {
+        let c = L1Cache::with_capacity(100);
+        for i in 0..1_000u32 {
+            c.insert(format!("k{i}"), Arc::new(i), Duration::from_secs(60));
+        }
+        assert!(c.len() <= 100, "{} entries", c.len());
     }
 }

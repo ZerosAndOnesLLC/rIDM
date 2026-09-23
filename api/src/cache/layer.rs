@@ -5,8 +5,9 @@
 //! other node evicts its L1 too. Missing values are negatively cached for a
 //! short time so unknown slugs cannot hammer the database.
 
+use std::collections::HashMap;
 use std::future::Future;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use redis::AsyncCommands;
@@ -28,10 +29,14 @@ pub struct InvalidationMessage {
     pub keys: Vec<String>,
 }
 
+/// One lock per key being loaded on this node.
+type Loading = Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>;
+
 #[derive(Clone)]
 pub struct CacheLayer {
     redis: RedisPool,
     l1: Arc<L1Cache>,
+    loading: Loading,
     node_id: Uuid,
     pub l1_ttl: Duration,
     pub negative_ttl: Duration,
@@ -49,6 +54,7 @@ impl CacheLayer {
         Self {
             redis,
             l1: Arc::new(L1Cache::default()),
+            loading: Loading::default(),
             node_id: Uuid::now_v7(),
             l1_ttl: Duration::from_secs(15),
             negative_ttl: Duration::from_secs(30),
@@ -78,8 +84,7 @@ impl CacheLayer {
         if let Some(v) = self.l1.get::<T>(key) {
             return Ok(Some(v));
         }
-        if let Some(v) = self.l1.get::<NegativeMarker>(key) {
-            let _ = v;
+        if self.l1.get::<NegativeMarker>(key).is_some() {
             return Ok(None);
         }
 
@@ -98,6 +103,33 @@ impl CacheLayer {
             Err(err) => tracing::warn!(key, error = %err, "cache read failed; loading from source"),
         }
 
+        // One load per key per node: concurrent misses (a hot tenant or
+        // client just invalidated) wait for it and read what it stored.
+        let gate = self.gate(key);
+        let loading = gate.lock().await;
+        let result = self.load_after_wait(key, ttl, loader).await;
+        drop(loading);
+        self.release_gate(key, &gate);
+        result
+    }
+
+    async fn load_after_wait<T, F, Fut>(
+        &self,
+        key: &str,
+        ttl: Duration,
+        loader: F,
+    ) -> Result<Option<Arc<T>>, AppError>
+    where
+        T: Serialize + DeserializeOwned + Send + Sync + 'static,
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<Option<T>, AppError>>,
+    {
+        if let Some(v) = self.l1.get::<T>(key) {
+            return Ok(Some(v));
+        }
+        if self.l1.get::<NegativeMarker>(key).is_some() {
+            return Ok(None);
+        }
         let loaded = loader().await?;
         match loaded {
             Some(value) => {
@@ -118,6 +150,26 @@ impl CacheLayer {
                     .insert(key.to_string(), Arc::new(NegativeMarker), self.l1_ttl);
                 Ok(None)
             }
+        }
+    }
+
+    fn gate(&self, key: &str) -> Arc<tokio::sync::Mutex<()>> {
+        self.loading
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entry(key.to_string())
+            .or_default()
+            .clone()
+    }
+
+    /// Drop the key's lock once nobody else holds or waits on it.
+    fn release_gate(&self, key: &str, gate: &Arc<tokio::sync::Mutex<()>>) {
+        let mut loading = self.loading.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(current) = loading.get(key)
+            && Arc::ptr_eq(current, gate)
+            && Arc::strong_count(gate) == 2
+        {
+            loading.remove(key);
         }
     }
 

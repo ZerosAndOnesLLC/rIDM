@@ -15,12 +15,10 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 use uuid::Uuid;
 
-use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
 use crate::models::{Client, ClientStatus, NewClient, User};
-use crate::repos;
-use crate::services::{clients, scopes};
+use crate::services::{clients, resource_servers, scopes};
 use crate::state::AppState;
 use crate::util::cursor::Page;
 use crate::util::patch::merge_patch;
@@ -110,10 +108,10 @@ async fn resolve_client(state: &AppState, tenant_id: Uuid, key: &str) -> AppResu
     {
         return Ok(c);
     }
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    let c = repos::clients::find_by_client_id(&mut *tx, tenant_id, key).await?;
-    tx.commit().await?;
-    c.ok_or(AppError::NotFound("client"))
+    clients::find_by_client_id(state, tenant_id, key)
+        .await?
+        .map(|c| (*c).clone())
+        .ok_or(AppError::NotFound("client"))
 }
 
 /// Scopes and audiences must name things the tenant has; a typo here would
@@ -129,19 +127,15 @@ async fn check_references(state: &AppState, tenant_id: Uuid, c: &NewClient) -> A
             )));
         }
     }
-    if !c.allowed_audiences.is_empty() {
-        let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-        for identifier in &c.allowed_audiences {
-            if repos::resource_servers::find_by_identifier(&mut *tx, tenant_id, identifier)
-                .await?
-                .is_none()
-            {
-                return Err(AppError::BadRequest(format!(
-                    "unknown audience `{identifier}` (no such resource server)"
-                )));
-            }
+    for identifier in &c.allowed_audiences {
+        if resource_servers::find_by_identifier_cached(state, tenant_id, identifier)
+            .await?
+            .is_none()
+        {
+            return Err(AppError::BadRequest(format!(
+                "unknown audience `{identifier}` (no such resource server)"
+            )));
         }
-        tx.commit().await?;
     }
     Ok(())
 }

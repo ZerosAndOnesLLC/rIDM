@@ -36,6 +36,8 @@ tokio = { version = "=1.53.1", features = ["full"] }
 sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls-ring", "postgres", "uuid", "chrono", "json", "migrate", "macros"] }
 deadpool-redis = { version = "=0.23.1", features = ["rt_tokio_1", "cluster", "sentinel"] }
 redis = { version = "=1.7.0", features = ["tokio-rustls-comp", "script", "cluster-async", "sentinel"] }
+# In-process (L1) cache: size-bounded, per-entry TTL.
+moka = { version = "=0.12.16", features = ["sync"] }
 
 # Crypto / tokens
 # Signing/verification via aws-lc-rs (constant-time RSA); the `rsa` crate is

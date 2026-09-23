@@ -459,7 +459,10 @@ async fn deliver_promptly(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
             break;
         }
     }
-    let _: () = conn.del(&key).await.unwrap_or(());
+    if let Err(e) = conn.del::<_, ()>(&key).await {
+        // The lock expires on its own after PROMPT_LOCK_SECS.
+        tracing::warn!(error = %e, "webhooks: could not release the prompt-delivery lock");
+    }
     Ok(())
 }
 

@@ -75,7 +75,9 @@ pub async fn send(
     .await?;
     tx.commit().await?;
     // Fast path: deliver now; the job retries anything that fails.
-    let _ = deliver_due(state, tenant.id, BATCH).await;
+    if let Err(e) = deliver_due(state, tenant.id, BATCH).await {
+        tracing::warn!(error = %e, "immediate message delivery failed; the job will retry");
+    }
     let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
     let latest = repos::messages::find(&mut *tx, tenant.id, msg.id)
         .await?

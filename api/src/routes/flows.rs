@@ -372,7 +372,9 @@ async fn consent(
     match flows::consent_step(&state, &tenant.tenant, flow, body.approve, body.scopes).await {
         Ok(ConsentOutcome::Granted { flow }) => respond_state(&state, &tenant, &flow).await,
         Ok(ConsentOutcome::Denied { redirect_to }) => {
-            let _ = crate::services::login_flows::delete(&state, tenant.id(), id).await;
+            if let Err(e) = crate::services::login_flows::delete(&state, tenant.id(), id).await {
+                tracing::warn!(flow_id = %id, error = %e, "could not delete a denied login flow");
+            }
             no_store(
                 axum::Json(json!({"stage": "denied", "redirect_to": redirect_to})).into_response(),
             )
@@ -1052,7 +1054,9 @@ async fn finish(
         Ok(_) => return AppError::NotFound("client").into_response(),
         Err(e) => return e.into_response(),
     };
-    let _ = crate::services::login_flows::delete(&state, tenant.id(), id).await;
+    if let Err(e) = crate::services::login_flows::delete(&state, tenant.id(), id).await {
+        tracing::warn!(flow_id = %id, error = %e, "could not delete a finished login flow");
+    }
     if let Some(device_hash) = &flow.request.device_code {
         // A device authorization: approve the device's code and send the
         // browser back to the device page; the device collects the tokens.
@@ -1066,7 +1070,14 @@ async fn finish(
         .await
         {
             Ok(_) => {
-                let _ = sessions::add_client(&state, &session, &client.client_id).await;
+                // Without it the session's sign-out would not reach this client.
+                if let Err(e) = sessions::add_client(&state, &session, &client.client_id).await {
+                    tracing::warn!(
+                        client_id = %client.client_id,
+                        error = %e,
+                        "could not record the client on the session"
+                    );
+                }
                 state.events.publish(Event::new(
                     Some(tenant.id()),
                     Actor::User {

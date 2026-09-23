@@ -4809,6 +4809,7 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "mimalloc",
+ "moka",
  "openssl-sys",
  "opentelemetry",
  "opentelemetry-otlp",
