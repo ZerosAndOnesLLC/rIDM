@@ -535,7 +535,7 @@ and behind `Authorization: Bearer <METRICS_TOKEN>` when that variable is set:
 | `ridm_rate_limit_rejections_total`, `ridm_ip_rule_rejections_total{scope}` | | requests refused by the guard |
 | `ridm_webhook_deliveries_total{outcome}`, `ridm_webhook_deliveries_pending`, `ridm_messages_queued` | | delivery outcomes and queue depths (gauges refreshed by the delivery jobs) |
 | `ridm_job_runs_total{job,outcome}`, `ridm_job_duration_seconds{job}`, `ridm_cleanup_rows_total{table}` | | background jobs |
-| `ridm_audit_events_total`, `ridm_audit_sink_rows_total`, `ridm_audit_sink_failures_total`, `ridm_audit_sink_dropped_total` | | the audit writer and its export sink |
+| `ridm_audit_events_total`, `ridm_audit_queue_depth`, `ridm_webhook_dispatch_queue_depth`, `ridm_audit_sink_rows_total`, `ridm_audit_sink_failures_total`, `ridm_audit_sink_dropped_total` | | the audit writer and its export sink |
 
 Traces: set `OTEL_EXPORTER_OTLP_ENDPOINT` (the collector's base URL, e.g.
 `http://otel-collector:4318`) and every request is exported over OTLP/HTTP (protobuf)

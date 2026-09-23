@@ -10,6 +10,7 @@
 //!
 //! Parsed private keys are cached in the in-process L1 only, never in Redis.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -599,6 +600,44 @@ impl Default for VerifyOptions {
     }
 }
 
+/// A tenant's published keys by `kid`, parsed for verification.
+type VerificationKeys = HashMap<String, (SigningAlg, DecodingKey)>;
+
+/// The published keys, cached per node under the tenant's keys version: every
+/// key change moves the version, so a revoked key stops verifying on every
+/// node at once, and an entry read before the change is never looked up again.
+async fn verification_keys(state: &AppState, tenant_id: Uuid) -> AppResult<Arc<VerificationKeys>> {
+    let version = keys::keys_version(state, tenant_id).await?;
+    let cache_key = cache_keys::verification_keys(tenant_id, &version);
+    if let Some(k) = state.cache.l1().get::<VerificationKeys>(&cache_key) {
+        return Ok(k);
+    }
+    let mut parsed = VerificationKeys::new();
+    for jwk in keys::published_jwks(state, tenant_id).await? {
+        let (Some(kid), Some(alg)) = (
+            jwk["kid"].as_str().map(str::to_string),
+            jwk["alg"]
+                .as_str()
+                .and_then(|a| a.parse::<SigningAlg>().ok()),
+        ) else {
+            continue;
+        };
+        let Some(decoding) = serde_json::from_value::<jsonwebtoken::jwk::Jwk>(jwk)
+            .ok()
+            .and_then(|j| DecodingKey::from_jwk(&j).ok())
+        else {
+            continue;
+        };
+        parsed.insert(kid, (alg, decoding));
+    }
+    let parsed = Arc::new(parsed);
+    state
+        .cache
+        .l1()
+        .insert(cache_key, parsed.clone(), MATERIAL_L1_TTL);
+    Ok(parsed)
+}
+
 /// Verify a JWS issued by `tenant` and return its claims.
 pub async fn verify(
     state: &AppState,
@@ -614,22 +653,11 @@ pub async fn verify(
         return Err(AppError::Unauthorized);
     }
     // Only published keys verify; revoked keys are gone from this set.
-    let jwks = keys::published_jwks(state, tenant.id).await?;
-    let jwk = jwks
-        .into_iter()
-        .find(|j| j["kid"] == kid)
-        .ok_or(AppError::Unauthorized)?;
-    let alg: SigningAlg = jwk["alg"]
-        .as_str()
-        .unwrap_or_default()
-        .parse()
-        .map_err(|_| AppError::Unauthorized)?;
-    if jwt_alg(alg) != header.alg {
+    let keys = verification_keys(state, tenant.id).await?;
+    let (alg, decoding) = keys.get(kid).ok_or(AppError::Unauthorized)?;
+    if jwt_alg(*alg) != header.alg {
         return Err(AppError::Unauthorized);
     }
-    let parsed: jsonwebtoken::jwk::Jwk =
-        serde_json::from_value(jwk).map_err(|_| AppError::Unauthorized)?;
-    let decoding = DecodingKey::from_jwk(&parsed).map_err(|_| AppError::Unauthorized)?;
 
     let mut validation = Validation::new(header.alg);
     validation.leeway = opts.leeway_secs;
@@ -644,7 +672,7 @@ pub async fn verify(
     // it check the claim themselves.
     validation.set_required_spec_claims(&["exp", "iss"]);
     let data =
-        jsonwebtoken::decode::<Map<String, Value>>(token, &decoding, &validation).map_err(|e| {
+        jsonwebtoken::decode::<Map<String, Value>>(token, decoding, &validation).map_err(|e| {
             tracing::debug!(error = %e, "jwt verification failed");
             AppError::Unauthorized
         })?;

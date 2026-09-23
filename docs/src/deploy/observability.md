@@ -41,7 +41,6 @@ Worth alerting on:
 | `readiness: database check failed`, `readiness: cache check failed` | warn | `/readyz` is returning 503 |
 | `cache invalidation listener disconnected` | warn | A node lost its pub/sub subscription; it will reconnect |
 | `audit: could not record event` | error | An audit row was not written |
-| `audit: event bus lagged, events not recorded` | warn | The in-process event bus overflowed and audit rows were skipped |
 | `audit: creating partitions failed` | error | The `audit_retention` job could not create next months' audit partitions; rows fall into the default partition (see [Postgres and Valkey](postgres-valkey.md#audit-partitions-under-the-two-role-setup)) |
 | `audit sink delivery failed; will retry` | warn | The export sink's receiver refused or could not be reached; the rows are sent again after a backoff |
 | `audit chain does not verify` | error | The scheduled check found a tenant's audit chain broken (see [the scheduled check](../admin/webhooks-audit.md#the-scheduled-check)) |
@@ -83,6 +82,8 @@ Scrape every node: counters are per process.
 | `ridm_job_duration_seconds` | histogram | `job` | Background job pass duration |
 | `ridm_cleanup_rows_total` | counter | `table` | Rows deleted by the cleanup job |
 | `ridm_audit_events_total` | counter | | Audit rows written |
+| `ridm_audit_queue_depth` | gauge | | Events waiting for the audit writer on this node |
+| `ridm_webhook_dispatch_queue_depth` | gauge | | Events waiting for the webhook dispatcher on this node |
 | `ridm_audit_sink_rows_total` | counter | | Audit rows shipped to the sink |
 | `ridm_audit_sink_failures_total` | counter | | Sink deliveries that failed (they are retried) |
 | `ridm_audit_sink_lag_rows` | gauge | | Audit rows recorded but not yet shipped, over every chain |
@@ -140,9 +141,10 @@ setting; the `audit_retention` job purges older rows daily. How to read, filter 
 verify the log is in [Webhooks and the audit log](../admin/webhooks-audit.md), and the
 event model in [Events, audit and webhooks](../concepts/events.md).
 
-Rows are recorded asynchronously from an in-process event bus. If that bus overflows,
-events are skipped with the warning above. Compare `ridm_audit_events_total` with your
-expectations after incidents.
+Rows are recorded asynchronously from an in-process event bus. The writer's queue
+skips nothing; `ridm_audit_queue_depth` rising and staying up means the database
+cannot keep up with the event rate. A node that stops before its queue drains loses
+the rest, so compare `ridm_audit_events_total` with your expectations after incidents.
 
 To keep a copy off the host, set `AUDIT_SINK_URL`. One node at a time ships rows from
 the database, exactly as stored (with chain sequence and hash), and records per chain

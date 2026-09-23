@@ -483,11 +483,11 @@ that keeps growing means the receiver is refusing rows or can't keep up.
 
 ## Caveats
 
-- Events travel on an in-process bus with room for 1,024 events per subscriber, and the
-  audit writer and the webhook dispatcher record them after the action has committed.
-  Under a burst large enough to overrun that buffer, the oldest undelivered events are
-  skipped (logged as `event bus lagged`) and neither audited nor sent. Watch for that
-  warning on busy nodes.
+- Events travel on an in-process bus, and the audit writer and the webhook dispatcher
+  record them after the action has committed. Each has its own queue, so a burst
+  delays events rather than skipping them (watch `ridm_audit_queue_depth` and
+  `ridm_webhook_dispatch_queue_depth`), but a node that stops before its queues drain
+  loses what was still waiting.
 - An event is dispatched only on the node where it happened; webhooks and audit rows
   are not duplicated across nodes.
 - Webhook payloads contain identifiers, email addresses (in `invitation.created`,

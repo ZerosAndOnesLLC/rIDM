@@ -244,6 +244,47 @@ async fn global_chain_is_for_global_admins_only() {
     assert!(tenant_page["items"].as_array().unwrap().is_empty());
 }
 
+/// A burst far past the old 1,024-event bus buffer is recorded in full, in
+/// one unbroken chain.
+#[tokio::test]
+async fn a_burst_of_events_is_recorded_without_gaps() {
+    const BURST: u128 = 3_000;
+    let app = TestApp::spawn().await;
+    let tid = app.tenant.id;
+    let t = admin_token(&app, tid, OWNER_ROLE).await;
+    let base = format!("/admin/tenants/{}/audit", app.tenant.slug);
+    for i in 0..BURST {
+        app.state.events.publish(Event::new(
+            Some(tid),
+            Actor::System,
+            EventKind::PersonalTokenRevoked {
+                user_id: Uuid::nil(),
+                token_id: Uuid::from_u128(i),
+            },
+        ));
+    }
+    let mut recorded = 0;
+    for _ in 0..600 {
+        let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
+        recorded = sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM audit_events \
+             WHERE tenant_id = $1 AND name = 'personal_token.revoked'",
+        )
+        .bind(tid)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        if recorded as u128 >= BURST {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(recorded as u128, BURST, "every event of the burst recorded");
+    let (_, ok, _) = get_json(&app, &format!("{base}/verify"), Some(&t)).await;
+    assert_eq!(ok["valid"], true, "{ok}");
+}
+
 #[tokio::test]
 async fn retention_purges_old_rows_and_the_chain_still_verifies() {
     let app = TestApp::spawn().await;

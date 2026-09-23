@@ -61,12 +61,14 @@ endpoint. Two subscribers run on every node:
 - the **webhook dispatcher**, which turns every event that a tenant's webhooks
   subscribe to into queued deliveries.
 
-The bus is bounded. If a subscriber falls far enough behind (a database
-outage, an extreme burst), the oldest events it has not processed are dropped
-and the loss is logged; the action that produced them has already happened and
-is not undone. Treat the audit log as a faithful record under normal operation
-and monitor the logs and metrics (`ridm_audit_events_total`) for gaps, rather
-than as a transactional ledger.
+Both subscribers have their own queue and skip nothing: a burst or a slow
+database delays them rather than dropping events, and the audit writer appends
+what has queued up in one transaction per chain, so it catches up quickly.
+Their depths are the `ridm_audit_queue_depth` and
+`ridm_webhook_dispatch_queue_depth` gauges. Events still live in memory until
+written: a node that stops before its queue drains loses what was left, and an
+event that fails to append is logged. Treat the audit log as a faithful record
+rather than a transactional ledger, and watch those gauges.
 
 Two other things that the event names might suggest are not driven by the bus:
 
