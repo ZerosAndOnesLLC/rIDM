@@ -3,11 +3,10 @@
 {{- $fullname := include "ridm.fullname" . }}
 {{- $secret := printf "%s-migrate" $fullname | trunc 63 | trimSuffix "-" }}
 {{- $v := .Values }}
-{{- /* The Job connects as the schema owner; the rest is what configuration parsing needs. */}}
+{{- /* The Job connects as the schema owner; the rest is what configuration parsing needs. `migrate` reads no master key and no key custody setting, so the Job holds neither. */}}
 {{- $items := list
   (dict "env" "DATABASE_URL" "value" $v.migrations.database.url "ref" $v.migrations.database.existingSecret)
-  (dict "env" "REDIS_URL" "value" $v.redis.url "ref" $v.redis.existingSecret)
-  (dict "env" "MASTER_KEY" "value" $v.masterKey.value "ref" $v.masterKey.existingSecret) }}
+  (dict "env" "REDIS_URL" "value" $v.redis.url "ref" $v.redis.existingSecret) }}
 {{- $inline := dict }}
 {{- range $items }}
 {{- if and .value (not .ref.name) }}
@@ -73,35 +72,19 @@ spec:
             {{- toYaml $v.securityContext | nindent 12 }}
           env:
             {{- range $k, $val := (include "ridm.plainEnv" . | fromYaml) }}
-            {{- /* The pods bootstrap; the Job has no password to go with the email. */}}
-            {{- if not (hasPrefix "BOOTSTRAP_" $k) }}
+            {{- /* The pods bootstrap; the Job has no password to go with the email. Nor does it touch secrets: no key custody settings. */}}
+            {{- if not (or (hasPrefix "BOOTSTRAP_" $k) (hasPrefix "KEY_WRAPPER" $k) (hasKey $v.keyCustody.env $k)) }}
             - name: {{ $k }}
               value: {{ $val | toString | quote }}
             {{- end }}
             {{- end }}
             {{- range $items }}
-            {{- if not (and $v.masterKey.asFile (eq .env "MASTER_KEY")) }}
             {{- include "ridm.secretEnv" (dict "item" . "secret" $secret) | nindent 12 }}
-            {{- end }}
-            {{- end }}
-            {{- if $v.masterKey.asFile }}
-            - name: MASTER_KEY_FILE
-              value: /run/secrets/ridm/master-key
             {{- end }}
           {{- with $v.migrations.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- if $v.masterKey.asFile }}
-          volumeMounts:
-            - name: master-key
-              mountPath: /run/secrets/ridm
-              readOnly: true
-          {{- end }}
-      {{- if $v.masterKey.asFile }}
-      volumes:
-        {{- include "ridm.masterKeyVolume" (dict "root" . "secret" $secret) | nindent 8 }}
-      {{- end }}
       {{- with $v.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

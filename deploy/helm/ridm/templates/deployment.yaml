@@ -34,7 +34,7 @@ spec:
         {{- end }}
     spec:
       serviceAccountName: {{ include "ridm.serviceAccountName" . }}
-      automountServiceAccountToken: false
+      automountServiceAccountToken: {{ .Values.keyCustody.mountServiceAccountToken }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -58,16 +58,20 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ $fullname }}
+            {{- with .Values.keyCustody.existingSecret }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
             {{- with .Values.extraEnvFrom }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           env:
             {{- range (include "ridm.secretItems" . | fromYamlArray) }}
-            {{- if not (and $.Values.masterKey.asFile (eq .env "MASTER_KEY")) }}
+            {{- if not (and (include "ridm.masterKeyFile" $) (eq .env "MASTER_KEY")) }}
             {{- include "ridm.secretEnv" (dict "item" . "secret" $fullname) | nindent 12 }}
             {{- end }}
             {{- end }}
-            {{- if .Values.masterKey.asFile }}
+            {{- if include "ridm.masterKeyFile" . }}
             - name: MASTER_KEY_FILE
               value: /run/secrets/ridm/master-key
             {{- end }}
@@ -85,7 +89,7 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-            {{- if .Values.masterKey.asFile }}
+            {{- if include "ridm.masterKeyFile" . }}
             - name: master-key
               mountPath: /run/secrets/ridm
               readOnly: true
@@ -94,7 +98,7 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
-        {{- if .Values.masterKey.asFile }}
+        {{- if include "ridm.masterKeyFile" . }}
         {{- include "ridm.masterKeyVolume" (dict "root" . "secret" $fullname) | nindent 8 }}
         {{- end }}
       {{- with .Values.nodeSelector }}

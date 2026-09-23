@@ -18,6 +18,9 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
   RUSTFLAGS: "-D warnings"
+  # The optional server features every release build turns on: Kerberos and
+  # the key custody backends (13.6). Lint and test with them all.
+  RIDM_FEATURES: ridm-api/kerberos,ridm-api/hsm-pkcs11,ridm-api/kms-aws,ridm-api/kms-vault,ridm-api/kms-gcp,ridm-api/kms-azure
   NODE_VERSION: "24"
 
 jobs:
@@ -36,10 +39,10 @@ jobs:
         run: cargo check --workspace --all-targets --locked
       - name: clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      # The Kerberos acceptor is an optional feature (on in every release
-      # build): lint the code both ways.
-      - name: clippy (kerberos)
-        run: cargo clippy --workspace --all-targets --locked --features ridm-api/kerberos -- -D warnings
+      # The Kerberos acceptor and the key custody backends are optional
+      # features (on in the release builds): lint the code both ways.
+      - name: clippy (optional features)
+        run: cargo clippy --workspace --all-targets --locked --features "$RIDM_FEATURES" -- -D warnings
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
@@ -101,7 +104,7 @@ jobs:
       - name: cargo test (lib + bins)
         env:
           RIDM_REQUIRE_XMLSEC1: "1"
-        run: cargo test --workspace --lib --bins --locked --features ridm-api/kerberos
+        run: cargo test --workspace --lib --bins --locked --features "$RIDM_FEATURES"
 
   integration:
     name: integration
@@ -128,17 +131,34 @@ jobs:
       RIDM_TEST_REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v7
+      # The all-features build (the AWS SDK among it) and the test
+      # containers (Vault, OpenBao, local-kms, the KDC) outgrow the runner's
+      # disk: drop the preinstalled SDKs this job never uses.
+      - name: free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          df -h /
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: xmlsec1
-        run: sudo apt-get update -q && sudo apt-get install -y -q xmlsec1
+      # xmlsec1 for the SAML interop tests; SoftHSM for the PKCS#11 key
+      # custody test, with a token directory of the job's own.
+      - name: xmlsec1 and SoftHSM
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q xmlsec1 softhsm2
+          mkdir -p "$RUNNER_TEMP/softhsm/tokens"
+          printf 'directories.tokendir = %s\nobjectstore.backend = file\nlog.level = ERROR\n' \
+            "$RUNNER_TEMP/softhsm/tokens" > "$RUNNER_TEMP/softhsm/softhsm2.conf"
+          echo "SOFTHSM2_CONF=$RUNNER_TEMP/softhsm/softhsm2.conf" >> "$GITHUB_ENV"
       - name: cargo test (integration)
         env:
           RIDM_REQUIRE_XMLSEC1: "1"
           # The MIT Kerberos interop test runs a KDC container; with Docker
           # there it must not skip.
           RIDM_REQUIRE_KDC: "1"
-        run: cargo test --workspace --tests --locked --features ridm-api/kerberos
+          RIDM_REQUIRE_SOFTHSM: "1"
+          RIDM_TEST_PKCS11_MODULE: /usr/lib/softhsm/libsofthsm2.so
+        run: cargo test --workspace --tests --locked --features "$RIDM_FEATURES"
 
   coverage:
     name: coverage
@@ -165,6 +185,14 @@ jobs:
       RIDM_TEST_REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v7
+      # The all-features build (the AWS SDK among it) and the test
+      # containers (Vault, OpenBao, local-kms, the KDC) outgrow the runner's
+      # disk: drop the preinstalled SDKs this job never uses.
+      - name: free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          df -h /
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview

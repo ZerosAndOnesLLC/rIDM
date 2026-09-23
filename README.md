@@ -285,7 +285,8 @@ in [`.env.example`](.env.example). The essentials:
 | `DATABASE_READ_URL` | Optional read replica for listings and statistics |
 | `DB_POOL_MIN`, `DB_POOL_MAX`, `REDIS_POOL_MAX` | Connection pool sizes per node (2, 20, 32) |
 | `PUBLIC_URL` | Externally visible base URL; tenant issuers are `{PUBLIC_URL}/t/{slug}` |
-| `MASTER_KEY` / `MASTER_KEY_FILE` | 32-byte key (hex or base64) encrypting secrets at rest |
+| `MASTER_KEY` / `MASTER_KEY_FILE` | 32-byte key (hex or base64) encrypting secrets at rest; optional with `KEY_WRAPPER` |
+| `KEY_WRAPPER` | An HSM or KMS holds the master key instead: `pkcs11`, `aws-kms`, `vault`, `gcp-kms` or `azure-key-vault` (see [key custody](#key-custody-hsm-and-kms)) |
 | `BIND_ADDR` | Listen address, default `0.0.0.0:8080` |
 | `TRUSTED_PROXIES` | CIDRs whose `X-Forwarded-For` / `Forwarded` headers are honoured |
 | `OUTBOUND_ALLOW_NETWORKS` | private CIDRs that requests to tenant-chosen URLs may reach anyway (internal applications); empty = public addresses only |
@@ -862,9 +863,9 @@ password through, so an outage never blocks sign-ups or resets. The checker is a
 
 ### Master key rotation
 
-Secrets at rest (signing keys, MFA credentials, identity provider client secrets,
-tenant provider settings — SMTP, SMS gateway and CAPTCHA configuration — and webhook
-signing secrets) are encrypted with
+Secrets at rest (signing keys, SAML signing keys, MFA credentials, identity provider
+client secrets and LDAP bind passwords, tenant provider settings — SMTP, SMS gateway
+and CAPTCHA configuration — and webhook signing secrets) are encrypted with
 `MASTER_KEY`, and every ciphertext records the key generation that produced it. To
 rotate without downtime:
 
@@ -876,6 +877,25 @@ rotate without downtime:
    `ridm master-key status` and `ridm master-key rotate` do the same over the admin API,
    from anywhere that can reach the server.
 3. Remove the old key from `MASTER_KEY_PREVIOUS`.
+
+### Key custody (HSM and KMS)
+
+Instead of the environment, an HSM or a key-management service can hold the master
+key: `KEY_WRAPPER=pkcs11`, `aws-kms`, `vault` (Vault or OpenBao Transit), `gcp-kms` or
+`azure-key-vault`, with that backend's settings (`AWS_KMS_KEY_ID`, `VAULT_ADDR` and
+`VAULT_TRANSIT_KEY`, `PKCS11_MODULE`...). Each master-key generation is then a random
+data key the backend wrapped, stored only in wrapped form (`master_key_generations`)
+and unwrapped by each node when it starts, so neither the configuration nor a database
+backup can decrypt anything without the backend, and no request ever waits on it.
+Credentials come from workload identity where the platform has it (IRSA and EKS Pod
+Identity, GKE and Azure Workload Identity, Vault's Kubernetes auth method on Kubernetes
+and OpenShift). A deployment on `MASTER_KEY` moves onto a backend online: set
+`KEY_WRAPPER` beside `MASTER_KEY`, run `ridm-api rotate-master-key`, then drop
+`MASTER_KEY`. `ridm master-key new-generation` (or `rotate-master-key
+--new-generation`) wraps a new data key. Each backend is a cargo feature (`hsm-pkcs11`,
+`kms-aws`, `kms-vault`, `kms-gcp`, `kms-azure`), off in a plain `cargo build` and on in
+the container image; the static release binaries have all but PKCS#11. See the docs'
+*Key custody: HSM and KMS*.
 
 ### First-run bootstrap
 

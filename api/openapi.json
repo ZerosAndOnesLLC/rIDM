@@ -420,12 +420,88 @@
         ]
       }
     },
+    "/admin/master-key/generations": {
+      "post": {
+        "tags": [
+          "keys"
+        ],
+        "summary": "Have the key custody backend (`KEY_WRAPPER`) wrap a new master-key\ngeneration and make it current. 409 when the master key comes from the\nenvironment, whose generations are rolled out by changing `MASTER_KEY`.",
+        "operationId": "keys_master_new_generation",
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewGeneration"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No key custody backend is configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/admin/master-key/rotate": {
       "post": {
         "tags": [
           "keys"
         ],
-        "summary": "Re-encrypt every row still under an older generation with the current\nmaster key (the new key itself comes from the environment).",
+        "summary": "Re-encrypt every row still under an older generation with the current\nmaster key (the new key itself comes from the environment or the key\ncustody backend).",
         "operationId": "keys_master_rotate",
         "responses": {
           "200": {
@@ -22390,6 +22466,44 @@
           }
         }
       },
+      "GenerationInfo": {
+        "type": "object",
+        "description": "A generation as the status report shows it.",
+        "required": [
+          "version",
+          "backend",
+          "loaded"
+        ],
+        "properties": {
+          "backend": {
+            "type": "string",
+            "description": "`env` for `MASTER_KEY` / `MASTER_KEY_PREVIOUS`, else the custody\nbackend that wrapped it."
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "key_ref": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The backend key that wrapped it; absent for `env`."
+          },
+          "loaded": {
+            "type": "boolean",
+            "description": "Whether this node holds the data key (it can decrypt rows under it)."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "GrantableRole": {
         "allOf": [
           {
@@ -25489,6 +25603,20 @@
           }
         },
         "additionalProperties": false
+      },
+      "NewGeneration": {
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The generation now current on this node; the others adopt it within a\nminute. Re-encrypt with `POST /admin/master-key/rotate`.",
+            "minimum": 0
+          }
+        }
       },
       "NewGroup": {
         "type": "object",
@@ -29628,6 +29756,7 @@
         "required": [
           "current_version",
           "known_versions",
+          "generations",
           "rows_by_version"
         ],
         "properties": {
@@ -29635,6 +29764,20 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "generations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GenerationInfo"
+            },
+            "description": "Every generation: from the environment (`env`) or wrapped by a key\ncustody backend, and whether this node holds it."
+          },
+          "key_wrapper": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The backend new generations are wrapped by (`KEY_WRAPPER`), if any."
           },
           "known_versions": {
             "type": "array",

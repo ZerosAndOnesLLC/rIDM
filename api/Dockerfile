@@ -7,8 +7,10 @@
 # Stage 1 builds the UI's static export (`ui/out`) once, on the build
 # platform: it is the same files for every architecture. Stage 2 builds the
 # release binary for the target platform with that export compiled in
-# (`--features embedded-ui`; `kerberos` adds desktop sign-in), so the image
-# serves the sign-in pages and both consoles on the API's own origin. Stage 3 copies the binary into a
+# (`--features embedded-ui`; `kerberos` adds desktop sign-in and the
+# `hsm-pkcs11`/`kms-*` features the key custody backends, all off unless
+# configured), so the image serves the sign-in pages and both consoles on the
+# API's own origin. Stage 3 copies the binary into a
 # distroless image (no shell, no package manager, runs as non-root).
 
 ARG RUST_VERSION=1.98.1
@@ -59,7 +61,7 @@ RUN mkdir -p api/src crates/ridm-core/src crates/ridm-cli/src crates/ridm-auth/s
  && echo '' > crates/ridm-auth/src/lib.rs \
  && echo 'fn main() {}' > examples/axum-api/src/main.rs \
  && echo 'fn main() {}' > examples/confidential-client/src/main.rs \
- && cargo build --release --locked -p ridm-api --features embedded-ui,kerberos \
+ && cargo build --release --locked -p ridm-api --features embedded-ui,kerberos,hsm-pkcs11,kms-aws,kms-vault,kms-gcp,kms-azure \
  && rm -rf api/src crates/ridm-core/src crates/ridm-cli/src crates/ridm-auth/src \
       examples/axum-api/src examples/confidential-client/src
 
@@ -70,7 +72,7 @@ COPY examples/confidential-client examples/confidential-client
 COPY --from=ui /src/ui/out ui/out
 # Touch sources so cargo notices they changed after the dependency-only build.
 RUN touch api/src/main.rs api/src/lib.rs crates/ridm-core/src/lib.rs \
- && cargo build --release --locked -p ridm-api --features embedded-ui,kerberos \
+ && cargo build --release --locked -p ridm-api --features embedded-ui,kerberos,hsm-pkcs11,kms-aws,kms-vault,kms-gcp,kms-azure \
  && strip target/release/ridm-api
 
 # ---------------------------------------------------------------------------

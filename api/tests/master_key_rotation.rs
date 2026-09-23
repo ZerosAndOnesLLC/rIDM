@@ -24,7 +24,7 @@ async fn state_with_key(
 ) -> AppState {
     let infra = common::infra().await;
     let mut config = test_config(&infra.database_url, &infra.redis_url, &app.base_url);
-    config.master_key = SecretBytes::new(vec![key; 32]);
+    config.master_key = Some(SecretBytes::new(vec![key; 32]));
     config.master_key_version = version;
     config.master_key_previous = previous
         .into_iter()

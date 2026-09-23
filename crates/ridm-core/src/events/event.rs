@@ -387,6 +387,12 @@ pub enum EventKind {
     MasterKeyRotated {
         new_version: u32,
     },
+    /// A key custody backend wrapped a new master-key generation, which is
+    /// now the one new secrets are encrypted under.
+    MasterKeyGenerationCreated {
+        version: u32,
+        backend: String,
+    },
     /// A SAML signing key was generated (the first on demand, the next by
     /// an operator starting a rollover).
     SamlKeyCreated {
@@ -631,6 +637,7 @@ impl EventKind {
             Self::SigningKeyCreated { .. } => "signing_key.created",
             Self::SigningKeyStatusChanged { .. } => "signing_key.status_changed",
             Self::MasterKeyRotated { .. } => "master_key.rotated",
+            Self::MasterKeyGenerationCreated { .. } => "master_key.generation_created",
             Self::SamlKeyCreated { .. } => "saml_key.created",
             Self::SamlKeyStatusChanged { .. } => "saml_key.status_changed",
             Self::AuditChainBroken { .. } => "audit.chain_broken",

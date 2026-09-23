@@ -77,13 +77,18 @@ The entrypoint is the server; arguments select a one-shot command instead.
 | (none) | Runs the server | 1 on a fatal error, 2 on a configuration error |
 | `migrate` | Applies pending migrations and exits | 0 applied (or nothing to do), 1 failure, 2 configuration error |
 | `bootstrap [--email E] [--username U] [--password-stdin] [--no-must-change]` | Creates the first global administrator in the `master` tenant (and the `sample-spa` client when `BOOTSTRAP_SAMPLE_CLIENT=true` is set with the `BOOTSTRAP_ADMIN_*` variables). Applies pending migrations only when `MIGRATE_ON_START=true`; otherwise pending migrations make it stop | 0 created or already bootstrapped, 1 failure (including pending migrations), 2 bad arguments or configuration |
-| `rotate-master-key [--status]` | Re-encrypts secrets at rest under the current `MASTER_KEY_VERSION`; `--status` only reports | 0 done, 1 failure |
+| `rotate-master-key [--status \| --new-generation]` | Re-encrypts secrets at rest under the current generation; `--status` only reports; `--new-generation` first has the [key custody backend](key-custody.md) wrap a new generation | 0 done, 1 failure |
 | `openapi` | Prints the OpenAPI document of the admin API | 0 |
 | `--healthcheck` | Probes the local server's `/healthz` (see below) | 0 healthy, 1 not |
 
-Every command loads the full configuration, so `migrate` and `bootstrap` also need
-`REDIS_URL`, `PUBLIC_URL` and the master key set, even though `migrate` only talks to
-Postgres.
+Every command loads the configuration, so `migrate` and `bootstrap` also need
+`REDIS_URL` and `PUBLIC_URL` set, even though `migrate` only talks to Postgres.
+`bootstrap` needs the master key (or the key custody settings) too; `migrate` does not
+read them.
+
+The image is built with every optional feature: the embedded UI, Kerberos and all the
+[key custody backends](key-custody.md). For PKCS#11, mount the HSM vendor's library
+and whatever it depends on into the container and point `PKCS11_MODULE` at it.
 
 `bootstrap` runs as `DATABASE_URL`'s role, normally the DML-only app role, so run
 `migrate` as the migrator first. With migrations pending and `MIGRATE_ON_START` off it

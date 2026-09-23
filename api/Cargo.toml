@@ -32,6 +32,17 @@ mimalloc = ["dep:mimalloc"]
 # still be configured (tenant documents stay portable between builds) but
 # nobody can sign in with it. The released image and binaries turn it on.
 kerberos = ["dep:picky-krb"]
+# Key custody backends: an HSM or a cloud KMS wraps the data keys that encrypt
+# secrets at rest (see `key_custody`). Each is its own feature so the default
+# build stays provider-neutral; `KEY_WRAPPER` picks one at run time, and a
+# build without it refuses that setting at start-up. The released image turns
+# them all on; the static (musl) binaries every one but PKCS#11, which loads a
+# vendor library a static binary cannot.
+hsm-pkcs11 = ["dep:cryptoki"]
+kms-aws = ["dep:aws-config", "dep:aws-sdk-kms"]
+kms-vault = []
+kms-gcp = []
+kms-azure = []
 
 [dependencies]
 ridm-core = { workspace = true }
@@ -83,6 +94,9 @@ reqwest = { workspace = true }
 hickory-resolver = { workspace = true }
 ldap3 = { workspace = true }
 picky-krb = { workspace = true, optional = true }
+cryptoki = { workspace = true, optional = true }
+aws-config = { workspace = true, optional = true }
+aws-sdk-kms = { workspace = true, optional = true }
 lettre = { workspace = true }
 handlebars = { workspace = true }
 

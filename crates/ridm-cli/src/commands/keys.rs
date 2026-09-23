@@ -1,4 +1,4 @@
-//! `ridm key list | rotate` and `ridm master-key status | rotate`.
+//! `ridm key list | rotate` and `ridm master-key status | rotate | new-generation`.
 //!
 //! The two are different keys: a tenant's signing keys mint tokens and rotate
 //! per tenant with an overlap, while the master key encrypts secrets at rest
@@ -99,10 +99,24 @@ pub async fn master(ctx: &mut Ctx, command: &MasterKeyCommand) -> Result<()> {
                 .unwrap_or(0);
             if failed > 0 {
                 return Err(CliError::failed(format!(
-                    "{failed} row(s) could not be re-encrypted; check MASTER_KEY_PREVIOUS"
+                    "{failed} row(s) could not be re-encrypted; check MASTER_KEY_PREVIOUS and \
+                     KEY_WRAPPER_PREVIOUS"
                 )));
             }
             println!("Master key rotation complete.");
+            Ok(())
+        }
+        MasterKeyCommand::NewGeneration => {
+            let api = ctx.api().await?;
+            let created = api.post_empty("/admin/master-key/generations").await?;
+            if json_out {
+                return output::json(&created);
+            }
+            println!(
+                "created master-key generation {}; run `ridm master-key rotate` to move \
+                 existing secrets onto it",
+                output::field(&created, "version")
+            );
             Ok(())
         }
     }
@@ -139,5 +153,9 @@ fn render_status(status: &Value) {
         "current generation {}",
         output::field(status, "current_version")
     );
+    match status.get("key_wrapper").and_then(Value::as_str) {
+        Some(backend) => println!("key custody: {backend}"),
+        None => println!("key custody: environment (MASTER_KEY)"),
+    }
     println!("{} row(s) still on an older generation", pending(status));
 }

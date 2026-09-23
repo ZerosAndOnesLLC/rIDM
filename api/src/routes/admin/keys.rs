@@ -31,6 +31,7 @@ pub fn keys_router() -> OpenApiRouter<AppState> {
         .routes(routes!(revoke))
         .routes(routes!(master_status))
         .routes(routes!(master_rotate))
+        .routes(routes!(master_new_generation))
 }
 
 const P_READ: &str = "ridm:keys:read";
@@ -200,8 +201,36 @@ async fn master_status(
     }))
 }
 
+#[derive(Serialize, utoipa::ToSchema)]
+struct NewGeneration {
+    /// The generation now current on this node; the others adopt it within a
+    /// minute. Re-encrypt with `POST /admin/master-key/rotate`.
+    version: u32,
+}
+
+/// Have the key custody backend (`KEY_WRAPPER`) wrap a new master-key
+/// generation and make it current. 409 when the master key comes from the
+/// environment, whose generations are rolled out by changing `MASTER_KEY`.
+#[utoipa::path(post, path = "/admin/master-key/generations", tag = "keys", responses((status = 201, body = NewGeneration), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 409, description = "No key custody backend is configured", body = crate::error::Problem)), security(("bearer" = [])))]
+async fn master_new_generation(
+    State(state): State<AppState>,
+    admin: AdminCtx,
+) -> AppResult<(StatusCode, Json<NewGeneration>)> {
+    admin.require_global(P_WRITE)?;
+    if state.master_keys.primary_backend().is_none() {
+        return Err(AppError::Conflict(
+            "the master key comes from the environment: roll a new generation out with \
+             MASTER_KEY and MASTER_KEY_VERSION, or configure KEY_WRAPPER"
+                .into(),
+        ));
+    }
+    let version = master_key::new_generation(&state).await?;
+    Ok((StatusCode::CREATED, Json(NewGeneration { version })))
+}
+
 /// Re-encrypt every row still under an older generation with the current
-/// master key (the new key itself comes from the environment).
+/// master key (the new key itself comes from the environment or the key
+/// custody backend).
 #[utoipa::path(post, path = "/admin/master-key/rotate", tag = "keys", responses((status = 200, body = RotationReport), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn master_rotate(
     State(state): State<AppState>,

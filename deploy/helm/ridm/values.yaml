@@ -88,6 +88,29 @@ masterKey:
     name: ""
     key: MASTER_KEY_PREVIOUS
 
+# Key custody: an HSM or a key-management service holds the master key
+# instead (see the docs, "Key custody"). masterKey may then be left empty on a
+# new deployment, or kept while existing secrets are rotated off it.
+keyCustody:
+  # "", pkcs11, aws-kms, vault, gcp-kms or azure-key-vault. Empty: the key
+  # comes from masterKey.
+  wrapper: ""
+  # Backends still holding older generations, comma-separated, while rows
+  # move off them (KEY_WRAPPER_PREVIOUS).
+  previous: ""
+  # The backend's non-secret settings as environment variables, e.g.
+  # AWS_KMS_KEY_ID, VAULT_ADDR, VAULT_TRANSIT_KEY, VAULT_KUBERNETES_ROLE,
+  # GCP_KMS_KEY, AZURE_KEY_VAULT_URL, AZURE_KEY_VAULT_KEY, PKCS11_MODULE.
+  # Workload identity (IRSA / EKS Pod Identity, GKE and Azure Workload
+  # Identity) comes from serviceAccount.annotations and podLabels.
+  env: {}
+  # A Secret of yours whose keys are the secret settings (VAULT_TOKEN,
+  # PKCS11_PIN, AZURE_CLIENT_SECRET), passed to the pods as environment.
+  existingSecret: ""
+  # Vault's Kubernetes auth method (VAULT_KUBERNETES_ROLE) logs in with the
+  # pod's service-account token, which the chart otherwise does not mount.
+  mountServiceAccountToken: false
+
 # Deployment-wide mail defaults; tenants may configure their own.
 smtp:
   host: ""

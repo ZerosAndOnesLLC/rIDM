@@ -229,29 +229,70 @@ function MasterKey() {
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["master-key"] }),
   });
+  const generate = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await client.POST("/admin/master-key/generations");
+      if (error) throw new Error(error.detail ?? error.title);
+      return data;
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["master-key"] }),
+  });
+  const wrapper = status.data?.key_wrapper ?? null;
+  const editable = can("ridm:keys:write");
   return (
     <Card
       title="Master key"
       className="mt-6"
       actions={
-        can("ridm:keys:write") ? (
-          <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={rotate.isPending || (status.data?.pending_rows ?? 0) === 0} onClick={() => rotate.mutate()}>
-            Re-encrypt pending rows
-          </Button>
+        editable ? (
+          <span className="flex flex-wrap gap-1.5">
+            {wrapper && (
+              <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={generate.isPending} onClick={() => generate.mutate()}>
+                New generation
+              </Button>
+            )}
+            <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={rotate.isPending || (status.data?.pending_rows ?? 0) === 0} onClick={() => rotate.mutate()}>
+              Re-encrypt pending rows
+            </Button>
+          </span>
         ) : undefined
       }
     >
-      <p className="mb-3 text-[0.8125rem] text-muted">Every secret at rest is encrypted under the server&apos;s master key. After rolling a new generation out (MASTER_KEY_VERSION), re-encrypt what is still under the old one.</p>
+      <p className="mb-3 text-[0.8125rem] text-muted">
+        {wrapper
+          ? `Every secret at rest is encrypted under a data key that ${wrapper} holds wrapped; this server unwraps it at start-up. After a new generation, re-encrypt what is still under an older one.`
+          : "Every secret at rest is encrypted under the server's master key. After rolling a new generation out (MASTER_KEY_VERSION), re-encrypt what is still under the old one."}
+      </p>
       {status.isPending ? (
         <Spinner label="Loading…" />
       ) : status.isError ? (
         <ErrorLine error={status.error} />
       ) : (
-        <dl>
-          <Row label="Current generation">{status.data.current_version}</Row>
-          <Row label="Generations in use">{status.data.known_versions.join(", ") || "—"}</Row>
-          <Row label="Rows under older generations">{status.data.pending_rows === 0 ? <Badge tone="ok">None</Badge> : <Badge tone="accent">{status.data.pending_rows}</Badge>}</Row>
-        </dl>
+        <>
+          <dl>
+            <Row label="Key custody">{wrapper ? <Badge tone="ok">{wrapper}</Badge> : "Environment (MASTER_KEY)"}</Row>
+            <Row label="Current generation">{status.data.current_version}</Row>
+            <Row label="Rows under older generations">{status.data.pending_rows === 0 ? <Badge tone="ok">None</Badge> : <Badge tone="accent">{status.data.pending_rows}</Badge>}</Row>
+          </dl>
+          {status.data.generations.length > 0 && (
+            <ul aria-label="Master-key generations" className="mt-3 divide-y divide-line rounded-[var(--radius)] border border-line text-[0.8125rem]">
+              {status.data.generations.map((g) => (
+                <li key={g.version} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+                  <span className="font-medium text-ink">Generation {g.version}</span>
+                  <Badge tone={g.version === status.data.current_version ? "ok" : "neutral"}>{g.backend === "env" ? "environment" : g.backend}</Badge>
+                  {!g.loaded && <Badge tone="danger">not readable on this server</Badge>}
+                  {g.key_ref && <code className="min-w-0 break-all font-mono text-[0.75rem] text-muted">{g.key_ref}</code>}
+                  {g.created_at && <span className="text-muted">{formatDate("en", g.created_at)}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+      {generate.data && (
+        <p role="status" className="mt-3 text-[0.8125rem] text-muted">
+          Generation {generate.data.version} created and current; re-encrypt the pending rows to move them onto it.
+        </p>
       )}
       {rotate.data && (
         <p role="status" className="mt-3 text-[0.8125rem] text-muted">
@@ -259,6 +300,7 @@ function MasterKey() {
           {Object.keys(rotate.data.failed).length ? `; ${Object.values(rotate.data.failed).reduce((a, b) => a + b, 0)} failed` : ""}.
         </p>
       )}
+      <ErrorLine error={generate.error} />
       <ErrorLine error={rotate.error} />
     </Card>
   );

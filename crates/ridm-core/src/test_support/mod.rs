@@ -9,6 +9,7 @@ mod captcha;
 mod email;
 mod events;
 mod key_encryptor;
+mod key_wrapper;
 mod sms;
 
 pub use breach::*;
@@ -16,4 +17,5 @@ pub use captcha::*;
 pub use email::*;
 pub use events::*;
 pub use key_encryptor::*;
+pub use key_wrapper::*;
 pub use sms::*;

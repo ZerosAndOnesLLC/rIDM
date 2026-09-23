@@ -19,7 +19,7 @@ Conventions used below:
 | `DATABASE_URL` | Postgres URL | Postgres 16+ connection string. Use a non-superuser role with DML privileges only: superusers bypass row level security, which backs tenant isolation, and a table owner can switch it off. See [Postgres and Valkey](../deploy/postgres-valkey.md). |
 | `REDIS_URL` | URL | Valkey (or Redis) connection: `redis://host:6379`, `rediss://` for TLS, `redis+cluster://h1:7000,h2:7001`, or `redis+sentinel://s1:26379,s2:26379/<master name>`. Credentials go before an `@` and apply to every host. |
 | `PUBLIC_URL` | `http`/`https` URL | The externally visible base URL, e.g. `https://id.example.com`. Every tenant's issuer is `{PUBLIC_URL}/t/{slug}` (a tenant with a custom domain uses `https://{domain}` instead). Changing it changes every issuer. |
-| `MASTER_KEY` or `MASTER_KEY_FILE` | 32 bytes | The master key that encrypts secrets at rest (signing keys, identity providers' client secrets, SMTP and SMS credentials, webhook secrets, second-factor secrets). `MASTER_KEY` is hex or base64 (standard or URL-safe); `MASTER_KEY_FILE` names a file holding the raw 32 bytes or the same text encodings. `MASTER_KEY` wins when both are set. Generate with `openssl rand -hex 32`. See [Signing keys and the master key](../concepts/keys.md). |
+| `MASTER_KEY` or `MASTER_KEY_FILE` | 32 bytes | The master key that encrypts secrets at rest (signing keys, identity providers' client secrets, SMTP and SMS credentials, webhook secrets, second-factor secrets). `MASTER_KEY` is hex or base64 (standard or URL-safe); `MASTER_KEY_FILE` names a file holding the raw 32 bytes or the same text encodings. `MASTER_KEY` wins when both are set. Generate with `openssl rand -hex 32`. See [Signing keys and the master key](../concepts/keys.md). Optional when `KEY_WRAPPER` is set. |
 
 ## Server
 
@@ -46,6 +46,8 @@ Conventions used below:
 |----------|------|---------|---------|
 | `MASTER_KEY_VERSION` | integer ≥ 1 | `1` | Generation number of the current master key, stored with every ciphertext. Bump it when rotating the master key. |
 | `MASTER_KEY_PREVIOUS` | `version=key` list | unset | Older generations still needed to decrypt rows not yet re-encrypted: `1=<hex>,2=<hex>`. Every version must be lower than `MASTER_KEY_VERSION`. Remove an entry once `ridm-api rotate-master-key --status` (or `GET /admin/master-key`) shows nothing left under it. |
+| `KEY_WRAPPER` | `pkcs11`, `aws-kms`, `vault`, `gcp-kms` or `azure-key-vault` | unset | An HSM or KMS holds the master-key generations instead of the environment; each backend has settings of its own. See [Key custody: HSM and KMS](../deploy/key-custody.md). |
+| `KEY_WRAPPER_PREVIOUS` | backend list | unset | Further backends still holding older generations, comma-separated, while rows move off them. |
 | `COOKIE_SECURE` | boolean | `true` | Set the `Secure` attribute on the session and trusted-device cookies and give them the `__Host-` prefix (`__Host-ridm_session_{slug}`, `__Host-ridm_device_{slug}`; without it `ridm_session_{slug}`, `ridm_device_{slug}`). Only turn off for plain-HTTP local development. See [TLS and reverse proxies](../deploy/tls-and-proxies.md#cookies). |
 | `TRUSTED_PROXIES` | CIDR/IP list | empty | Comma-separated networks whose `X-Forwarded-For`, `Forwarded` and `X-Forwarded-Host` headers are believed. The client address is the TCP peer unless the peer is in this list. Empty means headers are never trusted. See [TLS and reverse proxies](../deploy/tls-and-proxies.md). |
 | `OUTBOUND_ALLOW_NETWORKS` | CIDR/IP list | empty | Comma-separated private networks that requests to tenant-chosen URLs (webhooks, back-channel logout, client `jwks_uri`, identity provider endpoints, tenant email/SMS gateways and SMTP hosts, CAPTCHA) may reach, for applications on an internal network. Addresses inside them count as public, whether given literally or resolved. Empty means public addresses only (plus `localhost` for development). See [the outbound request policy](../admin/security-controls.md#outbound-request-policy). |
@@ -153,13 +155,13 @@ A development convenience: at start-up, create the `master` tenant's first globa
 
 ## Server subcommands
 
-The `ridm-api` binary runs the server by default and has these subcommands. All except `openapi` and `--healthcheck` load the full configuration above.
+The `ridm-api` binary runs the server by default and has these subcommands. All except `openapi` and `--healthcheck` load the full configuration above; `migrate` leaves out the master key and key custody settings, which migrations never need.
 
 | Command | Purpose |
 |---------|---------|
 | `ridm-api migrate` | Apply pending migrations, then exit. Run it as the schema-owner role. |
 | `ridm-api bootstrap [--email E] [--username U] [--password-stdin] [--no-must-change]` | Create the first global administrator. Applies pending migrations only with `MIGRATE_ON_START=true`; otherwise pending migrations make it exit `1` and name `ridm-api migrate`. |
-| `ridm-api rotate-master-key [--status]` | Re-encrypt secrets at rest under the current `MASTER_KEY_VERSION`, or report what is left. |
+| `ridm-api rotate-master-key [--status \| --new-generation]` | Re-encrypt secrets at rest under the current generation, or report what is left. `--new-generation` first has the key custody backend wrap a new generation and makes it current. |
 | `ridm-api openapi` | Print the admin API's OpenAPI document; needs no database. |
 | `ridm-api --healthcheck` | Exit `0` when `/healthz` answers at `BIND_ADDR` (over HTTPS when `TLS_CERT` is set), `1` otherwise; the image's `HEALTHCHECK` runs it. |
 
@@ -175,7 +177,7 @@ The [`ridm` CLI](../admin/cli.md) reads these variables; each overrides the stor
 | `RIDM_PROFILE` | `--profile` | Stored profile to use. |
 | `RIDM_CONFIG` | | Path of the profile file. Default `$XDG_CONFIG_HOME/ridm/config.json`, else `~/.config/ridm/config.json` (created with mode `0600`). |
 
-`ridm bootstrap` talks to the database directly and so reads the server's own `DATABASE_URL`, `REDIS_URL` and `MASTER_KEY` (and the `BOOTSTRAP_*` variables).
+`ridm bootstrap` talks to the database directly and so reads the server's own `DATABASE_URL`, `REDIS_URL` and `MASTER_KEY` or key custody settings (and the `BOOTSTRAP_*` variables).
 
 ## UI build and development
 

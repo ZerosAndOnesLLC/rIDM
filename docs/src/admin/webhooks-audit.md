@@ -74,6 +74,7 @@ those of the event's `kind` document (next to `type`).
 | `signing_key.created` | `key_id`, `kid`, `alg` |
 | `signing_key.status_changed` | `key_id`, `kid`, `status` |
 | `master_key.rotated` | `new_version` |
+| `master_key.generation_created` | `version`, `backend` |
 | `saml_key.created` | `key_id` |
 | `saml_key.status_changed` | `key_id`, `status` (`active` or `deleted`) |
 | `webhook.created`, `webhook.updated`, `webhook.deleted`, `webhook.secret_rotated` | `webhook_id` |
@@ -87,10 +88,11 @@ those of the event's `kind` document (next to `type`).
 | `identity.linked` | `user_id`, `idp_id`, `external_subject` |
 | `identity.unlinked` | `user_id`, `idp_id` |
 
-Two of them never reach a webhook: `master_key.rotated` is a global event (it belongs to
-no tenant and is recorded in the global audit chain), and `webhook.delivery_dead` is
+Three of them never reach a webhook: `master_key.rotated` and
+`master_key.generation_created` are global events (they belong to no tenant and are
+recorded in the global audit chain), and `webhook.delivery_dead` is
 kept out of deliveries so that a failing endpoint cannot breed a new delivery for every
-dead one. Both are in the audit log.
+dead one. All three are in the audit log.
 
 ## Webhooks
 
@@ -316,7 +318,7 @@ Every event in the catalogue is appended to its tenant's chain as a row with:
 | `payload` | the event's `kind` document |
 | `prev_hash`, `hash` | the chain links, lowercase hex |
 
-Global events, today only `master_key.rotated`, form a chain of their own.
+Global events, today only `master_key.rotated` and `master_key.generation_created`, form a chain of their own.
 
 ### Querying
 

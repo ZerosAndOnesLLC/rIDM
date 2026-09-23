@@ -19,6 +19,10 @@ test.describe("operations", () => {
     await expect(page.getByRole("heading", { name: "Signing keys", level: 1 })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("list", { name: "Key timeline" })).toBeVisible();
     await expect(page.getByText("Master key", { exact: true })).toBeVisible();
+    // The suite's server keeps its master key in the environment.
+    await expect(page.getByText("Environment (MASTER_KEY)", { exact: true })).toBeVisible();
+    await expect(page.getByRole("list", { name: "Master-key generations" }).getByText("environment", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "New generation" })).toHaveCount(0);
     // Every step targets the key this test creates, by kid: the page orders
     // keys by `not_before`, so "the first active card" can be another key,
     // and revoking the key that signed this session's own token ends it.

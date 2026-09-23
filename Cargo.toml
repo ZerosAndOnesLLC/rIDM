@@ -93,6 +93,13 @@ ldap3 = { version = "=0.12.1", default-features = false, features = ["tls-rustls
 # Kerberos ASN.1 messages and the RFC 3962 AES enctypes, in pure Rust, so the
 # static binaries need no system GSSAPI.
 picky-krb = "=0.12.4"
+# Key custody (the `hsm-pkcs11` and `kms-aws` features of ridm-api): the master
+# key's data keys wrapped by an HSM or AWS KMS. Off in the default build. The
+# AWS crates' default `rustls` feature is the legacy hyper 0.14 / ring stack;
+# `default-https-client` is the current one on aws-lc-rs.
+cryptoki = "=0.12.1"
+aws-config = { version = "=1.12.0", default-features = false, features = ["default-https-client", "rt-tokio", "sso", "credentials-process"] }
+aws-sdk-kms = { version = "=1.121.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
 
 # Serde / types
 serde = { version = "=1.0.229", features = ["derive"] }

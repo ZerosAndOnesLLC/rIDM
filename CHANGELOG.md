@@ -225,8 +225,35 @@ release renames that heading to the version and date.
   place of `private_key_jwt` and DPoP. `ridm-auth` gains
   `Validator::validate_with_certificate`, `Claims::x5t_s256` and
   `certificate_thumbprint`. New fuzz target `client_cert`.
+- Key custody: an HSM or a key-management service can hold the master key
+  instead of the environment. `KEY_WRAPPER` names the backend — `pkcs11` (any
+  PKCS#11 HSM, AES-GCM on the token), `aws-kms`, `vault` (Vault or OpenBao
+  Transit, with a token or the Kubernetes auth method), `gcp-kms` or
+  `azure-key-vault` (Key Vault or Managed HSM) — and makes `MASTER_KEY`
+  optional. Each master-key generation is then a random data key the backend
+  wrapped, stored wrapped in the new `master_key_generations` table and
+  unwrapped by every node at start-up, so no request calls the backend and a
+  backend outage stops only the start of new nodes. Generations from the
+  environment and from backends coexist (`KEY_WRAPPER_PREVIOUS` for a backend
+  being left), so a deployment moves onto one, off it, or between two online
+  with the existing re-encryption. Workload identity everywhere it exists:
+  IRSA / EKS Pod Identity, GKE and Azure Workload Identity, workload identity
+  federation files, Vault's Kubernetes auth (OpenShift too). New
+  `ridm-api rotate-master-key --new-generation`, `ridm master-key
+  new-generation`, `POST /admin/master-key/generations` and a **New
+  generation** button in the console, whose master-key card now shows the
+  backend and every generation; `GET /admin/master-key` gains `generations`
+  and `key_wrapper`. New global event `master_key.generation_created`. Each
+  backend is a cargo feature (`hsm-pkcs11`, `kms-aws`, `kms-vault`, `kms-gcp`,
+  `kms-azure`), off in a plain build and on in the image; the static release
+  binaries carry every one but PKCS#11. New dependencies `cryptoki` 0.12.1,
+  `aws-config` 1.12.0 and `aws-sdk-kms` 1.121.0 (Apache-2.0), optional. The
+  Helm chart gains `keyCustody`, and `masterKey` becomes optional with it.
 
 ### Changed
+
+- `ridm-api migrate` no longer reads the master key, and the Helm chart's
+  migration Job no longer receives it.
 
 - The audit export sink (`AUDIT_SINK_URL`) ships from the database instead
   of an in-memory queue. It keeps a cursor per chain and advances it only
