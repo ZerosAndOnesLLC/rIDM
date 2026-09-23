@@ -83,6 +83,12 @@ pub struct RotationReport {
 pub struct StatusReport {
     pub current_version: u32,
     pub known_versions: Vec<u32>,
+    /// Every generation: from the environment (`env`) or wrapped by a key
+    /// custody backend, and whether this node holds it.
+    pub generations: Vec<crate::key_custody::generations::GenerationInfo>,
+    /// The backend new generations are wrapped by (`KEY_WRAPPER`), if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_wrapper: Option<String>,
     /// table → (key_version → rows)
     pub rows_by_version: BTreeMap<String, BTreeMap<i32, i64>>,
 }
@@ -119,15 +125,73 @@ pub async fn status(state: &AppState) -> AppResult<StatusReport> {
         Some(v) => v,
         None => vec![state.key_encryptor.current_version()],
     };
+    let generations = state
+        .master_keys
+        .describe()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(StatusReport {
         current_version: state.key_encryptor.current_version(),
         known_versions: known,
+        generations,
+        key_wrapper: state.master_keys.primary_backend().map(str::to_string),
         rows_by_version,
     })
 }
 
+/// Have the key custody backend wrap a new generation and make it current
+/// (`rotate-master-key --new-generation`); [`rotate_all`] then moves every
+/// row onto it.
+pub async fn new_generation(state: &AppState) -> AppResult<u32> {
+    let version = state
+        .master_keys
+        .new_generation()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    state.events.publish(Event::new(
+        None,
+        Actor::System,
+        EventKind::MasterKeyGenerationCreated {
+            version,
+            backend: state
+                .master_keys
+                .primary_backend()
+                .unwrap_or_default()
+                .to_string(),
+        },
+    ));
+    Ok(version)
+}
+
+/// The highest generation any stored secret is under. A new generation must
+/// be above it: numbering one below would shadow rows still under an older
+/// key (a node started with `KEY_WRAPPER` but without the `MASTER_KEY` those
+/// rows were written with). One aggregate per table, run only when a
+/// generation is created.
+pub async fn highest_version_in_use(db: &crate::db::Db) -> Result<u32, sqlx::Error> {
+    // Table names are compile-time constants from TABLES.
+    let sql = TABLES
+        .iter()
+        .map(|t| format!("SELECT max(key_version) AS v FROM {}", t.table))
+        .collect::<Vec<_>>()
+        .join(" UNION ALL ");
+    let sql = format!("SELECT max(v) FROM ({sql}) AS versions");
+    let mut tx = db::bypass_tx(db).await?;
+    let highest: Option<i32> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql))
+        .fetch_one(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(highest.unwrap_or(0).max(0) as u32)
+}
+
 /// Re-encrypt everything not yet under the current generation.
 pub async fn rotate_all(state: &AppState) -> AppResult<RotationReport> {
+    // Adopt a generation another process created since this node started.
+    state
+        .master_keys
+        .refresh()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
     let target = state.key_encryptor.current_version();
     let mut report = RotationReport {
         target_version: target,

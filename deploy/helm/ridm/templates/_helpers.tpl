@@ -98,6 +98,12 @@ goes into the chart's own Secret under the variable's name.
 {{- end }}
 {{- end }}
 
+{{/* "true" when the master key is mounted as a file: asked for, and there is one. */}}
+{{- define "ridm.masterKeyFile" -}}
+{{- $m := .Values.masterKey -}}
+{{- if and $m.asFile (or $m.value $m.existingSecret.name) -}}true{{- end -}}
+{{- end }}
+
 {{/*
 The master key as a mounted file (masterKey.asFile): the volume, from the
 caller's Secret or `secret` (where an inline key lives).
@@ -129,8 +135,8 @@ caller's Secret or `secret` (where an inline key lives).
 {{- if not (or $v.redis.url $v.redis.existingSecret.name) -}}
 {{- fail "redis.url or redis.existingSecret.name is required" -}}
 {{- end -}}
-{{- if not (or $v.masterKey.value $v.masterKey.existingSecret.name) -}}
-{{- fail "masterKey.value or masterKey.existingSecret.name is required (openssl rand -hex 32)" -}}
+{{- if not (or $v.masterKey.value $v.masterKey.existingSecret.name $v.keyCustody.wrapper) -}}
+{{- fail "masterKey.value or masterKey.existingSecret.name is required (openssl rand -hex 32), or keyCustody.wrapper" -}}
 {{- end -}}
 {{- if and $v.migrations.enabled (not (or $v.migrations.database.url $v.migrations.database.existingSecret.name)) -}}
 {{- fail "migrations.database.url or migrations.database.existingSecret.name is required (a role that owns the schema), or set migrations.enabled=false" -}}
@@ -162,6 +168,15 @@ DB_POOL_MIN: {{ $v.database.poolMin | quote }}
 DB_POOL_MAX: {{ $v.database.poolMax | quote }}
 REDIS_POOL_MAX: {{ $v.redis.poolMax | quote }}
 MASTER_KEY_VERSION: {{ $v.masterKey.version | quote }}
+{{- with $v.keyCustody.wrapper }}
+KEY_WRAPPER: {{ . | quote }}
+{{- end }}
+{{- with $v.keyCustody.previous }}
+KEY_WRAPPER_PREVIOUS: {{ . | quote }}
+{{- end }}
+{{- range $k, $val := $v.keyCustody.env }}
+{{ $k }}: {{ $val | toString | quote }}
+{{- end }}
 {{- if $v.smtp.host }}
 SMTP_HOST: {{ $v.smtp.host | quote }}
 SMTP_PORT: {{ $v.smtp.port | quote }}

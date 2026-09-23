@@ -26,6 +26,9 @@ pub struct AppState {
     pub events: EventBus,
     pub hasher: Arc<dyn PasswordHasher>,
     pub key_encryptor: Arc<dyn KeyEncryptor>,
+    /// The encryptor behind `key_encryptor`, for what the trait does not
+    /// cover: attaching key custody, creating a generation, status.
+    pub master_keys: Arc<crate::key_custody::EnvelopeEncryptor>,
     /// Builds per-tenant email/SMS senders; tests swap in mocks.
     pub senders: Arc<dyn crate::messaging::SenderFactory>,
     /// Breached-password lookups; `None` when the deployment switched them off.
@@ -46,8 +49,8 @@ impl AppState {
         crate::util::outbound::allow_networks(&config.outbound_allow_networks);
         let cache = CacheLayer::new(redis.clone());
         let hasher = Arc::new(crate::services::password::Argon2Hasher::new(config.argon2));
-        let key_encryptor =
-            Arc::new(crate::services::key_encryptor::MasterKeyEncryptor::from_config(&config));
+        let master_keys = Arc::new(crate::key_custody::EnvelopeEncryptor::from_config(&config));
+        let key_encryptor: Arc<dyn KeyEncryptor> = master_keys.clone();
         let breach = config.breach_check_url.clone().map(|url| {
             Arc::new(crate::services::breach::HibpChecker::new(url))
                 as Arc<dyn ridm_core::providers::BreachChecker>
@@ -83,6 +86,7 @@ impl AppState {
             events: EventBus::default(),
             hasher,
             key_encryptor,
+            master_keys,
             senders: Arc::new(crate::messaging::DefaultSenderFactory),
             breach,
             audit_sink,

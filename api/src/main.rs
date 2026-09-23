@@ -107,6 +107,7 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     let bootstrap = config.bootstrap.clone();
     let mut state = AppState::new(config, db, cache);
     state.db_read = db_read;
+    let custody = ridm_api::key_custody::attach(&state).await?;
     if schema_current {
         check_master_key(&state).await?;
     }
@@ -114,8 +115,10 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     ridm_api::services::startup::prepare(&state, bootstrap).await?;
     let _invalidation_listener = state.cache.spawn_invalidation_listener();
     let _audit_writer = ridm_api::services::audit::spawn_writer(state.clone());
+    ridm_api::key_custody::record_created(&state, &custody);
     let _webhook_dispatcher = ridm_api::services::webhooks::spawn_dispatcher(state.clone());
     let _jobs = ridm_api::jobs::spawn_all(state.clone());
+    let _key_refresh = ridm_api::key_custody::spawn_refresh(state.clone());
     let bind_addr = state.config.bind_addr;
     let tls = state.config.tls.clone();
     let mtls = state.config.mtls.clone();
@@ -348,6 +351,14 @@ async fn bootstrap_command(args: &[String]) -> i32 {
     let sample_client = env_bootstrap.as_ref().is_some_and(|b| b.sample_client);
     let state = AppState::new(config, db, cache);
     let audit = ridm_api::services::audit::CommandRecorder::start(&state);
+    match ridm_api::key_custody::attach(&state).await {
+        Ok(report) => ridm_api::key_custody::record_created(&state, &report),
+        Err(err) => {
+            eprintln!("key custody: {err}");
+            audit.flush(&state).await;
+            return 1;
+        }
+    }
     let code = run_bootstrap(
         &state,
         sample_client,
@@ -437,7 +448,7 @@ fn prompt_password() -> Option<zeroize::Zeroizing<String>> {
 /// that owns the schema (the migrator), e.g. from a compose one-shot service or
 /// a Kubernetes job, so the API itself can run as a DML-only role.
 async fn migrate_command() -> i32 {
-    let config = match Config::from_env() {
+    let config = match Config::from_env_without_keys() {
         Ok(c) => c,
         Err(err) => {
             eprintln!("configuration error: {err}");
@@ -465,10 +476,24 @@ async fn migrate_command() -> i32 {
     }
 }
 
-/// `ridm-api rotate-master-key [--status]`: re-encrypt secrets at rest under the
-/// current `MASTER_KEY_VERSION` (see README, "Master key rotation").
+/// `ridm-api rotate-master-key [--status | --new-generation]`: re-encrypt
+/// secrets at rest under the current generation (see README, "Master key
+/// rotation"). `--new-generation` first has the key custody backend wrap a
+/// new data key and makes it current.
 async fn rotate_master_key_command(args: &[String]) -> i32 {
     let status_only = args.iter().any(|a| a == "--status");
+    let new_generation = args.iter().any(|a| a == "--new-generation");
+    if let Some(unknown) = args
+        .iter()
+        .find(|a| !matches!(a.as_str(), "--status" | "--new-generation"))
+    {
+        eprintln!("rotate-master-key: unknown argument `{unknown}`");
+        return 2;
+    }
+    if status_only && new_generation {
+        eprintln!("rotate-master-key: --status and --new-generation exclude each other");
+        return 2;
+    }
     let config = match Config::from_env() {
         Ok(c) => c,
         Err(err) => {
@@ -494,6 +519,24 @@ async fn rotate_master_key_command(args: &[String]) -> i32 {
     };
     let state = AppState::new(config, db, cache);
     let audit = ridm_api::services::audit::CommandRecorder::start(&state);
+    match ridm_api::key_custody::attach(&state).await {
+        Ok(report) => ridm_api::key_custody::record_created(&state, &report),
+        Err(err) => {
+            eprintln!("key custody: {err}");
+            audit.flush(&state).await;
+            return 1;
+        }
+    }
+    if new_generation {
+        match ridm_api::services::master_key::new_generation(&state).await {
+            Ok(v) => println!("created master-key generation {v}"),
+            Err(err) => {
+                eprintln!("new generation: {err}");
+                audit.flush(&state).await;
+                return 1;
+            }
+        }
+    }
     let code = run_master_key_rotation(&state, status_only).await;
     audit.flush(&state).await;
     code
@@ -529,7 +572,10 @@ async fn run_master_key_rotation(state: &AppState, status_only: bool) -> i32 {
                 serde_json::to_string_pretty(&report).unwrap_or_default()
             );
             if report.failed.values().sum::<u64>() > 0 {
-                eprintln!("some rows could not be re-encrypted; check MASTER_KEY_PREVIOUS");
+                eprintln!(
+                    "some rows could not be re-encrypted; check MASTER_KEY_PREVIOUS and \
+                     KEY_WRAPPER_PREVIOUS"
+                );
                 1
             } else {
                 0

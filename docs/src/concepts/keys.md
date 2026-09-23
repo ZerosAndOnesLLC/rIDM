@@ -130,6 +130,15 @@ master key rotates without downtime:
 3. Once nothing remains on the old generation, remove it from
    `MASTER_KEY_PREVIOUS`.
 
-See [Rotating keys](../admin/key-rotation.md). Keeping the master key in a
-cloud key management service or an HSM is planned, not present; today the key
-comes from the environment or a file.
+See [Rotating keys](../admin/key-rotation.md).
+
+### Key custody
+
+Instead of the environment, an HSM (PKCS#11) or a key-management service (AWS
+KMS, Vault / OpenBao Transit, Google Cloud KMS, Azure Key Vault) can hold the
+master key (`KEY_WRAPPER`). Each generation is then a random data key the
+backend wrapped, stored wrapped in `master_key_generations`; nodes unwrap it
+at start-up, so the backend is never on a request's path, and neither the
+configuration nor a backup can decrypt anything without it. Generations from
+the environment and from a backend coexist, which is how a deployment moves
+onto one online. See [Key custody: HSM and KMS](../deploy/key-custody.md).

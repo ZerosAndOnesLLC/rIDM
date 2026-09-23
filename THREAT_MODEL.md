@@ -162,8 +162,10 @@ but an edge proxy or WAF is what absorbs a flood.
 
 | Threat | Mitigation |
 |---|---|
-| Database copy yields keys and secrets | Envelope encryption with per-row AAD for signing keys, credentials, identity provider secrets, provider settings (SMTP, SMS, CAPTCHA) and webhook secrets |
-| Master key compromise | Versioned keys with an online rotation path that re-encrypts every table |
+| Database copy yields keys and secrets | Envelope encryption with per-row AAD for signing keys, SAML signing keys, credentials, identity provider secrets, provider settings (SMTP, SMS, CAPTCHA) and webhook secrets |
+| Master key compromise | Versioned keys with an online rotation path that re-encrypts every table; optionally an HSM or KMS holds the master key (`KEY_WRAPPER`), so neither the configuration nor a backup yields it: only wrapped data keys are stored, and each is bound to its generation where the backend takes additional data |
+| A key custody backend answers with the wrong key (a restore pointed at another KMS key, an impostor endpoint) | A new generation is unwrapped and compared before anything is encrypted under it; a node whose current generation will not unwrap refuses to start; a stored Key Vault key id or Transit reference is checked against the configured vault before a token is sent; redirects are never followed |
+| Key custody backend unavailable | Data keys are unwrapped once per node start and held in memory, so running nodes keep serving; only new nodes wait |
 | Secrets leaking through exports or APIs | Tenant export omits secrets and says so in its report; secrets are reveal-once and never re-readable |
 | Secrets in logs | Secret-bearing fields are excluded from serialisation; tokens are never logged |
 
@@ -207,9 +209,10 @@ guarantees above.
    `TLS_CERT` and `TLS_KEY` are set; otherwise a reverse proxy must. It sets HSTS when
    its public URL is https and marks cookies `Secure` with `COOKIE_SECURE`, but it
    cannot tell whether the path between a proxy and itself is protected.
-2. **`MASTER_KEY` is supplied by the environment and kept out of the repository.** Its
-   confidentiality is the whole basis of encryption at rest. Rotate it with the
-   documented procedure.
+2. **`MASTER_KEY` is supplied by the environment and kept out of the repository**, or
+   an HSM or KMS holds it (`KEY_WRAPPER`) and only rIDM's identity may use that key.
+   Its confidentiality is the whole basis of encryption at rest; with custody the data
+   keys still live in each node's memory. Rotate it with the documented procedure.
 3. **Postgres and Valkey are not reachable from the internet.** rIDM authenticates to
    them; it cannot stop anyone else who can reach them.
 4. **`TRUSTED_PROXIES` matches reality.** Set it too wide and a caller can forge their

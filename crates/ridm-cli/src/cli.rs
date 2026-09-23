@@ -306,6 +306,9 @@ pub enum MasterKeyCommand {
         #[arg(short = 'y', long)]
         yes: bool,
     },
+    /// Have the key custody backend (`KEY_WRAPPER`) wrap a new generation
+    /// and make it current; `rotate` then moves every secret onto it.
+    NewGeneration,
 }
 
 #[derive(Debug, Subcommand)]

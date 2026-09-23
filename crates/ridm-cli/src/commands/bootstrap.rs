@@ -52,6 +52,14 @@ pub async fn run(args: &BootstrapArgs) -> Result<()> {
 
     // The admin and the token are recorded in the audit log like any other.
     let audit = audit::CommandRecorder::start(&state);
+    let custody = match ridm_api::key_custody::attach(&state).await {
+        Ok(report) => report,
+        Err(e) => {
+            audit.flush(&state).await;
+            return Err(CliError::failed(format!("key custody: {e}")));
+        }
+    };
+    ridm_api::key_custody::record_created(&state, &custody);
     let result = act(args, &state, env, username).await;
     if audit.flush(&state).await > 0 {
         eprintln!("warning: not every event of this run could be written to the audit log");

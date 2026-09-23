@@ -137,19 +137,23 @@ the row it belongs to, and stored with the *generation* (key version) that seale
 node knows its current key (`MASTER_KEY` or `MASTER_KEY_FILE`, generation
 `MASTER_KEY_VERSION`) and, optionally, older generations (`MASTER_KEY_PREVIOUS`). New
 writes always use the current generation; reads use whichever generation the row
-records.
+records. With a [key custody backend](../deploy/key-custody.md) (`KEY_WRAPPER`) the
+generations are data keys an HSM or KMS wrapped instead, made with
+`new-generation` ([below](#with-a-key-custody-backend)); the rest of this section is
+the same for both.
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `MASTER_KEY` | required, unless `MASTER_KEY_FILE` is set | 32 bytes, hex or base64. Generate with `openssl rand -hex 32` |
+| `MASTER_KEY` | required, unless `MASTER_KEY_FILE` or `KEY_WRAPPER` is set | 32 bytes, hex or base64. Generate with `openssl rand -hex 32` |
 | `MASTER_KEY_FILE` | unset | read the key from a file (a mounted secret) instead |
 | `MASTER_KEY_VERSION` | `1` | the current key's generation, at least 1 |
 | `MASTER_KEY_PREVIOUS` | empty | older keys as `version=key` pairs, comma-separated, e.g. `1=9f86…,2=4e07…`; every version must be lower than `MASTER_KEY_VERSION` |
 
-Re-encryption covers five columns: `signing_keys.private_key_enc`,
+Re-encryption covers six columns: `signing_keys.private_key_enc`,
 `credentials.data_enc` (TOTP secrets, passkeys, recovery codes),
 `tenant_provider_settings.config_enc` (SMTP, SMS and CAPTCHA settings),
-`identity_providers.client_secret_enc` and `webhooks.secret_enc`. Client secrets,
+`identity_providers.client_secret_enc` (OIDC client secrets, LDAP bind passwords),
+`webhooks.secret_enc` and `saml_signing_keys.private_key_enc`. Client secrets,
 personal access tokens and provisioning tokens are stored as hashes and are not
 involved.
 
@@ -197,6 +201,22 @@ involved.
 
 5. **Remove the old key** from `MASTER_KEY_PREVIOUS` on every node and restart.
 
+### With a key custody backend
+
+There is no key to generate or roll out: the backend wraps a new data key.
+
+```bash
+ridm master-key new-generation     # POST /admin/master-key/generations
+ridm master-key rotate
+```
+
+or `ridm-api rotate-master-key --new-generation`, which creates the generation and
+re-encrypts in one run, or **New generation** then **Re-encrypt pending rows** on the
+console. The creating node switches at once and the others within a minute, so the
+rollout window below does not apply; a pass run before every node has switched simply
+leaves a few rows for the next one. Creating a generation is audited as
+`master_key.generation_created`.
+
 Re-encryption runs online, in batches of 200 rows per table. Each row is rewritten only
 if its generation has not changed since it was read, so it is safe alongside live
 traffic and alongside a second rotation run. The report lists rows rewritten and rows
@@ -222,4 +242,5 @@ configuration error; `ridm master-key rotate` exits 1 when rows failed.
   with its own backup, separate from database backups.
 - Decrypted provider settings are cached in each node's memory for up to a minute; this
   does not affect rotation, which reads the stored rows.
-- Keeping the master key in an HSM or cloud KMS is planned (Phase 13), not present.
+- To keep the master key in an HSM or a cloud KMS instead of the environment, see
+  [Key custody: HSM and KMS](../deploy/key-custody.md).

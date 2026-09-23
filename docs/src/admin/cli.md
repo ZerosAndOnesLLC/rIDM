@@ -193,8 +193,9 @@ otherwise `diff --exit-code` exits `3` when the plan is not empty. The document 
 | `ridm key rotate` | — | `POST /admin/tenants/{slug}/keys/rotate`: a new key with the tenant's default algorithm, active at once |
 | `ridm master-key status` | — | `GET /admin/master-key`: current generation and rows still under older ones |
 | `ridm master-key rotate` | `-y, --yes` | `POST /admin/master-key/rotate`: re-encrypt every secret at rest under the current generation |
+| `ridm master-key new-generation` | — | `POST /admin/master-key/generations`: have the [key custody backend](../deploy/key-custody.md) wrap a new generation and make it current; refused when the master key comes from the environment |
 
-Both master-key commands need a global administrator. See
+The master-key commands need a global administrator. See
 [Rotating keys](key-rotation.md).
 
 ### audit

@@ -106,12 +106,16 @@ pub struct Config {
     /// when `UI_URL` is the API's own origin.
     pub embedded_ui: bool,
     /// 32-byte key that encrypts secrets at rest (current generation).
-    pub master_key: SecretBytes,
+    /// Optional with a key custody backend (`KEY_WRAPPER`), which then
+    /// supplies the current generation; kept while rows are rotated off it.
+    pub master_key: Option<SecretBytes>,
     /// Generation number of `master_key`; stored with every ciphertext.
     pub master_key_version: u32,
     /// Older generations still needed to decrypt rows not yet re-encrypted
     /// (`MASTER_KEY_PREVIOUS="1=<hex>,2=<hex>"`).
     pub master_key_previous: Vec<(u32, SecretBytes)>,
+    /// An HSM or KMS holding the master-key generations (`KEY_WRAPPER`).
+    pub key_custody: crate::key_custody::KeyCustodyConfig,
     /// Socket address the HTTP(S) listener binds to.
     pub bind_addr: SocketAddr,
     pub log_format: LogFormat,
@@ -293,6 +297,17 @@ macro_rules! required_secret {
 impl Config {
     /// Load configuration from the process environment.
     pub fn from_env() -> Result<Self, ConfigError> {
+        Self::load(true)
+    }
+
+    /// The configuration without the master key or key custody settings,
+    /// for `ridm-api migrate`: migrations never touch an encrypted value, and
+    /// the job that runs them should hold no key and need no KMS credentials.
+    pub fn from_env_without_keys() -> Result<Self, ConfigError> {
+        Self::load(false)
+    }
+
+    fn load(keys: bool) -> Result<Self, ConfigError> {
         let database_url = required_secret!("DATABASE_URL")?;
         let database_read_url = secret!("DATABASE_READ_URL")?;
         let redis_url = required_secret!("REDIS_URL")?;
@@ -308,7 +323,25 @@ impl Config {
             Some(v) => parse("UI_URL", v, |v| Url::parse(&v).map_err(|e| e.to_string()))?,
             None => public_url.clone(),
         };
-        let master_key = load_master_key()?;
+        let key_custody = if keys {
+            crate::key_custody::KeyCustodyConfig::from_env()?
+        } else {
+            Default::default()
+        };
+        let master_key = match keys.then(load_master_key) {
+            None => None,
+            Some(Ok(k)) => Some(k),
+            Some(Err(ConfigError::Missing(_))) if key_custody.wrapper.is_some() => None,
+            Some(Err(e)) => return Err(e),
+        };
+        if keys && master_key.is_none() && optional("MASTER_KEY_PREVIOUS").is_some() {
+            return Err(ConfigError::Invalid {
+                name: "MASTER_KEY_PREVIOUS",
+                reason: "needs MASTER_KEY (keep it set until `rotate-master-key --status` shows \
+                         no rows left on the environment's generations)"
+                    .into(),
+            });
+        }
         let master_key_version = parse_u32("MASTER_KEY_VERSION", 1)?;
         if master_key_version == 0 {
             return Err(ConfigError::Invalid {
@@ -318,7 +351,9 @@ impl Config {
         }
         let master_key_previous = parse(
             "MASTER_KEY_PREVIOUS",
-            optional("MASTER_KEY_PREVIOUS").unwrap_or_default(),
+            optional("MASTER_KEY_PREVIOUS")
+                .filter(|_| keys)
+                .unwrap_or_default(),
             |v| -> Result<Vec<(u32, SecretBytes)>, String> {
                 v.split(',')
                     .map(str::trim)
@@ -532,6 +567,7 @@ impl Config {
             master_key,
             master_key_version,
             master_key_previous,
+            key_custody,
             bind_addr,
             log_format,
             docs_enabled,
@@ -681,15 +717,18 @@ fn mtls_config(tls: Option<&TlsConfig>) -> Result<MtlsConfig, ConfigError> {
     Ok(mtls)
 }
 
-fn optional(name: &'static str) -> Option<String> {
+pub(crate) fn optional(name: &'static str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.trim().is_empty())
 }
 
-fn required(name: &'static str) -> Result<String, ConfigError> {
+pub(crate) fn required(name: &'static str) -> Result<String, ConfigError> {
     optional(name).ok_or(ConfigError::Missing(name))
 }
 
-fn secret(name: &'static str, file_var: &'static str) -> Result<Option<String>, ConfigError> {
+pub(crate) fn secret(
+    name: &'static str,
+    file_var: &'static str,
+) -> Result<Option<String>, ConfigError> {
     if let Some(v) = optional(name) {
         return Ok(Some(v));
     }
@@ -714,7 +753,7 @@ fn read_secret_file(file_var: &'static str, path: PathBuf) -> Result<Option<Stri
     Ok((!value.trim().is_empty()).then(|| value.to_string()))
 }
 
-fn parse<T, E: ToString>(
+pub(crate) fn parse<T, E: ToString>(
     name: &'static str,
     raw: String,
     f: impl FnOnce(String) -> Result<T, E>,
@@ -755,7 +794,7 @@ pub fn page_url(base: &Url, page: &str, params: &[(&str, &str)]) -> String {
     u.to_string()
 }
 
-fn parse_bool(name: &'static str, default: bool) -> Result<bool, ConfigError> {
+pub(crate) fn parse_bool(name: &'static str, default: bool) -> Result<bool, ConfigError> {
     match optional(name) {
         None => Ok(default),
         Some(v) => match v.to_ascii_lowercase().as_str() {
@@ -798,7 +837,9 @@ fn load_master_key() -> Result<SecretBytes, ConfigError> {
         let trimmed = bytes.trim_ascii();
         return decode_master_key("MASTER_KEY_FILE", trimmed);
     }
-    Err(ConfigError::Missing("MASTER_KEY or MASTER_KEY_FILE"))
+    Err(ConfigError::Missing(
+        "MASTER_KEY or MASTER_KEY_FILE (or KEY_WRAPPER)",
+    ))
 }
 
 fn decode_master_key(name: &'static str, raw: &[u8]) -> Result<SecretBytes, ConfigError> {

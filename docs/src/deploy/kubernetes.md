@@ -93,8 +93,8 @@ password must be changed at first sign-in, at `https://id.example.com/console/`.
 | Piece | Behaviour |
 |-------|-----------|
 | Migrations | A `pre-install`/`pre-upgrade` hook Job runs `ridm-api migrate` as the schema owner. Its credential lives in a hook Secret deleted with the Job on success, so the pods never hold it. A failed Job stays for its logs until the next attempt. `migrations.enabled=false` leaves migrations to you |
-| Pods | Non-root (UID 65532), read-only root filesystem, no capabilities, `RuntimeDefault` seccomp, no service-account token (rIDM never calls the Kubernetes API) |
-| Master key | Mounted read-only at `/run/secrets/ridm/master-key` and read through `MASTER_KEY_FILE`, out of the process environment (`masterKey.asFile`, default on) |
+| Pods | Non-root (UID 65532), read-only root filesystem, no capabilities, `RuntimeDefault` seccomp, no service-account token (rIDM never calls the Kubernetes API; `keyCustody.mountServiceAccountToken` mounts it for Vault's Kubernetes auth method) |
+| Master key | Mounted read-only at `/run/secrets/ridm/master-key` and read through `MASTER_KEY_FILE`, out of the process environment (`masterKey.asFile`, default on). Or held by an HSM or KMS instead (`keyCustody`, below). The migration Job never receives it |
 | Probes | Startup and liveness on `/healthz`, readiness on `/readyz` (database and cache). The startup probe allows five minutes: start-up brings every tenant's built-in clients in line, which takes a while on a large database |
 | Start-up | Replicas starting together take turns at bootstrap and the built-in clients under a Postgres advisory lock |
 | Rollouts | Rolling updates with no pod unavailable; pods restart when the chart's configuration or secrets change (checksum annotations). `terminationGracePeriodSeconds` is 30, above the server's 20-second drain |
@@ -111,8 +111,9 @@ documents every value. They map onto the server's
 `uiUrl` → `UI_URL`, `embeddedUi` → `EMBEDDED_UI`, `trustedProxies` → `TRUSTED_PROXIES`,
 `cookieSecure`, `logFormat`, `logLevel` (`RUST_LOG`), `docsEnabled`, `migrateOnStart`,
 the pool sizes, `masterKey.version`/`previous` for a
-[master key rotation](../admin/key-rotation.md), `smtp.*` for the deployment's mail
-defaults. Anything else goes in `env` (plain values), `extraEnv` (full `EnvVar` entries)
+[master key rotation](../admin/key-rotation.md), `keyCustody.*` for
+[an HSM or KMS holding the master key](key-custody.md#kubernetes-and-openshift),
+`smtp.*` for the deployment's mail defaults. Anything else goes in `env` (plain values), `extraEnv` (full `EnvVar` entries)
 or `extraEnvFrom`:
 
 ```yaml

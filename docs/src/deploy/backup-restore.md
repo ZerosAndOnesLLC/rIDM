@@ -34,6 +34,10 @@ anywhere, so it exists only where you put it.
   [master-key rotation](../admin/key-rotation.md), the backups taken before it are
   encrypted under the old generation. Keep the old key, with its version number, for as
   long as you keep those backups.
+- **With a [key custody backend](key-custody.md)**, the backups hold only wrapped data
+  keys: restoring one needs the backend key that wrapped them, so keep that key (and
+  rIDM's access to it) for as long as those backups, and never schedule a KMS key for
+  deletion while a retained backup's `master_key_generations` names it.
 - **Record the generation with each backup.** `ridm-api rotate-master-key --status` (or
   `ridm master-key status`) prints how many rows each generation holds; normally that is
   the current `MASTER_KEY_VERSION` alone.

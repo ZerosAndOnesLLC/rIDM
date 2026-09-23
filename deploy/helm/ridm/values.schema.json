@@ -185,6 +185,43 @@
         }
       }
     },
+    "keyCustody": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "wrapper": {
+          "type": "string",
+          "enum": [
+            "",
+            "pkcs11",
+            "aws-kms",
+            "vault",
+            "gcp-kms",
+            "azure-key-vault"
+          ]
+        },
+        "previous": {
+          "type": "string",
+          "pattern": "^((pkcs11|aws-kms|vault|gcp-kms|azure-key-vault)(, *(pkcs11|aws-kms|vault|gcp-kms|azure-key-vault))*)?$"
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "existingSecret": {
+          "type": "string"
+        },
+        "mountServiceAccountToken": {
+          "type": "boolean"
+        }
+      }
+    },
     "smtp": {
       "type": "object",
       "additionalProperties": false,

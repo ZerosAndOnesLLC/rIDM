@@ -72,6 +72,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/master-key/generations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Have the key custody backend (`KEY_WRAPPER`) wrap a new master-key
+         *     generation and make it current. 409 when the master key comes from the
+         *     environment, whose generations are rolled out by changing `MASTER_KEY`.
+         */
+        post: operations["keys_master_new_generation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/master-key/rotate": {
         parameters: {
             query?: never;
@@ -83,7 +104,8 @@ export interface paths {
         put?: never;
         /**
          * Re-encrypt every row still under an older generation with the current
-         *     master key (the new key itself comes from the environment).
+         *     master key (the new key itself comes from the environment or the key
+         *     custody backend).
          */
         post: operations["keys_master_rotate"];
         delete?: never;
@@ -3678,6 +3700,22 @@ export interface components {
             field: string;
             message: string;
         };
+        /** @description A generation as the status report shows it. */
+        GenerationInfo: {
+            /**
+             * @description `env` for `MASTER_KEY` / `MASTER_KEY_PREVIOUS`, else the custody
+             *     backend that wrapped it.
+             */
+            backend: string;
+            /** Format: date-time */
+            created_at?: string | null;
+            /** @description The backend key that wrapped it; absent for `env`. */
+            key_ref?: string | null;
+            /** @description Whether this node holds the data key (it can decrypt rows under it). */
+            loaded: boolean;
+            /** Format: int32 */
+            version: number;
+        };
         /**
          * @description A tenant role, and whether this caller may grant it inside the
          *     organization. Roles carrying admin permissions the caller does not hold
@@ -4914,6 +4952,14 @@ export interface components {
         };
         NewEmail: {
             email: string;
+        };
+        NewGeneration: {
+            /**
+             * Format: int32
+             * @description The generation now current on this node; the others adopt it within a
+             *     minute. Re-encrypt with `POST /admin/master-key/rotate`.
+             */
+            version: number;
         };
         NewGroup: {
             attributes?: unknown;
@@ -6527,6 +6573,13 @@ export interface components {
         StatusReport: {
             /** Format: int32 */
             current_version: number;
+            /**
+             * @description Every generation: from the environment (`env`) or wrapped by a key
+             *     custody backend, and whether this node holds it.
+             */
+            generations: components["schemas"]["GenerationInfo"][];
+            /** @description The backend new generations are wrapped by (`KEY_WRAPPER`), if any. */
+            key_wrapper?: string | null;
             known_versions: number[];
             /** @description table → (key_version → rows) */
             rows_by_version: {
@@ -7356,6 +7409,70 @@ export interface operations {
             };
             /** @description Not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    keys_master_new_generation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewGeneration"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No key custody backend is configured */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -69,6 +69,7 @@
 - [Kubernetes (Helm)](deploy/kubernetes.md)
 - [Releases and verification](deploy/releases.md)
 - [TLS and reverse proxies](deploy/tls-and-proxies.md)
+- [Key custody: HSM and KMS](deploy/key-custody.md)
 - [Postgres and Valkey](deploy/postgres-valkey.md)
 - [Scaling and performance](deploy/scaling.md)
 - [Observability](deploy/observability.md)

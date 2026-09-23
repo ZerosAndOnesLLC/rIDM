@@ -718,6 +718,16 @@ async fn a_global_owner_creates_tenants_and_reads_the_master_key_status() {
 
     let status = cli.run(&["master-key", "status"]).await.ok();
     assert!(status.stdout.contains("older generation"), "{status:?}");
+    assert!(
+        status
+            .stdout
+            .contains("key custody: environment (MASTER_KEY)"),
+        "{status:?}"
+    );
+    // The harness runs on MASTER_KEY: generations are not the server's to make.
+    let generation = cli.run(&["master-key", "new-generation"]).await;
+    assert_eq!(generation.code, 1, "{generation:?}");
+    assert!(generation.stderr.contains("KEY_WRAPPER"), "{generation:?}");
     // Nothing to ask on a pipe: either nothing is pending, or it refuses.
     let rotate = cli.run(&["master-key", "rotate"]).await;
     assert!(

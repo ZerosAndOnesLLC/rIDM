@@ -15,6 +15,7 @@
 
 pub mod admin;
 pub mod ldap;
+pub mod throwaway;
 
 use std::net::SocketAddr;
 use std::sync::LazyLock;
@@ -336,9 +337,10 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
         public_url: public_url.parse().expect("public url"),
         ui_url: public_url.parse().expect("ui url"),
         embedded_ui: false,
-        master_key: SecretBytes::new(vec![7u8; 32]),
+        master_key: Some(SecretBytes::new(vec![7u8; 32])),
         master_key_version: 1,
         master_key_previous: vec![],
+        key_custody: Default::default(),
         bind_addr: "127.0.0.1:0".parse().expect("bind addr"),
         log_format: LogFormat::Pretty,
         docs_enabled: true,
