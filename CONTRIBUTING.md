@@ -93,7 +93,9 @@ Integration tests need Postgres and Valkey (or any Redis-protocol server). Point
 `RIDM_TEST_DATABASE_URL` and `RIDM_TEST_REDIS_URL` (for example the docker-compose
 stack); without those variables the harness starts reusable containers named
 `ridm-test-postgres` and `ridm-test-valkey` through testcontainers and reuses them on
-later runs (`docker rm -f ridm-test-postgres ridm-test-valkey` removes them). Each test
+later runs (`docker rm -f ridm-test-postgres ridm-test-valkey` removes them). The LDAP
+and SAML interoperability tests start `ridm-test-openldap` and `ridm-test-keycloak`
+(Keycloak 26) the same way. Each test
 gets its own tenant and its own connection pools, so tests run in parallel. Mock
 providers live in `ridm_core::test_support` (feature `test-support`) and capture what
 was sent so tests assert on content instead of sleeping.

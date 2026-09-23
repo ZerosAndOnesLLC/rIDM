@@ -194,8 +194,9 @@ OIDC clients: signed (optionally encrypted) assertions with persistent, transien
 or id NameIDs and attributes from the tenant's claims, HTTP-Redirect and HTTP-POST
 requests with signature checks, IdP-initiated sign-in for SPs that opt in, and
 front-channel Single Logout. The XML signature and encryption code is rIDM's own (no C XML
-library), checked against xmlsec1 and fuzzed. The SAML signing keys rotate only by hand,
-with the new certificate published first. See the docs' *SAML identity provider*.
+library), checked against xmlsec1, tested against Keycloak as both SP and IdP, and
+fuzzed. The SAML signing keys rotate only by hand, with the new certificate published
+first. See the docs' *SAML identity provider*.
 
 A SAML IdP (Entra ID, ADFS, Okta, Shibboleth, another rIDM) can also be an **upstream**
 identity provider of kind `saml`, configured from its metadata URL (re-read daily, so its

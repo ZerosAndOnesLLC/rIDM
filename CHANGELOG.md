@@ -42,7 +42,11 @@ release renames that heading to the version and date.
   `x509-parser`, `flate2`; no C XML library); the parser refuses DTDs,
   signatures are accepted only over the element read, and it is checked
   against xmlsec1 in both directions (CI installs it) and fuzzed
-  (`saml_message`).
+  (`saml_message`). Both SAML roles are tested against Keycloak 26 on every
+  build, each side configured from the other's metadata: rIDM as the IdP of a
+  Keycloak realm and a Keycloak realm as rIDM's upstream (sign-in, encrypted
+  assertions, tampered and replayed messages, Single Logout from either side,
+  a key rollover picked up by a metadata refresh).
 - Organizations within a tenant: membership (a user may belong to several, one
   of them primary), role grants scoped to an organization, email domains
   verified by DNS TXT record with auto-join, an organization step in the login
