@@ -151,7 +151,7 @@ pub async fn list(
     tenant_id: Uuid,
     user_id: Uuid,
 ) -> AppResult<Vec<PersonalAccessToken>> {
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     let rows = repos::personal_access_tokens::list_for_user(&mut *tx, tenant_id, user_id).await?;
     tx.commit().await?;
     Ok(rows)

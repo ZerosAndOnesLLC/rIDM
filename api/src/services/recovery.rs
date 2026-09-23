@@ -132,6 +132,7 @@ pub async fn complete_password_reset(
     )
     .await?;
     tx.commit().await?;
+    crate::services::users::forget(state, tenant.id, &[user_id]).await;
     // Whoever knew the old password may hold a session: end them all (the
     // relying parties are told) along with every refresh token.
     logout::end_sessions_for_user(state, tenant, user_id, None).await?;

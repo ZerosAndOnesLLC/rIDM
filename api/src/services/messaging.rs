@@ -356,7 +356,7 @@ pub struct TemplateView {
 }
 
 pub async fn list_overrides(state: &AppState, tenant_id: Uuid) -> AppResult<Vec<MessageTemplate>> {
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     let rows = repos::messages::list_templates(&mut *tx, tenant_id).await?;
     tx.commit().await?;
     Ok(rows)

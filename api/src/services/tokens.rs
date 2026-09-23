@@ -322,8 +322,20 @@ pub async fn sign(
     header.kid = Some(key.kid.clone());
     header.typ = Some(typ.to_string());
     let enc = encoding_key(state, key).await?;
-    jsonwebtoken::encode(&header, claims, &enc)
-        .map_err(|e| AppError::Internal(format!("jwt sign: {e}")))
+    let encode = move |claims: &Map<String, Value>| {
+        jsonwebtoken::encode(&header, claims, &enc)
+            .map_err(|e| AppError::Internal(format!("jwt sign: {e}")))
+    };
+    match key.alg {
+        // An RSA signature is about a millisecond of CPU: off the runtime.
+        SigningAlg::RS256 | SigningAlg::RS384 | SigningAlg::RS512 => {
+            let claims = claims.clone();
+            tokio::task::spawn_blocking(move || encode(&claims))
+                .await
+                .map_err(|e| AppError::Internal(format!("jwt signing task: {e}")))?
+        }
+        SigningAlg::ES256 | SigningAlg::EdDSA => encode(claims),
+    }
 }
 
 pub fn issuer(state: &AppState, tenant: &Tenant) -> String {

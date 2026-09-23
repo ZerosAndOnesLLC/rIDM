@@ -514,7 +514,7 @@ pub async fn list(
     tenant_id: Uuid,
     status: Option<KeyStatus>,
 ) -> AppResult<Vec<SigningKey>> {
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     let rows = repos::signing_keys::list(&mut *tx, tenant_id, status).await?;
     tx.commit().await?;
     Ok(rows)

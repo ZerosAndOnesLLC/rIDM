@@ -151,12 +151,14 @@ pub async fn register(
         let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
         repos::users::hard_delete(&mut *tx, tenant.id, user.id).await?;
         tx.commit().await?;
+        crate::services::users::forget(state, tenant.id, &[user.id]).await;
         return Err(e);
     }
     if input.terms_accepted {
         let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
         repos::users::set_terms_accepted(&mut *tx, tenant.id, user.id).await?;
         tx.commit().await?;
+        crate::services::users::forget(state, tenant.id, &[user.id]).await;
     }
     if needs_verification {
         send_verification(state, tenant, &user, flow_id).await?;
@@ -256,6 +258,7 @@ pub async fn confirm(state: &AppState, tenant: &Tenant, token: &str) -> AppResul
         .await?
         .ok_or(AppError::NotFound("user"))?;
     tx.commit().await?;
+    crate::services::users::forget(state, tenant.id, &[user.id]).await;
     state.events.publish(Event::new(
         Some(tenant.id),
         Actor::User { id: user.id },

@@ -38,7 +38,7 @@ pub fn base_url(state: &AppState, slug: &str) -> String {
 }
 
 pub async fn list(state: &AppState, tenant: &Tenant) -> AppResult<ScimTokens> {
-    let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
+    let mut tx = db::read_tx(&state.db, tenant.id).await?;
     let tokens = repos::scim_tokens::list(&mut *tx, tenant.id).await?;
     tx.commit().await?;
     Ok(ScimTokens {

@@ -97,7 +97,7 @@ pub async fn issue(
 
 /// Every token of the tenant, newest first (never the secrets).
 pub async fn list(state: &AppState, tenant_id: Uuid) -> AppResult<Vec<InitialAccessToken>> {
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     let rows = repos::initial_access_tokens::list(&mut *tx, tenant_id).await?;
     tx.commit().await?;
     Ok(rows)

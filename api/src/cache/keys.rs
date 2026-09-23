@@ -85,6 +85,11 @@ pub fn verification_keys(tenant_id: Uuid, version: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:verify_keys:{version}")
 }
 
+/// A user row (L1 only: it carries the password hash).
+pub fn user(tenant_id: Uuid, user_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:user:{user_id}")
+}
+
 /// Parsed signing key material (L1 only; never written to Redis).
 pub fn signing_key_material(key_id: Uuid) -> String {
     format!("{PREFIX}:signing_key:{key_id}:material")

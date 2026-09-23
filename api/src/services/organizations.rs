@@ -187,11 +187,14 @@ pub async fn update(
 /// organization this was is left without one.
 pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -> AppResult<()> {
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    // Their `org_id` is cleared by the foreign key: evict their rows.
+    let primary_of = repos::organizations::users_with_primary_org(&mut *tx, tenant_id, id).await?;
     let deleted = repos::organizations::delete(&mut *tx, tenant_id, id).await?;
     tx.commit().await?;
     if !deleted {
         return Err(AppError::NotFound("organization"));
     }
+    crate::services::users::forget(state, tenant_id, &primary_of).await;
     bump_roles_version(state, tenant_id).await?;
     state.events.publish(Event::new(
         Some(tenant_id),
@@ -244,6 +247,7 @@ pub async fn add_member(
     }
     tx.commit().await?;
     if added {
+        crate::services::users::forget(state, tenant_id, &[user_id]).await;
         bump_roles_version(state, tenant_id).await?;
         state.events.publish(Event::new(
             Some(tenant_id),
@@ -642,6 +646,7 @@ pub async fn ensure_auto_join(
     }
     tx.commit().await?;
     if added {
+        crate::services::users::forget(state, tenant_id, &[user.id]).await;
         bump_roles_version(state, tenant_id).await?;
         state.events.publish(Event::new(
             Some(tenant_id),

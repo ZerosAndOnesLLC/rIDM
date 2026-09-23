@@ -49,16 +49,37 @@ pub async fn find_by_hash_for_update<'e>(
     tenant_id: Uuid,
     token_hash: &[u8],
 ) -> Result<Option<RefreshToken>, sqlx::Error> {
+    find_by_hash_query(tenant_id, token_hash, " FOR UPDATE")
+        .build_query_as::<RefreshToken>()
+        .fetch_optional(exec)
+        .await
+}
+
+/// Read the row without locking it (introspection only looks).
+pub async fn find_by_hash<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    token_hash: &[u8],
+) -> Result<Option<RefreshToken>, sqlx::Error> {
+    find_by_hash_query(tenant_id, token_hash, "")
+        .build_query_as::<RefreshToken>()
+        .fetch_optional(exec)
+        .await
+}
+
+fn find_by_hash_query(
+    tenant_id: Uuid,
+    token_hash: &[u8],
+    suffix: &'static str,
+) -> sqlx::QueryBuilder<sqlx::Postgres> {
     let mut qb = sqlx::QueryBuilder::new("SELECT ");
     qb.push(COLUMNS)
         .push(" FROM refresh_tokens WHERE tenant_id = ")
         .push_bind(tenant_id)
         .push(" AND token_hash = ")
         .push_bind(token_hash.to_vec())
-        .push(" FOR UPDATE");
-    qb.build_query_as::<RefreshToken>()
-        .fetch_optional(exec)
-        .await
+        .push(suffix);
+    qb
 }
 
 pub async fn mark_consumed<'e>(

@@ -13,7 +13,6 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use chrono::Utc;
 use serde_json::{Value, json};
-use sha2::{Digest as _, Sha256};
 
 use crate::error::{OAuthError, OAuthErrorCode};
 use crate::middleware::{TenantCtx, client_ip_addr};
@@ -71,12 +70,7 @@ async fn handle(
     let inactive = json!({"active": false});
 
     if token.starts_with("rt_") {
-        let hash = Sha256::digest(token.as_bytes()).to_vec();
-        let mut tx = crate::db::tenant_tx(&state.db, tenant.id()).await?;
-        let rec =
-            crate::repos::refresh_tokens::find_by_hash_for_update(&mut *tx, tenant.id(), &hash)
-                .await?;
-        tx.commit().await?;
+        let rec = crate::services::refresh_tokens::find(state, tenant.id(), token).await?;
         let Some(rec) = rec else { return Ok(inactive) };
         if rec.client_id != client.client_id || !rec.is_usable(Utc::now()) {
             return Ok(inactive);

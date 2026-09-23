@@ -34,10 +34,48 @@ use crate::services::{clients, consents, flows, geoip, impersonation, ip_rules, 
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
-    Router::new().route(
-        "/t/{slug}/authorize",
-        get(authorize_get).post(authorize_post),
+    Router::new()
+        .route(
+            "/t/{slug}/authorize",
+            get(authorize_get).post(authorize_post),
+        )
+        .route("/t/{slug}/authorize/denied/{id}", get(denied))
+}
+
+/// `GET /t/{slug}/authorize/denied/{id}`: deliver a denial or refusal of the
+/// sign-in page to the client in its response mode (a form post or a signed
+/// JARM response cannot be a plain URL). One-time.
+async fn denied(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    axum::extract::Path((_, id)): axum::extract::Path<(String, Uuid)>,
+) -> Response {
+    let denial = match flows::take_denial(&state, tenant.id(), id).await {
+        Ok(Some(d)) => d,
+        Ok(None) => {
+            return error_page(
+                StatusCode::NOT_FOUND,
+                "invalid_request",
+                "this answer was already delivered or has expired",
+            );
+        }
+        Err(e) => return e.into_response(),
+    };
+    let client = match clients::get(&state, tenant.id(), denial.client_id).await {
+        Ok(c) => c,
+        Err(e) => return e.into_response(),
+    };
+    let err =
+        OAuthError::new(OAuthErrorCode::AccessDenied, denial.description).with_state(denial.state);
+    error_redirect(
+        &state,
+        &tenant,
+        &client,
+        &denial.redirect_uri,
+        denial.response_mode,
+        err,
     )
+    .await
 }
 
 /// Raw parameters as sent (query for GET, form body for POST). Repeated

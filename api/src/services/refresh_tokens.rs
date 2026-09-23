@@ -386,6 +386,20 @@ pub async fn revoke_for_session(
     Ok(count)
 }
 
+/// The stored record of a presented refresh token, read without locking
+/// it: introspection reports on the token and changes nothing. Read from the
+/// primary so a rotation or revocation shows at once.
+pub async fn find(
+    state: &AppState,
+    tenant_id: Uuid,
+    presented: &str,
+) -> AppResult<Option<RefreshToken>> {
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let rec = repos::refresh_tokens::find_by_hash(&mut *tx, tenant_id, &hash(presented)).await?;
+    tx.commit().await?;
+    Ok(rec)
+}
+
 pub async fn list_live_for_user(
     state: &AppState,
     tenant_id: Uuid,
