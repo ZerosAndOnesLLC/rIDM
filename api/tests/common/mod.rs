@@ -14,6 +14,7 @@
 #![allow(dead_code)]
 
 pub mod admin;
+pub mod keycloak;
 pub mod ldap;
 pub mod throwaway;
 

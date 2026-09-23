@@ -192,6 +192,26 @@ A failed refresh keeps the settings as they were and shows the error on the prov
 The metadata is fetched like every upstream endpoint: `https` (plain `http` for loopback
 only), public addresses only, no redirects, at most 256 KiB.
 
+## Keycloak as the identity provider
+
+Every build is tested against Keycloak 26 in this role: sign-in, tampered and replayed
+responses refused, Single Logout started from either side, and a Keycloak key rollover
+picked up by a metadata refresh. To set it up:
+
+1. Add the provider in rIDM from `{keycloak}/realms/{realm}/protocol/saml/descriptor`.
+   rIDM asks for a persistent NameID.
+2. In Keycloak, import rIDM's SP metadata (`{issuer}/broker/{alias}/saml/metadata`) as
+   a new SAML client. Keycloak picks up rIDM's certificate for signed requests and for
+   encryption, so it signs the response and encrypts the assertion (AES-256-GCM).
+3. On that client, set the **Name ID format** to `persistent` and turn on **Force name
+   ID format**, so the NameID rIDM links the account by is an opaque identifier that
+   survives a rename in Keycloak.
+4. Add **User Property** mappers for `email`, `firstName` (as `givenName`) and
+   `lastName` (as `sn`). rIDM reads these names without any mappers of its own.
+
+Signing out of Keycloak (its own logout page) reaches rIDM through the browser as a
+signed `LogoutRequest` and ends the rIDM session; signing out of rIDM sends Keycloak one.
+
 ## Monitoring
 
 | Metric | Labels | Meaning |

@@ -173,6 +173,33 @@ SAML SPs are in the [tenant document](../reference/tenant-document.md) under
 `status`; the `clients` section leaves them out, and a `saml` client there is refused.
 Certificates are exported, keys are not.
 
+## Keycloak as the service provider
+
+Every build is tested against Keycloak 26 in this role (a realm brokering to rIDM through
+a SAML identity provider): sign-in with signed and with encrypted assertions, attribute
+import, Keycloak's signed requests, and Single Logout started from either side. The
+settings that test uses:
+
+| Keycloak (identity provider, SAML) | Value |
+|---|---|
+| Identity provider entity ID | `{issuer}` |
+| Single Sign-On service URL | `{issuer}/saml/sso` |
+| Single logout service URL | `{issuer}/saml/slo` |
+| NameID policy format | Persistent |
+| Principal type | Subject NameID |
+| HTTP-POST binding response | On (rIDM answers by HTTP-POST only) |
+| Want AuthnRequests signed | On, RSA_SHA256 |
+| Validate signatures | On, with the certificate from rIDM's metadata |
+| Want assertions signed | On |
+| Want assertions encrypted | Either; rIDM encrypts when the SP's metadata carries an encryption key and `encrypt_assertion` is set |
+
+Register Keycloak in rIDM from `{keycloak}/realms/{realm}/broker/{alias}/endpoint/descriptor`:
+its metadata says it signs requests, so rIDM requires that. With attributes named for
+their LDAP OIDs (`urn:oid:0.9.2342.19200300.100.1.3` for `email`, `urn:oid:2.5.4.42` for
+`given_name`, `urn:oid:2.5.4.4` for `family_name`, name format URI), Keycloak's
+"Attribute Importer" mappers fill in the user's email, first and last name, and its
+first-broker-login flow creates the user without asking anything.
+
 ## Events
 
 A SAML sign-in raises `authorization.granted`, as an OpenID Connect one does; registering,
