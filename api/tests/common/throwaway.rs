@@ -37,6 +37,17 @@ impl ThrowawayDb {
         }
         db
     }
+
+    /// Grant the application role what it holds on the shared database,
+    /// and its URL for this one: a node's view, bound by row level security
+    /// (the superuser [`ThrowawayDb::url`] sees through it).
+    pub async fn app_url(&self) -> String {
+        super::grant_existing_objects(&self.url).await;
+        let mut url = url::Url::parse(&self.url).unwrap();
+        url.set_username(super::APP_ROLE).unwrap();
+        url.set_password(Some(super::APP_ROLE_PASSWORD)).unwrap();
+        url.to_string()
+    }
 }
 
 impl Drop for ThrowawayDb {

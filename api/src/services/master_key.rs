@@ -105,22 +105,28 @@ impl StatusReport {
     }
 }
 
-/// Count rows per key generation for every encrypted table.
+/// Count rows per key generation for every encrypted table, summed over
+/// every database (home and regions).
 pub async fn status(state: &AppState) -> AppResult<StatusReport> {
-    let mut tx = db::bypass_tx(&state.db).await?;
-    let mut rows_by_version = BTreeMap::new();
-    for t in TABLES {
-        // Table names are compile-time constants from TABLES, never user input.
-        let sql = format!(
-            "SELECT key_version, count(*) FROM {} GROUP BY key_version ORDER BY key_version",
-            t.table
-        );
-        let rows: Vec<(i32, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(sql))
-            .fetch_all(&mut *tx)
-            .await?;
-        rows_by_version.insert(t.table.to_string(), rows.into_iter().collect());
+    let mut rows_by_version: BTreeMap<String, BTreeMap<i32, i64>> = BTreeMap::new();
+    for database in state.db.all() {
+        let mut tx = db::bypass_tx(&database.primary).await?;
+        for t in TABLES {
+            // Table names are compile-time constants from TABLES, never user input.
+            let sql = format!(
+                "SELECT key_version, count(*) FROM {} GROUP BY key_version ORDER BY key_version",
+                t.table
+            );
+            let rows: Vec<(i32, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(sql))
+                .fetch_all(&mut *tx)
+                .await?;
+            let counts = rows_by_version.entry(t.table.to_string()).or_default();
+            for (version, n) in rows {
+                *counts.entry(version).or_default() += n;
+            }
+        }
+        tx.commit().await?;
     }
-    tx.commit().await?;
     let known = match state.key_encryptor.as_ref().known_versions_hint() {
         Some(v) => v,
         None => vec![state.key_encryptor.current_version()],
@@ -167,7 +173,7 @@ pub async fn new_generation(state: &AppState) -> AppResult<u32> {
 /// be above it: numbering one below would shadow rows still under an older
 /// key (a node started with `KEY_WRAPPER` but without the `MASTER_KEY` those
 /// rows were written with). One aggregate per table, run only when a
-/// generation is created.
+/// generation is created, in every database.
 pub async fn highest_version_in_use(db: &crate::db::Db) -> Result<u32, sqlx::Error> {
     // Table names are compile-time constants from TABLES.
     let sql = TABLES
@@ -176,12 +182,16 @@ pub async fn highest_version_in_use(db: &crate::db::Db) -> Result<u32, sqlx::Err
         .collect::<Vec<_>>()
         .join(" UNION ALL ");
     let sql = format!("SELECT max(v) FROM ({sql}) AS versions");
-    let mut tx = db::bypass_tx(db).await?;
-    let highest: Option<i32> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql))
-        .fetch_one(&mut *tx)
-        .await?;
-    tx.commit().await?;
-    Ok(highest.unwrap_or(0).max(0) as u32)
+    let mut highest = 0;
+    for database in db.all() {
+        let mut tx = db::bypass_tx(&database.primary).await?;
+        let found: Option<i32> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.clone()))
+            .fetch_one(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        highest = highest.max(found.unwrap_or(0));
+    }
+    Ok(highest.max(0) as u32)
 }
 
 /// Re-encrypt everything not yet under the current generation.
@@ -197,10 +207,12 @@ pub async fn rotate_all(state: &AppState) -> AppResult<RotationReport> {
         target_version: target,
         ..Default::default()
     };
-    for t in TABLES {
-        let (ok, failed) = rotate_table(state, t, target).await?;
-        report.rewritten.insert(t.table.to_string(), ok);
-        report.failed.insert(t.table.to_string(), failed);
+    for database in state.db.all() {
+        for t in TABLES {
+            let (ok, failed) = rotate_table(state, &database.primary, t, target).await?;
+            *report.rewritten.entry(t.table.to_string()).or_default() += ok;
+            *report.failed.entry(t.table.to_string()).or_default() += failed;
+        }
     }
     let total: u64 = report.rewritten.values().sum();
     if total > 0 {
@@ -220,7 +232,12 @@ pub async fn rotate_all(state: &AppState) -> AppResult<RotationReport> {
     Ok(report)
 }
 
-async fn rotate_table(state: &AppState, t: &EncryptedTable, target: u32) -> AppResult<(u64, u64)> {
+async fn rotate_table(
+    state: &AppState,
+    pool: &sqlx::PgPool,
+    t: &EncryptedTable,
+    target: u32,
+) -> AppResult<(u64, u64)> {
     let mut ok = 0u64;
     let mut failed = 0u64;
     let mut skip: Vec<String> = vec![];
@@ -234,7 +251,7 @@ async fn rotate_table(state: &AppState, t: &EncryptedTable, target: u32) -> AppR
             col = t.column,
             table = t.table
         );
-        let mut tx = db::bypass_tx(&state.db).await?;
+        let mut tx = db::bypass_tx(pool).await?;
         let rows: Vec<(String, Uuid, Vec<u8>, i32)> = sqlx::query_as(sqlx::AssertSqlSafe(sql))
             .bind(target as i32)
             .bind(&skip)
@@ -255,7 +272,7 @@ async fn rotate_table(state: &AppState, t: &EncryptedTable, target: u32) -> AppR
                         table = t.table,
                         idc = t.id_column
                     );
-                    let mut tx = db::bypass_tx(&state.db).await?;
+                    let mut tx = db::bypass_tx(pool).await?;
                     let n = sqlx::query(sqlx::AssertSqlSafe(sql))
                         .bind(&new_blob)
                         .bind(target as i32)
@@ -308,9 +325,40 @@ pub struct CheckFailure {
 /// tenants that had none. One signing key per generation is tried (the table
 /// is small: a few keys per tenant), and the first row of every other
 /// encrypted table, which reads no further than one row whatever its size.
+/// Every database is sampled: a region restored with the wrong key fails
+/// the same way.
 pub async fn check(state: &AppState) -> AppResult<CheckReport> {
-    let mut samples: Vec<(&EncryptedTable, String, Uuid, Vec<u8>, i32)> = vec![];
-    let mut tx = db::bypass_tx(&state.db).await?;
+    let mut samples: Vec<Sample> = vec![];
+    for database in state.db.all() {
+        match sample(&database.primary, &mut samples).await {
+            Ok(()) => {}
+            // A region that is down is checked when a node next starts.
+            Err(err) if !database.is_home() => {
+                tracing::error!(region = %database.name, error = %err, "master key check skipped a region");
+            }
+            Err(err) => return Err(err),
+        }
+    }
+    let mut report = CheckReport::default();
+    for (t, id, tenant_id, blob, key_version) in samples {
+        match decrypt_row(state, t, tenant_id, &id, &blob).await {
+            Ok(_) if t.table == "signing_keys" => report.signing_keys_ok += 1,
+            Ok(_) => {}
+            Err(err) => report.failures.push(CheckFailure {
+                table: t.table,
+                key_version,
+                error: err.to_string(),
+            }),
+        }
+    }
+    Ok(report)
+}
+
+type Sample = (&'static EncryptedTable, String, Uuid, Vec<u8>, i32);
+
+/// [`check`]'s rows from one database.
+async fn sample(pool: &sqlx::PgPool, samples: &mut Vec<Sample>) -> AppResult<()> {
+    let mut tx = db::bypass_tx(pool).await?;
     for t in TABLES {
         // Table and column names are compile-time constants from TABLES.
         let sql = if t.table == "signing_keys" {
@@ -338,19 +386,7 @@ pub async fn check(state: &AppState) -> AppResult<CheckReport> {
         );
     }
     tx.commit().await?;
-    let mut report = CheckReport::default();
-    for (t, id, tenant_id, blob, key_version) in samples {
-        match decrypt_row(state, t, tenant_id, &id, &blob).await {
-            Ok(_) if t.table == "signing_keys" => report.signing_keys_ok += 1,
-            Ok(_) => {}
-            Err(err) => report.failures.push(CheckFailure {
-                table: t.table,
-                key_version,
-                error: err.to_string(),
-            }),
-        }
-    }
-    Ok(report)
+    Ok(())
 }
 
 async fn decrypt_row(

@@ -122,7 +122,7 @@ pub async fn hit_client(state: &AppState, tenant: &Tenant, client: Uuid) -> Deci
     run(
         state,
         vec![Want {
-            key: keys::rate_limit(&format!("t:{}:client:{client}", tenant.id)),
+            key: keys::tenant_rate_limit(tenant.id, &format!("client:{client}")),
             limit: policy.token_per_client,
             window_ms: window_ms(policy),
         }],
@@ -181,14 +181,14 @@ fn buckets(
         && let Some(ip) = ip
     {
         wants.push(Want {
-            key: keys::rate_limit(&format!("t:{tid}:{}:ip:{ip}", category.as_str())),
+            key: keys::tenant_rate_limit(tid, &format!("{}:ip:{ip}", category.as_str())),
             limit: per_ip,
             window_ms,
         });
     }
     if policy.tenant_total > 0 {
         wants.push(Want {
-            key: keys::rate_limit(&format!("t:{tid}:all")),
+            key: keys::tenant_rate_limit(tid, "all"),
             limit: policy.tenant_total,
             window_ms,
         });

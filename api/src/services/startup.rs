@@ -56,7 +56,7 @@ pub async fn serialized<T>(
     state: &AppState,
     work: impl Future<Output = AppResult<T>>,
 ) -> AppResult<T> {
-    let mut lock = state.db.begin().await?;
+    let mut lock = state.db.home().begin().await?;
     sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1))")
         .bind(LOCK)
         .execute(&mut *lock)

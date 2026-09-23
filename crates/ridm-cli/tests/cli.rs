@@ -886,7 +886,7 @@ async fn an_audit_export_is_verified_offline_and_tampering_is_caught() {
     assert!(run.stderr.contains("gap"), "{run:?}");
 
     // The server's own copy, rewritten, fails the server-side check too.
-    let mut tx = ridm_api::db::bypass_tx(&app.state.db).await.unwrap();
+    let mut tx = ridm_api::db::bypass_tx(app.state.db.home()).await.unwrap();
     sqlx::query(
         "UPDATE audit_events SET payload = payload || '{\"tampered\": true}' \
          WHERE tenant_id = $1 AND seq = 1",

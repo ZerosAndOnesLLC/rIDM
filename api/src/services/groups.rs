@@ -70,7 +70,7 @@ pub async fn get(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<Group
 }
 
 pub async fn list(state: &AppState, tenant_id: Uuid) -> AppResult<Vec<Group>> {
-    let mut tx = db::read_tx(&state.db_read, tenant_id).await?;
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     let rows = repos::groups::list_all(&mut *tx, tenant_id).await?;
     tx.commit().await?;
     Ok(rows)

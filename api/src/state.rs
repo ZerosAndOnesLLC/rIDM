@@ -15,11 +15,11 @@ use crate::models::Tenant;
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
+    /// The home database and the regional ones; a tenant's transactions open
+    /// on the one it lives in (see [`crate::db::tenant_tx`]).
     pub db: Db,
-    /// Read-heavy admin queries (listings, statistics): a replica when
-    /// configured, else the same pool as `db`.
-    pub db_read: Db,
-    /// Raw Redis pool for sessions, flows, rate limits and other keyed state.
+    /// Raw Redis pool for sessions, flows, rate limits and other keyed state;
+    /// a tenant's keys go to its region's Valkey when that has one.
     pub redis: Cache,
     /// Read-through cache (L1 + Redis) for hot objects such as tenants.
     pub cache: CacheLayer,
@@ -45,7 +45,9 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(config: Config, db: Db, redis: Cache) -> Self {
+    pub fn new(config: Config, db: impl Into<Db>, redis: Cache) -> Self {
+        let db = db.into();
+        let redis = redis.route_with(db.clone());
         crate::util::outbound::allow_networks(&config.outbound_allow_networks);
         let cache = CacheLayer::new(redis.clone());
         let hasher = Arc::new(crate::services::password::Argon2Hasher::new(config.argon2));
@@ -79,7 +81,6 @@ impl AppState {
         let geoip = crate::services::geoip::GeoDatabase::from_config(&config.geoip);
         Self {
             config: Arc::new(config),
-            db_read: db.clone(),
             db,
             redis,
             cache,

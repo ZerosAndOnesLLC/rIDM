@@ -123,7 +123,9 @@ pub async fn ensure_all(state: &AppState) -> AppResult<()> {
     for_every_tenant(state, |t| ensure(state, t.id)).await
 }
 
-/// Run `f` for every tenant, a page at a time.
+/// Run `f` for every tenant, a page at a time. A tenant being moved is
+/// skipped, and one whose region fails is logged and skipped too: a node
+/// must start while one region is down (its tenants are, whatever this does).
 pub async fn for_every_tenant<F, Fut>(state: &AppState, f: F) -> AppResult<()>
 where
     F: Fn(Tenant) -> Fut,
@@ -131,10 +133,21 @@ where
 {
     let mut after = None;
     loop {
-        let rows = repos::tenants::list(&state.db, after.take(), 200).await?;
+        let rows = repos::tenants::list(state.db.home(), after.take(), 200).await?;
         let more = rows.len() > 200;
         for t in rows.iter().take(200) {
-            f(t.clone()).await?;
+            if t.relocating {
+                continue;
+            }
+            let region = t.data_region.clone();
+            let slug = t.slug.clone();
+            match f(t.clone()).await {
+                Ok(_) => {}
+                Err(err) if region.is_some() => {
+                    tracing::error!(tenant = %slug, region = region.as_deref(), error = %err, "tenant skipped: its region failed");
+                }
+                Err(err) => return Err(err),
+            }
         }
         if !more {
             return Ok(());

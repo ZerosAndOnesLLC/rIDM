@@ -39,7 +39,7 @@ async fn the_single_node_pool_round_trips_through_the_neutral_connection() {
 async fn read_transactions_refuse_writes_and_see_the_tenant() {
     let app = TestApp::spawn().await;
     let tid = app.tenant.id;
-    let mut tx = db::read_tx(&app.state.db_read, tid).await.unwrap();
+    let mut tx = db::read_tx(&app.state.db, tid).await.unwrap();
     let n: i64 = sqlx::query_scalar("SELECT count(*) FROM users WHERE tenant_id = $1")
         .bind(tid)
         .fetch_one(&mut *tx)
@@ -60,5 +60,5 @@ async fn read_transactions_refuse_writes_and_see_the_tenant() {
     tx.rollback().await.unwrap();
     // Without DATABASE_READ_URL the read pool is the primary.
     assert!(app.state.config.database_read_url.is_none());
-    db::ping(&app.state.db_read).await.unwrap();
+    db::ping(&app.state.db.all()[0].read).await.unwrap();
 }

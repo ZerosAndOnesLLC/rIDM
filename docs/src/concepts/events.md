@@ -27,7 +27,7 @@ shipped, they do not change. The main families:
 
 | Family | Examples |
 |--------|----------|
-| `tenant.*` | `tenant.created`, `tenant.updated`, `tenant.profile_schema_updated` |
+| `tenant.*` | `tenant.created`, `tenant.updated`, `tenant.moved`, `tenant.profile_schema_updated` |
 | `user.*` | `user.created`, `user.registered`, `user.password_changed`, `user.email_verified`, `user.locked` |
 | `login.*` | `login.succeeded`, `login.failed`, `login.new_device`, `login.brokered`, `login.passwordless_sent` |
 | `logout.*` | `logout.upstream` ([SAML identity providers](../admin/saml-upstream.md#single-logout)) |

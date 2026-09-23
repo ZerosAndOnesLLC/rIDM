@@ -5,7 +5,7 @@ import { Plus, Settings2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { Field, TextInput } from "@/components/console/form";
+import { Field, SelectInput, TextInput } from "@/components/console/form";
 import { Badge, Button, Modal, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
 import { formatDate } from "@/i18n";
@@ -22,7 +22,7 @@ export default function TenantsPage() {
   const tenants = useQuery({
     queryKey: ["tenants", "all"],
     queryFn: async () => {
-      const out: { id: string; slug: string; display_name: string; status: string; created_at: string }[] = [];
+      const out: { id: string; slug: string; display_name: string; status: string; created_at: string; data_region?: string | null; relocating?: boolean }[] = [];
       let cursor: string | undefined;
       for (let page = 0; page < 20; page += 1) {
         const { data, error } = await client.GET("/admin/tenants", { params: { query: { limit: 100, cursor } } });
@@ -34,6 +34,8 @@ export default function TenantsPage() {
       return out;
     },
   });
+  const regions = useRegions(me?.scope === "global");
+  const regional = (regions.data?.length ?? 0) > 1;
   const q = filter.trim().toLowerCase();
   const rows = (tenants.data ?? []).filter((t) => !q || t.slug.includes(q) || t.display_name.toLowerCase().includes(q));
   const canCreate = me?.scope === "global" && can("ridm:tenants:create");
@@ -68,6 +70,7 @@ export default function TenantsPage() {
               <tr className="border-b border-line">
                 <th scope="col" className="px-4 py-2.5 text-start font-medium">Tenant</th>
                 <th scope="col" className="px-4 py-2.5 text-start font-medium">Slug</th>
+                {regional && <th scope="col" className="px-4 py-2.5 text-start font-medium">Region</th>}
                 <th scope="col" className="px-4 py-2.5 text-start font-medium">Status</th>
                 <th scope="col" className="px-4 py-2.5 text-start font-medium">Created</th>
                 <th scope="col" className="px-4 py-2.5 text-end font-medium"><span className="sr-only">Actions</span></th>
@@ -76,7 +79,7 @@ export default function TenantsPage() {
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-muted">No tenant matches.</td>
+                  <td colSpan={regional ? 6 : 5} className="px-4 py-8 text-center text-muted">No tenant matches.</td>
                 </tr>
               )}
               {rows.map((t) => (
@@ -86,7 +89,10 @@ export default function TenantsPage() {
                     {t.slug === current && <span className="ms-2 text-[0.75rem] font-normal text-muted">current</span>}
                   </td>
                   <td className="px-4 py-2.5 font-mono text-[0.8125rem] text-muted">{t.slug}</td>
-                  <td className="px-4 py-2.5">{t.status === "active" ? <Badge tone="ok">Active</Badge> : <Badge tone="danger">Disabled</Badge>}</td>
+                  {regional && <td className="px-4 py-2.5 font-mono text-[0.8125rem] text-muted">{t.data_region ?? "home"}</td>}
+                  <td className="px-4 py-2.5">
+                    {t.relocating ? <Badge tone="accent">Moving</Badge> : t.status === "active" ? <Badge tone="ok">Active</Badge> : <Badge tone="danger">Disabled</Badge>}
+                  </td>
                   <td className="px-4 py-2.5 text-muted">{formatDate("en", t.created_at, { dateStyle: "medium" })}</td>
                   <td className="px-4 py-2.5 text-end">
                     <Link href={`/console/settings/?tenant=${encodeURIComponent(t.slug)}`} className="inline-flex items-center gap-1.5 rounded-[var(--radius)] px-2.5 py-1.5 text-link hover:bg-ground">
@@ -100,21 +106,40 @@ export default function TenantsPage() {
           </table>
         </div>
       )}
-      {canCreate && <CreateTenant open={creating} onOpenChange={setCreating} />}
+      {canCreate && <CreateTenant open={creating} onOpenChange={setCreating} regions={regional ? (regions.data ?? []) : []} />}
     </>
   );
 }
 
-function CreateTenant({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+type Region = { name: string; home: boolean; dedicated_cache: boolean; tenants: number };
+
+/** The databases a tenant can be placed in (data residency); only global administrators may ask. */
+function useRegions(enabled: boolean) {
+  const { client } = useConsole();
+  return useQuery({
+    queryKey: ["regions"],
+    enabled,
+    queryFn: async (): Promise<Region[]> => {
+      const { data, error } = await client.GET("/admin/regions");
+      if (error) throw new Error(error.detail ?? error.title);
+      return data;
+    },
+  });
+}
+
+function CreateTenant({ open, onOpenChange, regions }: { open: boolean; onOpenChange: (o: boolean) => void; regions: Region[] }) {
   const { client } = useConsole();
   const qc = useQueryClient();
   const router = useRouter();
   const [slug, setSlug] = useState("");
   const [name, setName] = useState("");
+  const [region, setRegion] = useState("home");
   const [touched, setTouched] = useState(false);
   const create = useMutation({
     mutationFn: async () => {
-      const { data, error } = await client.POST("/admin/tenants", { body: { slug: slug.trim(), display_name: name.trim() } });
+      const { data, error } = await client.POST("/admin/tenants", {
+        body: { slug: slug.trim(), display_name: name.trim(), data_region: region === "home" ? null : region },
+      });
       if (error) throw new Error(error.detail ?? error.title);
       return data;
     },
@@ -153,6 +178,19 @@ function CreateTenant({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
             />
           )}
         </Field>
+        {regions.length > 1 && (
+          <Field label="Data region" hint="Where the tenant's users, sessions and audit log are stored. Moving a tenant later takes ridm-api move-tenant.">
+            {(id, by) => (
+              <SelectInput id={id} aria-describedby={by} value={region} onChange={(e) => setRegion(e.target.value)}>
+                {regions.map((r) => (
+                  <option key={r.name} value={r.name}>
+                    {r.home ? "home (the main database)" : r.name}
+                  </option>
+                ))}
+              </SelectInput>
+            )}
+          </Field>
+        )}
         {create.isError && (
           <p role="alert" className="text-[0.875rem] text-danger">
             {create.error.message}

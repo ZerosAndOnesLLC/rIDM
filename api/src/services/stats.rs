@@ -62,7 +62,7 @@ pub async fn tenant_stats(state: &AppState, tenant_id: Uuid, days: u32) -> AppRe
     let to = Utc::now();
     let first_day = (to - Duration::days(i64::from(days) - 1)).date_naive();
     let from = first_day.and_hms_opt(0, 0, 0).expect("midnight").and_utc();
-    let mut tx = db::read_tx(&state.db_read, tenant_id).await?;
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
 
     let rows = sqlx::query(
         "SELECT (created_at AT TIME ZONE 'UTC')::date AS day, \

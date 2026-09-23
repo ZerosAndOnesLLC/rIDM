@@ -34,6 +34,10 @@ Content-Type: application/json
   hyphen. It is part of every URL of the tenant (`/t/acme/…`) and cannot change.
 - `display_name` is 1–255 characters; it is shown on the login pages and in the console.
 - `settings` is optional: anything left out takes the defaults below.
+- `data_region` is optional: on a deployment with [data regions](../deploy/data-residency.md),
+  the region whose database keeps the tenant's data (`GET /admin/regions` lists them;
+  absent or `home`: the home database). It is fixed at creation; `ridm-api move-tenant`
+  moves a tenant later.
 
 A new tenant is seeded with the standard scopes (`openid`, `profile`, `email`,
 `phone`, `address`, `offline_access`, `features`), the `urn:ridm:admin` and `urn:ridm:account`

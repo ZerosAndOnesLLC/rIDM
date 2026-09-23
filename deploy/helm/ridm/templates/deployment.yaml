@@ -62,6 +62,10 @@ spec:
             - secretRef:
                 name: {{ . }}
             {{- end }}
+            {{- if .Values.dataRegions.names }}
+            - secretRef:
+                name: {{ required "dataRegions.existingSecret is required with dataRegions.names" .Values.dataRegions.existingSecret }}
+            {{- end }}
             {{- with .Values.extraEnvFrom }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

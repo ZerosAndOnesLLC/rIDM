@@ -53,6 +53,7 @@ pub mod rate_limit;
 pub mod recovery;
 pub mod refresh_tokens;
 pub mod registration;
+pub mod relocation;
 pub mod resource_servers;
 pub mod risk;
 pub mod roles;

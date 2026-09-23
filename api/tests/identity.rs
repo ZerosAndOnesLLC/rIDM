@@ -34,6 +34,7 @@ async fn tenant_crud_and_master_protection() {
             slug: slug.to_uppercase(),
             display_name: "  Acme  ".into(),
             settings: None,
+            data_region: None,
         },
     )
     .await
@@ -49,6 +50,7 @@ async fn tenant_crud_and_master_protection() {
             slug: slug.clone(),
             display_name: "Dup".into(),
             settings: None,
+            data_region: None,
         },
     )
     .await;
@@ -61,6 +63,7 @@ async fn tenant_crud_and_master_protection() {
             slug: "bad slug!".into(),
             display_name: "x".into(),
             settings: None,
+            data_region: None,
         },
     )
     .await;

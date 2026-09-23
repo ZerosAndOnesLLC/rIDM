@@ -10,6 +10,7 @@ use ridm_core::events::Envelope;
 use ridm_core::events::{Actor, Event, EventSink as _};
 use serde::Serialize;
 use serde_json::Value;
+use sqlx::PgPool;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::error::{RecvError, TryRecvError};
 use uuid::Uuid;
@@ -79,12 +80,21 @@ fn hash_of(prev: Option<&[u8]>, row: &AuditEvent) -> Vec<u8> {
     audit_chain::hash(prev, &canonical_view(row))
 }
 
+/// The database a chain lives in: the global chain in the home database, a
+/// tenant's chain in the tenant's own.
+async fn chain_db(state: &AppState, tenant_id: Option<Uuid>) -> AppResult<&PgPool> {
+    Ok(match tenant_id {
+        None => state.db.home(),
+        Some(t) => &state.db.locate(t).await?.primary,
+    })
+}
+
 /// Append one event to its chain.
 pub async fn record(state: &AppState, event: &Event) -> AppResult<AuditEvent> {
     let (actor_type, actor_id) = actor_parts(&event.actor);
     let payload = serde_json::to_value(&event.kind)?;
     let chain = repos::audit::chain_id(event.tenant_id);
-    let mut tx = db::bypass_tx(&state.db).await?;
+    let mut tx = db::bypass_tx(chain_db(state, event.tenant_id).await?).await?;
     repos::audit::lock_chain(&mut *tx, chain).await?;
     let head = repos::audit::chain_head(&mut *tx, chain).await?;
     let (seq, prev_hash) = match head {
@@ -127,6 +137,11 @@ pub fn spawn_writer(state: AppState) -> tokio::task::JoinHandle<()> {
                     Ok(_) => {
                         metrics::counter!("ridm_audit_events_total").increment(1);
                     }
+                    // The tenant is being moved between regions: its chain
+                    // is closed until the move is done, so keep the event.
+                    Err(AppError::Unavailable(_)) => {
+                        tokio::spawn(record_after_move(state.clone(), envelope.event));
+                    }
                     Err(err) => {
                         tracing::error!(
                             event = envelope.event.name(),
@@ -142,6 +157,32 @@ pub fn spawn_writer(state: AppState) -> tokio::task::JoinHandle<()> {
             }
         }
     })
+}
+
+/// Record an event of a tenant that is being moved once the move is over,
+/// trying every few seconds for as long as a move may reasonably take.
+async fn record_after_move(state: AppState, event: std::sync::Arc<Event>) {
+    const RETRY: std::time::Duration = std::time::Duration::from_secs(5);
+    const GIVE_UP: std::time::Duration = std::time::Duration::from_secs(6 * 3600);
+    let started = tokio::time::Instant::now();
+    loop {
+        tokio::time::sleep(RETRY).await;
+        match record(&state, &event).await {
+            Ok(_) => {
+                metrics::counter!("ridm_audit_events_total").increment(1);
+                return;
+            }
+            Err(AppError::Unavailable(_)) if started.elapsed() < GIVE_UP => {}
+            Err(err) => {
+                tracing::error!(
+                    event = event.name(),
+                    error = %err,
+                    "audit: could not record event after the tenant's move"
+                );
+                return;
+            }
+        }
+    }
 }
 
 /// The audit trail of a one-shot command (`ridm-api bootstrap`,
@@ -199,13 +240,13 @@ pub async fn list(
     let limit = page_size(limit);
     let rows = match tenant_id {
         Some(t) => {
-            let mut tx = db::read_tx(&state.db_read, t).await?;
+            let mut tx = db::read_tx(&state.db, t).await?;
             let rows = repos::audit::list(&mut *tx, Some(t), filter, before, limit).await?;
             tx.commit().await?;
             rows
         }
         None => {
-            let mut tx = db::bypass_tx(&state.db).await?;
+            let mut tx = db::bypass_tx(state.db.home()).await?;
             let rows = repos::audit::list(&mut *tx, None, filter, before, limit).await?;
             tx.commit().await?;
             rows
@@ -257,15 +298,15 @@ struct Walk {
     broken: Option<audit_chain::Break>,
 }
 
-/// Walk `chain` oldest first from after `from` (a row already known good),
-/// or from its oldest retained row.
-async fn walk(state: &AppState, chain: Uuid, from: Option<(i64, Vec<u8>)>) -> AppResult<Walk> {
+/// Walk `chain` (in `pool`) oldest first from after `from` (a row already
+/// known good), or from its oldest retained row.
+async fn walk(pool: &PgPool, chain: Uuid, from: Option<(i64, Vec<u8>)>) -> AppResult<Walk> {
     let (mut verifier, mut after) = match from {
         Some((seq, hash)) => (Verifier::after(chain, seq, hash), Some(seq)),
         None => (Verifier::new(), None),
     };
     loop {
-        let mut tx = db::bypass_tx(&state.db).await?;
+        let mut tx = db::bypass_tx(pool).await?;
         let rows =
             repos::audit::chain_page(&mut *tx, chain, &AuditFilter::default(), after, EXPORT_PAGE)
                 .await?;
@@ -290,13 +331,25 @@ async fn walk(state: &AppState, chain: Uuid, from: Option<(i64, Vec<u8>)>) -> Ap
     }
 }
 
+/// Walk a tenant's chain as it is in `pool`, whether or not the tenant is
+/// routed there yet (a move checks its copy before switching to it).
+/// Returns the rows checked, or where and why the chain breaks.
+pub async fn verify_in(pool: &PgPool, tenant_id: Uuid) -> AppResult<Result<u64, (i64, String)>> {
+    let w = walk(pool, repos::audit::chain_id(Some(tenant_id)), None).await?;
+    Ok(match w.broken {
+        None => Ok(w.verifier.checked),
+        Some(b) => Err((b.seq, b.reason)),
+    })
+}
+
 /// Walk the chain from the oldest retained row and recompute every hash.
 /// The oldest row's `prev_hash` may point at a purged row; from there on
 /// every link must match.
 pub async fn verify(state: &AppState, tenant_id: Option<Uuid>) -> AppResult<Verification> {
     let chain = repos::audit::chain_id(tenant_id);
-    let w = walk(state, chain, None).await?;
-    let mut tx = db::bypass_tx(&state.db).await?;
+    let pool = chain_db(state, tenant_id).await?;
+    let w = walk(pool, chain, None).await?;
+    let mut tx = db::bypass_tx(pool).await?;
     let known = repos::audit_chains::state(&mut *tx, chain).await?;
     tx.commit().await?;
     let v = &w.verifier;
@@ -330,22 +383,27 @@ pub async fn verify(state: &AppState, tenant_id: Option<Uuid>) -> AppResult<Veri
 pub async fn verify_pending(state: &AppState) -> AppResult<u64> {
     const PAGE: i64 = 200;
     let mut checked = 0;
-    let mut after = None;
-    loop {
-        let mut tx = db::bypass_tx(&state.db).await?;
-        let chains = repos::audit_chains::unverified(&mut *tx, after, PAGE).await?;
+    let mut broken = 0;
+    // Each database holds the chains of the tenants living in it.
+    for database in state.db.all() {
+        let pool = &database.primary;
+        let mut after = None;
+        loop {
+            let mut tx = db::bypass_tx(pool).await?;
+            let chains = repos::audit_chains::unverified(&mut *tx, after, PAGE).await?;
+            tx.commit().await?;
+            for c in &chains {
+                checked += verify_one(state, pool, c).await?.checked;
+            }
+            after = chains.last().map(|c| c.chain_id);
+            if (chains.len() as i64) < PAGE {
+                break;
+            }
+        }
+        let mut tx = db::bypass_tx(pool).await?;
+        broken += repos::audit_chains::broken_count(&mut *tx).await?;
         tx.commit().await?;
-        for c in &chains {
-            checked += verify_one(state, c).await?.checked;
-        }
-        after = chains.last().map(|c| c.chain_id);
-        if (chains.len() as i64) < PAGE {
-            break;
-        }
     }
-    let mut tx = db::bypass_tx(&state.db).await?;
-    let broken = repos::audit_chains::broken_count(&mut *tx).await?;
-    tx.commit().await?;
     metrics::gauge!("ridm_audit_chains_broken").set(broken as f64);
     Ok(checked)
 }
@@ -362,11 +420,12 @@ pub struct ChainCheck {
 /// last verified checkpoint on.
 pub async fn verify_chain(state: &AppState, tenant_id: Option<Uuid>) -> AppResult<ChainCheck> {
     let chain = repos::audit::chain_id(tenant_id);
-    let mut tx = db::bypass_tx(&state.db).await?;
+    let pool = chain_db(state, tenant_id).await?;
+    let mut tx = db::bypass_tx(pool).await?;
     let known = repos::audit_chains::verification_of(&mut *tx, chain).await?;
     tx.commit().await?;
     match known {
-        Some(c) => verify_one(state, &c).await,
+        Some(c) => verify_one(state, pool, &c).await,
         None => Ok(ChainCheck {
             checked: 0,
             broken_at_seq: None,
@@ -376,12 +435,13 @@ pub async fn verify_chain(state: &AppState, tenant_id: Option<Uuid>) -> AppResul
 
 async fn verify_one(
     state: &AppState,
+    pool: &PgPool,
     c: &repos::audit_chains::Unverified,
 ) -> AppResult<ChainCheck> {
     // Start at the checkpoint row itself when it is still retained, so its
     // hash is checked against the one recorded for it.
     let from = match (c.verified_seq, &c.verified_hash, c.broken_at_seq) {
-        (Some(seq), Some(hash), None) => checkpoint_intact(state, c.chain_id, seq, hash).await?,
+        (Some(seq), Some(hash), None) => checkpoint_intact(pool, c.chain_id, seq, hash).await?,
         _ => None,
     };
     let w = match from {
@@ -389,11 +449,11 @@ async fn verify_one(
             verifier: Verifier::new(),
             broken: Some(b),
         },
-        Some(Ok(start)) => walk(state, c.chain_id, Some(start)).await?,
-        None => walk(state, c.chain_id, None).await?,
+        Some(Ok(start)) => walk(pool, c.chain_id, Some(start)).await?,
+        None => walk(pool, c.chain_id, None).await?,
     };
     let checked = w.verifier.checked;
-    let mut tx = db::bypass_tx(&state.db).await?;
+    let mut tx = db::bypass_tx(pool).await?;
     let Some(b) = w.broken else {
         if let (Some(seq), Some(hash)) = (w.verifier.last_seq, &w.verifier.last_hash) {
             repos::audit_chains::set_verified(&mut *tx, c.chain_id, seq, hash).await?;
@@ -429,12 +489,12 @@ async fn verify_one(
 /// `None` when retention has purged it (the walk then starts at the oldest
 /// row).
 async fn checkpoint_intact(
-    state: &AppState,
+    pool: &PgPool,
     chain: Uuid,
     seq: i64,
     hash: &[u8],
 ) -> AppResult<Option<Result<(i64, Vec<u8>), audit_chain::Break>>> {
-    let mut tx = db::bypass_tx(&state.db).await?;
+    let mut tx = db::bypass_tx(pool).await?;
     let rows = repos::audit::chain_page(&mut *tx, chain, &AuditFilter::default(), Some(seq - 1), 1)
         .await?;
     tx.commit().await?;
@@ -526,7 +586,7 @@ pub fn export(
                 Step::Done => return Ok(None),
             };
             let rows = {
-                let mut tx = db::bypass_tx(&state.db).await?;
+                let mut tx = db::bypass_tx(chain_db(&state, tenant_id).await?).await?;
                 let rows =
                     repos::audit::chain_page(&mut *tx, chain, &filter, after, EXPORT_PAGE).await?;
                 tx.commit().await?;
@@ -575,8 +635,9 @@ pub async fn purge(
     }
     let cutoff: DateTime<Utc> = Utc::now() - Duration::days(i64::from(retention_days));
     let chain = repos::audit::chain_id(tenant_id);
+    let pool = chain_db(state, tenant_id).await?;
     let up_to = {
-        let mut tx = db::bypass_tx(&state.db).await?;
+        let mut tx = db::bypass_tx(pool).await?;
         let head = repos::audit::expired_head(&mut *tx, chain, cutoff).await?;
         tx.commit().await?;
         head
@@ -586,7 +647,7 @@ pub async fn purge(
     };
     let mut total = 0;
     loop {
-        let mut tx = db::bypass_tx(&state.db).await?;
+        let mut tx = db::bypass_tx(pool).await?;
         let n = repos::audit::purge_prefix(&mut *tx, chain, up_to, PURGE_BATCH).await?;
         tx.commit().await?;
         total += n;
@@ -597,10 +658,14 @@ pub async fn purge(
     Ok(total)
 }
 
-/// Make sure the monthly partitions for the coming months exist.
+/// Make sure the monthly partitions for the coming months exist, in every
+/// database.
 pub async fn ensure_partitions(state: &AppState) -> AppResult<i32> {
-    let mut tx = db::bypass_tx(&state.db).await?;
-    let n = repos::audit::ensure_partitions(&mut *tx, 2).await?;
-    tx.commit().await?;
+    let mut n = 0;
+    for database in state.db.all() {
+        let mut tx = db::bypass_tx(&database.primary).await?;
+        n += repos::audit::ensure_partitions(&mut *tx, 2).await?;
+        tx.commit().await?;
+    }
     Ok(n)
 }

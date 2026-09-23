@@ -18,7 +18,7 @@ use ridm_core::events::Actor;
 use uuid::Uuid;
 
 async fn count(app: &TestApp, table: &str, tenant_id: Uuid) -> i64 {
-    let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+    let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
     let n: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "SELECT count(*) FROM {table} WHERE tenant_id = $1"
     )))
@@ -32,7 +32,7 @@ async fn count(app: &TestApp, table: &str, tenant_id: Uuid) -> i64 {
 
 /// Backdate a column on every row of the tenant's table.
 async fn backdate(app: &TestApp, table: &str, column: &str, tenant_id: Uuid, days: i32) {
-    let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+    let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
     sqlx::query(sqlx::AssertSqlSafe(format!(
         "UPDATE {table} SET {column} = now() - make_interval(days => $2) WHERE tenant_id = $1"
     )))
@@ -131,7 +131,7 @@ async fn cleanup_removes_spent_rows_past_retention_and_keeps_the_rest() {
         .unwrap();
     }
     {
-        let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+        let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
         for _ in 0..2 {
             sqlx::query("INSERT INTO login_attempts (tenant_id, identifier, success) VALUES ($1, 'alice', false)")
                 .bind(tid)
@@ -198,7 +198,7 @@ async fn cleanup_removes_spent_rows_past_retention_and_keeps_the_rest() {
     // Age one refresh token and one session past the window, the rest of
     // the log-like rows too; a pending delivery is never spent.
     {
-        let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+        let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
         sqlx::query(
             "UPDATE refresh_tokens SET expires_at = now() - interval '40 days' \
              WHERE tenant_id = $1 AND id = (SELECT id FROM refresh_tokens WHERE tenant_id = $1 ORDER BY id LIMIT 1)",
@@ -244,7 +244,7 @@ async fn cleanup_removes_spent_rows_past_retention_and_keeps_the_rest() {
     );
     // A delivered one from long ago goes.
     {
-        let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+        let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
         sqlx::query("UPDATE webhook_deliveries SET status = 'delivered' WHERE tenant_id = $1")
             .bind(tid)
             .execute(&mut *tx)

@@ -16,6 +16,7 @@ those of the event's `kind` document (next to `type`).
 | Event | Payload fields |
 |-------|----------------|
 | `tenant.created`, `tenant.updated`, `tenant.deleted` | `tenant_id` |
+| `tenant.moved` | `tenant_id`, `from_region`, `to_region` (`null`: the home database) |
 | `tenant.profile_schema_updated` | `tenant_id` |
 | `system.bootstrapped` | `admin_user_id` |
 | `user.created`, `user.updated`, `user.deleted` | `user_id` |

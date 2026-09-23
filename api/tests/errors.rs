@@ -13,14 +13,14 @@ async fn constraint_violations_map_to_client_errors() {
     // Unique violation → Conflict.
     let dup = sqlx::query("INSERT INTO tenants (slug, display_name) VALUES ($1, 'x')")
         .bind(&app.tenant.slug)
-        .execute(&app.state.db)
+        .execute(app.state.db.home())
         .await
         .unwrap_err();
     assert!(matches!(AppError::from_db(dup), AppError::Conflict(_)));
 
     // Check violation → BadRequest naming the constraint.
     let bad = sqlx::query("INSERT INTO tenants (slug, display_name) VALUES ('Bad Slug', 'x')")
-        .execute(&app.state.db)
+        .execute(app.state.db.home())
         .await
         .unwrap_err();
     match AppError::from_db(bad) {

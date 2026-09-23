@@ -23,7 +23,7 @@ async fn bootstrap_is_idempotent_and_creates_a_global_owner() {
     let app = TestApp::spawn().await;
     // Other test binaries may have bootstrapped the shared master tenant already;
     // make sure we start from a clean state for this database.
-    let mut tx = ridm_api::db::bypass_tx(&app.state.db).await.unwrap();
+    let mut tx = ridm_api::db::bypass_tx(app.state.db.home()).await.unwrap();
     sqlx::query("DELETE FROM users WHERE tenant_id = $1")
         .bind(MASTER_TENANT_ID)
         .execute(&mut *tx)
@@ -92,7 +92,7 @@ async fn bootstrap_is_idempotent_and_creates_a_global_owner() {
     // Nodes of a fresh deployment start together. Under the start-up lock
     // they take turns: one creates the administrator, the rest find it (the
     // same race without the lock made the losers fail on the unique username).
-    let mut tx = ridm_api::db::bypass_tx(&app.state.db).await.unwrap();
+    let mut tx = ridm_api::db::bypass_tx(app.state.db.home()).await.unwrap();
     sqlx::query("DELETE FROM users WHERE tenant_id = $1")
         .bind(MASTER_TENANT_ID)
         .execute(&mut *tx)

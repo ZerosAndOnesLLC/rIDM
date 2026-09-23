@@ -654,6 +654,55 @@
         ]
       }
     },
+    "/admin/regions": {
+      "get": {
+        "tags": [
+          "tenants"
+        ],
+        "summary": "The databases a new tenant can be placed in, home first. Only the home\ndatabase when the deployment has no `DATA_REGIONS`.",
+        "operationId": "tenants_regions",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Region"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/admin/tenants": {
       "get": {
         "tags": [
@@ -26192,6 +26241,13 @@
           "display_name"
         ],
         "properties": {
+          "data_region": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The data region to keep the tenant's data in, one of\n`GET /admin/regions`; absent or `home`: the home database. Fixed at\ncreation; `ridm-api move-tenant` moves a tenant later."
+          },
           "display_name": {
             "type": "string"
           },
@@ -26796,12 +26852,23 @@
                   "type": "string",
                   "format": "date-time"
                 },
+                "data_region": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The data region the tenant's data lives in (one of `DATA_REGIONS`);\n`None`: the home database. Set when the tenant is created, changed\nonly by `ridm-api move-tenant`."
+                },
                 "display_name": {
                   "type": "string"
                 },
                 "id": {
                   "type": "string",
                   "format": "uuid"
+                },
+                "relocating": {
+                  "type": "boolean",
+                  "description": "A move to another region is under way: the tenant is unavailable\nuntil it ends."
                 },
                 "settings": {
                   "$ref": "#/components/schemas/TenantSettings"
@@ -27809,6 +27876,34 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "Region": {
+        "type": "object",
+        "description": "A place a tenant's data can live (data residency, `DATA_REGIONS`).",
+        "required": [
+          "name",
+          "home",
+          "dedicated_cache",
+          "tenants"
+        ],
+        "properties": {
+          "dedicated_cache": {
+            "type": "boolean",
+            "description": "The region keeps its tenants' sessions and cached rows in a Valkey\nof its own (`REDIS_URL_<REGION>`) rather than the shared one."
+          },
+          "home": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string",
+            "description": "What `data_region` names; `home` is the `DATABASE_URL` database."
+          },
+          "tenants": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Tenants placed in it."
           }
         }
       },
@@ -30004,12 +30099,23 @@
             "type": "string",
             "format": "date-time"
           },
+          "data_region": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The data region the tenant's data lives in (one of `DATA_REGIONS`);\n`None`: the home database. Set when the tenant is created, changed\nonly by `ridm-api move-tenant`."
+          },
           "display_name": {
             "type": "string"
           },
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "relocating": {
+            "type": "boolean",
+            "description": "A move to another region is under way: the tenant is unavailable\nuntil it ends."
           },
           "settings": {
             "$ref": "#/components/schemas/TenantSettings"

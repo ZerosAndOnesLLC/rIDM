@@ -8,7 +8,7 @@ use axum::{Json, Router};
 use serde::Serialize;
 
 use crate::state::AppState;
-use crate::{cache, db, telemetry};
+use crate::{cache, config, db, telemetry};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -69,6 +69,27 @@ struct Readiness {
 struct Checks {
     database: &'static str,
     cache: &'static str,
+    /// Each data region's database and Valkey. Reported, but not part of
+    /// readiness: a region's outage is its tenants' outage, and taking every
+    /// node out of the load balancer for it would take all tenants down.
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    regions: std::collections::BTreeMap<String, RegionChecks>,
+}
+
+#[derive(Serialize)]
+struct RegionChecks {
+    database: &'static str,
+    cache: &'static str,
+}
+
+fn outcome<E: std::fmt::Display>(res: Result<(), E>, what: &str, region: &str) -> &'static str {
+    match res {
+        Ok(()) => "ok",
+        Err(err) => {
+            tracing::warn!(error = %err, region, "readiness: {what} check failed");
+            "fail"
+        }
+    }
 }
 
 /// Process is up. Never touches dependencies.
@@ -79,27 +100,36 @@ async fn healthz() -> Json<Health> {
     })
 }
 
-/// Process can serve traffic: database and cache both answer.
+/// Process can serve traffic: the home database and cache both answer.
 async fn readyz(State(state): State<AppState>) -> Response {
-    let (db_res, cache_res) = tokio::join!(db::ping(&state.db), cache::ping(&state.redis));
-    let database = match db_res {
-        Ok(()) => "ok",
-        Err(err) => {
-            tracing::warn!(error = %err, "readiness: database check failed");
-            "fail"
-        }
-    };
-    let cache = match cache_res {
-        Ok(()) => "ok",
-        Err(err) => {
-            tracing::warn!(error = %err, "readiness: cache check failed");
-            "fail"
-        }
-    };
+    let caches = state.redis.all();
+    let home_cache = &caches[0].1;
+    let (db_res, cache_res) = tokio::join!(db::ping(state.db.home()), cache::ping(home_cache));
+    let database = outcome(db_res, "database", config::HOME_REGION);
+    let cache = outcome(cache_res, "cache", config::HOME_REGION);
+    let mut regions = std::collections::BTreeMap::new();
+    for database in state.db.all().iter().filter(|d| !d.is_home()) {
+        let valkey = caches
+            .iter()
+            .find(|(name, _)| *name == database.name)
+            .map_or(home_cache, |(_, c)| c);
+        let (db_res, cache_res) = tokio::join!(db::ping(&database.primary), cache::ping(valkey));
+        regions.insert(
+            database.name.to_string(),
+            RegionChecks {
+                database: outcome(db_res, "database", &database.name),
+                cache: outcome(cache_res, "cache", &database.name),
+            },
+        );
+    }
     let ready = database == "ok" && cache == "ok";
     let body = Readiness {
         status: if ready { "ok" } else { "degraded" },
-        checks: Checks { database, cache },
+        checks: Checks {
+            database,
+            cache,
+            regions,
+        },
     };
     let status = if ready {
         StatusCode::OK

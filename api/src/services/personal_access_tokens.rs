@@ -207,9 +207,16 @@ pub async fn authenticate(state: &AppState, token: &str) -> AppResult<Option<Aut
         return Ok(None);
     }
     let h = hash(token);
-    let mut tx = db::bypass_tx(&state.db).await?;
-    let rec = repos::personal_access_tokens::find_by_hash(&mut *tx, &h).await?;
-    tx.commit().await?;
+    // The token names no tenant, so every database is asked (home first).
+    let mut rec = None;
+    for database in state.db.all() {
+        let mut tx = db::bypass_tx(&database.primary).await?;
+        rec = repos::personal_access_tokens::find_by_hash(&mut *tx, &h).await?;
+        tx.commit().await?;
+        if rec.is_some() {
+            break;
+        }
+    }
     let Some(rec) = rec else { return Ok(None) };
     if !rec.is_usable(Utc::now()) {
         return Ok(None);

@@ -10,6 +10,8 @@
 
 use std::time::Duration;
 
+use sqlx::PgPool;
+
 use crate::db;
 use crate::error::AppResult;
 use crate::jobs::leader;
@@ -78,18 +80,38 @@ async fn turn(state: &AppState) -> AppResult<bool> {
 }
 
 /// Ship one batch of every chain that has rows waiting (up to
-/// [`CHAINS_PER_PASS`] chains). Callers hold the leader lock.
+/// [`CHAINS_PER_PASS`] chains per database: each region keeps its tenants'
+/// chains and its own cursors). Callers hold the leader lock.
 pub async fn run_pass(state: &AppState) -> AppResult<Pass> {
     let Some(sink) = state.audit_sink.as_ref() else {
         return Ok(Pass::default());
     };
-    ensure_started(state, sink).await?;
-    let mut tx = db::bypass_tx(&state.db).await?;
+    let mut pass = Pass::default();
+    let mut lag = 0;
+    for database in state.db.all() {
+        let (shipped, failed, behind) = database_pass(&database.primary, sink).await?;
+        pass.shipped += shipped;
+        lag += behind;
+        if failed {
+            pass.failed = true;
+            break;
+        }
+    }
+    metrics::gauge!("ridm_audit_sink_lag_rows").set(lag as f64);
+    Ok(pass)
+}
+
+/// [`run_pass`] over one database: rows shipped, whether a delivery failed,
+/// and the rows still waiting.
+async fn database_pass(pool: &PgPool, sink: &AuditSink) -> AppResult<(usize, bool, i64)> {
+    ensure_started(pool, sink).await?;
+    let mut tx = db::bypass_tx(pool).await?;
     let pending = repos::audit_chains::pending(&mut *tx, CHAINS_PER_PASS).await?;
     tx.commit().await?;
-    let mut pass = Pass::default();
+    let mut shipped = 0;
+    let mut failed = false;
     for chain in pending {
-        let mut tx = db::bypass_tx(&state.db).await?;
+        let mut tx = db::bypass_tx(pool).await?;
         let rows = repos::audit::chain_page(
             &mut *tx,
             chain.chain_id,
@@ -101,7 +123,7 @@ pub async fn run_pass(state: &AppState) -> AppResult<Pass> {
         tx.commit().await?;
         let Some(last) = rows.last().map(|r| r.seq) else {
             // Retention purged what was waiting; move past it.
-            let mut tx = db::bypass_tx(&state.db).await?;
+            let mut tx = db::bypass_tx(pool).await?;
             let head = repos::audit_chains::state(&mut *tx, chain.chain_id)
                 .await?
                 .map(|s| s.head_seq);
@@ -114,25 +136,24 @@ pub async fn run_pass(state: &AppState) -> AppResult<Pass> {
         if let Err(err) = sink.deliver(&rows).await {
             metrics::counter!("ridm_audit_sink_failures_total").increment(1);
             tracing::warn!(error = %err, chain = %chain.chain_id, rows = rows.len(), "audit sink delivery failed; will retry");
-            pass.failed = true;
+            failed = true;
             break;
         }
-        let mut tx = db::bypass_tx(&state.db).await?;
+        let mut tx = db::bypass_tx(pool).await?;
         repos::audit_chains::advance_sink(&mut *tx, chain.chain_id, last).await?;
         tx.commit().await?;
         metrics::counter!("ridm_audit_sink_rows_total").increment(rows.len() as u64);
-        pass.shipped += rows.len();
+        shipped += rows.len();
     }
-    let mut tx = db::bypass_tx(&state.db).await?;
+    let mut tx = db::bypass_tx(pool).await?;
     let lag = repos::audit_chains::sink_lag(&mut *tx).await?;
     tx.commit().await?;
-    metrics::gauge!("ridm_audit_sink_lag_rows").set(lag as f64);
-    Ok(pass)
+    Ok((shipped, failed, lag))
 }
 
 /// A destination seen for the first time starts at the current heads.
-async fn ensure_started(state: &AppState, sink: &AuditSink) -> AppResult<()> {
-    let mut tx = db::bypass_tx(&state.db).await?;
+async fn ensure_started(pool: &PgPool, sink: &AuditSink) -> AppResult<()> {
+    let mut tx = db::bypass_tx(pool).await?;
     if repos::audit_chains::sink_target(&mut *tx).await?.as_deref() != Some(sink.id()) {
         repos::audit_chains::start_sink(&mut *tx, sink.id()).await?;
         tracing::info!(

@@ -123,7 +123,7 @@ async fn resolve_resource(state: &AppState, resource: &str) -> Result<Option<Ten
             .get_or_load(
                 &cache_keys::tenant_by_email_domain(&domain),
                 DOMAIN_CACHE_TTL,
-                || async move { Ok(repos::tenants::find_by_email_domain(&db, &d).await?) },
+                || async move { Ok(repos::tenants::find_by_email_domain(db.home(), &d).await?) },
             )
             .await?;
         return Ok(tenant

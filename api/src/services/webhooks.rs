@@ -700,7 +700,7 @@ pub async fn list_deliveries(
     limit: i64,
 ) -> AppResult<Vec<WebhookDelivery>> {
     get(state, tenant_id, webhook_id).await?;
-    let mut tx = db::read_tx(&state.db_read, tenant_id).await?;
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     let rows = repos::webhooks::list_deliveries(
         &mut *tx,
         tenant_id,

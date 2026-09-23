@@ -2,8 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-
-use crate::db::Db;
+use sqlx::PgPool;
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct GenerationRow {
@@ -33,7 +32,7 @@ pub struct GenerationInfo {
 /// The advisory lock that serialises generation creation across nodes.
 const CREATE_LOCK: &str = "ridm:master-key-generations";
 
-pub async fn all(db: &Db) -> Result<Vec<GenerationRow>, sqlx::Error> {
+pub async fn all(db: &PgPool) -> Result<Vec<GenerationRow>, sqlx::Error> {
     sqlx::query_as(
         "SELECT version, backend, key_ref, wrapped_key, created_at \
          FROM master_key_generations ORDER BY version",
@@ -42,7 +41,7 @@ pub async fn all(db: &Db) -> Result<Vec<GenerationRow>, sqlx::Error> {
     .await
 }
 
-pub async fn get(db: &Db, version: u32) -> Result<Option<GenerationRow>, sqlx::Error> {
+pub async fn get(db: &PgPool, version: u32) -> Result<Option<GenerationRow>, sqlx::Error> {
     sqlx::query_as(
         "SELECT version, backend, key_ref, wrapped_key, created_at \
          FROM master_key_generations WHERE version = $1",
@@ -53,7 +52,7 @@ pub async fn get(db: &Db, version: u32) -> Result<Option<GenerationRow>, sqlx::E
 }
 
 /// Versions above `after`, newest last: what a node has not seen yet.
-pub async fn newer_than(db: &Db, after: u32) -> Result<Vec<u32>, sqlx::Error> {
+pub async fn newer_than(db: &PgPool, after: u32) -> Result<Vec<u32>, sqlx::Error> {
     let rows: Vec<i32> = sqlx::query_scalar(
         "SELECT version FROM master_key_generations WHERE version > $1 ORDER BY version",
     )

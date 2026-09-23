@@ -20,12 +20,17 @@ pub async fn run_once(state: &AppState) -> AppResult<Option<(usize, usize)>> {
         return Ok(None);
     };
     let mut totals = (0, 0);
-    let mut tx = db::bypass_tx(&state.db).await?;
-    let due = repos::messages::tenants_with_due(&mut *tx).await?;
-    let backlog = repos::messages::count_queued(&mut *tx).await?;
-    tx.commit().await?;
+    let mut due = vec![];
+    let mut backlog = 0;
+    for database in state.db.all() {
+        let mut tx = db::bypass_tx(&database.primary).await?;
+        due.extend(repos::messages::tenants_with_due(&mut *tx).await?);
+        backlog += repos::messages::count_queued(&mut *tx).await?;
+        tx.commit().await?;
+    }
     metrics::gauge!("ridm_messages_queued").set(backlog as f64);
-    for tenant_id in due {
+    let relocating = state.db.relocating().await?;
+    for tenant_id in due.into_iter().filter(|t| !relocating.contains(t)) {
         match messaging::deliver_due(state, tenant_id, BATCH).await {
             Ok((s, f)) => {
                 totals.0 += s;

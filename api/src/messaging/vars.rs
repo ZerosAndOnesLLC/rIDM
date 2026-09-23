@@ -130,6 +130,8 @@ mod tests {
             pairwise_salt: vec![],
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            data_region: None,
+            relocating: false,
         };
         for event in EVENTS {
             let vars = sample(event, &t).unwrap_or_else(|| panic!("{event}"));

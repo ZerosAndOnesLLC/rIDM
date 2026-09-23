@@ -34,9 +34,13 @@ async fn process_all(state: &AppState) -> AppResult<u64> {
     let mut purged = 0;
     let mut cursor = None;
     loop {
-        let page = repos::tenants::list(&state.db, cursor, 200).await?;
+        let page = repos::tenants::list(state.db.home(), cursor, 200).await?;
         let has_more = page.len() > 200;
         for tenant in page.iter().take(200) {
+            // A tenant being moved is unreachable until the move is over.
+            if tenant.relocating {
+                continue;
+            }
             match audit::purge(state, Some(tenant.id), tenant.settings.audit.retention_days).await {
                 Ok(n) => purged += n,
                 Err(err) => {

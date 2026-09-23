@@ -347,6 +347,8 @@ mod tests {
             pairwise_salt: vec![1; 32],
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            data_region: None,
+            relocating: false,
         }
     }
 

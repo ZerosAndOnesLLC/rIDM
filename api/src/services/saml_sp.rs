@@ -1322,27 +1322,35 @@ pub async fn refresh_metadata(
 /// many were refreshed.
 pub async fn refresh_due(state: &AppState) -> AppResult<usize> {
     let before = Utc::now() - chrono::Duration::hours(23);
-    let mut cursor = (Uuid::nil(), Uuid::nil());
     let mut done = 0;
-    loop {
-        let mut tx = db::bypass_tx(&state.db).await?;
-        let page =
-            repos::identity_providers::due_metadata_refresh(&mut *tx, before, cursor, 100).await?;
-        tx.commit().await?;
-        let Some(last) = page.last().copied() else {
-            break;
-        };
-        cursor = last;
-        for (tenant_id, idp_id) in page {
-            let idp = match identity_providers::get(state, tenant_id, &idp_id.to_string()).await {
-                Ok(i) => i,
-                Err(AppError::NotFound(_)) => continue,
-                Err(e) => return Err(e),
+    let relocating = state.db.relocating().await?;
+    for database in state.db.all() {
+        let mut cursor = (Uuid::nil(), Uuid::nil());
+        loop {
+            let mut tx = db::bypass_tx(&database.primary).await?;
+            let page =
+                repos::identity_providers::due_metadata_refresh(&mut *tx, before, cursor, 100)
+                    .await?;
+            tx.commit().await?;
+            let Some(last) = page.last().copied() else {
+                break;
             };
-            match refresh_metadata(state, tenant_id, &idp).await {
-                Ok(_) => done += 1,
-                Err(e) => {
-                    tracing::warn!(%tenant_id, provider = %idp.alias, error = %e, "SAML metadata refresh failed")
+            cursor = last;
+            for (tenant_id, idp_id) in page {
+                if relocating.contains(&tenant_id) {
+                    continue;
+                }
+                let idp = match identity_providers::get(state, tenant_id, &idp_id.to_string()).await
+                {
+                    Ok(i) => i,
+                    Err(AppError::NotFound(_)) => continue,
+                    Err(e) => return Err(e),
+                };
+                match refresh_metadata(state, tenant_id, &idp).await {
+                    Ok(_) => done += 1,
+                    Err(e) => {
+                        tracing::warn!(%tenant_id, provider = %idp.alias, error = %e, "SAML metadata refresh failed")
+                    }
                 }
             }
         }

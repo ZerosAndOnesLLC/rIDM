@@ -30,6 +30,15 @@ pub struct Tenant {
     pub pairwise_salt: Vec<u8>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// The data region the tenant's data lives in (one of `DATA_REGIONS`);
+    /// `None`: the home database. Set when the tenant is created, changed
+    /// only by `ridm-api move-tenant`.
+    #[serde(default)]
+    pub data_region: Option<String>,
+    /// A move to another region is under way: the tenant is unavailable
+    /// until it ends.
+    #[serde(default)]
+    pub relocating: bool,
 }
 
 impl Tenant {

@@ -59,7 +59,7 @@ export const EVENT_NAMES = [
   "role.assigned", "role.composite_added", "role.composite_removed", "role.created", "role.deleted", "role.unassigned", "role.updated",
   "scope.created", "scope.deleted", "scope.updated",
   "session.created", "session.revoked", "signing_key.created", "signing_key.status_changed",
-  "system.bootstrapped", "tenant.created", "tenant.deleted", "tenant.profile_schema_updated", "tenant.updated",
+  "system.bootstrapped", "tenant.created", "tenant.deleted", "tenant.moved", "tenant.profile_schema_updated", "tenant.updated",
   "token.refresh_reuse_detected", "token.revoked",
   "user.created", "user.deleted", "user.email_changed", "user.email_verified", "user.locked",
   "user.password_changed", "user.password_hash_upgraded", "user.password_reset_completed", "user.password_reset_requested",

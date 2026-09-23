@@ -217,7 +217,7 @@ async fn listing_is_cursor_paginated_for_global_admins() {
     // parallel: what matters is that paging covers everything that existed
     // from start to end, not that the table stood still while it ran.
     let before: Vec<String> = sqlx::query_scalar::<_, uuid::Uuid>("SELECT id FROM tenants")
-        .fetch_all(&app.state.db)
+        .fetch_all(app.state.db.home())
         .await
         .unwrap()
         .into_iter()
@@ -243,7 +243,7 @@ async fn listing_is_cursor_paginated_for_global_admins() {
     // Tenants deleted by a parallel test while this one paged may rightly be
     // missing; everything that was there throughout must have appeared.
     let after: Vec<String> = sqlx::query_scalar::<_, uuid::Uuid>("SELECT id FROM tenants")
-        .fetch_all(&app.state.db)
+        .fetch_all(app.state.db.home())
         .await
         .unwrap()
         .into_iter()

@@ -43,6 +43,9 @@ async fn main() {
     if args.first().map(String::as_str) == Some("rotate-master-key") {
         std::process::exit(rotate_master_key_command(&args[1..]).await);
     }
+    if args.first().map(String::as_str) == Some("move-tenant") {
+        std::process::exit(move_tenant_command(&args[1..]).await);
+    }
 
     let config = match Config::from_env() {
         Ok(c) => c,
@@ -68,13 +71,13 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
 
     let db = db::connect(&config).await?;
     let schema_current = if config.migrate_on_start {
-        let applied = db::migrate_pending(&db).await?;
+        let applied = db::migrate_pending_all(&db).await?;
         if applied > 0 {
             tracing::info!(applied, "pending migrations applied");
         }
         true
     } else {
-        let pending = db::pending_migrations(&db).await?;
+        let pending = db::pending_migrations_all(&db).await?;
         if pending > 0 {
             tracing::warn!(
                 pending,
@@ -83,7 +86,7 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         }
         pending == 0
     };
-    let unknown = db::unknown_migrations(&db).await?;
+    let unknown = db::unknown_migrations_all(&db).await?;
     if let Some(newest) = unknown.last() {
         tracing::warn!(
             count = unknown.len(),
@@ -101,12 +104,18 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         tracing::warn!(%expires, "the configured security.txt has expired; renew SECURITY_TXT");
     }
     let cache = cache::connect(&config)?;
-    cache::ping(&cache).await?;
-    let db_read = db::connect_read(&config, &db).await?;
+    for (region, valkey) in cache.all() {
+        match cache::ping(&valkey).await {
+            Ok(()) => {}
+            Err(err) if &*region != ridm_api::config::HOME_REGION => {
+                tracing::error!(%region, error = %err, "data region's Valkey unreachable at start-up");
+            }
+            Err(err) => return Err(err.into()),
+        }
+    }
 
     let bootstrap = config.bootstrap.clone();
-    let mut state = AppState::new(config, db, cache);
-    state.db_read = db_read;
+    let state = AppState::new(config, db, cache);
     let custody = ridm_api::key_custody::attach(&state).await?;
     if schema_current {
         check_master_key(&state).await?;
@@ -320,12 +329,14 @@ async fn bootstrap_command(args: &[String]) -> i32 {
     // as `DATABASE_URL`'s role, usually the DML-only application role, which
     // cannot apply them (`ridm-api migrate` runs as the schema owner).
     let pending = if config.migrate_on_start {
-        db::migrate_pending(&db)
+        db::migrate_pending_all(&db)
             .await
             .map(|_| 0)
             .map_err(|e| e.to_string())
     } else {
-        db::pending_migrations(&db).await.map_err(|e| e.to_string())
+        db::pending_migrations_all(&db)
+            .await
+            .map_err(|e| e.to_string())
     };
     match pending {
         Ok(0) => {}
@@ -464,9 +475,9 @@ async fn migrate_command() -> i32 {
             return 1;
         }
     };
-    match db::migrate(&db).await {
+    match db::migrate_all(&db).await {
         Ok(()) => {
-            tracing::info!("migrations applied");
+            tracing::info!(databases = db.all().len(), "migrations applied");
             0
         }
         Err(err) => {
@@ -474,6 +485,83 @@ async fn migrate_command() -> i32 {
             1
         }
     }
+}
+
+/// `ridm-api move-tenant <slug> --region <name|home> [--drain-seconds N]`:
+/// move a tenant's data to another database (see README, "Data residency").
+/// The tenant is unavailable while it runs; running it again after a failure
+/// finishes or undoes what was left.
+async fn move_tenant_command(args: &[String]) -> i32 {
+    use ridm_api::services::relocation;
+    let usage = "usage: ridm-api move-tenant <slug> --region <name|home> [--drain-seconds N]";
+    let mut slug = None;
+    let mut region = None;
+    let mut opts = relocation::MoveOptions::default();
+    let mut it = args.iter();
+    while let Some(arg) = it.next() {
+        match arg.as_str() {
+            "--region" => region = it.next().cloned(),
+            "--drain-seconds" => match it.next().and_then(|v| v.parse::<u64>().ok()) {
+                Some(n) => opts.drain = std::time::Duration::from_secs(n),
+                None => {
+                    eprintln!("move-tenant: --drain-seconds takes a number\n{usage}");
+                    return 2;
+                }
+            },
+            other if other.starts_with("--") || slug.is_some() => {
+                eprintln!("move-tenant: unexpected argument `{other}`\n{usage}");
+                return 2;
+            }
+            other => slug = Some(other.to_string()),
+        }
+    }
+    let (Some(slug), Some(region)) = (slug, region) else {
+        eprintln!("{usage}");
+        return 2;
+    };
+    let config = match Config::from_env() {
+        Ok(c) => c,
+        Err(err) => {
+            eprintln!("configuration error: {err}");
+            return 2;
+        }
+    };
+    telemetry::init(config.log_format);
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let db = match db::connect(&config).await {
+        Ok(d) => d,
+        Err(err) => {
+            eprintln!("database: {err}");
+            return 1;
+        }
+    };
+    let cache = match cache::connect(&config) {
+        Ok(c) => c,
+        Err(err) => {
+            eprintln!("redis: {err}");
+            return 1;
+        }
+    };
+    let state = AppState::new(config, db, cache);
+    let audit = ridm_api::services::audit::CommandRecorder::start(&state);
+    let code = match relocation::move_tenant(&state, &slug, Some(&region), &opts).await {
+        Ok(report) => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).unwrap_or_default()
+            );
+            0
+        }
+        Err(err) => {
+            eprintln!("move-tenant: {err}");
+            if let Some(cause) = std::error::Error::source(&err) {
+                eprintln!("  caused by: {cause}");
+            }
+            1
+        }
+    };
+    audit.flush(&state).await;
+    code
 }
 
 /// `ridm-api rotate-master-key [--status | --new-generation]`: re-encrypt

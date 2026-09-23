@@ -392,10 +392,10 @@ async fn service_layer_returns_not_found_across_tenants() {
 #[tokio::test]
 async fn rls_cannot_be_circumvented_by_the_application_role() {
     let f = fixture().await;
-    let db = &f.app.state.db;
+    let db = f.app.state.db.home();
 
     // 1. A tenant_id predicate does not override the bound tenant.
-    let mut tx = db::tenant_tx(db, f.b).await.unwrap();
+    let mut tx = db::tenant_tx(&f.app.state.db, f.b).await.unwrap();
     let n: i64 = sqlx::query_scalar("SELECT count(*) FROM users WHERE tenant_id = $1")
         .bind(f.a)
         .fetch_one(&mut *tx)

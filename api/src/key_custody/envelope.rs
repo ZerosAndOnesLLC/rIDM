@@ -163,7 +163,7 @@ impl EnvelopeEncryptor {
         let custody = self.custody.get().expect("just set");
 
         let mut report = AttachReport::default();
-        let rows = match generations::all(&custody.db).await {
+        let rows = match generations::all(custody.db.home()).await {
             Ok(rows) => rows,
             // A node without a backend on a schema that predates the table
             // (migrations pending) still starts, on its environment keys.
@@ -246,7 +246,7 @@ impl EnvelopeEncryptor {
             return Ok(());
         };
         let seen = self.known_versions().last().copied().unwrap_or(0);
-        for version in generations::newer_than(&custody.db, seen).await? {
+        for version in generations::newer_than(custody.db.home(), seen).await? {
             if let Err(err) = self.key(version).await {
                 tracing::warn!(version, error = %err, "new master-key generation not loaded");
             }
@@ -269,7 +269,7 @@ impl EnvelopeEncryptor {
             })
             .collect();
         if let Some(custody) = self.custody.get() {
-            for row in generations::all(&custody.db).await? {
+            for row in generations::all(custody.db.home()).await? {
                 let version = row.version as u32;
                 out.push(GenerationInfo {
                     version,
@@ -296,7 +296,7 @@ impl EnvelopeEncryptor {
             .wrappers
             .get(backend)
             .ok_or_else(|| CustodyError(format!("no wrapper built for `{backend}`")))?;
-        let mut tx = custody.db.begin().await?;
+        let mut tx = custody.db.home().begin().await?;
         generations::lock(&mut tx).await?;
         let (newest, highest) = generations::latest(&mut tx, backend).await?;
         if let (Some(v), false) = (newest, force) {
@@ -383,7 +383,7 @@ impl EnvelopeEncryptor {
         {
             return Err(unknown());
         }
-        let loaded = match generations::get(&custody.db, version).await {
+        let loaded = match generations::get(custody.db.home(), version).await {
             Ok(Some(row)) => self
                 .unwrap_row(custody, &row)
                 .await

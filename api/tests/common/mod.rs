@@ -137,7 +137,7 @@ async fn start_infra() -> Infra {
             let db = ridm_api::db::connect(&config)
                 .await
                 .expect("connect postgres");
-            ridm_api::db::migrate(&db).await.expect("migrate");
+            ridm_api::db::migrate_all(&db).await.expect("migrate");
             db.close().await;
             if migrate_as == admin_url {
                 // Objects we just created belong to whoever owns the schema
@@ -152,7 +152,7 @@ async fn start_infra() -> Infra {
                 .await
                 .expect("connect postgres");
             if !fully_migrated(&db).await {
-                ridm_api::db::migrate(&db).await.expect("migrate");
+                ridm_api::db::migrate_all(&db).await.expect("migrate");
             }
             db.close().await;
         }
@@ -294,7 +294,7 @@ async fn transfer_ownership_to_schema_owner(admin_url: &str) {
 
 /// Grant the test app role DML on everything that already exists (objects
 /// created by roles other than the test migrator).
-async fn grant_existing_objects(admin_url: &str) {
+pub async fn grant_existing_objects(admin_url: &str) {
     use sqlx::Connection as _;
     let mut conn = sqlx::PgConnection::connect(admin_url)
         .await
@@ -318,7 +318,7 @@ async fn grant_existing_objects(admin_url: &str) {
 async fn fully_migrated(db: &Db) -> bool {
     let applied: Vec<i64> =
         match sqlx::query_scalar("SELECT version FROM _sqlx_migrations WHERE success")
-            .fetch_all(db)
+            .fetch_all(db.home())
             .await
         {
             Ok(v) => v,
@@ -334,6 +334,7 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
         database_url: database_url.to_string(),
         database_read_url: None,
         redis_url: redis_url.to_string(),
+        data_regions: vec![],
         public_url: public_url.parse().expect("public url"),
         ui_url: public_url.parse().expect("ui url"),
         embedded_ui: false,
@@ -416,6 +417,16 @@ impl TestApp {
         extra: axum::Router<AppState>,
         configure: impl FnOnce(&mut AppState),
     ) -> Self {
+        Self::spawn_reconfigured(extra, |_| {}, configure).await
+    }
+
+    /// [`TestApp::spawn_configured`] with `adjust` applied to the
+    /// configuration before anything connects (e.g. `DATA_REGIONS`).
+    pub async fn spawn_reconfigured(
+        extra: axum::Router<AppState>,
+        adjust: impl FnOnce(&mut Config),
+        configure: impl FnOnce(&mut AppState),
+    ) -> Self {
         let infra = infra().await;
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -423,7 +434,8 @@ impl TestApp {
         let addr = listener.local_addr().expect("local addr");
         let base_url = format!("http://{addr}");
 
-        let config = test_config(&infra.database_url, &infra.redis_url, &base_url);
+        let mut config = test_config(&infra.database_url, &infra.redis_url, &base_url);
+        adjust(&mut config);
         let db = ridm_api::db::connect(&config)
             .await
             .expect("connect postgres");
@@ -475,7 +487,7 @@ pub async fn create_tenant(db: &Db) -> TestTenant {
         sqlx::query_scalar("INSERT INTO tenants (slug, display_name) VALUES ($1, $2) RETURNING id")
             .bind(&slug)
             .bind(format!("Test {slug}"))
-            .fetch_one(db)
+            .fetch_one(db.home())
             .await
             .expect("insert tenant");
     TestTenant { id, slug }

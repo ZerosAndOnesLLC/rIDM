@@ -38,13 +38,15 @@ pub async fn run_once(state: &AppState) -> AppResult<Option<Report>> {
         };
         let cutoff = Utc::now() - chrono::Duration::days(i64::from(days));
         let mut total = 0u64;
-        loop {
-            let mut tx = db::bypass_tx(&state.db).await?;
-            let n = cleanup::purge_batch(&mut *tx, target, cutoff).await?;
-            tx.commit().await?;
-            total += n;
-            if n < cleanup::BATCH as u64 {
-                break;
+        for database in state.db.all() {
+            loop {
+                let mut tx = db::bypass_tx(&database.primary).await?;
+                let n = cleanup::purge_batch(&mut *tx, target, cutoff).await?;
+                tx.commit().await?;
+                total += n;
+                if n < cleanup::BATCH as u64 {
+                    break;
+                }
             }
         }
         if total > 0 {

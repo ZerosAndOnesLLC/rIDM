@@ -567,6 +567,7 @@ async fn every_tenant_carries_the_account_client_and_audience() {
             slug: format!("acct-{}", &Uuid::new_v4().simple().to_string()[..8]),
             display_name: "Account tenant".into(),
             settings: None,
+            data_region: None,
         },
     )
     .await
