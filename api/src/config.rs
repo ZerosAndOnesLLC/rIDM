@@ -93,6 +93,9 @@ pub struct Config {
     pub database_read_url: Option<String>,
     /// Redis / Valkey connection string.
     pub redis_url: String,
+    /// Regional databases a tenant's data can be placed in (`DATA_REGIONS`);
+    /// empty: every tenant lives in the `DATABASE_URL` database.
+    pub data_regions: Vec<RegionConfig>,
     /// Externally visible base URL, e.g. `https://id.example.com`. Issuer URLs
     /// are derived from it: `{PUBLIC_URL}/t/{tenant_slug}`.
     pub public_url: Url,
@@ -311,6 +314,7 @@ impl Config {
         let database_url = required_secret!("DATABASE_URL")?;
         let database_read_url = secret!("DATABASE_READ_URL")?;
         let redis_url = required_secret!("REDIS_URL")?;
+        let data_regions = parse_data_regions(optional("DATA_REGIONS"))?;
         let public_url = parse("PUBLIC_URL", required("PUBLIC_URL")?, |v| {
             Url::parse(&v).map_err(|e| e.to_string()).and_then(|u| {
                 if !matches!(u.scheme(), "http" | "https") {
@@ -561,6 +565,7 @@ impl Config {
             database_url,
             database_read_url,
             redis_url,
+            data_regions,
             public_url,
             ui_url,
             embedded_ui,
@@ -753,6 +758,90 @@ fn read_secret_file(file_var: &'static str, path: PathBuf) -> Result<Option<Stri
     Ok((!value.trim().is_empty()).then(|| value.to_string()))
 }
 
+/// A data region: a database (and optionally a Valkey) that the tenants
+/// placed in it keep all their data in. Configured as `DATA_REGIONS=eu,us`
+/// with `DATABASE_URL_EU` (required), `DATABASE_READ_URL_EU` and `REDIS_URL_EU`
+/// (optional; each also as a `_FILE`) per region.
+#[derive(Debug, Clone)]
+pub struct RegionConfig {
+    pub name: String,
+    pub database_url: String,
+    pub database_read_url: Option<String>,
+    /// The region's own Valkey for its tenants' sessions, flows and cached
+    /// rows; `None` keeps them on `REDIS_URL`.
+    pub redis_url: Option<String>,
+}
+
+/// Whether `name` can name a region: 1-32 lowercase letters, digits and
+/// hyphens starting with a letter, and not `home` (the `DATABASE_URL`
+/// database). The same rule is a CHECK on `tenants.data_region`.
+pub fn is_valid_region_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    name.len() <= 32
+        && name != HOME_REGION
+        && chars.next().is_some_and(|c| c.is_ascii_lowercase())
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// What the `DATABASE_URL` database is called wherever a region is named.
+pub const HOME_REGION: &str = "home";
+
+fn parse_data_regions(raw: Option<String>) -> Result<Vec<RegionConfig>, ConfigError> {
+    let Some(raw) = raw else {
+        return Ok(vec![]);
+    };
+    let invalid = |reason: String| ConfigError::Invalid {
+        name: "DATA_REGIONS",
+        reason,
+    };
+    let mut regions: Vec<RegionConfig> = vec![];
+    for name in raw.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        if !is_valid_region_name(name) {
+            return Err(invalid(format!(
+                "`{name}`: a region is 1-32 lowercase letters, digits or hyphens starting \
+                 with a letter, and `{HOME_REGION}` is the DATABASE_URL database"
+            )));
+        }
+        if regions.iter().any(|r| r.name == name) {
+            return Err(invalid(format!("`{name}` is listed twice")));
+        }
+        let suffix = name.to_ascii_uppercase().replace('-', "_");
+        let database_url = region_secret(&format!("DATABASE_URL_{suffix}"))?.ok_or_else(|| {
+            invalid(format!(
+                "region `{name}` needs DATABASE_URL_{suffix} or DATABASE_URL_{suffix}_FILE"
+            ))
+        })?;
+        regions.push(RegionConfig {
+            name: name.to_string(),
+            database_url,
+            database_read_url: region_secret(&format!("DATABASE_READ_URL_{suffix}"))?,
+            redis_url: region_secret(&format!("REDIS_URL_{suffix}"))?,
+        });
+    }
+    Ok(regions)
+}
+
+/// [`secret`] for a variable whose name is built at run time.
+fn region_secret(name: &str) -> Result<Option<String>, ConfigError> {
+    if let Some(v) = std::env::var(name).ok().filter(|v| !v.trim().is_empty()) {
+        return Ok(Some(v));
+    }
+    let file_var = format!("{name}_FILE");
+    let Some(path) = std::env::var(&file_var)
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+    else {
+        return Ok(None);
+    };
+    let raw = std::fs::read_to_string(&path).map_err(|e| ConfigError::Invalid {
+        name: "DATA_REGIONS",
+        reason: format!("failed to read {file_var} from {path}: {e}"),
+    })?;
+    let value = raw.strip_suffix('\n').unwrap_or(&raw);
+    let value = value.strip_suffix('\r').unwrap_or(value);
+    Ok((!value.trim().is_empty()).then(|| value.to_string()))
+}
+
 pub(crate) fn parse<T, E: ToString>(
     name: &'static str,
     raw: String,
@@ -872,6 +961,28 @@ fn decode_master_key(name: &'static str, raw: &[u8]) -> Result<SecretBytes, Conf
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn region_names_follow_the_tenants_check() {
+        for ok in ["eu", "us-east-1", "a", &"a".repeat(32)] {
+            assert!(is_valid_region_name(ok), "{ok}");
+        }
+        for bad in [
+            "",
+            "home",
+            "EU",
+            "1eu",
+            "-eu",
+            "eu_west",
+            "eu.west",
+            &"a".repeat(33),
+        ] {
+            assert!(!is_valid_region_name(bad), "{bad}");
+        }
+        assert!(parse_data_regions(None).unwrap().is_empty());
+        assert!(parse_data_regions(Some("home".into())).is_err());
+        assert!(parse_data_regions(Some("Bad".into())).is_err());
+    }
 
     #[test]
     fn master_key_accepts_hex_and_base64() {

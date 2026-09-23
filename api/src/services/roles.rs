@@ -68,7 +68,7 @@ pub async fn list(
     tenant_id: Uuid,
     client_id: Option<Option<Uuid>>,
 ) -> AppResult<Vec<Role>> {
-    let mut tx = db::read_tx(&state.db_read, tenant_id).await?;
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     let rows = repos::roles::list_all(&mut *tx, tenant_id, client_id).await?;
     tx.commit().await?;
     Ok(rows)

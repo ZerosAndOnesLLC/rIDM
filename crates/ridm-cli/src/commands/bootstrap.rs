@@ -43,7 +43,7 @@ pub async fn run(args: &BootstrapArgs) -> Result<()> {
         .await
         .map_err(|e| CliError::failed(format!("database: {e}")))?;
     if !args.no_migrate {
-        db::migrate(&db)
+        db::migrate_all(&db)
             .await
             .map_err(|e| CliError::failed(format!("migrate: {e}")))?;
     }

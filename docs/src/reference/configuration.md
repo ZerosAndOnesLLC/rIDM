@@ -10,7 +10,7 @@ Conventions used below:
 - **Booleans** accept `1`, `true`, `yes`, `on` and `0`, `false`, `no`, `off` (any case).
 - **Integers** are unsigned 32-bit.
 - An invalid or missing required value stops the server with `configuration error: ...` on standard error and exit code `2`.
-- **Secrets can come from files.** `DATABASE_URL`, `DATABASE_READ_URL`, `REDIS_URL`, `MASTER_KEY`, `SMTP_PASSWORD`, `METRICS_TOKEN`, `AUDIT_SINK_TOKEN`, `AUDIT_SINK_SECRET` and `BOOTSTRAP_ADMIN_PASSWORD` each also have a `*_FILE` form (`DATABASE_URL_FILE`, ...) naming a file that holds the value, the convention for Docker and Kubernetes secret mounts. One trailing line ending is dropped and nothing else; an empty file counts as unset, like an empty variable; the variable itself wins when both are set. A file that cannot be read stops the server like an invalid value. The [production compose stack](../deploy/production-compose.md) passes every secret this way.
+- **Secrets can come from files.** `DATABASE_URL`, `DATABASE_READ_URL`, `REDIS_URL` (and each region's `DATABASE_URL_<NAME>`, `DATABASE_READ_URL_<NAME>`, `REDIS_URL_<NAME>`), `MASTER_KEY`, `SMTP_PASSWORD`, `METRICS_TOKEN`, `AUDIT_SINK_TOKEN`, `AUDIT_SINK_SECRET` and `BOOTSTRAP_ADMIN_PASSWORD` each also have a `*_FILE` form (`DATABASE_URL_FILE`, ...) naming a file that holds the value, the convention for Docker and Kubernetes secret mounts. One trailing line ending is dropped and nothing else; an empty file counts as unset, like an empty variable; the variable itself wins when both are set. A file that cannot be read stops the server like an invalid value. The [production compose stack](../deploy/production-compose.md) passes every secret this way.
 
 ## Required
 
@@ -39,6 +39,7 @@ Conventions used below:
 | `DB_POOL_MIN` | integer | `2` | Minimum Postgres connections per node. Must not exceed `DB_POOL_MAX`. |
 | `DB_POOL_MAX` | integer | `20` | Maximum Postgres connections per node. Roughly twice the database server's CPU count divided by the number of API nodes. |
 | `REDIS_POOL_MAX` | integer | `32` | Valkey connections per node (at least 1). |
+| `DATA_REGIONS` | region list | unset | Regional databases tenants can be placed in, comma-separated names (1-32 lowercase letters, digits or hyphens, starting with a letter; `home` is the `DATABASE_URL` database). Each region `<name>` needs `DATABASE_URL_<NAME>` (upper case, `-` as `_`: `eu-west` → `DATABASE_URL_EU_WEST`) and may set `DATABASE_READ_URL_<NAME>` and `REDIS_URL_<NAME>`; all three also have a `*_FILE` form. Every node must list the same regions. See [Data residency](../deploy/data-residency.md). |
 
 ## Security and keys
 

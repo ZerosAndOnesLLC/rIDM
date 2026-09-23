@@ -37,7 +37,7 @@ pub enum AppError {
     #[error("service unavailable: {0}")]
     Unavailable(String),
     #[error("database error")]
-    Database(#[from] sqlx::Error),
+    Database(#[source] sqlx::Error),
     #[error("cache error")]
     Cache(String),
     #[error("internal error: {0}")]
@@ -172,7 +172,18 @@ impl AppError {
                 return Self::Forbidden("row level security denied the operation".into());
             }
         }
-        Self::Database(err)
+        Self::from(err)
+    }
+}
+
+impl From<sqlx::Error> for AppError {
+    fn from(err: sqlx::Error) -> Self {
+        // A tenant being moved, or placed in a region this node lacks, is
+        // an outage of that tenant, not a fault of the request.
+        match crate::db::unroutable(&err) {
+            Some(why) => Self::Unavailable(why.to_string()),
+            None => Self::Database(err),
+        }
     }
 }
 

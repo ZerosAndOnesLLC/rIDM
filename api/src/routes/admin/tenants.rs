@@ -26,6 +26,7 @@ use crate::util::patch::{diff_paths, drop_on_variant_change, merge_patch};
 pub fn tenants_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(list, create))
+        .routes(routes!(regions))
         .routes(routes!(get_one, update, delete))
         .routes(routes!(captcha_get, captcha_put, captcha_delete))
         .routes(routes!(profile_schema_get, profile_schema_put))
@@ -62,6 +63,43 @@ async fn list(
         items: vec![own],
         next_cursor: None,
     }))
+}
+
+/// A place a tenant's data can live (data residency, `DATA_REGIONS`).
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+struct Region {
+    /// What `data_region` names; `home` is the `DATABASE_URL` database.
+    name: String,
+    home: bool,
+    /// The region keeps its tenants' sessions and cached rows in a Valkey
+    /// of its own (`REDIS_URL_<REGION>`) rather than the shared one.
+    dedicated_cache: bool,
+    /// Tenants placed in it.
+    tenants: i64,
+}
+
+/// The databases a new tenant can be placed in, home first. Only the home
+/// database when the deployment has no `DATA_REGIONS`.
+#[utoipa::path(get, path = "/admin/regions", tag = "tenants", responses((status = 200, body = Vec<Region>), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem)), security(("bearer" = [])))]
+async fn regions(State(state): State<AppState>, admin: AdminCtx) -> AppResult<Json<Vec<Region>>> {
+    admin.require_global(P_READ)?;
+    let counts = tenants::count_by_region(&state).await?;
+    Ok(Json(
+        state
+            .db
+            .all()
+            .iter()
+            .map(|d| Region {
+                name: d.name.to_string(),
+                home: d.is_home(),
+                dedicated_cache: !state.redis.same_backend(None, d.region()),
+                tenants: counts
+                    .get(&d.region().map(str::to_string))
+                    .copied()
+                    .unwrap_or(0),
+            })
+            .collect(),
+    ))
 }
 
 #[utoipa::path(post, path = "/admin/tenants", tag = "tenants", request_body = NewTenant, responses((status = 201, body = Tenant), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]

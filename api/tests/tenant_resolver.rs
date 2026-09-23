@@ -80,7 +80,7 @@ async fn tenant_is_cached_and_invalidation_takes_effect() {
     // Disable the tenant behind the cache's back: still served from cache.
     sqlx::query("UPDATE tenants SET status = 'disabled' WHERE id = $1")
         .bind(app.tenant.id)
-        .execute(&app.state.db)
+        .execute(app.state.db.home())
         .await
         .unwrap();
     let res = app.http.get(app.tenant_url("/probe")).send().await.unwrap();
@@ -110,7 +110,7 @@ async fn unknown_slug_is_negatively_cached() {
     // Create it now; the negative entry still answers until invalidated.
     sqlx::query("INSERT INTO tenants (slug, display_name) VALUES ($1, $1)")
         .bind(&slug)
-        .execute(&app.state.db)
+        .execute(app.state.db.home())
         .await
         .unwrap();
     assert_eq!(app.http.get(&url).send().await.unwrap().status(), 404);
@@ -214,13 +214,13 @@ async fn rls_transactions_isolate_tenants() {
     // No tenant bound: the pool sees nothing at all.
     let unbound: i64 = sqlx::query_scalar("SELECT count(*) FROM users WHERE tenant_id = $1")
         .bind(app.tenant.id)
-        .fetch_one(&app.state.db)
+        .fetch_one(app.state.db.home())
         .await
         .unwrap();
     assert_eq!(unbound, 0);
 
     // Explicit bypass sees it.
-    let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+    let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
     let bypass: i64 = sqlx::query_scalar("SELECT count(*) FROM users WHERE tenant_id = $1")
         .bind(app.tenant.id)
         .fetch_one(&mut *tx)
@@ -232,7 +232,7 @@ async fn rls_transactions_isolate_tenants() {
     // The binding was transaction-local: the same pool is clean afterwards.
     let after: i64 = sqlx::query_scalar("SELECT count(*) FROM users WHERE tenant_id = $1")
         .bind(app.tenant.id)
-        .fetch_one(&app.state.db)
+        .fetch_one(app.state.db.home())
         .await
         .unwrap();
     assert_eq!(after, 0);

@@ -362,7 +362,7 @@ async fn only_delivery(app: &TestApp, token: &str, webhook_id: Uuid) -> Value {
 
 /// Move a delivery's next attempt into the past so the job takes it.
 async fn make_due(app: &TestApp, delivery_id: &str) {
-    let mut tx = ridm_api::db::bypass_tx(&app.state.db).await.unwrap();
+    let mut tx = ridm_api::db::bypass_tx(app.state.db.home()).await.unwrap();
     sqlx::query("UPDATE webhook_deliveries SET next_attempt_at = now() - interval '1 second' WHERE id = $1::uuid")
         .bind(delivery_id)
         .execute(&mut *tx)

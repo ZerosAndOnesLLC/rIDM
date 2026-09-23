@@ -222,7 +222,7 @@ async fn tokens_via(fx: &Fx, http: &reqwest::Client) -> Value {
 
 /// The live impersonated session of `user`, straight from the mirror table.
 async fn impersonated_session(app: &TestApp, user: Uuid) -> (Uuid, Option<Uuid>, Option<String>) {
-    let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+    let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
     let row = sqlx::query_as::<_, (Uuid, Option<Uuid>, Option<String>)>(
         "SELECT id, impersonator_id, impersonation_reason FROM sso_sessions \
          WHERE tenant_id = $1 AND user_id = $2 AND impersonator_id IS NOT NULL \
@@ -242,7 +242,7 @@ async fn impersonated_session(app: &TestApp, user: Uuid) -> (Uuid, Option<Uuid>,
 async fn audit(app: &TestApp, name: &str) -> Vec<(Value, Option<Uuid>, String)> {
     let mut rows = Vec::new();
     for _ in 0..100 {
-        let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+        let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
         rows = sqlx::query_as::<_, (Value, Option<Uuid>, String)>(
             "SELECT payload, impersonator_id, actor_type FROM audit_events \
              WHERE tenant_id = $1 AND name = $2 ORDER BY occurred_at DESC",
@@ -409,7 +409,7 @@ async fn the_session_mints_tokens_that_name_the_administrator() {
     assert_eq!(status, 200, "{again}");
     let at2 = payload(again["access_token"].as_str().unwrap());
     assert_eq!(at2["act"], at["act"], "every refresh repeats act");
-    let mut tx = db::bypass_tx(&fx.app.state.db).await.unwrap();
+    let mut tx = db::bypass_tx(fx.app.state.db.home()).await.unwrap();
     let family_end: chrono::DateTime<chrono::Utc> = sqlx::query_scalar(
         "SELECT max(expires_at) FROM refresh_tokens WHERE tenant_id = $1 AND act IS NOT NULL",
     )
@@ -683,7 +683,7 @@ async fn ending_it_puts_the_browsers_own_session_back() {
     assert!(back.get("act").is_none());
 
     // The impersonated session is over, and the log says who ended it.
-    let mut tx = db::bypass_tx(&fx.app.state.db).await.unwrap();
+    let mut tx = db::bypass_tx(fx.app.state.db.home()).await.unwrap();
     let revoked: bool = sqlx::query_scalar(
         "SELECT revoked_at IS NOT NULL FROM sso_sessions WHERE tenant_id = $1 AND id = $2",
     )
@@ -773,7 +773,7 @@ async fn the_trail_names_the_administrator_from_start_to_end_and_the_chain_holds
     // Read the chain in order once the writer has caught up.
     let mut rows: Vec<(i64, String, Option<Uuid>)> = vec![];
     for _ in 0..100 {
-        let mut tx = db::bypass_tx(&fx.app.state.db).await.unwrap();
+        let mut tx = db::bypass_tx(fx.app.state.db.home()).await.unwrap();
         rows = sqlx::query_as(
             "SELECT seq, name, impersonator_id FROM audit_events \
              WHERE tenant_id = $1 ORDER BY seq",

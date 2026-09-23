@@ -123,7 +123,7 @@ pub async fn get(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<Organ
 }
 
 pub async fn get_by_slug(state: &AppState, tenant_id: Uuid, slug: &str) -> AppResult<Organization> {
-    let mut tx = db::read_tx(&state.db_read, tenant_id).await?;
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     let org = repos::organizations::find_by_slug(&mut *tx, tenant_id, slug).await?;
     tx.commit().await?;
     org.ok_or(AppError::NotFound("organization"))
@@ -136,7 +136,7 @@ pub async fn list(
     cursor: Option<Cursor>,
     limit: i64,
 ) -> AppResult<Page<Organization>> {
-    let mut tx = db::read_tx(&state.db_read, tenant_id).await?;
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     let rows = repos::organizations::list(
         &mut *tx,
         tenant_id,

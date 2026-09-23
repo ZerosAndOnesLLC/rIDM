@@ -177,6 +177,9 @@ KEY_WRAPPER_PREVIOUS: {{ . | quote }}
 {{- range $k, $val := $v.keyCustody.env }}
 {{ $k }}: {{ $val | toString | quote }}
 {{- end }}
+{{- with $v.dataRegions.names }}
+DATA_REGIONS: {{ join "," . | quote }}
+{{- end }}
 {{- if $v.smtp.host }}
 SMTP_HOST: {{ $v.smtp.host | quote }}
 SMTP_PORT: {{ $v.smtp.port | quote }}

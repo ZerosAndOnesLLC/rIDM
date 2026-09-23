@@ -259,7 +259,7 @@ pub async fn list(
 ) -> AppResult<Page<User>> {
     let after = cursor.map(Cursor::decode).transpose()?;
     let limit = page_size(limit);
-    let mut tx = db::read_tx(&state.db_read, tenant_id).await?;
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     let rows = repos::users::list(&mut *tx, tenant_id, filter, after, limit).await?;
     tx.commit().await?;
     Ok(Page::from_rows(rows, limit, |u| Cursor {

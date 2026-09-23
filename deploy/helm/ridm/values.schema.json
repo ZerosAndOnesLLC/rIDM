@@ -222,6 +222,29 @@
         }
       }
     },
+    "dataRegions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,31}$",
+            "not": {
+              "const": "home"
+            }
+          },
+          "uniqueItems": true
+        },
+        "existingSecret": {
+          "type": "string"
+        },
+        "migrationsExistingSecret": {
+          "type": "string"
+        }
+      }
+    },
     "smtp": {
       "type": "object",
       "additionalProperties": false,

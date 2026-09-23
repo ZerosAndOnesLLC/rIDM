@@ -1,5 +1,7 @@
 //! Tenant lifecycle. `tenants` is global, so no RLS binding is needed, but
-//! every write invalidates the tenant cache on all nodes.
+//! every write invalidates the tenant cache on all nodes. The registry is in
+//! the home database; a tenant created in a data region also gets a copy of
+//! its row in that region's database, where its data lives.
 
 use std::sync::Arc;
 
@@ -8,6 +10,7 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::cache::keys;
+use crate::config::HOME_REGION;
 use crate::error::{AppError, AppResult};
 use crate::middleware::{TENANT_CACHE_TTL, is_valid_slug, tenant_cache_keys};
 use crate::models::{MASTER_TENANT_ID, Tenant, TenantSettings, TenantStatus};
@@ -22,6 +25,11 @@ pub struct NewTenant {
     pub display_name: String,
     #[serde(default)]
     pub settings: Option<TenantSettings>,
+    /// The data region to keep the tenant's data in, one of
+    /// `GET /admin/regions`; absent or `home`: the home database. Fixed at
+    /// creation; `ridm-api move-tenant` moves a tenant later.
+    #[serde(default)]
+    pub data_region: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, utoipa::ToSchema)]
@@ -51,15 +59,32 @@ pub async fn create(state: &AppState, actor: Actor, input: NewTenant) -> AppResu
     impersonation::validate_policy(&settings.impersonation)?;
     features::validate(&settings.features)?;
     settings.custom_domain = normalize_custom_domain(state, settings.custom_domain.as_deref())?;
-    let tenant = repos::tenants::insert(&state.db, Uuid::now_v7(), &slug, display_name, &settings)
-        .await
-        .map_err(|e| match AppError::from_db(e) {
-            AppError::Conflict(_) if settings.custom_domain.is_some() => AppError::Conflict(
-                format!("tenant slug `{slug}` is taken or custom_domain is already used"),
-            ),
-            AppError::Conflict(_) => AppError::Conflict(format!("tenant slug `{slug}` is taken")),
-            other => other,
-        })?;
+    let region = region_for_new_tenant(state, input.data_region.as_deref())?;
+    let tenant = repos::tenants::insert(
+        state.db.home(),
+        Uuid::now_v7(),
+        &slug,
+        display_name,
+        &settings,
+        region.and_then(|d| d.region()),
+    )
+    .await
+    .map_err(|e| match AppError::from_db(e) {
+        AppError::Conflict(_) if settings.custom_domain.is_some() => AppError::Conflict(format!(
+            "tenant slug `{slug}` is taken or custom_domain is already used"
+        )),
+        AppError::Conflict(_) => AppError::Conflict(format!("tenant slug `{slug}` is taken")),
+        other => other,
+    })?;
+    if let Some(database) = region
+        && let Err(err) = repos::tenants::insert_copy(&database.primary, &tenant).await
+    {
+        // The registry must not point at a region that has no copy.
+        if let Err(undo) = repos::tenants::delete(state.db.home(), tenant.id).await {
+            tracing::error!(tenant = %tenant.id, error = %undo, "could not undo a tenant's registration");
+        }
+        return Err(AppError::from_db(err));
+    }
     // A negative cache entry may exist for this slug from earlier lookups.
     state.cache.invalidate(&tenant_cache_keys(&tenant)).await?;
     state.events.publish(Event::new(
@@ -73,6 +98,30 @@ pub async fn create(state: &AppState, actor: Actor, input: NewTenant) -> AppResu
     super::admin_console::ensure(state, tenant.id).await?;
     super::account_console::ensure(state, &tenant).await?;
     Ok(tenant)
+}
+
+/// The database a new tenant's data goes in: `None` for the home database,
+/// or a configured region.
+fn region_for_new_tenant<'a>(
+    state: &'a AppState,
+    requested: Option<&str>,
+) -> AppResult<Option<&'a crate::db::Database>> {
+    let Some(name) = requested
+        .map(str::trim)
+        .filter(|r| !r.is_empty() && *r != HOME_REGION)
+    else {
+        return Ok(None);
+    };
+    match state.db.get(Some(name)) {
+        Some(database) => Ok(Some(database)),
+        None => {
+            let known: Vec<&str> = state.db.all().iter().map(|d| &*d.name).collect();
+            Err(AppError::BadRequest(format!(
+                "unknown data region `{name}`; this deployment has: {}",
+                known.join(", ")
+            )))
+        }
+    }
 }
 
 /// Lower-case a custom domain and reject anything that is not a hostname
@@ -116,13 +165,13 @@ pub async fn get_cached(state: &AppState, id: Uuid) -> AppResult<Option<Arc<Tena
     state
         .cache
         .get_or_load(&keys::tenant_by_id(id), TENANT_CACHE_TTL, || async move {
-            Ok(repos::tenants::find_by_id(&db, id).await?)
+            Ok(repos::tenants::find_by_id(db.home(), id).await?)
         })
         .await
 }
 
 pub async fn get(state: &AppState, id: Uuid) -> AppResult<Tenant> {
-    repos::tenants::find_by_id(&state.db, id)
+    repos::tenants::find_by_id(state.db.home(), id)
         .await?
         .ok_or(AppError::NotFound("tenant"))
 }
@@ -155,8 +204,13 @@ pub async fn update(
     // Cache keys derived from settings (e.g. discovery domains) can change
     // with this update: evict both the old and the new derivations.
     let before = get(state, id).await?;
+    if before.relocating {
+        return Err(AppError::Conflict(
+            "the tenant is being moved to another region".into(),
+        ));
+    }
     let tenant = repos::tenants::update(
-        &state.db,
+        state.db.home(),
         id,
         patch.display_name.as_deref().map(str::trim),
         patch.status,
@@ -170,6 +224,16 @@ pub async fn update(
         other => other,
     })?
     .ok_or(AppError::NotFound("tenant"))?;
+    // Only the foreign keys read the regional copy, so a copy left behind
+    // is harmless and caught up by the next change.
+    if let Some(database) = tenant
+        .data_region
+        .as_deref()
+        .and_then(|r| state.db.get(Some(r)))
+        && let Err(err) = repos::tenants::update_copy(&database.primary, &tenant).await
+    {
+        tracing::warn!(tenant = %tenant.id, region = %database.name, error = %err, "regional copy of the tenant not updated");
+    }
     let mut keys = tenant_cache_keys(&before);
     keys.extend(tenant_cache_keys(&tenant));
     keys.sort();
@@ -198,12 +262,32 @@ pub async fn delete(state: &AppState, actor: Actor, id: Uuid) -> AppResult<()> {
         ));
     }
     let tenant = get(state, id).await?;
+    if tenant.relocating {
+        return Err(AppError::Conflict(
+            "the tenant is being moved to another region".into(),
+        ));
+    }
+    // The tenant's data first, in its region: the registry row goes last so
+    // a failure leaves the tenant findable, to be deleted again.
+    if let Some(region) = tenant.data_region.as_deref() {
+        let database = state.db.get(Some(region)).ok_or_else(|| {
+            AppError::Unavailable(format!(
+                "data region `{region}` is not configured on this node"
+            ))
+        })?;
+        let mut tx = crate::db::bypass_tx(&database.primary).await?;
+        repos::tenants::delete(&mut *tx, id)
+            .await
+            .map_err(AppError::from_db)?;
+        tx.commit().await?;
+    }
     // Cascading deletes touch RLS-protected tables; run with bypass.
-    let mut tx = crate::db::bypass_tx(&state.db).await?;
+    let mut tx = crate::db::bypass_tx(state.db.home()).await?;
     let deleted = repos::tenants::delete(&mut *tx, id)
         .await
         .map_err(AppError::from_db)?;
     tx.commit().await?;
+    state.db.forget(id);
     if !deleted {
         return Err(AppError::NotFound("tenant"));
     }
@@ -216,6 +300,16 @@ pub async fn delete(state: &AppState, actor: Actor, id: Uuid) -> AppResult<()> {
     Ok(())
 }
 
+/// Tenants per data region (`None`: the home database).
+pub async fn count_by_region(
+    state: &AppState,
+) -> AppResult<std::collections::HashMap<Option<String>, i64>> {
+    Ok(repos::tenants::count_by_region(state.db.home())
+        .await?
+        .into_iter()
+        .collect())
+}
+
 pub async fn list(
     state: &AppState,
     cursor: Option<&str>,
@@ -223,7 +317,7 @@ pub async fn list(
 ) -> AppResult<Page<Tenant>> {
     let after = cursor.map(Cursor::decode).transpose()?;
     let limit = page_size(limit);
-    let rows = repos::tenants::list(&state.db, after, limit).await?;
+    let rows = repos::tenants::list(state.db.home(), after, limit).await?;
     Ok(Page::from_rows(rows, limit, |t| Cursor {
         created_at: t.created_at,
         id: t.id,

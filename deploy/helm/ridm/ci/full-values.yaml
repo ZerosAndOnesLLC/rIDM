@@ -29,6 +29,10 @@ bootstrap:
 migrations:
   database:
     existingSecret: {name: ridm-db-owner, key: uri}
+dataRegions:
+  names: [eu, us-east]
+  existingSecret: ridm-regions
+  migrationsExistingSecret: ridm-regions-owner
 env:
   RETENTION_DAYS: 14
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318

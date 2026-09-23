@@ -287,6 +287,7 @@ in [`.env.example`](.env.example). The essentials:
 | `PUBLIC_URL` | Externally visible base URL; tenant issuers are `{PUBLIC_URL}/t/{slug}` |
 | `MASTER_KEY` / `MASTER_KEY_FILE` | 32-byte key (hex or base64) encrypting secrets at rest; optional with `KEY_WRAPPER` |
 | `KEY_WRAPPER` | An HSM or KMS holds the master key instead: `pkcs11`, `aws-kms`, `vault`, `gcp-kms` or `azure-key-vault` (see [key custody](#key-custody-hsm-and-kms)) |
+| `DATA_REGIONS` | Regional databases tenants can be placed in (`eu,us`), each with `DATABASE_URL_<REGION>` and optional `DATABASE_READ_URL_<REGION>`, `REDIS_URL_<REGION>` (see [data residency](#data-residency)) |
 | `BIND_ADDR` | Listen address, default `0.0.0.0:8080` |
 | `TRUSTED_PROXIES` | CIDRs whose `X-Forwarded-For` / `Forwarded` headers are honoured |
 | `OUTBOUND_ALLOW_NETWORKS` | private CIDRs that requests to tenant-chosen URLs may reach anyway (internal applications); empty = public addresses only |
@@ -896,6 +897,25 @@ and OpenShift). A deployment on `MASTER_KEY` moves onto a backend online: set
 `kms-aws`, `kms-vault`, `kms-gcp`, `kms-azure`), off in a plain `cargo build` and on in
 the container image; the static release binaries have all but PKCS#11. See the docs'
 *Key custody: HSM and KMS*.
+
+### Data residency
+
+A tenant's data can live in a regional database: `DATA_REGIONS=eu,us` with
+`DATABASE_URL_EU`, `DATABASE_URL_US` (and optionally `DATABASE_READ_URL_<REGION>` and
+`REDIS_URL_<REGION>`), then `data_region` when the tenant is created (`POST
+/admin/tenants`, or the console's *New tenant* dialog; `GET /admin/regions` lists them).
+Every tenant-scoped row of that tenant — users, credentials, sessions, clients, keys,
+the audit chain — goes to its region's database, and its Valkey keys to the region's
+Valkey when it has one; the home database (`DATABASE_URL`) keeps only the tenant
+registry, the master tenant and the master-key generations. Routing sits in the
+transaction helpers (`db::tenant_tx` opens on the database the registry names) and in
+the Valkey connection (a `ridm:t:{tenant}:…` key goes to its region), so no query
+changes; jobs, migrations and master-key rotation run over every database.
+`ridm-api move-tenant <slug> --region <name|home>` moves a tenant offline: it marks the
+tenant as moving (it answers `503`), copies every table in foreign-key order in one
+transaction, checks the counts and the audit chain, copies its Valkey keys, switches the
+registry and deletes the old copy; running it again finishes or cleans up an
+interrupted move. See the docs' *Data residency*.
 
 ### First-run bootstrap
 
@@ -1585,7 +1605,7 @@ The full phased plan lives in [`working-plan.md`](working-plan.md). In short: sc
 tenants/users/roles → keys and JWTs → OIDC core → browser flows and end-user UI → admin
 API → admin UI → MFA and passkeys → account console, brokering, device flow → scale,
 security and operability → CLI and developer experience → packaging and v0.1.0. Post-v1:
-organizations, adaptive auth, SAML, LDAP, Kerberos, HSM/KMS key custody.
+organizations, adaptive auth, SAML, LDAP, Kerberos, HSM/KMS key custody, data residency.
 
 ## Releases
 

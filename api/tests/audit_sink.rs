@@ -57,7 +57,7 @@ async fn recorded_user(app: &TestApp, name: &str) -> Uuid {
     .await
     .unwrap();
     for _ in 0..200 {
-        let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+        let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
         let n: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND subject_id = $2",
         )

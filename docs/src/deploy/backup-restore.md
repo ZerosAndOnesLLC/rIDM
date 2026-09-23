@@ -10,6 +10,7 @@ master key it was written with.
 | What | Back up | Why |
 |------|---------|-----|
 | The Postgres database | Yes, continuously or at least daily | Everything durable: tenants, users, password hashes, clients, keys (encrypted), sessions' durable records, refresh tokens (hashed), consents, audit log |
+| Each regional database (`DATA_REGIONS`) | Yes, like the home database, and restored together with it | Everything of the tenants placed in that region; the home database only registers them. See [Data residency](data-residency.md) |
 | The master key, every generation still in use | Yes, once per generation, **apart from the database backups** | Without it the database's secrets cannot be read (below) |
 | Configuration and the other secrets | Yes, with the rest of your deployment configuration | Environment variables, database and Valkey passwords, `METRICS_TOKEN`, SMTP password, TLS certificates, proxy configuration |
 | The Postgres roles | Recorded, not dumped | `pg_dump` covers one database; roles belong to the server. Keep the SQL that creates them ([Postgres and Valkey](postgres-valkey.md#two-roles-and-row-level-security)) |

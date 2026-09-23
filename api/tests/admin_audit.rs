@@ -190,7 +190,7 @@ async fn admin_actions_are_chained_listed_filtered_exported_and_verified() {
     assert!(csv.contains("user.created"));
 
     // Tampering with a stored row breaks verification at that position.
-    let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+    let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
     sqlx::query(
         "UPDATE audit_events SET payload = payload || '{\"tampered\": true}' WHERE id = $1",
     )
@@ -284,7 +284,7 @@ async fn retention_purges_old_rows_and_the_chain_still_verifies() {
     )
     .await;
     let survivor = page["items"][0]["id"].as_str().unwrap().to_string();
-    let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+    let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
     sqlx::query(
         "UPDATE audit_events SET occurred_at = now() - interval '3 days' \
          WHERE tenant_id = $1 AND name = 'personal_token.revoked' AND id <> $2",
@@ -391,7 +391,7 @@ async fn a_command_records_what_it_published_before_it_exits() {
         },
     ));
     let recorded = || async {
-        let mut tx = db::bypass_tx(&state.db).await.unwrap();
+        let mut tx = db::bypass_tx(state.db.home()).await.unwrap();
         let n: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM audit_events \
              WHERE tenant_id = $1 AND name = 'personal_token.created' \
@@ -414,7 +414,7 @@ async fn a_command_records_what_it_published_before_it_exits() {
 /// Rows of the app's tenant chain, once the writer has caught up to `n`.
 async fn chain_rows(app: &TestApp, n: i64) -> Vec<(i64, Uuid)> {
     for _ in 0..200 {
-        let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+        let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
         let rows: Vec<(i64, Uuid)> =
             sqlx::query_as("SELECT seq, id FROM audit_events WHERE tenant_id = $1 ORDER BY seq")
                 .bind(app.tenant.id)
@@ -476,7 +476,7 @@ async fn the_scheduled_check_resumes_from_its_checkpoint_and_reports_a_break_onc
     // A rewrite behind the checkpoint that reaches the checkpoint row is
     // caught, reported once, and shows on the verify endpoint.
     let (last_seq, last_id) = *grown.last().unwrap();
-    let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+    let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
     tamper(last_id).execute(&mut *tx).await.unwrap();
     tx.commit().await.unwrap();
     let broken = audit::verify_chain(&app.state, Some(tid)).await.unwrap();

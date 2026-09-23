@@ -111,6 +111,17 @@ keyCustody:
   # pod's service-account token, which the chart otherwise does not mount.
   mountServiceAccountToken: false
 
+# Data residency: regional databases tenants can be placed in (see the docs,
+# "Data residency"). Each region, e.g. eu, needs DATABASE_URL_EU (and
+# optionally DATABASE_READ_URL_EU, REDIS_URL_EU) as keys of existingSecret,
+# for the pods (the application role). The migration Job migrates every
+# region too, as the schema owner: the same DATABASE_URL_<REGION> keys, with
+# the migrator's credentials, in migrationsExistingSecret.
+dataRegions:
+  names: []
+  existingSecret: ""
+  migrationsExistingSecret: ""
+
 # Deployment-wide mail defaults; tenants may configure their own.
 smtp:
   host: ""

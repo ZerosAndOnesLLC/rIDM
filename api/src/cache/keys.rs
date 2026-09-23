@@ -112,10 +112,17 @@ pub fn jti_denied(tenant_id: Uuid, jti: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:jti:{jti}")
 }
 
-/// Claims of an opaque access token, by the SHA-256 of the token. Not
-/// tenant-scoped: the admin and account APIs learn the tenant from the entry.
+/// The tenant of an opaque access token, by the SHA-256 of the token. Not
+/// tenant-scoped: the admin and account APIs learn the tenant from the entry
+/// (tokens issued by earlier releases kept their claims here).
 pub fn opaque_access_token(token_hash: &str) -> String {
     format!("{PREFIX}:at:{token_hash}")
+}
+
+/// The claims of an opaque access token, in its tenant's region; the
+/// deployment-wide [`opaque_access_token`] entry then only names the tenant.
+pub fn opaque_access_token_claims(tenant_id: Uuid, token_hash: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:at:{token_hash}")
 }
 
 pub fn client_by_client_id(tenant_id: Uuid, client_id: &str) -> String {
@@ -338,9 +345,16 @@ pub fn pat_touched(tenant_id: Uuid, token_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:pat:{token_id}:touched")
 }
 
-/// Fixed-window rate-limit counter for one bucket (see `services::rate_limit`).
+/// Fixed-window rate-limit counter for one deployment-wide bucket (see
+/// `services::rate_limit`).
 pub fn rate_limit(bucket: &str) -> String {
     format!("{PREFIX}:rl:{bucket}")
+}
+
+/// A tenant's own rate-limit counter: under the tenant's prefix, so it lives
+/// in the tenant's region with the addresses it counts.
+pub fn tenant_rate_limit(tenant_id: Uuid, bucket: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:rl:{bucket}")
 }
 
 /// Union of the CORS origins of a tenant's active clients (the CORS layer's

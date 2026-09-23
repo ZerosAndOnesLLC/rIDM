@@ -940,22 +940,28 @@ async fn sync_groups(
 /// Run every directory sync that is due (the job's pass). Returns how many
 /// ran; one directory failing is recorded on it and does not stop the rest.
 pub async fn sync_due(state: &AppState) -> AppResult<usize> {
-    let mut cursor = (Uuid::nil(), Uuid::nil());
     let mut done = 0;
-    loop {
-        let mut tx = db::bypass_tx(&state.db).await?;
-        let page = repos::ldap::due_sync(&mut *tx, cursor, 100).await?;
-        tx.commit().await?;
-        let Some(last) = page.last().copied() else {
-            break;
-        };
-        cursor = last;
-        for (tenant_id, idp_id) in page {
-            match sync(state, tenant_id, idp_id, false).await {
-                Ok(_) => done += 1,
-                Err(AppError::Conflict(_)) => {}
-                Err(e) => {
-                    tracing::warn!(%tenant_id, %idp_id, error = %e, "directory sync failed")
+    let relocating = state.db.relocating().await?;
+    for database in state.db.all() {
+        let mut cursor = (Uuid::nil(), Uuid::nil());
+        loop {
+            let mut tx = db::bypass_tx(&database.primary).await?;
+            let page = repos::ldap::due_sync(&mut *tx, cursor, 100).await?;
+            tx.commit().await?;
+            let Some(last) = page.last().copied() else {
+                break;
+            };
+            cursor = last;
+            for (tenant_id, idp_id) in page {
+                if relocating.contains(&tenant_id) {
+                    continue;
+                }
+                match sync(state, tenant_id, idp_id, false).await {
+                    Ok(_) => done += 1,
+                    Err(AppError::Conflict(_)) => {}
+                    Err(e) => {
+                        tracing::warn!(%tenant_id, %idp_id, error = %e, "directory sync failed")
+                    }
                 }
             }
         }

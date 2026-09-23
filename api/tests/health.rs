@@ -71,7 +71,7 @@ async fn each_test_app_gets_its_own_tenant() {
     assert_ne!(a.tenant.slug, b.tenant.slug);
     let count: i64 = sqlx::query_scalar("SELECT count(*) FROM tenants WHERE slug = $1")
         .bind(&a.tenant.slug)
-        .fetch_one(&a.state.db)
+        .fetch_one(a.state.db.home())
         .await
         .unwrap();
     assert_eq!(count, 1);

@@ -26,10 +26,11 @@ async fn process_all(state: &AppState) -> AppResult<usize> {
     let mut processed = 0;
     let mut cursor = None;
     loop {
-        let page = repos::tenants::list(&state.db, cursor, 200).await?;
+        let page = repos::tenants::list(state.db.home(), cursor, 200).await?;
         let has_more = page.len() > 200;
         for tenant in page.iter().take(200) {
-            if !tenant.is_active() {
+            // A tenant being moved is unreachable until the move is over.
+            if !tenant.is_active() || tenant.relocating {
                 continue;
             }
             match keys::maintain(state, tenant.id, &tenant.settings.keys).await {

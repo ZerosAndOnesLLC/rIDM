@@ -39,7 +39,7 @@ impl Deployment {
     async fn new() -> Self {
         let db = ThrowawayDb::new(true).await;
         let pool = sqlx::PgPool::connect(&db.url).await.unwrap();
-        let tenant = common::create_tenant(&pool).await.id;
+        let tenant = common::create_tenant(&pool.clone().into()).await.id;
         pool.close().await;
         Self { db, tenant }
     }
@@ -109,7 +109,7 @@ async fn a_deployment_moves_from_the_environment_key_to_a_wrapped_generation_and
     // Only the wrapped form is stored.
     let stored: Vec<u8> =
         sqlx::query_scalar("SELECT wrapped_key FROM master_key_generations WHERE version = 2")
-            .fetch_one(&b.db)
+            .fetch_one(b.db.home())
             .await
             .unwrap();
     assert_eq!(stored.len(), 33);

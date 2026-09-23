@@ -79,6 +79,13 @@ pub enum EventKind {
     TenantDeleted {
         tenant_id: Uuid,
     },
+    /// `ridm-api move-tenant` moved the tenant's data to another database;
+    /// a region of `None` is the home database.
+    TenantMoved {
+        tenant_id: Uuid,
+        from_region: Option<String>,
+        to_region: Option<String>,
+    },
     ProfileSchemaUpdated {
         tenant_id: Uuid,
     },
@@ -570,6 +577,7 @@ impl EventKind {
             Self::TenantCreated { .. } => "tenant.created",
             Self::TenantUpdated { .. } => "tenant.updated",
             Self::TenantDeleted { .. } => "tenant.deleted",
+            Self::TenantMoved { .. } => "tenant.moved",
             Self::ProfileSchemaUpdated { .. } => "tenant.profile_schema_updated",
             Self::Bootstrapped { .. } => "system.bootstrapped",
             Self::UserCreated { .. } => "user.created",

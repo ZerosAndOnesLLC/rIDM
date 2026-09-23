@@ -71,7 +71,7 @@ pub async fn is_bootstrapped(state: &AppState) -> AppResult<bool> {
 }
 
 async fn ensure_master_tenant(state: &AppState) -> AppResult<()> {
-    if repos::tenants::find_by_id(&state.db, MASTER_TENANT_ID)
+    if repos::tenants::find_by_id(state.db.home(), MASTER_TENANT_ID)
         .await?
         .is_some()
     {
@@ -79,11 +79,12 @@ async fn ensure_master_tenant(state: &AppState) -> AppResult<()> {
     }
     // Migration 0001 seeds it; recreate defensively if it was removed.
     repos::tenants::insert(
-        &state.db,
+        state.db.home(),
         MASTER_TENANT_ID,
         MASTER_TENANT_SLUG,
         "Master",
         &Default::default(),
+        None,
     )
     .await
     .map_err(AppError::from_db)?;

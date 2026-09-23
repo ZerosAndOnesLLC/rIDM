@@ -148,6 +148,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/regions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The databases a new tenant can be placed in, home first. Only the home
+         *     database when the deployment has no `DATA_REGIONS`.
+         */
+        get: operations["tenants_regions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/tenants": {
         parameters: {
             query?: never;
@@ -5193,6 +5213,12 @@ export interface components {
             resource_server_id: string | null;
         };
         NewTenant: {
+            /**
+             * @description The data region to keep the tenant's data in, one of
+             *     `GET /admin/regions`; absent or `home`: the home database. Fixed at
+             *     creation; `ridm-api move-tenant` moves a tenant later.
+             */
+            data_region?: string | null;
             display_name: string;
             settings?: null | components["schemas"]["TenantSettings"];
             slug: string;
@@ -5384,9 +5410,20 @@ export interface components {
             items: {
                 /** Format: date-time */
                 created_at: string;
+                /**
+                 * @description The data region the tenant's data lives in (one of `DATA_REGIONS`);
+                 *     `None`: the home database. Set when the tenant is created, changed
+                 *     only by `ridm-api move-tenant`.
+                 */
+                data_region?: string | null;
                 display_name: string;
                 /** Format: uuid */
                 id: string;
+                /**
+                 * @description A move to another region is under way: the tenant is unavailable
+                 *     until it ends.
+                 */
+                relocating?: boolean;
                 settings: components["schemas"]["TenantSettings"];
                 slug: string;
                 status: components["schemas"]["TenantStatus"];
@@ -5773,6 +5810,22 @@ export interface components {
         };
         RecoveryCodes: {
             recovery_codes: string[];
+        };
+        /** @description A place a tenant's data can live (data residency, `DATA_REGIONS`). */
+        Region: {
+            /**
+             * @description The region keeps its tenants' sessions and cached rows in a Valkey
+             *     of its own (`REDIS_URL_<REGION>`) rather than the shared one.
+             */
+            dedicated_cache: boolean;
+            home: boolean;
+            /** @description What `data_region` names; `home` is the `DATABASE_URL` database. */
+            name: string;
+            /**
+             * Format: int64
+             * @description Tenants placed in it.
+             */
+            tenants: number;
         };
         RegistrationPolicy: {
             /**
@@ -6636,9 +6689,20 @@ export interface components {
         Tenant: {
             /** Format: date-time */
             created_at: string;
+            /**
+             * @description The data region the tenant's data lives in (one of `DATA_REGIONS`);
+             *     `None`: the home database. Set when the tenant is created, changed
+             *     only by `ridm-api move-tenant`.
+             */
+            data_region?: string | null;
             display_name: string;
             /** Format: uuid */
             id: string;
+            /**
+             * @description A move to another region is under way: the tenant is unavailable
+             *     until it ends.
+             */
+            relocating?: boolean;
             settings: components["schemas"]["TenantSettings"];
             slug: string;
             status: components["schemas"]["TenantStatus"];
@@ -7601,6 +7665,43 @@ export interface operations {
                 };
             };
             /** @description Not an administrator */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    tenants_regions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Region"][];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
             403: {
                 headers: {
                     [name: string]: unknown;

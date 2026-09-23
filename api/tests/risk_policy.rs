@@ -221,7 +221,7 @@ async fn sign_in(
 async fn audit(app: &TestApp, name: &str) -> Vec<Value> {
     let mut rows = Vec::new();
     for _ in 0..50 {
-        let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+        let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
         rows = sqlx::query_scalar::<_, Value>(
             "SELECT payload FROM audit_events WHERE tenant_id = $1 AND name = $2 \
              ORDER BY occurred_at DESC",
@@ -246,7 +246,7 @@ async fn scalar<T>(app: &TestApp, sql: &'static str) -> T
 where
     T: for<'r> sqlx::Decode<'r, sqlx::Postgres> + sqlx::Type<sqlx::Postgres> + Send + Unpin,
 {
-    let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+    let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
     let v = sqlx::query_scalar::<_, T>(sql)
         .bind(app.tenant.id)
         .fetch_one(&mut *tx)

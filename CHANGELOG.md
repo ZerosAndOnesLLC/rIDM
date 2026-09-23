@@ -250,8 +250,24 @@ release renames that heading to the version and date.
   `aws-config` 1.12.0 and `aws-sdk-kms` 1.121.0 (Apache-2.0), optional. The
   Helm chart gains `keyCustody`, and `masterKey` becomes optional with it.
 
+- Data residency: per-tenant database routing. `DATA_REGIONS` names regional
+  databases (`DATABASE_URL_<REGION>`, optional `DATABASE_READ_URL_<REGION>` and
+  `REDIS_URL_<REGION>`); a tenant created with `data_region` keeps every
+  tenant-scoped row in its region's database and its Valkey keys (sessions,
+  flows, cached rows, the claims of opaque access tokens) in the region's Valkey,
+  while the home database keeps the registry (`tenants.data_region`). The
+  console's *New tenant* dialog offers the regions, `GET /admin/regions` lists
+  them, and `/readyz` reports each under `checks.regions` without failing on one.
+  `ridm-api move-tenant <slug> --region <name|home>` moves a tenant offline,
+  checking row counts and the audit chain, and records `tenant.moved`. Jobs,
+  migrations, master-key rotation and the lookups of SCIM tokens and personal
+  access tokens run over every database; a node starts while a region is down.
+
 ### Changed
 
+- `ridm-api migrate` applies migrations to every configured database, the home
+  one first. Tenant-scoped rate-limit counters moved under the tenant's key
+  prefix (`ridm:t:{tenant}:rl:…`), so counters reset once on upgrade.
 - `ridm-api migrate` no longer reads the master key, and the Helm chart's
   migration Job no longer receives it.
 

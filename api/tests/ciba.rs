@@ -304,7 +304,7 @@ fn claims_of(jwt: &str) -> Value {
 /// (long enough, under the coverage build, for a single read to miss it).
 async fn audit_count(app: &TestApp, name: &str) -> i64 {
     for _ in 0..100 {
-        let mut tx = db::bypass_tx(&app.state.db).await.unwrap();
+        let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
         let n: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND name = $2",
         )
@@ -977,7 +977,7 @@ async fn every_state_answers_once() {
 
     // Past its expiry in the database: no longer listed, cannot be answered.
     let (_, row) = open_for_alice(&fx, &alice).await;
-    let mut tx = db::bypass_tx(&fx.app.state.db).await.unwrap();
+    let mut tx = db::bypass_tx(fx.app.state.db.home()).await.unwrap();
     sqlx::query("UPDATE ciba_requests SET expires_at = now() - interval '1 second' WHERE id = $1")
         .bind(row.parse::<Uuid>().unwrap())
         .execute(&mut *tx)
@@ -997,7 +997,7 @@ async fn every_state_answers_once() {
     assert_eq!(statuses, [200, 400], "{a:?} {b:?}");
 
     // Every request ended up with its outcome in the audit trail.
-    let mut tx = db::bypass_tx(&fx.app.state.db).await.unwrap();
+    let mut tx = db::bypass_tx(fx.app.state.db.home()).await.unwrap();
     let rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT status, count(*) FROM ciba_requests WHERE tenant_id = $1 GROUP BY status ORDER BY status",
     )

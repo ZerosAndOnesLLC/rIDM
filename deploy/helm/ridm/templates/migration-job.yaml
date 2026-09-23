@@ -70,6 +70,11 @@ spec:
           args: ["migrate"]
           securityContext:
             {{- toYaml $v.securityContext | nindent 12 }}
+          {{- if $v.dataRegions.names }}
+          envFrom:
+            - secretRef:
+                name: {{ required "dataRegions.migrationsExistingSecret is required with dataRegions.names" $v.dataRegions.migrationsExistingSecret }}
+          {{- end }}
           env:
             {{- range $k, $val := (include "ridm.plainEnv" . | fromYaml) }}
             {{- /* The pods bootstrap; the Job has no password to go with the email. Nor does it touch secrets: no key custody settings. */}}

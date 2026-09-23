@@ -59,7 +59,7 @@ pub async fn resolve_tenant(state: &AppState, slug: &str) -> Result<Option<Arc<T
         .get_or_load(
             &keys::tenant_by_slug(slug),
             TENANT_CACHE_TTL,
-            || async move { Ok(repos::tenants::find_by_slug(&db, &slug_owned).await?) },
+            || async move { Ok(repos::tenants::find_by_slug(db.home(), &slug_owned).await?) },
         )
         .await
 }
@@ -78,7 +78,7 @@ pub async fn resolve_tenant_by_host(
         .get_or_load(
             &keys::tenant_by_host(&host),
             TENANT_CACHE_TTL,
-            || async move { Ok(repos::tenants::find_by_custom_domain(&db, &lookup).await?) },
+            || async move { Ok(repos::tenants::find_by_custom_domain(db.home(), &lookup).await?) },
         )
         .await
 }
@@ -123,6 +123,11 @@ impl FromRequestParts<AppState> for TenantCtx {
             .ok_or(AppError::NotFound("tenant"))?;
         if !tenant.is_active() {
             return Err(AppError::Forbidden("tenant is disabled".into()));
+        }
+        if tenant.relocating {
+            return Err(AppError::Unavailable(
+                crate::db::Unroutable::Relocating.to_string(),
+            ));
         }
         Ok(Self { tenant })
     }
