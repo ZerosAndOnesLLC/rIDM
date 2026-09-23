@@ -693,7 +693,7 @@ pub async fn list_deliveries(
     tenant_id: Uuid,
     webhook_id: Uuid,
     status: Option<DeliveryStatus>,
-    limit: i64,
+    limit: Option<u32>,
 ) -> AppResult<Vec<WebhookDelivery>> {
     get(state, tenant_id, webhook_id).await?;
     let mut tx = db::read_tx(&state.db, tenant_id).await?;
@@ -702,7 +702,7 @@ pub async fn list_deliveries(
         tenant_id,
         webhook_id,
         status,
-        limit.clamp(1, 500),
+        crate::util::cursor::page_size(limit),
     )
     .await?;
     tx.commit().await?;

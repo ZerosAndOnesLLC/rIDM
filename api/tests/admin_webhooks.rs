@@ -358,10 +358,15 @@ async fn admin_runs_the_webhook_lifecycle_with_signed_deliveries() {
     ridm_api::jobs::webhook_delivery::run_once(&app.state)
         .await
         .unwrap();
-    let hits = inbox.lock().unwrap();
-    assert_eq!(hits.hits.len(), before + 1, "only the marker's ping");
-    assert_eq!(hits.hits[before].0["x-ridm-event"], "webhook.test");
-    drop(hits);
+    let (count, event) = {
+        let hits = inbox.lock().unwrap();
+        (
+            hits.hits.len(),
+            hits.hits.get(before).map(|h| h.0["x-ridm-event"].clone()),
+        )
+    };
+    assert_eq!(count, before + 1, "only the marker's ping");
+    assert_eq!(event.unwrap(), "webhook.test");
 
     let (status, _, _) = call(
         &app,

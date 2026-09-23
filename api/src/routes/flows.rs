@@ -1084,8 +1084,12 @@ async fn finish(
                         scopes: flow.request.scopes.clone(),
                     },
                 ));
-                let mut u = url::Url::parse(&flow.request.redirect_uri)
-                    .expect("the device page is a valid url");
+                let mut u = match url::Url::parse(&flow.request.redirect_uri) {
+                    Ok(u) => u,
+                    Err(e) => {
+                        return AppError::Internal(format!("device page url: {e}")).into_response();
+                    }
+                };
                 u.query_pairs_mut().append_pair("done", "1");
                 let mut res = axum::response::Redirect::to(u.as_str()).into_response();
                 crate::middleware::security_headers::set_no_store(res.headers_mut());

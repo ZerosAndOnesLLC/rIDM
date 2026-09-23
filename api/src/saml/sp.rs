@@ -245,10 +245,12 @@ pub fn validate_response(xml_text: &str, e: &Expected) -> Result<Asserted, Respo
         if e.require_encrypted {
             return Err(bad("assertions from this identity provider must be encrypted").into());
         }
-        let assertion = child(root, ns::ASSERTION, "Assertion")?.expect("counted");
+        let assertion = child(root, ns::ASSERTION, "Assertion")?
+            .ok_or_else(|| bad("a Response must carry exactly one assertion"))?;
         return read_assertion(&doc, assertion, response_signed, e);
     }
-    let container = child(root, ns::ASSERTION, "EncryptedAssertion")?.expect("counted");
+    let container = child(root, ns::ASSERTION, "EncryptedAssertion")?
+        .ok_or_else(|| bad("a Response must carry exactly one assertion"))?;
     let data = child(container, ns::XENC, "EncryptedData")?
         .ok_or_else(|| bad("EncryptedAssertion holds no EncryptedData"))?;
     let decrypted = e

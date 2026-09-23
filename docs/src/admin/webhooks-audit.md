@@ -133,7 +133,7 @@ receiver.
 | `GET`, `PATCH`, `DELETE …/webhooks/{webhook}` | read, change any field above, delete (its deliveries go with it) |
 | `POST …/webhooks/{webhook}/secret` | new secret, returned once; later deliveries use it |
 | `POST …/webhooks/{webhook}/test` | send a `webhook.test` event now, whatever the event filter; returns the delivery |
-| `GET …/webhooks/{webhook}/deliveries?status=&limit=` | delivery log, newest first (`limit` 100 by default, at most 500) |
+| `GET …/webhooks/{webhook}/deliveries?status=&limit=` | delivery log, newest first (`limit` 50 by default, at most 500) |
 | `GET …/webhooks/{webhook}/deliveries/{delivery}` | one delivery with its payload, last status and the first 512 bytes of the last response |
 | `POST …/deliveries/{delivery}/redeliver` | send one delivered, failed or dead delivery again now |
 | `POST …/deliveries/redeliver-dead` | requeue every dead delivery of the webhook; answers `{"requeued": n}` |

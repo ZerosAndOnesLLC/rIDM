@@ -221,7 +221,7 @@ async fn retries_with_backoff_then_dead_letters_and_can_be_redelivered() {
         messaging::deliver_due(&state, tenant.id, 10).await.unwrap(),
         (1, 0)
     );
-    let recent = messaging::recent(&state, tenant.id, Some(MessageStatus::Sent), 10)
+    let recent = messaging::recent(&state, tenant.id, Some(MessageStatus::Sent), Some(10))
         .await
         .unwrap();
     assert!(recent.iter().any(|m| m.id == msg.id && m.attempts == 3));
@@ -245,7 +245,7 @@ async fn retries_with_backoff_then_dead_letters_and_can_be_redelivered() {
         make_due(msg.id).await;
         messaging::deliver_due(&state, tenant.id, 10).await.unwrap();
     }
-    let dead = messaging::recent(&state, tenant.id, Some(MessageStatus::Dead), 10)
+    let dead = messaging::recent(&state, tenant.id, Some(MessageStatus::Dead), Some(10))
         .await
         .unwrap();
     assert!(dead.iter().any(|m| m.id == msg.id), "{dead:?}");

@@ -652,7 +652,9 @@ pub async fn password_step(
 
     match verdict {
         Ok(must_change) => {
-            let user = user.expect("user present");
+            // A verdict of Ok comes only from a password checked against a user.
+            let user =
+                user.ok_or_else(|| AppError::Internal("password accepted without a user".into()))?;
             let ctx = RequestContext {
                 ip: ip.clone(),
                 user_agent,

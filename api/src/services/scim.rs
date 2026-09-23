@@ -1321,9 +1321,10 @@ fn set_path(obj: &mut Map<String, Value>, attr: &str, sub: Option<&str>, value: 
             if !entry.is_object() {
                 *entry = Value::Object(Map::new());
             }
-            let inner = entry.as_object_mut().expect("object");
-            let sub_key = key_for(inner, sub);
-            inner.insert(sub_key, value);
+            if let Value::Object(inner) = entry {
+                let sub_key = key_for(inner, sub);
+                inner.insert(sub_key, value);
+            }
         }
     }
 }

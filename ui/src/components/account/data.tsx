@@ -7,6 +7,7 @@ import { Alert, Button, TextField } from "@/components/ui";
 import { Button as CButton, Card, Modal } from "@/components/console/ui";
 import { accountStore, needsReauth, useAccount } from "@/lib/account/session";
 import { API_BASE } from "@/lib/api";
+import { saveResponse } from "@/lib/download";
 import { useProblemText, useSecurityChange } from "./security";
 
 /** Everything held about the user, as one JSON file. */
@@ -31,13 +32,7 @@ export function Export() {
         }
         throw new Error((problem as { detail?: string } | null)?.detail ?? t("account.error_generic"));
       }
-      const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? `${slug}-account.json`;
-      const url = URL.createObjectURL(await res.blob());
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      a.click();
-      URL.revokeObjectURL(url);
+      await saveResponse(res, `${slug}-account.json`);
     } catch (e) {
       setError(e instanceof Error ? e.message : t("account.error_generic"));
     } finally {

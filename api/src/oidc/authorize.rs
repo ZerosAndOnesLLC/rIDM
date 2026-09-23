@@ -785,7 +785,9 @@ pub(crate) async fn decide(
         let page = if create { "register" } else { "login" };
         return Ok(redirect_to_ui(state, tenant, page, flow.id));
     }
-    let session = session.expect("session present when no auth needed");
+    // `needs_auth` is false only with a live session.
+    let session = session
+        .ok_or_else(|| AppError::Internal("authorization decided without a session".into()))?;
 
     // Consent.
     let pending = if req.skip_consent && !force_consent {
@@ -958,7 +960,13 @@ fn redirect_to_ui(state: &AppState, tenant: &TenantCtx, page: &str, flow_id: Uui
 pub fn deliver(redirect_uri: &str, mode: ResponseMode, params: &[(&str, String)]) -> Response {
     let mut res = match mode.base() {
         ResponseMode::Query => {
-            let mut u = url::Url::parse(redirect_uri).expect("validated redirect uri");
+            let Ok(mut u) = url::Url::parse(redirect_uri) else {
+                return error_page(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "server_error",
+                    "the redirect URI cannot be parsed",
+                );
+            };
             {
                 let mut q = u.query_pairs_mut();
                 for (k, v) in params {
@@ -968,7 +976,13 @@ pub fn deliver(redirect_uri: &str, mode: ResponseMode, params: &[(&str, String)]
             Redirect::to(u.as_str()).into_response()
         }
         ResponseMode::Fragment => {
-            let mut u = url::Url::parse(redirect_uri).expect("validated redirect uri");
+            let Ok(mut u) = url::Url::parse(redirect_uri) else {
+                return error_page(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "server_error",
+                    "the redirect URI cannot be parsed",
+                );
+            };
             let frag: String = url::form_urlencoded::Serializer::new(String::new())
                 .extend_pairs(params.iter().map(|(k, v)| (*k, v.as_str())))
                 .finish();

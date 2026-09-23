@@ -201,7 +201,10 @@ async fn decide(
     let hint_matches = match (&session, hint_sid, &hint_sub) {
         (Some(s), Some(sid), _) => s.id == sid,
         (Some(s), None, Some(sub)) => {
-            let c = client.as_ref().expect("client present with hint");
+            // An id_token_hint names its client, resolved above.
+            let c = client
+                .as_ref()
+                .ok_or_else(|| AppError::Internal("id_token_hint without its client".into()))?;
             let tc = tokens::TokenClient::from_client(c, &tenant.tenant, vec![]);
             crate::services::users::get(state, tenant.id(), s.user_id)
                 .await
