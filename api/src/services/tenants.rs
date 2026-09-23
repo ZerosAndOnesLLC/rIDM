@@ -267,6 +267,8 @@ pub async fn delete(state: &AppState, actor: Actor, id: Uuid) -> AppResult<()> {
             "the tenant is being moved to another region".into(),
         ));
     }
+    // Remember where it lived, for the events recorded after it is gone.
+    state.db.locate(id).await?;
     // The tenant's data first, in its region: the registry row goes last so
     // a failure leaves the tenant findable, to be deleted again.
     if let Some(region) = tenant.data_region.as_deref() {
@@ -287,7 +289,6 @@ pub async fn delete(state: &AppState, actor: Actor, id: Uuid) -> AppResult<()> {
         .await
         .map_err(AppError::from_db)?;
     tx.commit().await?;
-    state.db.forget(id);
     if !deleted {
         return Err(AppError::NotFound("tenant"));
     }

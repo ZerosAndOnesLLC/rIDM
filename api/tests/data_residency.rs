@@ -648,8 +648,17 @@ async fn a_moving_tenant_is_unavailable_everywhere() {
     .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
     assert_eq!(fx.tenant_row(Some(&fx.eu), id).await, None);
-    assert_eq!(fx.rows(Some(&fx.eu), id).await, BTreeMap::new());
     assert_eq!(fx.tenant_row(None, id).await, None);
+    // The audit trail outlives the tenant (it has no foreign key), in the
+    // region, `tenant.deleted` included; nothing else of it is left, and
+    // nothing of it ever reaches home.
+    fx.audited(Some(&fx.eu), id, "tenant.deleted").await;
+    let left = fx.rows(Some(&fx.eu), id).await;
+    assert!(
+        left.keys().all(|t| t.starts_with("audit_")),
+        "only the audit trail remains: {left:?}"
+    );
+    assert_eq!(fx.rows(None, id).await, BTreeMap::new());
 }
 
 #[tokio::test]
@@ -658,6 +667,7 @@ async fn a_failed_move_leaves_the_tenant_where_it_was() {
     let slug = fx.slug("stays");
     let id = fx.tenant("stays", None).await;
     user_with_role(&fx.app, id, None).await;
+    fx.audited(None, id, "user.created").await;
     let before = fx.rows(None, id).await;
     // The target already has another tenant under the same slug: the copy
     // of the tenant's row cannot go in, so the move must fail and undo.
@@ -687,9 +697,15 @@ async fn a_failed_move_leaves_the_tenant_where_it_was() {
     assert_eq!(fx.tenant_row(None, id).await, Some((None, false)));
     let t = tenants::get(&fx.app.state, id).await.unwrap();
     assert!(!t.relocating, "the tenant is unlocked again");
+    // Audit rows may still be landing from the writer; everything else is exact.
+    let no_audit = |m: BTreeMap<String, i64>| -> BTreeMap<String, i64> {
+        m.into_iter()
+            .filter(|(t, _)| !t.starts_with("audit_"))
+            .collect()
+    };
     assert_eq!(
-        fx.rows(None, id).await,
-        before,
+        no_audit(fx.rows(None, id).await),
+        no_audit(before),
         "nothing left the home database"
     );
     assert_eq!(fx.rows(Some(&fx.us), id).await, BTreeMap::new());

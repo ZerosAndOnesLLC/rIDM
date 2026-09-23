@@ -150,15 +150,20 @@ impl Db {
             .placements
             .read()
             .ok()
-            .and_then(|m| m.get(&tenant_id).copied())
-            .filter(|p| p.fetched.elapsed() < PLACEMENT_TTL);
-        let placement = match cached {
+            .and_then(|m| m.get(&tenant_id).copied());
+        let placement = match cached.filter(|p| p.fetched.elapsed() < PLACEMENT_TTL) {
             Some(p) => p,
             None => match self.fetch(tenant_id).await? {
                 Some(p) => p,
-                // No such tenant: nothing of it exists anywhere, and the home
-                // database is where a lookup finds that out.
-                None => return Ok(&self.inner.databases[0]),
+                // Gone from the registry: a tenant this node knew was just
+                // deleted, and what is still recorded for it (its audit
+                // trail, which outlives it) goes where it lived.
+                None => match cached {
+                    Some(p) if !p.relocating => p,
+                    // Never known: nothing of it exists anywhere, and the
+                    // home database is where a lookup finds that out.
+                    _ => return Ok(&self.inner.databases[0]),
+                },
             },
         };
         if placement.relocating {
@@ -201,7 +206,8 @@ impl Db {
         }
     }
 
-    /// Drop this node's cached placement of `tenant_id` (after a move).
+    /// Drop this node's cached placement of `tenant_id` (after a move; a
+    /// deleted tenant keeps its last one, see [`Db::locate`]).
     pub fn forget(&self, tenant_id: Uuid) {
         if let Ok(mut map) = self.inner.placements.write() {
             map.remove(&tenant_id);
