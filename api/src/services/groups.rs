@@ -45,6 +45,8 @@ pub async fn create(
     {
         return Err(AppError::BadRequest("parent group does not exist".into()));
     }
+    crate::services::limits::ensure_room(&mut *tx, tenant_id, crate::services::limits::GROUPS)
+        .await?;
     let group = repos::groups::insert(&mut *tx, tenant_id, Uuid::now_v7(), &input)
         .await
         .map_err(|e| match AppError::from_db(e) {

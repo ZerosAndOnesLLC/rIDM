@@ -10,30 +10,11 @@ import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
 import { MAPPER_TYPES, defaultMapper, href, type ClaimMapperRow, type MapperConfig, type MapperType } from "@/lib/console/access";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
+import { useClientNames } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
 import { CheckList } from "../clients/pickers";
 import { JsonInput } from "../users/attributes";
 import { CreateDialog, DeleteButton, ErrorLine, Split } from "./common";
-
-function useClientNames(tenant: string) {
-  const { client } = useConsole();
-  return useQuery({
-    queryKey: ["clients", tenant, "names"],
-    staleTime: 60_000,
-    queryFn: async () => {
-      const names: Record<string, string> = {};
-      let cursor: string | undefined;
-      for (let i = 0; i < 10; i += 1) {
-        const { data } = await client.GET("/admin/tenants/{slug}/clients", { params: { path: { slug: tenant }, query: { limit: 100, cursor } } });
-        if (!data) break;
-        for (const c of data.items) names[c.id] = c.name;
-        if (!data.next_cursor) break;
-        cursor = data.next_cursor;
-      }
-      return names;
-    },
-  });
-}
 
 export function MappersPage({ tenant, selected }: { tenant: string; selected: string | null }) {
   const { client, can } = useConsole();

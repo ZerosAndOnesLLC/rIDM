@@ -63,7 +63,8 @@ curl -X POST https://id.example.com/admin/tenants/acme/scim/tokens \
 ```
 
 `GET /admin/tenants/{slug}/scim/tokens` lists the tokens (never their values) with the
-`base_url`; `DELETE /admin/tenants/{slug}/scim/tokens/{token}` revokes one at once.
+`base_url`: every live one (a tenant may have 100), then the most recent revoked ones,
+200 rows at most; `DELETE /admin/tenants/{slug}/scim/tokens/{token}` revokes one at once.
 `last_used_at` is updated at most once a minute per token. Creating and revoking a token
 are audited as `scim_token.created` and `scim_token.revoked`, and every change made
 with a token is recorded in the audit log with actor type `client` and the token's id

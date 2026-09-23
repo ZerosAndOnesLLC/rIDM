@@ -84,10 +84,12 @@ async fn tenant_crud_and_master_protection() {
     assert_eq!(updated.display_name, "Acme Corp");
     assert_eq!(updated.status, TenantStatus::Disabled);
 
-    let page = tenants::list(&app.state, None, Some(2)).await.unwrap();
+    let page = tenants::list(&app.state, None, None, Some(2))
+        .await
+        .unwrap();
     assert_eq!(page.items.len(), 2);
     assert!(page.next_cursor.is_some());
-    let page2 = tenants::list(&app.state, page.next_cursor.as_deref(), Some(500))
+    let page2 = tenants::list(&app.state, None, page.next_cursor.as_deref(), Some(500))
         .await
         .unwrap();
     assert!(
@@ -96,6 +98,22 @@ async fn tenant_crud_and_master_protection() {
             .iter()
             .all(|x| !page.items.iter().any(|y| y.id == x.id))
     );
+    // Search is a case-insensitive prefix of the slug or display name.
+    let slug = app.tenant.slug.clone();
+    let found = tenants::list(&app.state, Some(&slug.to_uppercase()), None, Some(500))
+        .await
+        .unwrap();
+    assert!(
+        found
+            .items
+            .iter()
+            .all(|t| t.slug.starts_with(&slug) || t.display_name.to_lowercase().starts_with(&slug))
+    );
+    assert!(found.items.iter().any(|t| t.slug == slug));
+    let none = tenants::list(&app.state, Some("no-such-tenant-%"), None, None)
+        .await
+        .unwrap();
+    assert!(none.items.is_empty(), "% is literal");
 
     let master = ridm_api::models::MASTER_TENANT_ID;
     assert!(matches!(

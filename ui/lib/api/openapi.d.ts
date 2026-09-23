@@ -7715,6 +7715,8 @@ export interface operations {
     tenants_list: {
         parameters: {
             query?: {
+                /** @description Case-insensitive prefix of the slug or display name. */
+                search?: string;
                 cursor?: string;
                 limit?: number;
             };

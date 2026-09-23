@@ -6,6 +6,7 @@ import { useState } from "react";
 import { SelectInput, TextInput } from "@/components/console/form";
 import { Badge, Button, IconButton, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
+import { useClientNames } from "@/lib/console/hooks";
 import type { IpRule } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
 import { ErrorLine } from "../access/common";
@@ -23,16 +24,8 @@ export function IpRulesPage({ tenant }: { tenant: string }) {
       return data;
     },
   });
-  const clients = useQuery({
-    queryKey: ["clients", tenant, "names"],
-    staleTime: 60_000,
-    queryFn: async () => {
-      const names: Record<string, string> = {};
-      const { data } = await client.GET("/admin/tenants/{slug}/clients", { params: { path: { slug: tenant }, query: { limit: 100 } } });
-      for (const c of data?.items ?? []) names[c.id] = c.name;
-      return names;
-    },
-  });
+  const clients = useClientNames(tenant);
+
   const [cidr, setCidr] = useState("");
   const [action, setAction] = useState<"allow" | "deny">("deny");
   const [clientId, setClientId] = useState("");

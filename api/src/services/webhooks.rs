@@ -249,6 +249,8 @@ pub async fn create(
     let secret = random_secret();
     let enc = encrypt_secret(state, tenant_id, id, &secret).await?;
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    crate::services::limits::ensure_room(&mut *tx, tenant_id, crate::services::limits::WEBHOOKS)
+        .await?;
     let w = repos::webhooks::insert(
         &mut *tx,
         tenant_id,

@@ -133,7 +133,7 @@ where
 {
     let mut after = None;
     loop {
-        let rows = repos::tenants::list(state.db.home(), after.take(), 200).await?;
+        let rows = repos::tenants::list(state.db.home(), None, after.take(), 200).await?;
         let more = rows.len() > 200;
         for t in rows.iter().take(200) {
             if t.relocating {

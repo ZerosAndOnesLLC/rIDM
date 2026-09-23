@@ -412,3 +412,29 @@ async fn built_in_roles_map_onto_webhook_routes_and_tenants_are_confined() {
     .await;
     assert_eq!(status, 404);
 }
+
+#[tokio::test]
+async fn a_tenant_has_at_most_its_cap_of_webhooks() {
+    let inbox: Inbox = Arc::default();
+    let app = TestApp::spawn_with(receiver(inbox)).await;
+    let base = format!("/admin/tenants/{}/webhooks", app.tenant.slug);
+    let hook = app.url("/_test/hook");
+    let t = admin_token(&app, app.tenant.id, OWNER_ROLE).await;
+    let cap = ridm_api::services::limits::WEBHOOKS.max;
+    for i in 0..=cap {
+        let (status, body, _) = call(
+            &app,
+            Method::POST,
+            &base,
+            Some(&t),
+            Some(&json!({"name": format!("w{i}"), "url": hook, "events": ["*"]})),
+        )
+        .await;
+        if i < cap {
+            assert_eq!(status, 201, "{i}: {body}");
+        } else {
+            assert_eq!(status, 400, "{body}");
+            assert!(body["detail"].as_str().unwrap().contains("at most"));
+        }
+    }
+}

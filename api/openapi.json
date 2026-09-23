@@ -712,6 +712,15 @@
         "operationId": "tenants_list",
         "parameters": [
           {
+            "name": "search",
+            "in": "query",
+            "description": "Case-insensitive prefix of the slug or display name.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "cursor",
             "in": "query",
             "required": false,

@@ -160,6 +160,8 @@ pub async fn create(
             .map_err(|_| AppError::BadRequest("client_id does not exist".into()))?;
     }
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    crate::services::limits::ensure_room(&mut *tx, tenant_id, crate::services::limits::IP_RULES)
+        .await?;
     let rule = repos::ip_rules::insert(
         &mut *tx,
         tenant_id,

@@ -75,6 +75,8 @@ pub async fn create(
     rand::fill(&mut bytes);
     let token = format!("{PREFIX}{}", URL_SAFE_NO_PAD.encode(bytes));
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    crate::services::limits::ensure_room(&mut *tx, tenant_id, crate::services::limits::SCIM_TOKENS)
+        .await?;
     let record = repos::scim_tokens::insert(
         &mut *tx,
         tenant_id,

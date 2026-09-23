@@ -10,31 +10,16 @@ import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
 import { href, type Role, type RoleDetail } from "@/lib/console/access";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
-import { useResourceServers } from "@/lib/console/hooks";
+import { useClientNames, useResourceServers } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
 import { userHref } from "@/lib/console/users";
 import { useRolesAndGroups } from "../users/invite";
 import { CreateDialog, DeleteButton, ErrorLine, Split } from "./common";
 
 export function RolesPage({ tenant, selected }: { tenant: string; selected: string | null }) {
-  const { client, can } = useConsole();
+  const { can } = useConsole();
   const { roles } = useRolesAndGroups(tenant);
-  const clients = useQuery({
-    queryKey: ["clients", tenant, "names"],
-    staleTime: 60_000,
-    queryFn: async () => {
-      const names: Record<string, string> = {};
-      let cursor: string | undefined;
-      for (let i = 0; i < 10; i += 1) {
-        const { data } = await client.GET("/admin/tenants/{slug}/clients", { params: { path: { slug: tenant }, query: { limit: 100, cursor } } });
-        if (!data) break;
-        for (const c of data.items) names[c.id] = c.name;
-        if (!data.next_cursor) break;
-        cursor = data.next_cursor;
-      }
-      return names;
-    },
-  });
+  const clients = useClientNames(tenant);
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState("");
   const names = clients.data ?? {};
