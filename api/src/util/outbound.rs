@@ -227,6 +227,20 @@ pub fn client_builder() -> reqwest::ClientBuilder {
         .no_proxy()
 }
 
+/// One pooled client, with [`client_builder`]'s policy, for every request to
+/// someone else's URL: connections and TLS sessions to the same upstream are
+/// reused instead of set up per request. It sets no overall timeout; every
+/// caller sets its own on the request (`RequestBuilder::timeout`).
+pub fn shared() -> &'static reqwest::Client {
+    static CLIENT: std::sync::LazyLock<reqwest::Client> = std::sync::LazyLock::new(|| {
+        client_builder()
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("reqwest client")
+    });
+    &CLIENT
+}
+
 /// A request error with its causes: reqwest's own message names the URL
 /// only, the reason (a refused resolution, a TLS failure) is in the chain.
 pub fn describe(err: &reqwest::Error) -> String {

@@ -252,6 +252,7 @@ async fn every_step_rejects_a_wrong_csrf_token_before_doing_anything() {
         .unwrap();
     assert!(res.status().is_client_error());
     // The flow is untouched: a correct attempt still works afterwards.
+    common::settle(&fx.app.state).await;
     assert!(fx.email.sent().is_empty());
     let state: Value = http
         .get(fx.app.tenant_url(&format!("/flows/{id}")))
@@ -356,6 +357,7 @@ async fn every_step_refuses_the_wrong_stage_and_unknown_flows() {
         let res = post(step, body, csrf.clone()).await;
         assert_eq!(res.status(), 400, "{step} at consent");
     }
+    common::settle(&fx.app.state).await;
     assert!(fx.email.sent().is_empty(), "refused steps send nothing");
 
     // Unknown and malformed flow ids.
@@ -410,6 +412,7 @@ async fn magic_links_codes_and_reset_tokens_are_single_use() {
         .await
         .unwrap();
     assert_eq!(res.status(), 202);
+    common::settle(&fx.app.state).await;
     let token = link_param(&fx.email.last().unwrap().text, "magic");
     let res = http
         .post(fx.app.tenant_url(&format!("/flows/{id}/magic-link/verify")))
@@ -432,6 +435,7 @@ async fn magic_links_codes_and_reset_tokens_are_single_use() {
     assert_eq!(res.status(), 401, "magic link reused");
 
     // Email code: consumed by the successful check.
+    common::settle(&fx.app.state).await;
     fx.email.clear();
     let http3 = bare();
     let (id3, csrf3) = start(&fx, &http3, &[]).await;
@@ -442,6 +446,7 @@ async fn magic_links_codes_and_reset_tokens_are_single_use() {
         .await
         .unwrap();
     assert_eq!(res.status(), 202);
+    common::settle(&fx.app.state).await;
     let text = fx.email.last().unwrap().text;
     let code: String = text
         .split(|c: char| !c.is_ascii_digit())
@@ -467,10 +472,12 @@ async fn magic_links_codes_and_reset_tokens_are_single_use() {
     assert_eq!(res.status(), 401, "code reused on another flow");
 
     // Reset token: the second redemption fails and changes nothing.
+    common::settle(&fx.app.state).await;
     fx.email.clear();
     recovery::request_password_reset(&fx.app.state, &fx.tenant, "alice", &[])
         .await
         .unwrap();
+    common::settle(&fx.app.state).await;
     let token = link_param(&fx.email.last().unwrap().text, "token");
     recovery::complete_password_reset(
         &fx.app.state,

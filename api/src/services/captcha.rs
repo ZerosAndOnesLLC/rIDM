@@ -22,8 +22,10 @@ pub struct SiteverifyCaptcha {
     site_key: String,
     secret: String,
     verify_url: String,
-    http: reqwest::Client,
 }
+
+/// Siteverify answers quickly or not at all.
+const VERIFY_TIMEOUT: Duration = Duration::from_secs(5);
 
 impl SiteverifyCaptcha {
     pub fn from_config(cfg: &CaptchaConfig) -> Self {
@@ -39,11 +41,6 @@ impl SiteverifyCaptcha {
                 .verify_url
                 .clone()
                 .unwrap_or_else(|| default_url.to_string()),
-            // `verify_url` is a tenant's choice: public addresses only (SSRF).
-            http: crate::util::outbound::client_builder()
-                .timeout(Duration::from_secs(5))
-                .build()
-                .expect("reqwest client"),
         }
     }
 }
@@ -76,10 +73,12 @@ impl Captcha for SiteverifyCaptcha {
         if let Some(ip) = remote_ip {
             form.push(("remoteip", ip.to_string()));
         }
+        // `verify_url` is a tenant's choice: the shared outbound client
+        // reaches public addresses only (SSRF).
         crate::util::outbound::check_url(&self.verify_url).map_err(ProviderError::Rejected)?;
-        let res = self
-            .http
+        let res = crate::util::outbound::shared()
             .post(&self.verify_url)
+            .timeout(VERIFY_TIMEOUT)
             .form(&form)
             .send()
             .await

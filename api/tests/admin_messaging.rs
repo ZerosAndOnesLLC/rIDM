@@ -164,6 +164,7 @@ async fn delivery_settings_round_trip_with_secrets_redacted_and_test_sends() {
     assert_eq!(sent["sender"], "http");
     assert_eq!(sent["to"], "ops@example.com");
     {
+        common::settle(&app.state).await;
         let got = inbox.lock().unwrap();
         let (auth, body) = got.emails.last().expect("webhook hit");
         assert_eq!(auth.as_deref(), Some("Bearer hook-secret"));
@@ -246,6 +247,7 @@ async fn delivery_settings_round_trip_with_secrets_redacted_and_test_sends() {
     assert_eq!(status, 200, "{sent}");
     assert_eq!(sent["to"], "+15550001111");
     {
+        common::settle(&app.state).await;
         let got = inbox.lock().unwrap();
         let (auth, body) = got.sms.last().expect("sms webhook hit");
         assert_eq!(auth.as_deref(), Some("Key k"));
@@ -425,6 +427,7 @@ async fn template_overrides_preview_and_apply_to_sent_mail() {
     .await
     .unwrap();
     {
+        common::settle(&app.state).await;
         let got = inbox.lock().unwrap();
         let (_, body) = got.emails.last().expect("delivered");
         assert!(

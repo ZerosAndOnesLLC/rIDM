@@ -263,6 +263,7 @@ async fn emails_follow_the_negotiated_locale() {
     )
     .await;
     assert_eq!(res.status(), 202, "{}", res.text().await.unwrap());
+    common::settle(&fx.app.state).await;
     let mail = fx.email.last().unwrap();
     assert_eq!(mail.to[0].email, "bob@example.com");
     assert!(mail.subject.starts_with("DE "), "{}", mail.subject);
@@ -277,16 +278,19 @@ async fn emails_follow_the_negotiated_locale() {
         json!({"csrf": csrf, "identifier": "bob@example.com"}),
     )
     .await;
+    common::settle(&fx.app.state).await;
     assert!(!fx.email.last().unwrap().subject.starts_with("DE "));
 
     // Password reset: page locale → user locale → tenant default.
     recovery::request_password_reset(&fx.app.state, &fx.tenant, "bob@example.com", &["de".into()])
         .await
         .unwrap();
+    common::settle(&fx.app.state).await;
     assert!(fx.email.last().unwrap().subject.starts_with("DE "));
     recovery::request_password_reset(&fx.app.state, &fx.tenant, "alice@example.com", &[])
         .await
         .unwrap();
+    common::settle(&fx.app.state).await;
     assert!(
         fx.email.last().unwrap().subject.starts_with("DE "),
         "user locale"
@@ -294,6 +298,7 @@ async fn emails_follow_the_negotiated_locale() {
     recovery::request_password_reset(&fx.app.state, &fx.tenant, "bob@example.com", &["fr".into()])
         .await
         .unwrap();
+    common::settle(&fx.app.state).await;
     assert!(
         !fx.email.last().unwrap().subject.starts_with("DE "),
         "tenant default"

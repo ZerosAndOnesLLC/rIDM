@@ -158,6 +158,7 @@ async fn password_reset_by_email_token() {
         .await
         .unwrap();
     assert_eq!(res.status(), 202);
+    common::settle(&app.state).await;
     assert!(email.sent().is_empty());
     let res = app
         .http
@@ -167,6 +168,7 @@ async fn password_reset_by_email_token() {
         .await
         .unwrap();
     assert_eq!(res.status(), 202);
+    common::settle(&app.state).await;
     let mail = email.last().unwrap();
     assert!(mail.subject.contains("Reset"));
     let token = token_from(&mail.text);
@@ -308,6 +310,7 @@ async fn resend_verification_and_temporary_password_flow() {
         .await
         .unwrap();
     assert_eq!(res.status(), 202);
+    common::settle(&app.state).await;
     let mail = email.last().expect("verification email");
     assert!(mail.text.contains("/verify/?"));
     let token = token_from(&mail.text);

@@ -84,7 +84,7 @@ flate2 = "=1.1.10"
 
 # Outbound
 reqwest = { version = "=0.13.5", default-features = false, features = ["json", "rustls", "form"] }
-lettre = { version = "=0.11.23", default-features = false, features = ["tokio1", "tokio1-rustls", "aws-lc-rs", "rustls-platform-verifier", "smtp-transport", "builder"] }
+lettre = { version = "=0.11.23", default-features = false, features = ["tokio1", "tokio1-rustls", "aws-lc-rs", "rustls-platform-verifier", "smtp-transport", "builder", "pool"] }
 handlebars = "=6.4.4"
 # DNS, for organization domain verification (TXT lookups only).
 hickory-resolver = { version = "=0.26.3", default-features = false, features = ["tokio", "system-config"] }

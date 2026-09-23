@@ -102,6 +102,7 @@ async fn user_manager_runs_the_invitation_lifecycle() {
     .await;
     assert_eq!(status, 403, "{err}");
 
+    common::settle(&app.state).await;
     let sent_before = email.sent().len();
     let (status, inv, _) = call(
         &app,
@@ -115,7 +116,9 @@ async fn user_manager_runs_the_invitation_lifecycle() {
     assert_eq!(inv["email"], "carol@example.com");
     assert!(inv.get("token_hash").is_none() && inv.get("token").is_none());
     let id = inv["id"].as_str().unwrap().to_string();
+    common::settle(&app.state).await;
     assert_eq!(email.sent().len(), sent_before + 1);
+    common::settle(&app.state).await;
     let first_token = link_token(&email.last().unwrap().text);
     let (status, dup, _) = call(
         &app,
@@ -151,6 +154,7 @@ async fn user_manager_runs_the_invitation_lifecycle() {
     )
     .await;
     assert_eq!(status, 200, "{resent}");
+    common::settle(&app.state).await;
     let second_token = link_token(&email.last().unwrap().text);
     assert_ne!(second_token, first_token);
     let old = app

@@ -194,16 +194,14 @@ pub fn validate_endpoint(field: &str, raw: &str) -> AppResult<String> {
     Ok(u.to_string().trim_end_matches('/').to_string())
 }
 
-/// A client for one upstream request. Upstream endpoints are a tenant
-/// admin's (or a discovery document's) choice: an IP-literal `url` must be
-/// public, and names resolve to public addresses only (SSRF).
-fn client_for(what: &str, url: &str) -> AppResult<reqwest::Client> {
+/// The shared outbound client, for one upstream request. Upstream endpoints
+/// are a tenant admin's (or a discovery document's) choice: an IP-literal
+/// `url` must be public, and names resolve to public addresses only (SSRF).
+/// Every request carries [`HTTP_TIMEOUT`].
+fn client_for(what: &str, url: &str) -> AppResult<&'static reqwest::Client> {
     crate::util::outbound::check_url(url)
         .map_err(|e| AppError::Unavailable(format!("{what}: {e}")))?;
-    crate::util::outbound::client_builder()
-        .timeout(HTTP_TIMEOUT)
-        .build()
-        .map_err(|e| AppError::Internal(e.to_string()))
+    Ok(crate::util::outbound::shared())
 }
 
 async fn read_json(what: &str, res: reqwest::Response) -> AppResult<Value> {
@@ -241,6 +239,7 @@ async fn read_json(what: &str, res: reqwest::Response) -> AppResult<Value> {
 pub async fn get_json(what: &str, url: &str, bearer: Option<&str>) -> AppResult<Value> {
     let mut req = client_for(what, url)?
         .get(url)
+        .timeout(HTTP_TIMEOUT)
         .header("accept", "application/json")
         .header("user-agent", "rIDM");
     if let Some(t) = bearer {
@@ -256,6 +255,7 @@ pub async fn get_json(what: &str, url: &str, bearer: Option<&str>) -> AppResult<
 pub async fn get_text(what: &str, url: &str) -> AppResult<String> {
     let res = client_for(what, url)?
         .get(url)
+        .timeout(HTTP_TIMEOUT)
         .header(
             "accept",
             "application/samlmetadata+xml, application/xml, text/xml",
@@ -296,6 +296,7 @@ pub async fn post_form(
 ) -> AppResult<Value> {
     let mut req = client_for(what, url)?
         .post(url)
+        .timeout(HTTP_TIMEOUT)
         .header("accept", "application/json")
         .header("user-agent", "rIDM")
         .form(form);

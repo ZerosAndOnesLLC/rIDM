@@ -198,6 +198,7 @@ async fn registration_with_email_verification_continues_the_flow() {
 
     // Pending users cannot log in with the password yet? They can once verified; before that
     // the flow waits. Open the verification link: account activated and the flow completes.
+    common::settle(&app.state).await;
     let mail = email.last().unwrap();
     assert_eq!(mail.to[0].email, "alice@example.com");
     let token = link_token(&mail.text, "token");
@@ -338,6 +339,7 @@ async fn invitation_lifecycle() {
     .unwrap();
     assert_eq!(inv.email, "carol@example.com");
     assert!(inv.is_open(chrono::Utc::now()));
+    common::settle(&app.state).await;
     let mail = email.last().unwrap();
     assert!(mail.text.contains("admin invited you"));
     let token = link_token(&mail.text, "token");
@@ -444,10 +446,12 @@ async fn invitation_lifecycle() {
     )
     .await
     .unwrap();
+    common::settle(&app.state).await;
     let t1 = link_token(&email.last().unwrap().text, "token");
     invitations::resend(&app.state, &tenant, Actor::System, inv2.id)
         .await
         .unwrap();
+    common::settle(&app.state).await;
     let t2 = link_token(&email.last().unwrap().text, "token");
     assert_ne!(t1, t2);
     assert_eq!(

@@ -1,3 +1,4 @@
+pub mod background;
 pub mod cursor;
 pub mod outbound;
 pub mod patch;

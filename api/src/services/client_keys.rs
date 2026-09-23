@@ -75,12 +75,9 @@ async fn fetch(uri: &str) -> AppResult<Value> {
     // URL: public addresses only (SSRF).
     crate::util::outbound::check_url(uri)
         .map_err(|e| AppError::BadRequest(format!("jwks_uri: {e}")))?;
-    let client = crate::util::outbound::client_builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-    let res = client
+    let res = crate::util::outbound::shared()
         .get(uri)
+        .timeout(Duration::from_secs(5))
         .header("accept", "application/json")
         .send()
         .await

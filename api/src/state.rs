@@ -42,7 +42,14 @@ pub struct AppState {
     /// MaxMind database backing the risk policy's location signals; empty
     /// unless `GEOIP_DB` names a readable file.
     pub geoip: crate::services::geoip::GeoDatabase,
+    /// Deliveries a request queued and does not wait for (the message it
+    /// sends, the webhooks its events trigger); shutdown waits for them.
+    pub background: crate::util::background::Background,
 }
+
+/// Background deliveries (messages, prompt webhook passes) one node runs at
+/// the same time; more wait for a slot.
+pub const BACKGROUND_DELIVERIES: usize = 64;
 
 impl AppState {
     pub fn new(config: Config, db: impl Into<Db>, redis: Cache) -> Self {
@@ -79,20 +86,22 @@ impl AppState {
         });
         let ui = crate::routes::ui::EmbeddedUi::from_build(&config);
         let geoip = crate::services::geoip::GeoDatabase::from_config(&config.geoip);
+        let events = EventBus::with_durable_capacity(1024, config.event_queue_capacity);
         Self {
             config: Arc::new(config),
             db,
             redis,
             cache,
-            events: EventBus::default(),
+            events,
             hasher,
             key_encryptor,
             master_keys,
-            senders: Arc::new(crate::messaging::DefaultSenderFactory),
+            senders: Arc::new(crate::messaging::DefaultSenderFactory::default()),
             breach,
             audit_sink,
             ui,
             geoip,
+            background: crate::util::background::Background::new(BACKGROUND_DELIVERIES),
         }
     }
 }

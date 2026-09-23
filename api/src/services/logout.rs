@@ -223,12 +223,9 @@ async fn send_backchannel(
     );
     let logout_token = tokens::sign(state, &key, "logout+jwt", &claims).await?;
 
-    let http = outbound::client_builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-    let res = http
+    let res = outbound::shared()
         .post(&uri)
+        .timeout(Duration::from_secs(5))
         .form(&[("logout_token", logout_token)])
         .send()
         .await

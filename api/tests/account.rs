@@ -365,6 +365,7 @@ async fn factors_are_managed_with_a_recent_sign_in() {
     .await;
     assert_eq!(status, 202, "{sent}");
     assert_eq!(sent["destination"], "a•••@example.com");
+    common::settle(&fx.app.state).await;
     let mails = fx.email.sent();
     let mail = mails
         .iter()

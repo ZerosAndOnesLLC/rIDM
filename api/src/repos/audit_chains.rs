@@ -7,6 +7,18 @@ use chrono::{DateTime, Utc};
 use sqlx::PgExecutor;
 use uuid::Uuid;
 
+/// A chain's newest row: its sequence number and hash, as the writer last
+/// recorded them (read under the chain's lock).
+pub async fn head<'e>(
+    exec: impl PgExecutor<'e>,
+    chain: Uuid,
+) -> Result<Option<(i64, Vec<u8>)>, sqlx::Error> {
+    sqlx::query_as("SELECT head_seq, head_hash FROM audit_chains WHERE chain_id = $1")
+        .bind(chain)
+        .fetch_optional(exec)
+        .await
+}
+
 /// Record a chain's newest row. Never moves the head backwards, so a row
 /// written by an older node during a rolling upgrade cannot confuse it.
 pub async fn advance_head<'e>(

@@ -175,6 +175,7 @@ async fn email_otp_login() {
     )
     .await;
     assert_eq!(res.status(), 202);
+    common::settle(&fx.app.state).await;
     assert!(fx.email.sent().is_empty());
     let res = post(
         &fx,
@@ -184,6 +185,7 @@ async fn email_otp_login() {
     )
     .await;
     assert_eq!(res.status(), 202);
+    common::settle(&fx.app.state).await;
     let mail = fx.email.last().expect("otp email");
     assert_eq!(mail.to[0].email, "alice@example.com");
     let code: String = mail
@@ -286,6 +288,7 @@ async fn otp_attempt_limit_invalidates_the_code() {
         json!({"csrf": csrf, "identifier": "alice"}),
     )
     .await;
+    common::settle(&fx.app.state).await;
     let code: String = fx
         .email
         .last()
@@ -356,6 +359,7 @@ async fn magic_link_login_bound_to_the_flow() {
         .status(),
         202
     );
+    common::settle(&fx.app.state).await;
     let mail = fx.email.last().expect("magic link email");
     let link = mail
         .text
@@ -401,6 +405,7 @@ async fn magic_link_login_bound_to_the_flow() {
         .status(),
         202
     );
+    common::settle(&fx.app.state).await;
     let link = fx
         .email
         .last()
@@ -476,6 +481,7 @@ async fn sms_otp_requires_a_verified_phone() {
         .status(),
         202
     );
+    common::settle(&fx.app.state).await;
     assert!(fx.sms.sent().is_empty(), "unverified phone: nothing sent");
     assert_eq!(
         post(
@@ -488,6 +494,7 @@ async fn sms_otp_requires_a_verified_phone() {
         .status(),
         202
     );
+    common::settle(&fx.app.state).await;
     let text = fx.sms.last().unwrap().body;
     let code: String = text
         .split("code: ")

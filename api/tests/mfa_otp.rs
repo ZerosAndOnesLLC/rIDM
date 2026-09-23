@@ -217,7 +217,8 @@ fn six_digits(text: &str) -> String {
 }
 
 /// Emails carrying a code (the MFA-changed security notice is not one).
-fn code_emails(fx: &Fx) -> usize {
+async fn code_emails(fx: &Fx) -> usize {
+    common::settle(&fx.app.state).await;
     fx.email
         .sent()
         .iter()
@@ -225,13 +226,15 @@ fn code_emails(fx: &Fx) -> usize {
         .count()
 }
 
-fn last_email_code(fx: &Fx) -> String {
+async fn last_email_code(fx: &Fx) -> String {
+    common::settle(&fx.app.state).await;
     let mail = fx.email.last().expect("an email");
     assert_eq!(mail.to[0].email, "alice@example.com");
     six_digits(&mail.text)
 }
 
-fn last_sms_code(fx: &Fx) -> (String, String) {
+async fn last_sms_code(fx: &Fx) -> (String, String) {
+    common::settle(&fx.app.state).await;
     let sms = fx.sms.last().expect("an sms");
     (sms.to.clone(), six_digits(&sms.body))
 }
@@ -286,11 +289,13 @@ async fn email_codes_enrol_on_first_sign_in_and_verify_the_next_ones() {
     let sent: Value = res.json().await.unwrap();
     assert_eq!(sent["sent"], true);
     assert_eq!(sent["destination"], "a•••@example.com");
-    let code = last_email_code(&fx);
+    let code = last_email_code(&fx).await;
+    common::settle(&fx.app.state).await;
     assert_eq!(fx.email.sent().len(), 1);
     // Asking again right away (a re-rendered page) reuses the pending code.
     let res = step(&fx, id, "mfa/email/enroll", json!({}), &csrf).await;
     assert_eq!(res.status(), 202);
+    common::settle(&fx.app.state).await;
     assert_eq!(
         fx.email.sent().len(),
         1,
@@ -351,8 +356,8 @@ async fn email_codes_enrol_on_first_sign_in_and_verify_the_next_ones() {
     assert_eq!(res.status(), 401);
     let res = step(&fx, id2, "mfa/email/send", json!({}), &csrf2).await;
     assert_eq!(res.status(), 202);
-    assert_eq!(code_emails(&fx), 2);
-    let code = last_email_code(&fx);
+    assert_eq!(code_emails(&fx).await, 2);
+    let code = last_email_code(&fx).await;
     let res = step(&fx, id2, "mfa/email/verify", json!({"code": code}), &csrf2).await;
     assert_eq!(res.status(), 200);
     assert_eq!(res.json::<Value>().await.unwrap()["stage"], "done");
@@ -389,6 +394,7 @@ async fn sms_enrolment_proves_a_new_number_and_saves_it_verified() {
     )
     .await;
     assert_eq!(res.status(), 400);
+    common::settle(&fx.app.state).await;
     assert!(fx.sms.sent().is_empty());
 
     let res = step(
@@ -404,7 +410,7 @@ async fn sms_enrolment_proves_a_new_number_and_saves_it_verified() {
         res.json::<Value>().await.unwrap()["destination"],
         "•••••••••22"
     );
-    let (to, first) = last_sms_code(&fx);
+    let (to, first) = last_sms_code(&fx).await;
     assert_eq!(to, "+15550002222");
 
     // Switching numbers discards the earlier code: it must not prove the new one.
@@ -417,8 +423,9 @@ async fn sms_enrolment_proves_a_new_number_and_saves_it_verified() {
     )
     .await;
     assert_eq!(res.status(), 202);
-    let (to, second) = last_sms_code(&fx);
+    let (to, second) = last_sms_code(&fx).await;
     assert_eq!(to, "+15550003333");
+    common::settle(&fx.app.state).await;
     assert_eq!(fx.sms.sent().len(), 2);
     let res = step(&fx, id, "mfa/sms/confirm", json!({"code": first}), &csrf).await;
     assert_eq!(res.status(), 401);
@@ -444,11 +451,12 @@ async fn sms_enrolment_proves_a_new_number_and_saves_it_verified() {
     assert_eq!(after["mfa"]["phone"], "•••••••••33");
     let res = step(&fx, id2, "mfa/sms/send", json!({}), &csrf2).await;
     assert_eq!(res.status(), 202);
-    let (to, code) = last_sms_code(&fx);
+    let (to, code) = last_sms_code(&fx).await;
     assert_eq!(to, "+15550003333");
     let res = step(&fx, id2, "mfa/sms/verify", json!({"code": code}), &csrf2).await;
     assert_eq!(res.status(), 200);
     assert_eq!(res.json::<Value>().await.unwrap()["stage"], "done");
+    common::settle(&fx.app.state).await;
     assert!(
         fx.email
             .sent()
@@ -480,6 +488,7 @@ async fn the_tenant_decides_which_second_steps_are_offered() {
         .await;
         assert_eq!(res.status(), 400, "{channel} is off");
     }
+    common::settle(&fx.app.state).await;
     assert!(fx.email.sent().is_empty() && fx.sms.sent().is_empty());
     // Nothing else changed: the authenticator app still enrols.
     let res = step(&fx, id, "mfa/totp/enroll", json!({}), &csrf).await;
@@ -497,7 +506,7 @@ async fn an_otp_factor_counts_for_the_optional_policy() {
     assert_eq!(sign_in(&fx, id, &csrf).await["stage"], "mfa");
     let res = step(&fx, id, "mfa/email/enroll", json!({}), &csrf).await;
     assert_eq!(res.status(), 202);
-    let code = last_email_code(&fx);
+    let code = last_email_code(&fx).await;
     let res = step(&fx, id, "mfa/email/confirm", json!({"code": code}), &csrf).await;
     assert_eq!(res.status(), 200);
     // From then on every sign-in asks.

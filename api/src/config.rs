@@ -144,6 +144,10 @@ pub struct Config {
     /// Days the hourly cleanup keeps spent rows (expired tokens and sessions,
     /// login attempts, sent messages, finished webhook deliveries, ...).
     pub retention_days: u32,
+    /// Events each durable consumer (the audit writer, the webhook
+    /// dispatcher) may have queued before new ones are dropped
+    /// (`EVENT_QUEUE_CAPACITY`); `/readyz` fails well before that.
+    pub event_queue_capacity: usize,
     /// OTLP/HTTP collector base URL for trace export (`OTEL_EXPORTER_OTLP_ENDPOINT`).
     pub otlp_endpoint: Option<Url>,
     /// `service.name` on exported traces (`OTEL_SERVICE_NAME`, default `ridm`).
@@ -417,6 +421,13 @@ impl Config {
         .map_err(|(name, reason)| ConfigError::Invalid { name, reason })?;
         let hsts_max_age = u64::from(parse_u32("HSTS_MAX_AGE", 63_072_000)?);
         let retention_days = parse_u32("RETENTION_DAYS", 30)?;
+        let event_queue_capacity = parse_u32("EVENT_QUEUE_CAPACITY", 100_000)?;
+        if event_queue_capacity < 1_000 {
+            return Err(ConfigError::Invalid {
+                name: "EVENT_QUEUE_CAPACITY",
+                reason: "must be at least 1000".into(),
+            });
+        }
         let otlp_endpoint = optional("OTEL_EXPORTER_OTLP_ENDPOINT")
             .map(|v| {
                 parse("OTEL_EXPORTER_OTLP_ENDPOINT", v, |v| {
@@ -583,6 +594,7 @@ impl Config {
             security_txt,
             hsts_max_age,
             retention_days,
+            event_queue_capacity: event_queue_capacity as usize,
             otlp_endpoint,
             otel_service_name,
             metrics_token,
