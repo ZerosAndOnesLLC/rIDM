@@ -21,7 +21,9 @@ or `ridm:clients:write`. `{client}` is either the internal id or the public
 
 The console's client detail page (`?client=<id>`) saves every field as you go, and the
 **playground** (`/console/playground/`) runs the client's flow for real and shows the
-tokens it gets back.
+tokens it gets back. Its sign-in opens in a popup (allow pop-ups for the console); the
+console tab keeps the run in memory, a pasted client secret and the tokens included,
+and writes none of it to browser storage.
 
 ## Client types and their defaults
 
