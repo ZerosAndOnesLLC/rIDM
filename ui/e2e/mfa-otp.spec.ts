@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { alertOf, expectAccessible, finishAuthorization, loadState, loginWithPassword, mailpit, tenantId, tenantSql } from "./helpers";
+import { alertOf, expectAccessible, finishAuthorization, loadState, loginWithPassword, mailpit, resetSendLimits, tenantId, tenantSql } from "./helpers";
 
 /**
  * Email code as the second factor: the master tenant offers it next to the
@@ -20,6 +20,7 @@ async function emailedCode(to: string): Promise<string> {
 
 test.describe("email code second step", () => {
   test.describe.configure({ mode: "serial" });
+  test.beforeEach(() => resetSendLimits());
 
   test.afterAll(() => {
     // Leave the shared e2e user as the other specs expect it.

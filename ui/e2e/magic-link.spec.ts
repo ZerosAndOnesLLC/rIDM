@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { authorizeUrl, expectAccessible, finishAuthorization, loadState, mailpit } from "./helpers";
+import { authorizeUrl, expectAccessible, finishAuthorization, loadState, mailpit, resetSendLimits } from "./helpers";
+
+test.beforeEach(() => resetSendLimits());
 
 test("magic link: request by email, open the link, reach the callback", async ({ page }) => {
   const s = loadState();

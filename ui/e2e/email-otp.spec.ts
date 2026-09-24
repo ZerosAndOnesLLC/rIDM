@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { alertOf, authorizeUrl, expectAccessible, finishAuthorization, loadState, mailpit } from "./helpers";
+import { alertOf, authorizeUrl, expectAccessible, finishAuthorization, loadState, mailpit, resetSendLimits } from "./helpers";
+
+test.beforeEach(() => resetSendLimits());
 
 test("email code: a wrong code is refused, the emailed one signs in", async ({ page }) => {
   const s = loadState();

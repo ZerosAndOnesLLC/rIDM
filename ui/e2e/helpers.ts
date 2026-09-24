@@ -166,6 +166,24 @@ export const mailpit = {
 };
 
 /** The page's own alert (Next's route announcer also carries role=alert). */
+/**
+ * Forget the tenant's emailed-code and link send counters (3 per identifier
+ * per 10 minutes). The specs share one user, and the WebKit and Firefox
+ * projects run the same sign-ins again, so each spec that sends starts with
+ * a full allowance.
+ */
+export function resetSendLimits(tid: string = tenantId()) {
+  try {
+    const keys = execFileSync("redis-cli", ["-u", REDIS_URL, "--scan", "--pattern", `ridm:t:${tid}:pwless:sends:*`])
+      .toString()
+      .split("\n")
+      .filter(Boolean);
+    if (keys.length > 0) execFileSync("redis-cli", ["-u", REDIS_URL, "del", ...keys]);
+  } catch (e) {
+    console.warn("redis-cli unavailable; send limits not reset:", String(e).split("\n")[0]);
+  }
+}
+
 export function alertOf(page: Page) {
   return page.locator("[role=alert]:not(#__next-route-announcer__)");
 }

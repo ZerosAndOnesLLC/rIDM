@@ -29,7 +29,7 @@ test.describe("mutual TLS", () => {
     await page.getByLabel("Name", { exact: true }).fill(`E2E CA ${suffix}`);
     await page.getByLabel("CA certificate (PEM)").fill("-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----");
     await page.getByRole("button", { name: "Add certificate authority" }).click();
-    await expect(page.getByRole("alert")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("alert").filter({ hasText: /X\.509/ })).toBeVisible({ timeout: 10_000 });
 
     await page.getByLabel("CA certificate (PEM)").fill(CA_PEM);
     await page.getByRole("button", { name: "Add certificate authority" }).click();
