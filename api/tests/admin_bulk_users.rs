@@ -217,7 +217,7 @@ async fn import_reports_per_row_and_export_round_trips() {
         res.headers()["content-disposition"]
             .to_str()
             .unwrap()
-            .contains("users.json")
+            .contains(&format!("\"{}-users.json\"", app.tenant.slug))
     );
     let exported: Value = res.json().await.unwrap();
     let names: Vec<&str> = exported

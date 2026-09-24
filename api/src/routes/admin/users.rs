@@ -1003,10 +1003,11 @@ async fn export(
     Query(q): Query<ExportQuery>,
 ) -> AppResult<Response> {
     admin.require(tenant.id, P_READ)?;
-    let (content_type, filename) = match q.format {
-        ExportFormat::Json => ("application/json", "users.json"),
-        ExportFormat::Csv => ("text/csv; charset=utf-8", "users.csv"),
+    let (content_type, ext) = match q.format {
+        ExportFormat::Json => ("application/json", "json"),
+        ExportFormat::Csv => ("text/csv; charset=utf-8", "csv"),
     };
+    let filename = format!("{}-users.{ext}", tenant.slug);
     let stream = bulk_users::export(state, tenant.id, q.format);
     let mut res = Body::from_stream(stream).into_response();
     let h = res.headers_mut();
