@@ -45,7 +45,8 @@ pub struct TokenClient {
     pub id_token_encryption: Option<IdTokenEncryption>,
     pub access_token_ttl: Duration,
     pub id_token_ttl: Duration,
-    pub mappers: Vec<ClaimMapper>,
+    /// The client's claim mappers, shared with the cache (not copied per token).
+    pub mappers: std::sync::Arc<Vec<ClaimMapper>>,
     /// Repeat the scope-derived standard claims in the ID token (opt-in;
     /// OIDC Core §5.4 puts them at the userinfo endpoint).
     pub id_token_scope_claims: bool,
@@ -72,7 +73,7 @@ impl TokenClient {
     pub fn from_client(
         client: &crate::models::Client,
         tenant: &Tenant,
-        mappers: Vec<ClaimMapper>,
+        mappers: std::sync::Arc<Vec<ClaimMapper>>,
     ) -> Self {
         let policy = &tenant.settings.session;
         let fapi_alg = client
@@ -93,16 +94,13 @@ impl TokenClient {
         let id_token_encryption = client.id_token_encryption.as_ref().and_then(|cfg| {
             let alg = jwe::KeyAlg::parse(&cfg.alg)?;
             let enc = jwe::ContentEnc::parse(&cfg.enc)?;
-            let recipient_jwk = client
-                .jwks
-                .as_ref()
-                .and_then(|j| j["keys"].as_array().cloned())
-                .and_then(|keys| {
-                    keys.iter()
-                        .find(|k| k["kty"] == "RSA" && k["use"] == "enc")
-                        .or_else(|| keys.iter().find(|k| k["kty"] == "RSA"))
-                        .cloned()
-                })?;
+            // Only the chosen key is copied, not the whole set.
+            let keys = client.jwks.as_ref()?["keys"].as_array()?;
+            let recipient_jwk = keys
+                .iter()
+                .find(|k| k["kty"] == "RSA" && k["use"] == "enc")
+                .or_else(|| keys.iter().find(|k| k["kty"] == "RSA"))
+                .cloned()?;
             Some(IdTokenEncryption {
                 alg,
                 enc,
@@ -147,7 +145,7 @@ impl TokenClient {
             id_token_encryption: None,
             access_token_ttl: Duration::from_secs(300),
             id_token_ttl: Duration::from_secs(300),
-            mappers: vec![],
+            mappers: Default::default(),
             id_token_scope_claims: false,
             access_token_format: AccessTokenFormat::Jwt,
             access_token_alg: None,

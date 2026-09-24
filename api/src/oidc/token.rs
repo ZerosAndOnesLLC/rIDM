@@ -230,7 +230,7 @@ pub async fn effective_mappers_for(
     state: &AppState,
     tenant_id: Uuid,
     client: &Client,
-) -> Result<Vec<ClaimMapper>, AppError> {
+) -> Result<std::sync::Arc<Vec<ClaimMapper>>, AppError> {
     effective_mappers(state, tenant_id, client)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))
@@ -240,7 +240,7 @@ async fn effective_mappers(
     state: &AppState,
     tenant_id: Uuid,
     client: &Client,
-) -> Result<Vec<ClaimMapper>, OAuthError> {
+) -> Result<std::sync::Arc<Vec<ClaimMapper>>, OAuthError> {
     let db = state.db.clone();
     let client_id = client.id;
     let version = crate::services::claim_mappers::mappers_version(state, tenant_id).await?;
@@ -283,7 +283,7 @@ async fn effective_mappers(
             },
         )
         .await?;
-    Ok(rows.map(|m| m.as_ref().clone()).unwrap_or_default())
+    Ok(rows.unwrap_or_default())
 }
 
 /// Access-token audience and permissions for the requested resource servers.

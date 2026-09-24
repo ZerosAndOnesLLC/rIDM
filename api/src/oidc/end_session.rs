@@ -223,7 +223,7 @@ async fn decide(
             let c = client
                 .as_ref()
                 .ok_or_else(|| AppError::Internal("id_token_hint without its client".into()))?;
-            let tc = tokens::TokenClient::from_client(c, &tenant.tenant, vec![]);
+            let tc = tokens::TokenClient::from_client(c, &tenant.tenant, Default::default());
             crate::services::users::get(state, tenant.id(), s.user_id)
                 .await
                 .map(|u| tokens::subject_for(&tenant.tenant, &tc, &u) == *sub)

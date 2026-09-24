@@ -476,7 +476,7 @@ async fn mappers_and_encrypted_id_tokens() {
     let fx = fixture(SigningAlg::RS256).await;
     let recipient = keys::generate(SigningAlg::RS256, RsaBits::B2048).unwrap();
     let mut client = TokenClient::public("secure-app");
-    client.mappers = vec![
+    client.mappers = std::sync::Arc::new(vec![
         ClaimMapper {
             name: "dept".into(),
             kind: MapperKind::Hardcoded {
@@ -492,7 +492,7 @@ async fn mappers_and_encrypted_id_tokens() {
             },
             include_in: vec![TokenKind::Access],
         },
-    ];
+    ]);
     client.id_token_encryption = Some(IdTokenEncryption {
         alg: jwe::KeyAlg::RsaOaep256,
         enc: jwe::ContentEnc::A256Gcm,

@@ -647,26 +647,29 @@ impl Config {
         v
     }
 
-    /// Hosts (`host[:port]`, lower-case) the API and the UI are reached on;
-    /// a tenant's custom domain may not be one of them.
-    pub fn primary_hosts(&self) -> Vec<String> {
-        let mut v: Vec<String> = [
+    /// Whether `host` (`host[:port]`, as a request names it) is one the API
+    /// or the UI is reached on; a tenant's custom domain may not be one of
+    /// them. Asked on every request, so it compares in place.
+    pub fn is_primary_host(&self, host: &str) -> bool {
+        let (name, port) = match host.rsplit_once(':') {
+            Some((name, port)) if port.parse::<u16>().is_ok() => (name, Some(port)),
+            _ => (host, None),
+        };
+        [
             Some(&self.public_url),
             Some(&self.ui_url),
             self.mtls.public_url.as_ref(),
         ]
         .into_iter()
         .flatten()
-        .filter_map(|u| {
-            let host = u.host_str()?.to_ascii_lowercase();
-            Some(match u.port() {
-                Some(p) => format!("{host}:{p}"),
-                None => host,
-            })
+        .any(|u| {
+            u.host_str().is_some_and(|h| h.eq_ignore_ascii_case(name))
+                && match (u.port(), port) {
+                    (Some(p), Some(q)) => q.parse::<u16>() == Ok(p),
+                    (None, None) => true,
+                    _ => false,
+                }
         })
-        .collect();
-        v.dedup();
-        v
     }
 
     /// Issuer URL for a tenant: `{PUBLIC_URL}/t/{slug}` (no trailing slash).

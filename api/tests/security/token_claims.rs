@@ -207,12 +207,12 @@ async fn mappers_cannot_forge_bindings_actors_or_authorization_claims() {
         include_in: vec![TokenKind::Access],
     };
     let client = TokenClient {
-        mappers: vec![
+        mappers: std::sync::Arc::new(vec![
             forged("cnf", json!({"jkt": "attacker-key"})),
             forged("act", json!({"sub": "someone"})),
             forged("roles", json!(["ridm:owner"])),
             forged("permissions", json!(["orders:write"])),
-        ],
+        ]),
         ..TokenClient::public("app")
     };
     let issued = tokens::issue_access_token(

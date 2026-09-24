@@ -63,6 +63,40 @@ pub struct Offered {
     pub trusted_networks: Vec<String>,
 }
 
+/// How long a node keeps a provider's parsed keytab. Any change to the
+/// provider names a new entry (its `updated_at` is in the key).
+const KEYTAB_TTL: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// A provider's keytab, decrypted and parsed once per node (not on every
+/// Negotiate header); `None` when it has none.
+async fn keytab(
+    state: &AppState,
+    tenant_id: Uuid,
+    idp: &crate::models::IdentityProvider,
+) -> AppResult<Option<Arc<Vec<kerberos::KeytabEntry>>>> {
+    let key = keys::kerberos_keytab(tenant_id, idp.id, idp.updated_at.timestamp_micros());
+    let material = state.cache.material();
+    if let Some(parsed) = material.get::<Vec<kerberos::KeytabEntry>>(&key) {
+        return Ok(Some(parsed));
+    }
+    let ticket = material.ticket(&key);
+    let Some(b64) = identity_providers::client_secret(state, idp).await? else {
+        return Ok(None);
+    };
+    let parsed = {
+        use base64::Engine as _;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(b64.as_bytes())
+            .map_err(|e| AppError::Internal(format!("stored keytab: {e}")))?;
+        Arc::new(
+            kerberos::parse_keytab(&bytes)
+                .map_err(|e| AppError::Internal(format!("stored keytab: {e}")))?,
+        )
+    };
+    material.insert_fresh(key, parsed.clone(), KEYTAB_TTL, ticket);
+    Ok(Some(parsed))
+}
+
 /// The tenant's enabled Kerberos providers, cached (most tenants have
 /// none). Empty when this build cannot accept tickets.
 pub async fn offered(state: &AppState, tenant_id: Uuid) -> AppResult<Vec<Offered>> {
@@ -288,16 +322,8 @@ pub async fn negotiate(
     let Some(realm) = realm_for(state, tenant.id(), &service).await? else {
         return refused_ticket(format!("no enabled provider accepts tickets for {service}"));
     };
-    let Some(b64) = identity_providers::client_secret(state, &realm.idp).await? else {
+    let Some(keys) = keytab(state, tenant.id(), &realm.idp).await? else {
         return refused_ticket(format!("provider `{}` has no keytab", realm.idp.alias));
-    };
-    let keys = {
-        use base64::Engine as _;
-        let bytes = base64::engine::general_purpose::STANDARD
-            .decode(b64.as_bytes())
-            .map_err(|e| AppError::Internal(format!("stored keytab: {e}")))?;
-        kerberos::parse_keytab(&bytes)
-            .map_err(|e| AppError::Internal(format!("stored keytab: {e}")))?
     };
     let spn = Principal::parse(&realm.cfg.service_principal)
         .map_err(|e| AppError::Internal(format!("stored service principal: {e}")))?;

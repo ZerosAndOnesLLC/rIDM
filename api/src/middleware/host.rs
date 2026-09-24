@@ -119,7 +119,7 @@ pub async fn dispatch(state: AppState, routed: Router, req: Request) -> Response
         return routed.oneshot(req).await.into_response();
     };
     // The primary hosts never map to a tenant; skip the lookup.
-    if state.config.primary_hosts().contains(&host) {
+    if state.config.is_primary_host(&host) {
         return routed.oneshot(req).await.into_response();
     }
     let tenant = match resolve_tenant_by_host(&state, &host).await {

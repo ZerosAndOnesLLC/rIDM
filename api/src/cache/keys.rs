@@ -480,3 +480,9 @@ pub fn tenant_user_counts(tenant_id: Uuid) -> String {
 pub fn tenant_user_total(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:users:total")
 }
+
+/// A Kerberos provider's parsed keytab, as of the provider's `updated_at`
+/// (any change to the provider, its keytab included, names a new entry).
+pub fn kerberos_keytab(tenant_id: Uuid, idp_id: Uuid, updated_at_micros: i64) -> String {
+    format!("{PREFIX}:t:{tenant_id}:krb:keytab:{idp_id}:{updated_at_micros}")
+}

@@ -206,6 +206,14 @@ async fn domains_are_validated_and_unique() {
         .await
         .unwrap_err();
     assert!(err.contains("own host"), "{err}");
+    // The same name on another port is another host.
+    let other_port = own.port().unwrap().wrapping_add(1).max(1);
+    let elsewhere = format!("{}:{other_port}", own.host_str().unwrap());
+    let err = set_domain(&app, app.tenant.id, Some(&elsewhere)).await;
+    assert!(
+        !err.as_ref().is_err_and(|e| e.contains("own host")),
+        "{err:?}"
+    );
 
     let host = domain_for(&app);
     set_domain(
