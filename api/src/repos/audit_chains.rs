@@ -21,22 +21,80 @@ pub async fn head<'e>(
 
 /// Record a chain's newest row. Never moves the head backwards, so a row
 /// written by an older node during a rolling upgrade cannot confuse it.
+/// `appended_from` is when the first row of this append was written: the
+/// chain's oldest row when it had none before (`new_chain`, or an emptied
+/// chain). A chain first recorded here with older rows gets no oldest time
+/// (retention looks it up).
 pub async fn advance_head<'e>(
     exec: impl PgExecutor<'e>,
     chain: Uuid,
     tenant_id: Option<Uuid>,
     seq: i64,
     hash: &[u8],
+    appended_from: DateTime<Utc>,
+    new_chain: bool,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "INSERT INTO audit_chains (chain_id, tenant_id, head_seq, head_hash) VALUES ($1, $2, $3, $4) \
-         ON CONFLICT (chain_id) DO UPDATE SET head_seq = EXCLUDED.head_seq, head_hash = EXCLUDED.head_hash \
+        "INSERT INTO audit_chains (chain_id, tenant_id, head_seq, head_hash, oldest_at) \
+         VALUES ($1, $2, $3, $4, CASE WHEN $6 THEN $5 END) \
+         ON CONFLICT (chain_id) DO UPDATE SET head_seq = EXCLUDED.head_seq, head_hash = EXCLUDED.head_hash, \
+             oldest_at = CASE WHEN audit_chains.oldest_at = 'infinity' THEN $5 \
+                              ELSE audit_chains.oldest_at END \
          WHERE audit_chains.head_seq < EXCLUDED.head_seq",
     )
     .bind(chain)
     .bind(tenant_id)
     .bind(seq)
     .bind(hash)
+    .bind(appended_from)
+    .bind(new_chain)
+    .execute(exec)
+    .await?;
+    Ok(())
+}
+
+/// Where a chain's oldest row stands, for retention.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Oldest {
+    /// Not looked at yet.
+    Unknown,
+    /// Every row is gone.
+    Empty,
+    At(DateTime<Utc>),
+}
+
+/// Every chain in this database with where its oldest row stands.
+pub async fn oldest_all<'e>(exec: impl PgExecutor<'e>) -> Result<Vec<(Uuid, Oldest)>, sqlx::Error> {
+    let rows: Vec<(Uuid, bool, Option<DateTime<Utc>>)> = sqlx::query_as(
+        "SELECT chain_id, oldest_at = 'infinity' IS TRUE, NULLIF(oldest_at, 'infinity') \
+         FROM audit_chains",
+    )
+    .fetch_all(exec)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(chain, empty, at)| {
+            let oldest = match (empty, at) {
+                (true, _) => Oldest::Empty,
+                (false, Some(at)) => Oldest::At(at),
+                (false, None) => Oldest::Unknown,
+            };
+            (chain, oldest)
+        })
+        .collect())
+}
+
+/// Record where a chain's oldest row now stands (`None`: every row is gone).
+pub async fn set_oldest<'e>(
+    exec: impl PgExecutor<'e>,
+    chain: Uuid,
+    oldest: Option<DateTime<Utc>>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE audit_chains SET oldest_at = COALESCE($2, 'infinity'::timestamptz) WHERE chain_id = $1",
+    )
+    .bind(chain)
+    .bind(oldest)
     .execute(exec)
     .await?;
     Ok(())

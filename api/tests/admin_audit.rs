@@ -3,6 +3,7 @@
 
 mod common;
 
+use ridm_api::repos::audit_chains::Oldest;
 use std::time::Duration;
 
 use common::admin::{TokenOpts, admin_token, call, get_json, token, user_with_role};
@@ -361,14 +362,77 @@ async fn retention_purges_old_rows_and_the_chain_still_verifies() {
         ok["first_seq"].as_i64().unwrap() > 1,
         "oldest rows are gone"
     );
-    // Retention 0 keeps everything; the job itself runs under its lock.
-    assert_eq!(audit::purge(&app.state, Some(tid), 0).await.unwrap(), 0);
-    assert!(
-        ridm_api::jobs::audit_retention::run_once(&app.state)
+    // The purge recorded where the chain now starts, so the job leaves it
+    // alone until that row expires too.
+    let chain = ridm_api::repos::audit::chain_id(Some(tid));
+    let oldest = || async {
+        let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
+        let all = ridm_api::repos::audit_chains::oldest_all(&mut *tx)
             .await
-            .unwrap()
-            .is_some()
+            .unwrap();
+        tx.commit().await.unwrap();
+        all.into_iter().find(|(c, _)| *c == chain).map(|(_, o)| o)
+    };
+    let day_ago = chrono::Utc::now() - chrono::Duration::days(1);
+    assert!(
+        matches!(oldest().await, Some(Oldest::At(at)) if at > day_ago),
+        "{:?}",
+        oldest().await
     );
+    ridm_api::jobs::audit_retention::run_once(&app.state)
+        .await
+        .unwrap()
+        .expect("ran");
+    let (_, kept, _) = get_json(
+        &app,
+        &format!("{base}?name=personal_token.revoked"),
+        Some(&t),
+    )
+    .await;
+    assert_eq!(
+        kept["items"].as_array().unwrap().len(),
+        1,
+        "nothing expired yet"
+    );
+
+    // Three days pass (for the rows and the chain's record alike): the job
+    // purges the lot and records the chain as emptied.
+    let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
+    sqlx::query(
+        "UPDATE audit_events SET occurred_at = occurred_at - interval '3 days' WHERE tenant_id = $1",
+    )
+    .bind(tid)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE audit_chains SET oldest_at = oldest_at - interval '3 days' WHERE chain_id = $1",
+    )
+    .bind(chain)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    let purged = ridm_api::jobs::audit_retention::run_once(&app.state)
+        .await
+        .unwrap()
+        .expect("ran");
+    assert!(purged >= 1, "{purged}");
+    let (_, gone, _) = get_json(
+        &app,
+        &format!("{base}?name=personal_token.revoked"),
+        Some(&t),
+    )
+    .await;
+    assert!(gone["items"].as_array().unwrap().is_empty(), "{gone}");
+    assert!(
+        !matches!(oldest().await, Some(Oldest::At(at)) if at < day_ago),
+        "{:?}",
+        oldest().await
+    );
+
+    // Retention 0 keeps everything.
+    assert_eq!(audit::purge(&app.state, Some(tid), 0).await.unwrap(), 0);
 }
 
 #[tokio::test]

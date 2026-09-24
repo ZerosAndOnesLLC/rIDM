@@ -184,6 +184,19 @@ pub async fn expired_head<'e>(
         .await
 }
 
+/// When the chain's first remaining row was written (`None`: it has none).
+pub async fn first_row_at<'e>(
+    exec: impl PgExecutor<'e>,
+    chain: Uuid,
+) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT occurred_at FROM audit_events WHERE chain_id = $1 ORDER BY seq LIMIT 1",
+    )
+    .bind(chain)
+    .fetch_optional(exec)
+    .await
+}
+
 /// Delete up to `batch` rows of a chain at or below `up_to_seq`.
 pub async fn purge_prefix<'e>(
     exec: impl PgExecutor<'e>,

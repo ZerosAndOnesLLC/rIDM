@@ -445,7 +445,9 @@ creates the monthly partitions of the audit table two months ahead, and drops a 
 month's partition, instead of deleting its rows, once the month ended before the longest
 retention of the tenants in that database and every chain with rows in it belongs to a
 tenant with a retention (a tenant keeping everything, one being moved between regions,
-or a deleted tenant's trail keeps its months).
+or a deleted tenant's trail keeps its months). The job remembers when each chain's
+oldest remaining row was written and only visits the chains whose oldest row is past
+their retention.
 
 The setting is in the console under Settings → Keys, discovery & audit, or:
 

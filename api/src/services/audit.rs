@@ -142,6 +142,7 @@ async fn record_chain(
         Some(head) => Some(head),
         None => repos::audit::chain_head(&mut *tx, chain).await?,
     };
+    let new_chain = head.is_none();
     let mut rows = Vec::with_capacity(events.len());
     for event in events {
         let row = chain_row(event, head.take())?;
@@ -149,9 +150,17 @@ async fn record_chain(
         rows.push(row);
     }
     repos::audit::insert_many(&mut tx, &rows).await?;
-    if let Some(last) = rows.last() {
-        repos::audit_chains::advance_head(&mut *tx, chain, last.tenant_id, last.seq, &last.hash)
-            .await?;
+    if let (Some(first), Some(last)) = (rows.first(), rows.last()) {
+        repos::audit_chains::advance_head(
+            &mut *tx,
+            chain,
+            last.tenant_id,
+            last.seq,
+            &last.hash,
+            first.occurred_at,
+            new_chain,
+        )
+        .await?;
     }
     tx.commit().await?;
     Ok(rows)
@@ -826,19 +835,27 @@ pub async fn purge(
         tx.commit().await?;
         head
     };
-    let Some(up_to) = up_to else {
-        return Ok(0);
-    };
     let mut total = 0;
-    loop {
-        let mut tx = db::bypass_tx(pool).await?;
-        let n = repos::audit::purge_prefix(&mut *tx, chain, up_to, PURGE_BATCH).await?;
-        tx.commit().await?;
-        total += n;
-        if (n as i64) < PURGE_BATCH {
-            break;
+    if let Some(up_to) = up_to {
+        loop {
+            let mut tx = db::bypass_tx(pool).await?;
+            let n = repos::audit::purge_prefix(&mut *tx, chain, up_to, PURGE_BATCH).await?;
+            tx.commit().await?;
+            total += n;
+            if (n as i64) < PURGE_BATCH {
+                break;
+            }
         }
     }
+    // Where the chain now starts, so the next pass skips it until that
+    // row expires too.
+    // Under the chain's lock: an append in between would otherwise be
+    // missed (the writer sets the oldest time only on an emptied chain).
+    let mut tx = db::bypass_tx(pool).await?;
+    repos::audit::lock_chain(&mut *tx, chain).await?;
+    let first = repos::audit::first_row_at(&mut *tx, chain).await?;
+    repos::audit_chains::set_oldest(&mut *tx, chain, first).await?;
+    tx.commit().await?;
     Ok(total)
 }
 
