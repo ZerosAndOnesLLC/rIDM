@@ -607,6 +607,13 @@ pub enum VerifyOutcome {
     Invalid,
 }
 
+/// Spend the time a password verification takes, for an identifier no
+/// account has, so a wrong username answers no faster than a wrong password.
+/// Only the hash: an unknown user has no directory link to look up.
+pub async fn equalize_timing(state: &AppState, password: Zeroizing<String>) {
+    let _ = verify_blocking(state.hasher.clone(), password, DUMMY_HASH.to_string()).await;
+}
+
 /// Verify a password for login. On success, legacy or weaker hashes are
 /// replaced with a fresh argon2id hash (transparent upgrade). Lockout and
 /// attempt counting are handled by the login flow, not here.

@@ -687,14 +687,7 @@ pub async fn password_step(
         },
         None => {
             // Equalise timing with a real verification.
-            let _ = password::verify_and_upgrade(
-                state,
-                tid,
-                &tenant.tenant.settings.password,
-                &dummy_user(tid),
-                password,
-            )
-            .await;
+            password::equalize_timing(state, password).await;
             Err("invalid_credentials")
         }
     };
@@ -817,35 +810,6 @@ pub async fn password_step(
                 locked: locked || reason == "locked",
             })
         }
-    }
-}
-
-fn dummy_user(tenant_id: Uuid) -> User {
-    User {
-        id: Uuid::nil(),
-        tenant_id,
-        org_id: None,
-        username: String::new(),
-        email: None,
-        email_verified: false,
-        phone: None,
-        phone_verified: false,
-        password_hash: None,
-        password_algo: None,
-        must_change_password: false,
-        password_expires_at: None,
-        password_changed_at: None,
-        status: UserStatus::Active,
-        attributes: Value::Object(Default::default()),
-        locale: None,
-        external_id: None,
-        last_login_at: None,
-        failed_attempts: 0,
-        locked_until: None,
-        deleted_at: None,
-        terms_accepted_at: None,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
     }
 }
 
