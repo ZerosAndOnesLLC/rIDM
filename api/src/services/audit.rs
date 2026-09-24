@@ -842,6 +842,34 @@ pub async fn purge(
     Ok(total)
 }
 
+/// Drop the monthly partitions of one database that every retention there
+/// has expired: `governed` is each chain whose retention this job applies
+/// (`0` keeps everything) in that database. A month goes when it ended
+/// before the longest of those retentions, and every chain with rows in it
+/// is one of them; a chain nobody governs (a deleted tenant's) keeps its
+/// month. Returns the partitions dropped.
+pub async fn drop_expired_partitions(pool: &PgPool, governed: &[(Uuid, u32)]) -> AppResult<i32> {
+    // A chain kept forever is not vouched for: its months stay.
+    let vouched: Vec<Uuid> = governed
+        .iter()
+        .filter(|(_, days)| *days > 0)
+        .map(|(chain, _)| *chain)
+        .collect();
+    let Some(longest) = governed
+        .iter()
+        .filter(|(_, days)| *days > 0)
+        .map(|(_, days)| *days)
+        .max()
+    else {
+        return Ok(0);
+    };
+    let cutoff = (Utc::now() - Duration::days(i64::from(longest))).date_naive();
+    let mut tx = db::bypass_tx(pool).await?;
+    let dropped = repos::audit::drop_partitions_before(&mut *tx, cutoff, &vouched).await?;
+    tx.commit().await?;
+    Ok(dropped)
+}
+
 /// Make sure the monthly partitions for the coming months exist, in every
 /// database.
 pub async fn ensure_partitions(state: &AppState) -> AppResult<i32> {

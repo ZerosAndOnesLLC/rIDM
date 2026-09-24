@@ -596,6 +596,72 @@ async fn the_application_role_keeps_audit_partitions_coming() {
             .await
             .unwrap();
         assert_eq!(created, 2, "months 6 and 8; month 7 is skipped");
+
+        // Retention drops a whole month once every chain in it is past its
+        // retention, never one holding a chain nobody governs, nor the
+        // current month.
+        // Partitions belong to the schema owner, as audit_ensure_partitions
+        // makes them.
+        let migrator = sqlx::PgPool::connect(&migrator_url).await.unwrap();
+        sqlx::query(
+            "CREATE TABLE audit_events_200001 PARTITION OF audit_events \
+             FOR VALUES FROM ('2000-01-01') TO ('2000-02-01')",
+        )
+        .execute(&migrator)
+        .await
+        .unwrap();
+        migrator.close().await;
+        let admin = sqlx::PgPool::connect(&url).await.unwrap();
+        let governed = Uuid::now_v7();
+        let orphan = Uuid::now_v7();
+        for chain in [governed, orphan] {
+            sqlx::query(
+                "INSERT INTO audit_events (id, chain_id, seq, occurred_at, name, actor_type, payload, hash) \
+                 VALUES ($1, $2, 1, '2000-01-15', 'x', 'system', '{}', '\\x00')",
+            )
+            .bind(Uuid::now_v7())
+            .bind(chain)
+            .execute(&admin)
+            .await
+            .unwrap();
+        }
+        let drop = |chains: Vec<Uuid>| {
+            let app = app.clone();
+            async move {
+                sqlx::query_scalar::<_, i32>(
+                    "SELECT audit_drop_partitions_before(current_date + 400, $1)",
+                )
+                .bind(chains)
+                .fetch_one(&app)
+                .await
+                .unwrap()
+            }
+        };
+        assert_eq!(
+            drop(vec![governed]).await,
+            0,
+            "the orphan chain keeps the month"
+        );
+        sqlx::query("DELETE FROM audit_events WHERE chain_id = $1")
+            .bind(orphan)
+            .execute(&admin)
+            .await
+            .unwrap();
+        admin.close().await;
+        assert_eq!(drop(vec![governed]).await, 1, "the month goes whole");
+        let gone: Option<String> =
+            sqlx::query_scalar("SELECT to_regclass('audit_events_200001')::text")
+                .fetch_one(&app)
+                .await
+                .unwrap();
+        assert_eq!(gone, None);
+        let current: Option<String> = sqlx::query_scalar(
+            "SELECT to_regclass('audit_events_' || to_char(now(), 'YYYYMM'))::text",
+        )
+        .fetch_one(&app)
+        .await
+        .unwrap();
+        assert!(current.is_some(), "the current month is never dropped");
         app.close().await;
 
         // Not callable by everyone.
@@ -605,6 +671,14 @@ async fn the_application_role_keeps_audit_partitions_coming() {
             .await
             .unwrap_err()
             .to_string();
+        assert!(err.contains("permission denied"), "{err}");
+        let err = sqlx::query_scalar::<_, i32>(
+            "SELECT audit_drop_partitions_before(current_date, '{}'::uuid[])",
+        )
+        .fetch_one(&other)
+        .await
+        .unwrap_err()
+        .to_string();
         assert!(err.contains("permission denied"), "{err}");
         other.close().await;
     };

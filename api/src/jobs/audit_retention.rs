@@ -2,6 +2,8 @@
 
 use std::time::Duration;
 
+use uuid::Uuid;
+
 use crate::error::AppResult;
 use crate::jobs::leader;
 use crate::models::MASTER_TENANT_ID;
@@ -31,23 +33,13 @@ async fn process_all(state: &AppState) -> AppResult<u64> {
         Ok(created) => tracing::info!(created, "audit: partitions created"),
         Err(err) => tracing::error!(error = %err, "audit: creating partitions failed"),
     }
-    let mut purged = 0;
+    // Every tenant, with the chain and retention each database holds.
+    let mut tenants_seen = vec![];
     let mut cursor = None;
     loop {
         let page = repos::tenants::list(state.db.home(), None, cursor, 200).await?;
         let has_more = page.len() > 200;
-        for tenant in page.iter().take(200) {
-            // A tenant being moved is unreachable until the move is over.
-            if tenant.relocating {
-                continue;
-            }
-            match audit::purge(state, Some(tenant.id), tenant.settings.audit.retention_days).await {
-                Ok(n) => purged += n,
-                Err(err) => {
-                    tracing::error!(tenant = %tenant.slug, error = %err, "audit purge failed")
-                }
-            }
-        }
+        tenants_seen.extend(page.iter().take(200).cloned());
         if !has_more {
             break;
         }
@@ -57,6 +49,51 @@ async fn process_all(state: &AppState) -> AppResult<u64> {
         });
     }
     let master = tenants::get(state, MASTER_TENANT_ID).await?;
+
+    // Whole months first: a partition older than every retention in its
+    // database, holding nothing else, is dropped rather than emptied.
+    for database in state.db.all() {
+        let mut governed: Vec<(Uuid, u32)> = tenants_seen
+            .iter()
+            // A tenant being moved keeps everything until the move is over.
+            .filter(|t| !t.relocating && t.data_region.as_deref() == database.region())
+            .map(|t| {
+                (
+                    repos::audit::chain_id(Some(t.id)),
+                    t.settings.audit.retention_days,
+                )
+            })
+            .collect();
+        if database.is_home() {
+            governed.push((
+                repos::audit::chain_id(None),
+                master.settings.audit.retention_days,
+            ));
+        }
+        match audit::drop_expired_partitions(&database.primary, &governed).await {
+            Ok(0) => {}
+            Ok(dropped) => {
+                tracing::info!(region = %database.name, dropped, "audit: expired partitions dropped")
+            }
+            Err(err) => {
+                tracing::error!(region = %database.name, error = %err, "audit: dropping expired partitions failed")
+            }
+        }
+    }
+
+    let mut purged = 0;
+    for tenant in &tenants_seen {
+        // A tenant being moved is unreachable until the move is over.
+        if tenant.relocating {
+            continue;
+        }
+        match audit::purge(state, Some(tenant.id), tenant.settings.audit.retention_days).await {
+            Ok(n) => purged += n,
+            Err(err) => {
+                tracing::error!(tenant = %tenant.slug, error = %err, "audit purge failed")
+            }
+        }
+    }
     purged += audit::purge(state, None, master.settings.audit.retention_days).await?;
     Ok(purged)
 }

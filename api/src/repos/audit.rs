@@ -213,3 +213,17 @@ pub async fn ensure_partitions<'e>(
         .fetch_one(exec)
         .await
 }
+
+/// Drop the monthly partitions that ended by `cutoff` and hold only chains in
+/// `chains` (see the `audit_drop_partitions_before` migration).
+pub async fn drop_partitions_before<'e>(
+    exec: impl PgExecutor<'e>,
+    cutoff: chrono::NaiveDate,
+    chains: &[Uuid],
+) -> Result<i32, sqlx::Error> {
+    sqlx::query_scalar("SELECT audit_drop_partitions_before($1, $2)")
+        .bind(cutoff)
+        .bind(chains)
+        .fetch_one(exec)
+        .await
+}

@@ -441,7 +441,11 @@ daily `audit_retention` job removes each chain's expired *prefix*: every row up 
 newest one older than the cutoff, in batches of 5,000. Removing a prefix rather than
 scattered rows keeps what remains verifiable; the oldest retained row's `prev_hash`
 then points at a row that no longer exists, which verification accepts. The same job
-creates the monthly partitions of the audit table two months ahead.
+creates the monthly partitions of the audit table two months ahead, and drops a whole
+month's partition, instead of deleting its rows, once the month ended before the longest
+retention of the tenants in that database and every chain with rows in it belongs to a
+tenant with a retention (a tenant keeping everything, one being moved between regions,
+or a deleted tenant's trail keeps its months).
 
 The setting is in the console under Settings → Keys, discovery & audit, or:
 
