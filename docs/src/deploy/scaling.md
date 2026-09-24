@@ -71,17 +71,26 @@ two layers:
 2. Valkey, shared by all nodes, with longer lifetimes (minutes);
 3. Postgres, only on a miss in both.
 
-Tenants, clients, signing keys, scopes, claim mappers, resource servers, IP rules and
-CORS origins go through this path, as do a user's effective roles and groups and the
-permissions a set of roles holds on a resource server.
+Tenants, clients, signing keys, scopes, claim mappers, resource servers, IP rules,
+CORS origins, organizations, identity providers, message templates, personal access
+tokens and the dashboard's statistics go through this path, as do a user's effective
+roles and groups and the permissions a set of roles holds on a resource server. Users
+and key material (parsed signing keys, verification keys, SAML signers) are cached per
+node only, never in Valkey: user rows carry password hashes. Lifetimes are spread by a
+tenth either way, so entries cached together do not all expire in the same second.
 
-A write evicts the affected keys from its own node's cache, deletes them from Valkey
+A write evicts the affected keys from its own node's cache, holds them in Valkey for
+five seconds (a loader that read the old row just before the write cannot put it back),
 and publishes them on the pub/sub channel `ridm:cache:invalidate`; every other node
-evicts them from its in-process cache on receipt. Role-derived entries are keyed under a
-per-tenant version that any role, group, membership, grant or permission change moves,
-so stale entries simply stop being read. The JWKS document is keyed the same way under a
-per-tenant keys version, so a document read before a key change is never served after
-it.
+evicts them from its in-process cache on receipt. A node also refuses to cache a value
+it read before an eviction of that key arrived. Role-derived entries are keyed under two
+versions: the tenant's, which a role, group-tree or permission change moves, and the
+user's own, which a membership or a grant to that user moves, so stale entries simply
+stop being read and one membership change touches one user's entries. The JWKS
+document and the signing and verification keys are keyed the same way under a
+per-tenant keys version, so nothing read before a key change is used after it. Nodes
+read these version tokens from Valkey at most every two seconds; a change reaches every
+node through the same pub/sub channel well before that.
 
 If a node's subscription drops, it reconnects with backoff and clears its whole
 in-process cache on reconnect, because it may have missed invalidations. The worst case

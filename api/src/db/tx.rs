@@ -40,8 +40,8 @@ pub async fn tenant_tx(db: &Db, tenant_id: Uuid) -> Result<Tx, sqlx::Error> {
 /// Begin a read-only transaction bound to `tenant_id` — for listings and
 /// statistics, on the replica pool when the deployment has one. A write
 /// inside it fails, so a query routed here by mistake cannot change data.
-/// Never for loading a cache: a replica behind a write would put the old
-/// value back right after the write evicted it.
+/// Never for loading a cache that writes evict: a replica behind a write
+/// would put the old value back right after the write evicted it.
 pub async fn read_tx(db: &Db, tenant_id: Uuid) -> Result<Tx, sqlx::Error> {
     db.locate(tenant_id)
         .await?

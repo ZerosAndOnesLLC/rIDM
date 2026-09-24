@@ -894,3 +894,52 @@ async fn users_are_confined_to_the_admins_tenant() {
         get_json(&app, &format!("/admin/tenants/{own}/users"), Some(&global)).await;
     assert_eq!(status, 200);
 }
+
+#[tokio::test]
+async fn admin_answers_are_compressed_unless_they_carry_a_secret() {
+    let app = TestApp::spawn().await;
+    let tid = app.tenant.id;
+    for i in 0..20 {
+        users::create(
+            &app.state,
+            tid,
+            Actor::System,
+            NewUser {
+                username: format!("zip{i}"),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    }
+    let t = admin_token(&app, tid, OWNER_ROLE).await;
+    let list = app
+        .http
+        .get(app.url(&format!("/admin/tenants/{}/users", app.tenant.slug)))
+        .bearer_auth(&t)
+        .header("accept-encoding", "gzip")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(list.status(), 200);
+    assert_eq!(
+        list.headers()
+            .get("content-encoding")
+            .map(|v| v.to_str().unwrap()),
+        Some("gzip"),
+        "a listing is compressed"
+    );
+    // A new SCIM token is shown once: no-store, and sent as it is.
+    let created = app
+        .http
+        .post(app.url(&format!("/admin/tenants/{}/scim/tokens", app.tenant.slug)))
+        .bearer_auth(&t)
+        .header("accept-encoding", "gzip")
+        .json(&json!({"name": "zip"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), 201);
+    assert_eq!(created.headers()["cache-control"], "no-store");
+    assert!(created.headers().get("content-encoding").is_none());
+}

@@ -60,6 +60,10 @@ pub fn build_router_with(state: AppState, extra: Router<AppState>) -> Router {
 /// Every route with its layers, under the primary host's paths.
 fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
     let (admin, mut api) = openapi::admin_router().split_for_parts();
+    // Admin listings (users, audit rows with their payloads, clients) are
+    // large JSON; answers that carry a secret are marked `no-store` and left
+    // uncompressed, so no response mixes a secret with compression.
+    let admin = admin.layer(compressed_json());
     openapi::finalize(&mut api);
     let docs = if state.config.docs_enabled {
         Router::new()
@@ -108,7 +112,7 @@ fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
         .merge(routes::wellknown::router())
         .merge(routes::webfinger::router())
         .merge(routes::jwks::router())
-        .merge(routes::scim::router())
+        .merge(routes::scim::router().layer(compressed_json()))
         .merge(limited(flows, Category::Flows, Style::Problem))
         .merge(limited(
             routes::broker::router(),
@@ -161,4 +165,33 @@ fn routed_router(state: AppState, extra: Router<AppState>) -> Router {
         .layer(axum::middleware::from_fn(middleware::acting::acting_scope))
         .layer(telemetry::http_trace_layer())
         .with_state(state)
+}
+
+/// Compression for JSON APIs: tower-http's default rules (not tiny, not
+/// already compressed, not event streams), and never a response marked
+/// `Cache-Control: no-store`, which is how answers carrying a secret (a new
+/// client secret, a personal access token) are marked.
+fn compressed_json() -> tower_http::compression::CompressionLayer<
+    tower_http::compression::predicate::And<tower_http::compression::DefaultPredicate, NotNoStore>,
+> {
+    use tower_http::compression::Predicate as _;
+    tower_http::compression::CompressionLayer::new()
+        .compress_when(tower_http::compression::DefaultPredicate::new().and(NotNoStore))
+}
+
+/// See [`compressed_json`].
+#[derive(Clone, Copy)]
+struct NotNoStore;
+
+impl tower_http::compression::Predicate for NotNoStore {
+    fn should_compress<B>(&self, response: &axum::http::Response<B>) -> bool
+    where
+        B: axum::body::HttpBody,
+    {
+        !response
+            .headers()
+            .get(axum::http::header::CACHE_CONTROL)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.contains("no-store"))
+    }
 }

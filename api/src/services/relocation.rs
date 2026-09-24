@@ -49,7 +49,7 @@ pub struct MoveOptions {
 impl Default for MoveOptions {
     fn default() -> Self {
         Self {
-            drain: Duration::from_secs(15),
+            drain: Duration::from_secs(20),
         }
     }
 }

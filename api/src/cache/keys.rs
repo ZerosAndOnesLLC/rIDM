@@ -464,3 +464,13 @@ pub fn organization(tenant_id: Uuid, org_id: Uuid) -> String {
 pub fn org_auto_join_domains(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:org_auto_join")
 }
+
+/// A tenant's dashboard statistics over `days` (cached a minute).
+pub fn tenant_stats(tenant_id: Uuid, days: u32) -> String {
+    format!("{PREFIX}:t:{tenant_id}:stats:{days}")
+}
+
+/// A tenant's user counts for the dashboard (cached ten minutes).
+pub fn tenant_user_counts(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:stats:users")
+}

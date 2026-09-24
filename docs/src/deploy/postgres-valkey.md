@@ -131,7 +131,8 @@ pool of the same size to the replica.
 | `DB_POOL_MAX` | 20 | Upper bound per pool; must be at least `DB_POOL_MIN` |
 | `REDIS_POOL_MAX` | 32 | Valkey connections per node |
 
-Fixed behaviour: a request waits at most 5 seconds for a Postgres connection, idle
+A request waits at most `DB_ACQUIRE_TIMEOUT_MS` (2 seconds by default) for a Postgres
+connection and then fails with `503`. Fixed behaviour: idle
 connections close after 10 minutes, every connection is recycled after 30 minutes, and
 statements slower than 250 ms are logged as warnings. Connections identify themselves
 as `application_name` `ridm-api` (primary) and `ridm-api-read` (replica), which is how

@@ -27,7 +27,7 @@ ridm-core = { path = "crates/ridm-core", version = "0.1.0" }
 axum = { version = "=0.8.9", features = ["macros"] }
 axum-server = { version = "=0.8.0", features = ["tls-rustls"] }
 tower = "=0.5.3"
-tower-http = { version = "=0.7.1", features = ["cors", "trace", "compression-gzip", "set-header", "fs"] }
+tower-http = { version = "=0.7.1", features = ["cors", "trace", "compression-gzip", "compression-br", "set-header", "fs"] }
 tower_governor = "=0.8.0"
 http = "=1.5.0"
 tokio = { version = "=1.53.1", features = ["full"] }
