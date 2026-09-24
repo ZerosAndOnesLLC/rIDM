@@ -146,8 +146,7 @@ async fn sso_post(
             // session cookie the cross-site POST could not.
             Ok(url) => {
                 let mut res = Redirect::to(&url).into_response();
-                res.headers_mut()
-                    .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+                crate::middleware::security_headers::set_no_store(res.headers_mut());
                 res
             }
             Err(e) => e.into_response(),

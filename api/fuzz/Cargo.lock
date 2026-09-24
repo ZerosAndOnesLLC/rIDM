@@ -3668,6 +3668,7 @@ dependencies = [
  "md-5",
  "metrics",
  "metrics-exporter-prometheus",
+ "moka",
  "openssl-sys",
  "opentelemetry",
  "opentelemetry-otlp",

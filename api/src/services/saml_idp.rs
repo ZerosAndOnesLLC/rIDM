@@ -120,7 +120,7 @@ fn saml_page(status: StatusCode, err: &SamlError) -> Response {
 
 fn html_headers(res: &mut Response) {
     let h = res.headers_mut();
-    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(h);
     h.insert(
         header::REFERRER_POLICY,
         HeaderValue::from_static("no-referrer"),
@@ -645,11 +645,10 @@ async fn status_response(
         None,
     );
     match saml_keys::signer(state, &tenant.tenant).await {
-        Ok(signer) => {
-            if let Err(e) = signer.sign_enveloped(&mut el, 1) {
-                return AppError::Internal(e.to_string()).into_response();
-            }
-        }
+        Ok(signer) => match saml_keys::sign_enveloped(&signer, el, 1).await {
+            Ok(signed) => el = signed,
+            Err(e) => return e.into_response(),
+        },
         Err(e) => return e.into_response(),
     }
     let mut res = binding::to_post(
@@ -1044,7 +1043,7 @@ pub async fn respond(
     let signer = saml_keys::signer(state, &tenant.tenant).await?;
     let internal = |e: SamlError| AppError::Internal(e.to_string());
     if sp.sign_assertion {
-        signer.sign_enveloped(&mut assertion, 1).map_err(internal)?;
+        assertion = saml_keys::sign_enveloped(&signer, assertion, 1).await?;
     }
     let body = if sp.encrypt_assertion {
         let cert = sp
@@ -1072,7 +1071,7 @@ pub async fn respond(
         Some(body),
     );
     if sp.sign_response {
-        signer.sign_enveloped(&mut response, 1).map_err(internal)?;
+        response = saml_keys::sign_enveloped(&signer, response, 1).await?;
     }
 
     record_participant(
@@ -1298,15 +1297,14 @@ async fn deliver_to_sp(
     relay: Option<&str>,
 ) -> AppResult<Response> {
     let signer = saml_keys::signer(state, &tenant.tenant).await?;
-    let internal = |e: SamlError| AppError::Internal(e.to_string());
     let mut res = match sp.slo_binding {
         SloBinding::Redirect => {
-            let to = binding::to_redirect(url, kind, &el.to_string(), relay, Some(&signer))
-                .map_err(internal)?;
+            let to =
+                saml_keys::to_redirect(Some(&signer), url, kind, el.to_string(), relay).await?;
             Redirect::to(&to).into_response()
         }
         SloBinding::Post => {
-            signer.sign_enveloped(&mut el, 1).map_err(internal)?;
+            el = saml_keys::sign_enveloped(&signer, el, 1).await?;
             binding::to_post(url, kind, &el.to_document(), relay)
         }
     };

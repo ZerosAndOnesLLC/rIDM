@@ -119,21 +119,15 @@ export function TenantSwitcher({
     if (!o) setQuery("");
     onOpenChange(o);
   };
+  const search = useDebounced(query.trim(), 200);
   const tenants = useQuery({
-    queryKey: ["tenants", "all"],
+    queryKey: ["tenants", "search", search],
     enabled: open,
     staleTime: 60_000,
     queryFn: async () => {
-      const out: { slug: string; display_name: string; status: string }[] = [];
-      let cursor: string | undefined;
-      for (let page = 0; page < 10; page += 1) {
-        const { data } = await client.GET("/admin/tenants", { params: { query: { limit: 100, cursor } } });
-        if (!data) break;
-        out.push(...data.items);
-        if (!data.next_cursor) break;
-        cursor = data.next_cursor;
-      }
-      return out;
+      const { data, error } = await client.GET("/admin/tenants", { params: { query: { search: search || undefined, limit: 20 } } });
+      if (error) throw new Error(error.detail ?? error.title);
+      return data.items;
     },
   });
   const lower = query.trim().toLowerCase();

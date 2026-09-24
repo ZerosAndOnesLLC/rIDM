@@ -504,6 +504,7 @@ async fn refresh(
     .await?;
     repos::ldap::clear_password(&mut *tx, tid, user.id).await?;
     tx.commit().await?;
+    crate::services::users::forget(state, tid, &[user.id]).await;
 
     let mut patch = UserUpdate::default();
     if identity.email.is_some() && identity.email != user.email {

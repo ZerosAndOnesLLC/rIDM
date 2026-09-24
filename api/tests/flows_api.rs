@@ -325,6 +325,7 @@ async fn cancel_and_consent_denial_return_access_denied() {
         "access_denied"
     );
     assert_eq!(u.query_pairs().find(|(k, _)| k == "state").unwrap().1, "st");
+    assert!(u.query_pairs().any(|(k, _)| k == "iss"), "RFC 9207 iss");
     assert_eq!(
         fx.app
             .http
@@ -357,6 +358,46 @@ async fn cancel_and_consent_denial_return_access_denied() {
             .unwrap()
             .contains("error=access_denied")
     );
+}
+
+/// A client that asked for another response mode gets its denial that way,
+/// through a one-time URL of rIDM's.
+#[tokio::test]
+async fn a_denial_follows_the_clients_response_mode() {
+    let fx = fixture(TenantSettings::default(), true).await;
+    let cancel = |mode: &'static str| {
+        let fx = &fx;
+        async move {
+            let (id, state) = start(fx, &[("response_mode", mode)]).await;
+            let csrf = state["csrf"].as_str().unwrap().to_string();
+            let body: Value = step(fx, id, "cancel", json!({"csrf": csrf}))
+                .await
+                .json()
+                .await
+                .unwrap();
+            let to = body["redirect_to"].as_str().unwrap().to_string();
+            assert!(to.contains("/authorize/denied/"), "{to}");
+            to
+        }
+    };
+
+    let to = cancel("fragment").await;
+    let res = fx.app.http.get(&to).send().await.unwrap();
+    assert!(res.status().is_redirection());
+    let loc = url::Url::parse(res.headers()["location"].to_str().unwrap()).unwrap();
+    assert!(loc.query().is_none());
+    let fragment = loc.fragment().unwrap();
+    assert!(fragment.contains("error=access_denied"), "{fragment}");
+    assert!(fragment.contains("state=st") && fragment.contains("iss="));
+    // One-time.
+    assert_eq!(fx.app.http.get(&to).send().await.unwrap().status(), 404);
+
+    let to = cancel("form_post").await;
+    let res = fx.app.http.get(&to).send().await.unwrap();
+    assert_eq!(res.status(), 200);
+    let html = res.text().await.unwrap();
+    assert!(html.contains("action=\"https://app.example/cb\""));
+    assert!(html.contains("value=\"access_denied\""));
 }
 
 #[tokio::test]

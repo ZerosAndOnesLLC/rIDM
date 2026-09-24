@@ -38,7 +38,7 @@ pub fn base_url(state: &AppState, slug: &str) -> String {
 }
 
 pub async fn list(state: &AppState, tenant: &Tenant) -> AppResult<ScimTokens> {
-    let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
+    let mut tx = db::read_tx(&state.db, tenant.id).await?;
     let tokens = repos::scim_tokens::list(&mut *tx, tenant.id).await?;
     tx.commit().await?;
     Ok(ScimTokens {
@@ -75,6 +75,8 @@ pub async fn create(
     rand::fill(&mut bytes);
     let token = format!("{PREFIX}{}", URL_SAFE_NO_PAD.encode(bytes));
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    crate::services::limits::ensure_room(&mut *tx, tenant_id, crate::services::limits::SCIM_TOKENS)
+        .await?;
     let record = repos::scim_tokens::insert(
         &mut *tx,
         tenant_id,

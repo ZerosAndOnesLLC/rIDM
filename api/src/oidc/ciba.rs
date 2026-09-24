@@ -8,7 +8,7 @@
 use std::net::{IpAddr, SocketAddr};
 
 use axum::extract::{ConnectInfo, State};
-use axum::http::{HeaderMap, HeaderValue, header};
+use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use uuid::Uuid;
 
@@ -40,23 +40,16 @@ pub async fn backchannel_authentication(
     body: String,
 ) -> Response {
     let ip = client_ip_addr(&state, &headers, Some(peer));
-    let is_form = headers
-        .get(header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|ct| ct.starts_with("application/x-www-form-urlencoded"));
-    let outcome = if is_form {
+    let outcome = if crate::oidc::form::is_form(&headers) {
         handle(&state, &tenant, &headers, &body, ip, cert.get()).await
     } else {
-        Err(OAuthError::invalid_request(
-            "content type must be application/x-www-form-urlencoded",
-        ))
+        Err(crate::oidc::form::not_a_form())
     };
     let mut res = match outcome {
         Ok(v) => axum::Json(v).into_response(),
         Err(e) => e.into_response(),
     };
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(res.headers_mut());
     res
 }
 
@@ -77,7 +70,7 @@ async fn handle(
 ) -> Result<Acknowledgement, OAuthError> {
     let params = RawParams::parse(body);
     let one = |n: &str| params.one(n).map_err(OAuthError::invalid_request);
-    let token_endpoint = format!("{}/token", tenant.issuer(state));
+    let token_endpoint = tenant.token_endpoint(state);
     let (client, _) =
         client_auth::authenticate(state, tenant, headers, &params, &token_endpoint, ip, cert)
             .await?;

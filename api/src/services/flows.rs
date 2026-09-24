@@ -7,13 +7,15 @@
 //! the authorization code in the browser's context.
 
 use chrono::{Duration, Utc};
+use redis::AsyncCommands as _;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use subtle::ConstantTimeEq as _;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
+use crate::cache::keys as cache_keys;
 use crate::db;
 use crate::error::{AppError, AppResult, FieldError};
 use crate::middleware::TenantCtx;
@@ -22,7 +24,7 @@ use crate::models::{
 };
 use crate::repos;
 use crate::services::geoip::Location;
-use crate::services::login_flows::{self, FlowStage, LoginFlow};
+use crate::services::login_flows::{self, FlowStage, LoginFlow, ResponseMode};
 use crate::services::password::{self, SetPasswordOptions, VerifyOutcome};
 use crate::services::sessions::{self, NewSession, SsoSession};
 use crate::services::{
@@ -650,7 +652,9 @@ pub async fn password_step(
 
     match verdict {
         Ok(must_change) => {
-            let user = user.expect("user present");
+            // A verdict of Ok comes only from a password checked against a user.
+            let user =
+                user.ok_or_else(|| AppError::Internal("password accepted without a user".into()))?;
             let ctx = RequestContext {
                 ip: ip.clone(),
                 user_agent,
@@ -670,6 +674,7 @@ pub async fn password_step(
             repos::login_attempts::record(&mut *tx, tid, &identifier, ip.as_deref(), true, None)
                 .await?;
             tx.commit().await?;
+            crate::services::users::forget(state, tid, &[user.id]).await;
             metrics::counter!("ridm_logins_total", "method" => "password", "outcome" => "success")
                 .increment(1);
 
@@ -715,10 +720,12 @@ pub async fn password_step(
             .await?;
             metrics::counter!("ridm_logins_total", "method" => "password", "outcome" => reason.to_string())
                 .increment(1);
+            let mut counted = None;
             if let Some(u) = &user
                 && reason == "invalid_credentials"
                 && lockout.max_failures > 0
             {
+                counted = Some(u.id);
                 let failures = repos::users::record_login_failure(
                     &mut *tx,
                     tid,
@@ -740,6 +747,9 @@ pub async fn password_step(
                 }
             }
             tx.commit().await?;
+            if let Some(id) = counted {
+                crate::services::users::forget(state, tid, &[id]).await;
+            }
             flow.attempts += 1;
             login_flows::save(state, &flow).await?;
             state.events.publish(
@@ -871,6 +881,7 @@ pub async fn terms_step(
     let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
     repos::users::set_terms_accepted(&mut *tx, tenant.id, user_id).await?;
     tx.commit().await?;
+    crate::services::users::forget(state, tenant.id, &[user_id]).await;
     state.events.publish(Event::new(
         Some(tenant.id),
         Actor::User { id: user_id },
@@ -979,21 +990,82 @@ pub async fn denial_redirect(
     if flow.request.saml.is_some() {
         return crate::services::saml_idp::denial_url(state, tenant, &flow.request).await;
     }
-    Ok(error_redirect(flow, "the user denied the request"))
+    error_redirect(state, tenant, flow, "the user denied the request").await
+}
+
+/// How long a denial waits at [`denial_ticket_key`] for the browser.
+const DENIAL_TTL_SECS: u64 = 10 * 60;
+
+fn denial_ticket_key(tenant_id: Uuid, id: Uuid) -> String {
+    format!("{}:t:{tenant_id}:authz:denial:{id}", cache_keys::PREFIX)
+}
+
+/// An `access_denied` waiting to be delivered in the client's response mode.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Denial {
+    pub client_id: Uuid,
+    pub redirect_uri: String,
+    pub response_mode: ResponseMode,
+    pub description: String,
+    pub state: Option<String>,
 }
 
 /// `access_denied` back to the client, with a reason the client may show.
-fn error_redirect(flow: &LoginFlow, description: &str) -> String {
-    let mut u = url::Url::parse(&flow.request.redirect_uri).expect("validated redirect uri");
-    {
-        let mut q = u.query_pairs_mut();
-        q.append_pair("error", "access_denied");
-        q.append_pair("error_description", description);
-        if let Some(s) = &flow.request.state {
-            q.append_pair("state", s);
+/// A plain query-mode client gets the URL itself; any other response mode
+/// (fragment, form_post, JARM) needs a page or a signature, so the browser
+/// goes to a one-time URL of rIDM's that delivers it the way the client
+/// asked (`GET /t/{slug}/authorize/denied/{id}`).
+async fn error_redirect(
+    state: &AppState,
+    tenant: &Tenant,
+    flow: &LoginFlow,
+    description: &str,
+) -> AppResult<String> {
+    let req = &flow.request;
+    if req.response_mode == ResponseMode::Query {
+        let mut u = url::Url::parse(&req.redirect_uri)
+            .map_err(|e| AppError::Internal(format!("stored redirect uri: {e}")))?;
+        {
+            let mut q = u.query_pairs_mut();
+            q.append_pair("error", "access_denied");
+            q.append_pair("error_description", description);
+            if let Some(s) = &req.state {
+                q.append_pair("state", s);
+            }
+            q.append_pair("iss", &crate::services::tokens::issuer(state, tenant));
         }
+        return Ok(u.to_string());
     }
-    u.to_string()
+    let id = Uuid::new_v4();
+    let denial = Denial {
+        client_id: req.client_id,
+        redirect_uri: req.redirect_uri.clone(),
+        response_mode: req.response_mode,
+        description: description.to_string(),
+        state: req.state.clone(),
+    };
+    let mut conn = state.redis.get().await?;
+    let _: () = conn
+        .set_ex(
+            denial_ticket_key(tenant.id, id),
+            serde_json::to_string(&denial)?,
+            DENIAL_TTL_SECS,
+        )
+        .await?;
+    Ok(format!(
+        "{}/authorize/denied/{id}",
+        crate::services::tokens::issuer(state, tenant)
+    ))
+}
+
+/// Take the denial behind a URL from [`error_redirect`] (once).
+pub async fn take_denial(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<Option<Denial>> {
+    let mut conn = state.redis.get().await?;
+    let raw: Option<String> = redis::cmd("GETDEL")
+        .arg(denial_ticket_key(tenant_id, id))
+        .query_async(&mut conn)
+        .await?;
+    Ok(raw.and_then(|r| serde_json::from_str(&r).ok()))
 }
 
 /// `POST /flows/{id}/cancel`
@@ -1124,7 +1196,7 @@ async fn refuse(
         )
         .await?
     } else {
-        error_redirect(flow, "the sign-in was refused")
+        error_redirect(state, tenant, flow, "the sign-in was refused").await?
     };
     Ok(AuthStep::Blocked { redirect_to })
 }
@@ -1954,6 +2026,7 @@ pub async fn complete_authentication(
     repos::users::record_login_success(&mut *tx, tid, user.id).await?;
     repos::login_attempts::record(&mut *tx, tid, &user.username, ip.as_deref(), true, None).await?;
     tx.commit().await?;
+    crate::services::users::forget(state, tid, &[user.id]).await;
     metrics::counter!(
         "ridm_logins_total",
         "method" => amr.first().cloned().unwrap_or_else(|| "unknown".into()),

@@ -358,6 +358,18 @@ pub async fn remove_credential(
     Ok(Some(row.kind.clone()))
 }
 
+/// Every credential the user holds (public views).
+pub async fn credentials_of(
+    state: &AppState,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> AppResult<Vec<crate::models::Credential>> {
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let rows = repos::credentials::list_for_user(&mut *tx, tenant_id, user_id).await?;
+    tx.commit().await?;
+    Ok(rows)
+}
+
 /// Does the user hold any second factor (TOTP or passkey)?
 pub async fn has_second_factor(
     state: &AppState,

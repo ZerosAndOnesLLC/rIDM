@@ -22,15 +22,14 @@ use utoipa_axum::routes;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
-use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::middleware::client_ip;
+use crate::middleware::security_headers::no_store;
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
 use crate::models::{
     Consent, Credential, Group, LinkedIdentity, NewUser, PersonalAccessToken, Principal, Role,
     TrustedDevice, User, UserFilter, UserStatus, UserUpdate,
 };
-use crate::repos;
 use crate::routes::admin::AuditFilterQuery;
 use crate::services::admin_access::{self, Grant};
 use crate::services::bulk_users::{self, ExportFormat, ImportReport};
@@ -145,14 +144,6 @@ struct CreatedUser {
     user: User,
     #[serde(skip_serializing_if = "Option::is_none")]
     temporary_password: Option<String>,
-}
-
-fn no_store(mut res: Response) -> Response {
-    if let Ok(v) = "no-store".parse() {
-        res.headers_mut()
-            .insert(axum::http::header::CACHE_CONTROL, v);
-    }
-    res
 }
 
 /// Body: every `NewUser` field plus `password` or `temporary_password: true`.
@@ -595,9 +586,7 @@ async fn credentials(
 ) -> AppResult<Json<Credentials>> {
     admin.require(tenant.id, P_READ)?;
     let u = load(&state, tenant.id, user).await?;
-    let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
-    let rows = repos::credentials::list_for_user(&mut *tx, tenant.id, user).await?;
-    tx.commit().await?;
+    let rows = crate::services::totp::credentials_of(&state, tenant.id, user).await?;
     Ok(Json(Credentials {
         password: PasswordSummary::from(&u),
         credentials: rows,
@@ -1014,10 +1003,11 @@ async fn export(
     Query(q): Query<ExportQuery>,
 ) -> AppResult<Response> {
     admin.require(tenant.id, P_READ)?;
-    let (content_type, filename) = match q.format {
-        ExportFormat::Json => ("application/json", "users.json"),
-        ExportFormat::Csv => ("text/csv; charset=utf-8", "users.csv"),
+    let (content_type, ext) = match q.format {
+        ExportFormat::Json => ("application/json", "json"),
+        ExportFormat::Csv => ("text/csv; charset=utf-8", "csv"),
     };
+    let filename = format!("{}-users.{ext}", tenant.slug);
     let stream = bulk_users::export(state, tenant.id, q.format);
     let mut res = Body::from_stream(stream).into_response();
     let h = res.headers_mut();

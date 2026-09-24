@@ -533,33 +533,47 @@ pub async fn get(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<Clien
     c.ok_or(AppError::NotFound("client"))
 }
 
-/// The client as cached in Valkey. `Client` keeps its secret hashes and the
-/// registration token hash out of JSON (they must never reach an API
-/// response), so the cache carries them explicitly: without this, a node
-/// reading the document from Valkey would hold a client that can never
-/// authenticate.
-#[derive(Debug, Serialize, Deserialize)]
-struct CachedClient {
+/// The client as cached: shared, so every request of a node reads the same
+/// `Arc<Client>`. `Client` keeps its secret hashes and the registration
+/// token hash out of JSON (they must never reach an API response), so the
+/// Valkey document carries them explicitly: without this, a node reading it
+/// would hold a client that can never authenticate.
+struct CachedClient(Arc<Client>);
+
+#[derive(Serialize)]
+struct CachedClientOut<'a> {
+    #[serde(flatten)]
+    client: &'a Client,
+    secret_hashes: &'a [ClientSecretHash],
+    registration_access_token_hash: Option<&'a [u8]>,
+}
+
+#[derive(Deserialize)]
+struct CachedClientIn {
     #[serde(flatten)]
     client: Client,
     secret_hashes: Vec<ClientSecretHash>,
     registration_access_token_hash: Option<Vec<u8>>,
 }
 
-impl CachedClient {
-    fn wrap(client: Client) -> Self {
-        Self {
-            secret_hashes: client.secret_hashes.0.clone(),
-            registration_access_token_hash: client.registration_access_token_hash.clone(),
-            client,
+impl Serialize for CachedClient {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        CachedClientOut {
+            client: &self.0,
+            secret_hashes: &self.0.secret_hashes.0,
+            registration_access_token_hash: self.0.registration_access_token_hash.as_deref(),
         }
+        .serialize(s)
     }
+}
 
-    fn unwrap(self) -> Client {
-        let mut client = self.client;
-        client.secret_hashes = Json(self.secret_hashes);
-        client.registration_access_token_hash = self.registration_access_token_hash;
-        client
+impl<'de> Deserialize<'de> for CachedClient {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let doc = CachedClientIn::deserialize(d)?;
+        let mut client = doc.client;
+        client.secret_hashes = Json(doc.secret_hashes);
+        client.registration_access_token_hash = doc.registration_access_token_hash;
+        Ok(Self(Arc::new(client)))
     }
 }
 
@@ -583,23 +597,11 @@ pub async fn find_by_client_id(
                 let mut tx = db::tenant_tx(&db, tenant_id).await?;
                 let c = repos::clients::find_by_client_id(&mut *tx, tenant_id, &cid).await?;
                 tx.commit().await?;
-                Ok(c.map(CachedClient::wrap))
+                Ok(c.map(|c| CachedClient(Arc::new(c))))
             },
         )
         .await?;
-    Ok(cached.map(|c| Arc::new(CachedClient::clone_inner(&c))))
-}
-
-impl CachedClient {
-    /// A fresh `Client` from the shared cache entry.
-    fn clone_inner(this: &Arc<Self>) -> Client {
-        Self {
-            client: this.client.clone(),
-            secret_hashes: this.secret_hashes.clone(),
-            registration_access_token_hash: this.registration_access_token_hash.clone(),
-        }
-        .unwrap()
-    }
+    Ok(cached.map(|c| c.0.clone()))
 }
 
 pub async fn list(

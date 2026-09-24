@@ -39,6 +39,8 @@ pub async fn create(
 ) -> AppResult<Role> {
     input.name = validate_name(&input.name)?;
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    crate::services::limits::ensure_room(&mut *tx, tenant_id, crate::services::limits::ROLES)
+        .await?;
     let role = repos::roles::insert(&mut *tx, tenant_id, Uuid::now_v7(), &input)
         .await
         .map_err(|e| match AppError::from_db(e) {

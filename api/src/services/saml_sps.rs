@@ -388,7 +388,7 @@ pub async fn get(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<SamlS
 }
 
 pub async fn list(state: &AppState, tenant_id: Uuid) -> AppResult<Vec<SamlSpView>> {
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     let sps = repos::saml::list_sps(&mut *tx, tenant_id).await?;
     let mut out = Vec::with_capacity(sps.len());
     for saml in sps {

@@ -291,8 +291,7 @@ impl Conn {
     /// Set an entry's password with the Password Modify extended operation
     /// (RFC 3062; OpenLDAP and most directories other than AD).
     pub async fn password_modify(&mut self, dn: &str, new: &str) -> Result<(), LdapFailure> {
-        let (res, _) = self
-            .ldap
+        self.ldap
             .with_timeout(self.timeout)
             .extended(PasswordModify {
                 user_id: Some(dn),
@@ -301,7 +300,6 @@ impl Conn {
             })
             .await?
             .success()?;
-        let _ = res;
         Ok(())
     }
 

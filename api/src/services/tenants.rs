@@ -313,12 +313,13 @@ pub async fn count_by_region(
 
 pub async fn list(
     state: &AppState,
+    search: Option<&str>,
     cursor: Option<&str>,
     limit: Option<u32>,
 ) -> AppResult<Page<Tenant>> {
     let after = cursor.map(Cursor::decode).transpose()?;
     let limit = page_size(limit);
-    let rows = repos::tenants::list(state.db.home(), after, limit).await?;
+    let rows = repos::tenants::list(state.db.home(), search, after, limit).await?;
     Ok(Page::from_rows(rows, limit, |t| Cursor {
         created_at: t.created_at,
         id: t.id,

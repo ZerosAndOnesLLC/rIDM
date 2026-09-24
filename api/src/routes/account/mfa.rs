@@ -12,11 +12,9 @@ use utoipa_axum::routes;
 use uuid::Uuid;
 use webauthn_rs::prelude::RegisterPublicKeyCredential;
 
-use crate::db;
 use crate::error::{AppError, AppResult, FieldError};
 use crate::middleware::{AccountCtx, Json};
 use crate::models::Credential;
-use crate::repos;
 use crate::services::otp_factors::{self, Channel};
 use crate::services::{notifications, passkeys, totp};
 use crate::state::AppState;
@@ -120,9 +118,7 @@ fn otp_scope(ctx: &AccountCtx) -> otp_factors::Scope<'_> {
 #[utoipa::path(get, path = "/t/{slug}/account/mfa", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = MfaStatus), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn status(State(state): State<AppState>, ctx: AccountCtx) -> AppResult<Json<MfaStatus>> {
     let f = totp::factors_of(&state, ctx.tenant.id, ctx.user.id).await?;
-    let mut tx = db::tenant_tx(&state.db, ctx.tenant.id).await?;
-    let rows = repos::credentials::list_for_user(&mut *tx, ctx.tenant.id, ctx.user.id).await?;
-    tx.commit().await?;
+    let rows = totp::credentials_of(&state, ctx.tenant.id, ctx.user.id).await?;
     let factors = rows
         .into_iter()
         .filter(|c| totp::SECOND_FACTOR_KINDS.contains(&c.kind.as_str()))

@@ -11,8 +11,7 @@ use ridm_core::events::{Actor, Event, EventSink as _};
 use serde::Serialize;
 use serde_json::Value;
 use sqlx::PgPool;
-use tokio::sync::broadcast;
-use tokio::sync::broadcast::error::{RecvError, TryRecvError};
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::db;
@@ -89,15 +88,11 @@ async fn chain_db(state: &AppState, tenant_id: Option<Uuid>) -> AppResult<&PgPoo
     })
 }
 
-/// Append one event to its chain.
-pub async fn record(state: &AppState, event: &Event) -> AppResult<AuditEvent> {
+/// The row `event` becomes once appended after `prev` (the chain's head).
+fn chain_row(event: &Event, prev: Option<(i64, Vec<u8>)>) -> AppResult<AuditEvent> {
     let (actor_type, actor_id) = actor_parts(&event.actor);
     let payload = serde_json::to_value(&event.kind)?;
-    let chain = repos::audit::chain_id(event.tenant_id);
-    let mut tx = db::bypass_tx(chain_db(state, event.tenant_id).await?).await?;
-    repos::audit::lock_chain(&mut *tx, chain).await?;
-    let head = repos::audit::chain_head(&mut *tx, chain).await?;
-    let (seq, prev_hash) = match head {
+    let (seq, prev_hash) = match prev {
         Some((seq, hash)) => (seq + 1, Some(hash)),
         None => (1, None),
     };
@@ -119,65 +114,137 @@ pub async fn record(state: &AppState, event: &Event) -> AppResult<AuditEvent> {
         hash: vec![],
     };
     row.hash = hash_of(row.prev_hash.as_deref(), &row);
-    repos::audit::insert(&mut *tx, &row).await?;
-    repos::audit_chains::advance_head(&mut *tx, chain, row.tenant_id, row.seq, &row.hash).await?;
-    tx.commit().await?;
     Ok(row)
 }
 
-/// Subscribe to the event bus and append everything that comes through.
-/// Lagging (the bus dropped events under load) is logged: the audit log is
-/// best-effort append, never a reason to fail the action itself.
+/// Append one event to its chain.
+pub async fn record(state: &AppState, event: &Event) -> AppResult<AuditEvent> {
+    let mut rows = record_chain(state, event.tenant_id, &[event]).await?;
+    rows.pop()
+        .ok_or_else(|| AppError::Internal("audit: nothing recorded".into()))
+}
+
+/// Append `events`, all of one chain, in order and in one transaction: the
+/// chain is locked and its head read and advanced once for the lot.
+async fn record_chain(
+    state: &AppState,
+    tenant_id: Option<Uuid>,
+    events: &[&Event],
+) -> AppResult<Vec<AuditEvent>> {
+    let chain = repos::audit::chain_id(tenant_id);
+    let mut tx = db::bypass_tx(chain_db(state, tenant_id).await?).await?;
+    repos::audit::lock_chain(&mut *tx, chain).await?;
+    let mut head = repos::audit::chain_head(&mut *tx, chain).await?;
+    let mut rows = Vec::with_capacity(events.len());
+    for event in events {
+        let row = chain_row(event, head.take())?;
+        repos::audit::insert(&mut *tx, &row).await?;
+        head = Some((row.seq, row.hash.clone()));
+        rows.push(row);
+    }
+    if let Some(last) = rows.last() {
+        repos::audit_chains::advance_head(&mut *tx, chain, last.tenant_id, last.seq, &last.hash)
+            .await?;
+    }
+    tx.commit().await?;
+    Ok(rows)
+}
+
+/// Most events the writer takes off its queue for one round of appends.
+const WRITE_BATCH: usize = 256;
+
+/// Subscribe to the event bus and append everything that comes through. The
+/// subscription is durable, so nothing is skipped however far the writer
+/// falls behind; it drains what has queued up and appends each chain's share
+/// in one transaction, so a burst costs a round of appends rather than one
+/// per event. A failed append is logged: the audit log is never a reason to
+/// fail the action itself.
 pub fn spawn_writer(state: AppState) -> tokio::task::JoinHandle<()> {
-    let mut rx = state.events.subscribe();
+    let mut rx = state.events.subscribe_durable();
     tokio::spawn(async move {
-        loop {
-            match rx.recv().await {
-                Ok(envelope) => match record(&state, &envelope.event).await {
-                    Ok(_) => {
-                        metrics::counter!("ridm_audit_events_total").increment(1);
-                    }
-                    // The tenant is being moved between regions: its chain
-                    // is closed until the move is done, so keep the event.
-                    Err(AppError::Unavailable(_)) => {
-                        tokio::spawn(record_after_move(state.clone(), envelope.event));
-                    }
-                    Err(err) => {
-                        tracing::error!(
-                            event = envelope.event.name(),
-                            error = %err,
-                            "audit: could not record event"
-                        );
-                    }
-                },
-                Err(RecvError::Lagged(n)) => {
-                    tracing::warn!(skipped = n, "audit: event bus lagged, events not recorded");
-                }
-                Err(RecvError::Closed) => break,
-            }
+        let mut batch = Vec::with_capacity(WRITE_BATCH);
+        while rx.recv_many(&mut batch, WRITE_BATCH).await > 0 {
+            metrics::gauge!("ridm_audit_queue_depth").set(rx.len() as f64);
+            write_batch(&state, batch.drain(..).map(|e| e.event)).await;
         }
     })
 }
 
+/// Append a batch, grouped by chain with each chain's events in order.
+async fn write_batch(state: &AppState, events: impl Iterator<Item = std::sync::Arc<Event>>) {
+    let mut chains: Vec<(Option<Uuid>, Vec<std::sync::Arc<Event>>)> = vec![];
+    for event in events {
+        match chains.iter_mut().find(|(t, _)| *t == event.tenant_id) {
+            Some((_, list)) => list.push(event),
+            None => chains.push((event.tenant_id, vec![event])),
+        }
+    }
+    for (tenant_id, list) in chains {
+        let refs: Vec<&Event> = list.iter().map(|e| &**e).collect();
+        match record_chain(state, tenant_id, &refs).await {
+            Ok(rows) => {
+                metrics::counter!("ridm_audit_events_total").increment(rows.len() as u64);
+            }
+            // The tenant is being moved between regions: its chain is closed
+            // until the move is done, so keep the events.
+            Err(AppError::Unavailable(_)) => {
+                tokio::spawn(record_after_move(state.clone(), list));
+            }
+            // One bad event must not cost the rest of the batch: record them
+            // one at a time, which names the event that fails.
+            Err(_) if list.len() > 1 => {
+                for event in list {
+                    record_or_log(state, event).await;
+                }
+            }
+            Err(err) => log_failure(&list[0], &err),
+        }
+    }
+}
+
+async fn record_or_log(state: &AppState, event: std::sync::Arc<Event>) {
+    match record(state, &event).await {
+        Ok(_) => metrics::counter!("ridm_audit_events_total").increment(1),
+        Err(AppError::Unavailable(_)) => {
+            tokio::spawn(record_after_move(state.clone(), vec![event]));
+        }
+        Err(err) => log_failure(&event, &err),
+    }
+}
+
+fn log_failure(event: &Event, err: &AppError) {
+    tracing::error!(
+        event = event.name(),
+        error = %err,
+        "audit: could not record event"
+    );
+}
+
 /// Record an event of a tenant that is being moved once the move is over,
 /// trying every few seconds for as long as a move may reasonably take.
-async fn record_after_move(state: AppState, event: std::sync::Arc<Event>) {
+async fn record_after_move(state: AppState, events: Vec<std::sync::Arc<Event>>) {
     const RETRY: std::time::Duration = std::time::Duration::from_secs(5);
     const GIVE_UP: std::time::Duration = std::time::Duration::from_secs(6 * 3600);
     let started = tokio::time::Instant::now();
+    let Some(first) = events.first() else {
+        return;
+    };
+    let tenant_id = first.tenant_id;
+    let refs: Vec<&Event> = events.iter().map(|e| &**e).collect();
     loop {
         tokio::time::sleep(RETRY).await;
-        match record(&state, &event).await {
-            Ok(_) => {
-                metrics::counter!("ridm_audit_events_total").increment(1);
+        match record_chain(&state, tenant_id, &refs).await {
+            Ok(rows) => {
+                metrics::counter!("ridm_audit_events_total").increment(rows.len() as u64);
                 return;
             }
             Err(AppError::Unavailable(_)) if started.elapsed() < GIVE_UP => {}
             Err(err) => {
                 tracing::error!(
-                    event = event.name(),
+                    event = first.name(),
+                    events = events.len(),
                     error = %err,
-                    "audit: could not record event after the tenant's move"
+                    "audit: could not record events after the tenant's move"
                 );
                 return;
             }
@@ -192,13 +259,13 @@ async fn record_after_move(state: AppState, event: std::sync::Arc<Event>) {
 /// and writes what was published before it exits. The export sink ships
 /// the rows later, from the database, like any others.
 pub struct CommandRecorder {
-    rx: broadcast::Receiver<Envelope>,
+    rx: mpsc::UnboundedReceiver<Envelope>,
 }
 
 impl CommandRecorder {
     pub fn start(state: &AppState) -> Self {
         Self {
-            rx: state.events.subscribe(),
+            rx: state.events.subscribe_durable(),
         }
     }
 
@@ -206,25 +273,13 @@ impl CommandRecorder {
     /// Returns how many could not be recorded (each is also logged).
     pub async fn flush(mut self, state: &AppState) -> usize {
         let mut failed = 0;
-        loop {
-            match self.rx.try_recv() {
-                Ok(envelope) => {
-                    if let Err(err) = record(state, &envelope.event).await {
-                        failed += 1;
-                        tracing::error!(
-                            event = envelope.event.name(),
-                            error = %err,
-                            "audit: could not record event"
-                        );
-                    }
-                }
-                Err(TryRecvError::Lagged(n)) => {
-                    failed += n as usize;
-                    tracing::warn!(skipped = n, "audit: event bus lagged, events not recorded");
-                }
-                Err(TryRecvError::Empty | TryRecvError::Closed) => return failed,
+        while let Ok(envelope) = self.rx.try_recv() {
+            if let Err(err) = record(state, &envelope.event).await {
+                failed += 1;
+                log_failure(&envelope.event, &err);
             }
         }
+        failed
     }
 }
 

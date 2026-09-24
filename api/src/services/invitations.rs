@@ -164,7 +164,11 @@ pub async fn resend(
         .ok_or(AppError::NotFound("invitation"))?;
     tx.commit().await?;
     send_email(state, tenant, &inv, &token, 7).await?;
-    let _ = actor;
+    state.events.publish(Event::new(
+        Some(tenant.id),
+        actor,
+        EventKind::InvitationResent { invitation_id: id },
+    ));
     Ok(inv)
 }
 
@@ -317,6 +321,7 @@ pub async fn accept(
         let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
         repos::users::hard_delete(&mut *tx, tenant.id, user.id).await?;
         tx.commit().await?;
+        crate::services::users::forget(state, tenant.id, &[user.id]).await;
         return Err(e);
     }
     for r in &inv.roles {
@@ -344,6 +349,7 @@ pub async fn accept(
     }
     let accepted = repos::invitations::mark_accepted(&mut *tx, tenant.id, inv.id).await?;
     tx.commit().await?;
+    crate::services::users::forget(state, tenant.id, &[user.id]).await;
     if !accepted {
         return Err(AppError::Conflict("invitation was already used".into()));
     }

@@ -28,8 +28,7 @@ async fn lookup(
     match invitations::lookup(&state, &tenant.tenant, &token).await {
         Ok((_, public)) => {
             let mut res = axum::Json(public).into_response();
-            res.headers_mut()
-                .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+            crate::middleware::security_headers::set_no_store(res.headers_mut());
             res
         }
         Err(e) => e.into_response(),
@@ -131,7 +130,6 @@ async fn accept(
     )) {
         res.headers_mut().append(header::SET_COOKIE, v);
     }
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(res.headers_mut());
     res
 }

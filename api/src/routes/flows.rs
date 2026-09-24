@@ -16,6 +16,7 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::error::AppError;
+use crate::middleware::security_headers::no_store;
 use crate::middleware::{TenantCtx, client_ip};
 use crate::services::flows::{self, AuthStep, ConsentOutcome};
 use crate::services::login_flows::FlowStage;
@@ -98,12 +99,6 @@ pub fn router() -> Router<AppState> {
         .route("/t/{slug}/flows/{id}/consent", post(consent))
         .route("/t/{slug}/flows/{id}/cancel", post(cancel))
         .route("/t/{slug}/flows/{id}/finish", get(finish))
-}
-
-fn no_store(mut res: Response) -> Response {
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    res
 }
 
 /// The public state as JSON, with `finish_url` once the flow is done.
@@ -372,7 +367,9 @@ async fn consent(
     match flows::consent_step(&state, &tenant.tenant, flow, body.approve, body.scopes).await {
         Ok(ConsentOutcome::Granted { flow }) => respond_state(&state, &tenant, &flow).await,
         Ok(ConsentOutcome::Denied { redirect_to }) => {
-            let _ = crate::services::login_flows::delete(&state, tenant.id(), id).await;
+            if let Err(e) = crate::services::login_flows::delete(&state, tenant.id(), id).await {
+                tracing::warn!(flow_id = %id, error = %e, "could not delete a denied login flow");
+            }
             no_store(
                 axum::Json(json!({"stage": "denied", "redirect_to": redirect_to})).into_response(),
             )
@@ -1052,7 +1049,9 @@ async fn finish(
         Ok(_) => return AppError::NotFound("client").into_response(),
         Err(e) => return e.into_response(),
     };
-    let _ = crate::services::login_flows::delete(&state, tenant.id(), id).await;
+    if let Err(e) = crate::services::login_flows::delete(&state, tenant.id(), id).await {
+        tracing::warn!(flow_id = %id, error = %e, "could not delete a finished login flow");
+    }
     if let Some(device_hash) = &flow.request.device_code {
         // A device authorization: approve the device's code and send the
         // browser back to the device page; the device collects the tokens.
@@ -1066,7 +1065,14 @@ async fn finish(
         .await
         {
             Ok(_) => {
-                let _ = sessions::add_client(&state, &session, &client.client_id).await;
+                // Without it the session's sign-out would not reach this client.
+                if let Err(e) = sessions::add_client(&state, &session, &client.client_id).await {
+                    tracing::warn!(
+                        client_id = %client.client_id,
+                        error = %e,
+                        "could not record the client on the session"
+                    );
+                }
                 state.events.publish(Event::new(
                     Some(tenant.id()),
                     Actor::User {
@@ -1078,12 +1084,15 @@ async fn finish(
                         scopes: flow.request.scopes.clone(),
                     },
                 ));
-                let mut u = url::Url::parse(&flow.request.redirect_uri)
-                    .expect("the device page is a valid url");
+                let mut u = match url::Url::parse(&flow.request.redirect_uri) {
+                    Ok(u) => u,
+                    Err(e) => {
+                        return AppError::Internal(format!("device page url: {e}")).into_response();
+                    }
+                };
                 u.query_pairs_mut().append_pair("done", "1");
                 let mut res = axum::response::Redirect::to(u.as_str()).into_response();
-                res.headers_mut()
-                    .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+                crate::middleware::security_headers::set_no_store(res.headers_mut());
                 if let Some(v) = device_cookie
                     .as_deref()
                     .and_then(|c| HeaderValue::from_str(c).ok())

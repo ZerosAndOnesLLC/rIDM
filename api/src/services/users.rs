@@ -1,9 +1,13 @@
 //! User lifecycle within a tenant. Passwords are handled by the password
 //! service (Phase 1.4); this module owns identity data.
 
+use std::sync::Arc;
+use std::time::Duration;
+
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use uuid::Uuid;
 
+use crate::cache::keys as cache_keys;
 use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::models::{NewUser, User, UserFilter, UserStatus, UserUpdate};
@@ -105,12 +109,46 @@ pub async fn create_as(
     Ok(user)
 }
 
+/// How long a node keeps a user row it read. Every write evicts it on every
+/// node ([`forget`]); the TTL only bounds a read that raced a write.
+const USER_L1_TTL: Duration = Duration::from_secs(5);
+
+/// A user by id, read on every authenticated request. Cached per node only
+/// (L1): the row carries the password hash, which never goes to Valkey.
 pub async fn get(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<User> {
+    let key = cache_keys::user(tenant_id, id);
+    if let Some(user) = state.cache.l1().get::<User>(&key) {
+        return Ok((*user).clone());
+    }
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let user = repos::users::find_by_id(&mut *tx, tenant_id, id).await?;
     tx.commit().await?;
-    user.filter(|u| u.deleted_at.is_none())
-        .ok_or(AppError::NotFound("user"))
+    let user = user
+        .filter(|u| u.deleted_at.is_none())
+        .ok_or(AppError::NotFound("user"))?;
+    state
+        .cache
+        .l1()
+        .insert(key, Arc::new(user.clone()), USER_L1_TTL);
+    Ok(user)
+}
+
+/// Evict users from every node's cache after their rows changed. Called
+/// after the commit; a failure to reach Valkey is logged, since the local
+/// eviction has happened and the TTL bounds the other nodes.
+pub async fn forget(state: &AppState, tenant_id: Uuid, ids: &[Uuid]) {
+    if ids.is_empty() {
+        return;
+    }
+    let keys: Vec<String> = ids
+        .iter()
+        .map(|id| cache_keys::user(tenant_id, *id))
+        .collect();
+    for chunk in keys.chunks(500) {
+        if let Err(err) = state.cache.invalidate(chunk).await {
+            tracing::warn!(error = %err, "could not evict users from the other nodes");
+        }
+    }
 }
 
 pub async fn find_by_identifier(
@@ -192,6 +230,7 @@ pub async fn update_as(
         })?
         .ok_or(AppError::NotFound("user"))?;
     tx.commit().await?;
+    forget(state, tenant_id, &[id]).await;
 
     state.events.publish(Event::new(
         Some(tenant_id),
@@ -234,6 +273,7 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
     if !deleted {
         return Err(AppError::NotFound("user"));
     }
+    forget(state, tenant_id, &[id]).await;
     state
         .cache
         .invalidate(&[crate::cache::keys::roles_version(tenant_id)])
@@ -275,6 +315,7 @@ pub async fn unlock(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
     if !ok {
         return Err(AppError::NotFound("user"));
     }
+    forget(state, tenant_id, &[id]).await;
     state.events.publish(Event::new(
         Some(tenant_id),
         actor,

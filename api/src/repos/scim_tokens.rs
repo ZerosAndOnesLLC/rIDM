@@ -31,7 +31,9 @@ pub async fn insert<'e>(
     qb.build_query_as::<ScimToken>().fetch_one(exec).await
 }
 
-/// Newest first, revoked ones included.
+/// Live tokens (at most `services::limits::SCIM_TOKENS`), then the most
+/// recently created revoked ones, newest first within each: 200 rows at most,
+/// so years of rotation do not grow the list.
 pub async fn list<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
@@ -40,7 +42,7 @@ pub async fn list<'e>(
     qb.push(COLUMNS)
         .push(" FROM scim_tokens WHERE tenant_id = ")
         .push_bind(tenant_id)
-        .push(" ORDER BY created_at DESC, id DESC");
+        .push(" ORDER BY revoked_at IS NOT NULL, created_at DESC, id DESC LIMIT 200");
     qb.build_query_as::<ScimToken>().fetch_all(exec).await
 }
 

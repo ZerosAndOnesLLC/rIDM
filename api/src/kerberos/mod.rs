@@ -12,7 +12,7 @@ pub mod der;
 mod keytab;
 mod principal;
 pub mod spnego;
-#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
 pub mod testing;
 
 pub use acceptor::*;

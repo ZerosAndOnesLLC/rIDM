@@ -128,7 +128,7 @@ GET /admin/tenants/acme/users?limit=100&cursor=eyJ0IjoiMjAyNi0wOS0xOFQwOTowMDowM
 | `limit` | page size, default 50, clamped to 1–500 |
 | `cursor` | the previous page's `next_cursor`, passed back unchanged. It is opaque; a malformed one is `400` |
 
-`next_cursor` is absent on the last page. Pages are stable while rows are inserted, because the cursor encodes the position (creation time and id) rather than an offset. Smaller collections (groups, roles, resource servers, scopes, claim mappers, keys, webhooks, IP rules, identity providers) return every item as one JSON array. The webhook delivery log and the message log take `?status=` and `?limit=` (default 100) and return the most recent entries.
+`next_cursor` is absent on the last page. Pages are stable while rows are inserted, because the cursor encodes the position (creation time and id) rather than an offset. Smaller collections (groups, roles, resource servers, scopes, claim mappers, keys, webhooks, IP rules, identity providers) return every item as one JSON array. The webhook delivery log and the message log take `?status=` and `?limit=` (default 50, at most 500) and return the most recent entries.
 
 Filters are query parameters on the collection:
 

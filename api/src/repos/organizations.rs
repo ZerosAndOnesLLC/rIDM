@@ -173,6 +173,19 @@ pub async fn add_member<'e>(
     Ok(res.rows_affected() > 0)
 }
 
+/// Users whose primary organization is `org_id`.
+pub async fn users_with_primary_org<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    org_id: Uuid,
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar("SELECT id FROM users WHERE tenant_id = $1 AND org_id = $2")
+        .bind(tenant_id)
+        .bind(org_id)
+        .fetch_all(exec)
+        .await
+}
+
 pub async fn remove_member<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,

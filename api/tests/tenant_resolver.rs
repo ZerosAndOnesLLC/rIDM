@@ -130,8 +130,34 @@ async fn invalidation_propagates_between_nodes() {
     let node_a = app.state.cache.clone();
     let node_b = CacheLayer::new(app.state.redis.clone());
     let listener = node_a.spawn_invalidation_listener();
-    // Give the subscriber time to connect before publishing.
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // Wait until node A listens: a probe node B invalidates leaves A's L1.
+    // Twice in a row, since A clears its whole L1 once on connecting.
+    let probe = format!("ridm:test:{}", Uuid::new_v4());
+    let mut in_a_row = 0;
+    for _ in 0..200 {
+        node_a.l1().insert(
+            probe.clone(),
+            std::sync::Arc::new(1u8),
+            Duration::from_secs(60),
+        );
+        node_b
+            .invalidate(std::slice::from_ref(&probe))
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(25)).await;
+        if node_a.l1().get::<u8>(&probe).is_none() {
+            in_a_row += 1;
+            if in_a_row == 2 {
+                break;
+            }
+        } else {
+            in_a_row = 0;
+        }
+    }
+    assert_eq!(
+        in_a_row, 2,
+        "node A's invalidation listener never connected"
+    );
 
     let key = format!("ridm:test:{}", Uuid::new_v4());
     let value = node_a
@@ -167,6 +193,38 @@ async fn invalidation_propagates_between_nodes() {
         .await
         .unwrap();
     assert_eq!(reloaded.as_deref(), Some(&"reloaded".to_string()));
+}
+
+/// Concurrent misses on one key run the loader once; the rest read what it
+/// stored.
+#[tokio::test]
+async fn concurrent_misses_load_once() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let app = TestApp::spawn().await;
+    let cache = app.state.cache.clone();
+    let key = format!("ridm:test:{}", Uuid::new_v4());
+    let loads = Arc::new(AtomicUsize::new(0));
+    let tasks: Vec<_> = (0..20)
+        .map(|_| {
+            let (cache, key, loads) = (cache.clone(), key.clone(), loads.clone());
+            tokio::spawn(async move {
+                cache
+                    .get_or_load(&key, Duration::from_secs(60), || async move {
+                        loads.fetch_add(1, Ordering::SeqCst);
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        Ok(Some("loaded".to_string()))
+                    })
+                    .await
+                    .unwrap()
+            })
+        })
+        .collect();
+    for t in tasks {
+        assert_eq!(t.await.unwrap().as_deref(), Some(&"loaded".to_string()));
+    }
+    assert_eq!(loads.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

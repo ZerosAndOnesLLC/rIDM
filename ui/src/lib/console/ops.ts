@@ -3,6 +3,7 @@
 import type { Schemas } from "@api/client";
 import { tenantBase } from "@/lib/api";
 import { sessionStore } from "./session";
+import { saveResponse } from "@/lib/download";
 
 export type SigningKey = Schemas["SigningKey"];
 export type KeyStatus = Schemas["KeyStatus"];
@@ -52,7 +53,7 @@ export const EVENT_NAMES = [
   "identity_provider.created", "identity_provider.deleted", "identity_provider.updated",
   "impersonation.ended", "impersonation.requested", "impersonation.started",
   "ip_rule.created", "ip_rule.deleted", "ip_rule.updated",
-  "invitation.accepted", "invitation.created", "invitation.revoked",
+  "invitation.accepted", "invitation.created", "invitation.resent", "invitation.revoked",
   "login.brokered", "login.failed", "login.new_device", "login.passwordless_sent", "login.succeeded",
   "logout.upstream",
   "master_key.generation_created", "master_key.rotated", "mfa.changed", "mtls_trust_anchor.created", "mtls_trust_anchor.deleted",
@@ -89,12 +90,7 @@ export async function downloadWithToken(path: string, filename: string): Promise
     const body = (await res.json().catch(() => null)) as { detail?: string; title?: string } | null;
     throw new Error(body?.detail ?? body?.title ?? `Download failed (${res.status}).`);
   }
-  const url = URL.createObjectURL(await res.blob());
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  await saveResponse(res, filename);
 }
 
 /** `datetime-local` value → RFC 3339 with `Z` (the API rejects `+00:00`). */

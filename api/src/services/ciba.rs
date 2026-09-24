@@ -264,7 +264,7 @@ pub async fn list_pending(
     tenant_id: Uuid,
     user_id: Uuid,
 ) -> AppResult<Vec<PendingRequest>> {
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     let rows = repos::ciba_requests::list_pending(&mut *tx, tenant_id, user_id).await?;
     tx.commit().await?;
     Ok(rows)

@@ -315,3 +315,24 @@ encrypted and never returned:
 | Email and SMS providers, templates | `/admin/tenants/{slug}/messaging/…` | [Email, SMS and templates](messaging.md) |
 | User profile schema | `GET/PUT /admin/tenants/{slug}/profile-schema` | [Users](users.md#profile-schema) |
 | IP allow and deny rules | `/admin/tenants/{slug}/ip-rules` | [Rate limits, IP rules and CAPTCHA](security-controls.md) |
+
+## Limits
+
+Some configuration is read whole (by the console, the tenant document and token
+issuance), so each tenant has a ceiling on it. Creating one more past the ceiling is a
+`400`:
+
+| Collection | Per tenant |
+|------------|------------|
+| Groups | 10,000 |
+| Roles | 5,000 |
+| Scopes | 1,000 |
+| Resource servers | 1,000 |
+| IP rules | 1,000 |
+| Webhooks | 100 |
+| SCIM tokens (live) | 100 |
+| Trusted certificate authorities (mutual TLS) | 50 |
+| Feature flags | 200 |
+
+Users, clients, organizations and the audit log have no ceiling: their lists are
+paginated.

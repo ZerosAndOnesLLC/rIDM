@@ -40,6 +40,12 @@ impl TenantCtx {
             None => state.config.issuer_for(&self.tenant.slug),
         }
     }
+
+    /// The token endpoint: the audience of a client assertion at every
+    /// endpoint that authenticates clients.
+    pub fn token_endpoint(&self, state: &AppState) -> String {
+        format!("{}/token", self.issuer(state))
+    }
 }
 
 #[derive(Deserialize)]

@@ -11,7 +11,7 @@ use std::net::{IpAddr, SocketAddr};
 
 use axum::Router;
 use axum::extract::{ConnectInfo, State};
-use axum::http::{HeaderMap, HeaderValue, Method, header};
+use axum::http::{HeaderMap, Method};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use base64::Engine as _;
@@ -24,10 +24,12 @@ use uuid::Uuid;
 
 use crate::cache::keys as cache_keys;
 use crate::error::{AppError, OAuthError, OAuthErrorCode};
+use crate::middleware::security_headers::no_store;
 use crate::middleware::{TenantCtx, client_ip_addr};
 use crate::models::{ClaimMapper, Client, Group, Role, SigningAlg, Tenant, User, grants};
 use crate::oidc::authorize::RawParams;
 use crate::oidc::dpop;
+use crate::oidc::form::FormParams;
 use crate::oidc::mtls::{self, ClientCert, ClientCertificate};
 use crate::oidc::{client_auth, pkce};
 use crate::services::device_codes::Poll;
@@ -64,33 +66,15 @@ pub struct TokenResponse {
     pub scope: Option<String>,
 }
 
-fn no_store(mut res: Response) -> Response {
-    let h = res.headers_mut();
-    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    h.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
-    res
-}
-
 async fn token(
     State(state): State<AppState>,
     tenant: TenantCtx,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     cert: ClientCertificate,
     headers: HeaderMap,
-    body: String,
+    FormParams(params): FormParams,
 ) -> Response {
     let ip = client_ip_addr(&state, &headers, Some(peer));
-    let is_form = headers
-        .get(header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|ct| ct.starts_with("application/x-www-form-urlencoded"));
-    if !is_form {
-        return no_store(
-            OAuthError::invalid_request("content type must be application/x-www-form-urlencoded")
-                .into_response(),
-        );
-    }
-    let params = RawParams::parse(&body);
     let outcome = handle(&state, &tenant, &headers, &params, ip, cert.get()).await;
     // Counted whatever happened, refusals included (client auth, grant, DPoP).
     let grant = params
@@ -121,7 +105,7 @@ async fn handle(
     cert: Option<&ClientCert>,
 ) -> Result<TokenResponse, OAuthError> {
     let one = |n: &str| params.one(n).map_err(OAuthError::invalid_request);
-    let token_endpoint = format!("{}/token", tenant.issuer(state));
+    let token_endpoint = tenant.token_endpoint(state);
     let (client, _method) =
         client_auth::authenticate(state, tenant, headers, params, &token_endpoint, ip, cert)
             .await?;
@@ -463,7 +447,6 @@ struct Issue<'a> {
     /// org-scoped roles are resolved in.
     org_id: Option<Uuid>,
     nonce: Option<String>,
-    with_refresh: Option<Uuid>, // family to continue, if rotating
     issue_refresh: bool,
     code_for_hash: Option<String>,
     /// What the request proved possession of: tokens are bound to the DPoP
@@ -619,7 +602,6 @@ async fn issue_tokens(state: &AppState, i: Issue<'_>) -> Result<TokenResponse, O
     } else {
         None
     };
-    let _ = i.with_refresh;
 
     // Remember what this authorization code produced, so replaying it can undo
     // all of it (RFC 6749 §4.1.2): the refresh family and the access token,
@@ -811,7 +793,6 @@ async fn authorization_code(
             amr: record.amr.clone(),
             acr: record.acr.clone(),
             nonce: record.nonce.clone(),
-            with_refresh: None,
             issue_refresh: true,
             code_for_hash: Some(code_hash(code)),
             proof,
@@ -875,7 +856,6 @@ async fn device_code(
             amr: approval.amr.clone(),
             acr: approval.acr.clone(),
             nonce: None,
-            with_refresh: None,
             issue_refresh: true,
             code_for_hash: None,
             proof,
@@ -931,7 +911,6 @@ async fn backchannel(
             amr: approval.amr.clone(),
             acr: approval.acr.clone(),
             nonce: None,
-            with_refresh: None,
             issue_refresh: true,
             code_for_hash: None,
             proof,
@@ -1007,7 +986,6 @@ async fn refresh_token(
             amr: rotated.record.amr.clone(),
             acr: rotated.record.acr.clone(),
             nonce: None,
-            with_refresh: Some(rotated.record.family_id),
             issue_refresh: false,
             code_for_hash: None,
             proof,
@@ -1090,7 +1068,6 @@ async fn client_credentials(
             amr: vec![],
             acr: None,
             nonce: None,
-            with_refresh: None,
             issue_refresh: false,
             code_for_hash: None,
             proof,
@@ -1335,7 +1312,6 @@ async fn token_exchange(
                 .and_then(|v| v.as_str())
                 .and_then(|s| Uuid::parse_str(s).ok()),
             nonce: None,
-            with_refresh: None,
             issue_refresh: false,
             code_for_hash: None,
             proof,

@@ -269,6 +269,8 @@ pub async fn create(
         return Err(AppError::BadRequest("invalid scope name".into()));
     }
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    crate::services::limits::ensure_room(&mut *tx, tenant_id, crate::services::limits::SCOPES)
+        .await?;
     let scope = repos::scopes::insert(&mut *tx, tenant_id, Uuid::now_v7(), &input)
         .await
         .map_err(|e| match AppError::from_db(e) {

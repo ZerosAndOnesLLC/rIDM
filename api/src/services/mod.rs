@@ -33,6 +33,7 @@ pub mod jwe;
 pub mod kerberos;
 pub mod keys;
 pub mod ldap;
+pub mod limits;
 pub mod locale;
 pub mod login_flows;
 pub mod logout;

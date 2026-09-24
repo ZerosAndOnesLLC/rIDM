@@ -1,15 +1,18 @@
 //! In-process event bus. Publishing never blocks or fails the caller: if no
-//! subscriber is listening the event is dropped (logged at debug), and slow
-//! subscribers lose the oldest events (they must be idempotent and tolerate
-//! gaps, e.g. by reconciling from the database).
+//! subscriber is listening the event is dropped (logged at debug). There are
+//! two kinds of subscriber: a [`EventBus::subscribe`] receiver shares a
+//! bounded ring and loses the oldest events when it lags (it must tolerate
+//! gaps), while a [`EventBus::subscribe_durable`] receiver has its own queue
+//! and loses nothing (the audit trail and webhooks, which must see every
+//! event); its depth is what to watch under load.
 //!
 //! Cross-node fan-out (Redis pub/sub) is layered on top by the server: a
 //! forwarder subscribes here and republishes to Redis, and a receiver publishes
 //! remote events into the local bus with `origin = Remote`.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 use super::Event;
 
@@ -35,6 +38,7 @@ pub trait EventSink: Send + Sync {
 #[derive(Clone)]
 pub struct EventBus {
     tx: broadcast::Sender<Envelope>,
+    durable: Arc<Mutex<Vec<mpsc::UnboundedSender<Envelope>>>>,
 }
 
 impl Default for EventBus {
@@ -46,15 +50,30 @@ impl Default for EventBus {
 impl EventBus {
     pub fn new(capacity: usize) -> Self {
         let (tx, _rx) = broadcast::channel(capacity);
-        Self { tx }
+        Self {
+            tx,
+            durable: Arc::default(),
+        }
     }
 
+    /// A receiver that may miss the oldest events when it falls behind.
     pub fn subscribe(&self) -> broadcast::Receiver<Envelope> {
         self.tx.subscribe()
     }
 
+    /// A receiver with its own unbounded queue: every event published from
+    /// now on reaches it, however far behind it is. Dropping it unsubscribes.
+    pub fn subscribe_durable(&self) -> mpsc::UnboundedReceiver<Envelope> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.durable
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(tx);
+        rx
+    }
+
     pub fn subscriber_count(&self) -> usize {
-        self.tx.receiver_count()
+        self.tx.receiver_count() + self.durable.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
 
     pub fn publish_with_origin(&self, mut event: Event, origin: Origin) {
@@ -66,9 +85,14 @@ impl EventBus {
             origin,
             event: Arc::new(event),
         };
-        if let Err(err) = self.tx.send(envelope) {
+        let durable = {
+            let mut subs = self.durable.lock().unwrap_or_else(|e| e.into_inner());
+            subs.retain(|sub| sub.send(envelope.clone()).is_ok());
+            subs.len()
+        };
+        if self.tx.send(envelope).is_err() && durable == 0 {
             // Normal before the audit/webhook subscribers are running.
-            tracing::debug!(event = name, "event dropped: no subscribers ({err})");
+            tracing::debug!(event = name, "event dropped: no subscribers");
         }
     }
 }
@@ -97,6 +121,34 @@ mod tests {
         let env = rx.recv().await.unwrap();
         assert_eq!(env.origin, Origin::Local);
         assert_eq!(env.event.name(), "master_key.rotated");
+    }
+
+    #[tokio::test]
+    async fn a_durable_subscriber_misses_nothing_however_far_behind() {
+        let bus = EventBus::new(2);
+        let mut lossy = bus.subscribe();
+        let mut durable = bus.subscribe_durable();
+        for v in 0..10 {
+            bus.publish(Event::new(
+                None,
+                Actor::System,
+                EventKind::MasterKeyRotated { new_version: v },
+            ));
+        }
+        assert!(matches!(
+            lossy.recv().await,
+            Err(broadcast::error::RecvError::Lagged(8))
+        ));
+        for _ in 0..10 {
+            durable.try_recv().expect("every event queued");
+        }
+        drop(durable);
+        bus.publish(Event::new(
+            None,
+            Actor::System,
+            EventKind::MasterKeyRotated { new_version: 11 },
+        ));
+        assert_eq!(bus.subscriber_count(), 1, "a dropped receiver unsubscribes");
     }
 
     #[test]

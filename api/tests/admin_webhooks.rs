@@ -330,11 +330,43 @@ async fn admin_runs_the_webhook_lifecycle_with_signed_deliveries() {
         Some(&json!({"username": "unhooked"})),
     )
     .await;
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // Barrier: the dispatcher takes events in order, so once a later ping
+    // to another webhook arrives, user.created has been dispatched.
+    let (_, marker, _) = call(
+        &app,
+        Method::POST,
+        &base,
+        Some(&t),
+        Some(&json!({"name": "marker", "url": hook, "events": ["webhook.test"]})),
+    )
+    .await;
+    let marker = marker["id"].as_str().unwrap().to_string();
+    call(
+        &app,
+        Method::POST,
+        &format!("{base}/{marker}/test"),
+        Some(&t),
+        None,
+    )
+    .await;
+    for _ in 0..200 {
+        if inbox.lock().unwrap().hits.len() > before {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
     ridm_api::jobs::webhook_delivery::run_once(&app.state)
         .await
         .unwrap();
-    assert_eq!(inbox.lock().unwrap().hits.len(), before);
+    let (count, event) = {
+        let hits = inbox.lock().unwrap();
+        (
+            hits.hits.len(),
+            hits.hits.get(before).map(|h| h.0["x-ridm-event"].clone()),
+        )
+    };
+    assert_eq!(count, before + 1, "only the marker's ping");
+    assert_eq!(event.unwrap(), "webhook.test");
 
     let (status, _, _) = call(
         &app,
@@ -411,4 +443,30 @@ async fn built_in_roles_map_onto_webhook_routes_and_tenants_are_confined() {
     )
     .await;
     assert_eq!(status, 404);
+}
+
+#[tokio::test]
+async fn a_tenant_has_at_most_its_cap_of_webhooks() {
+    let inbox: Inbox = Arc::default();
+    let app = TestApp::spawn_with(receiver(inbox)).await;
+    let base = format!("/admin/tenants/{}/webhooks", app.tenant.slug);
+    let hook = app.url("/_test/hook");
+    let t = admin_token(&app, app.tenant.id, OWNER_ROLE).await;
+    let cap = ridm_api::services::limits::WEBHOOKS.max;
+    for i in 0..=cap {
+        let (status, body, _) = call(
+            &app,
+            Method::POST,
+            &base,
+            Some(&t),
+            Some(&json!({"name": format!("w{i}"), "url": hook, "events": ["*"]})),
+        )
+        .await;
+        if i < cap {
+            assert_eq!(status, 201, "{i}: {body}");
+        } else {
+            assert_eq!(status, 400, "{body}");
+            assert!(body["detail"].as_str().unwrap().contains("at most"));
+        }
+    }
 }

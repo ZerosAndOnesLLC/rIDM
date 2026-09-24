@@ -43,3 +43,24 @@ export function useResourceServers(tenant: string | null) {
     },
   });
 }
+
+/** Every client of the tenant by id → name, for labels and pickers. Pages
+ * through the whole list (no silent cut-off), cached a minute. */
+export function useClientNames(tenant: string) {
+  const { client } = useConsole();
+  return useQuery({
+    queryKey: ["clients", tenant, "names"],
+    staleTime: 60_000,
+    queryFn: async () => {
+      const names: Record<string, string> = {};
+      let cursor: string | undefined;
+      do {
+        const { data, error } = await client.GET("/admin/tenants/{slug}/clients", { params: { path: { slug: tenant }, query: { limit: 200, cursor } } });
+        if (error) throw new Error(error.detail ?? error.title);
+        for (const c of data.items) names[c.id] = c.name;
+        cursor = data.next_cursor ?? undefined;
+      } while (cursor);
+      return names;
+    },
+  });
+}

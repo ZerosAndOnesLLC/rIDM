@@ -20,8 +20,10 @@ use crate::error::{AppError, AppResult};
 use crate::jobs::leader;
 use crate::models::{RsaBits, SamlKeyStatus, SamlSigningKey, SigningAlg, Tenant};
 use crate::repos;
+use crate::saml::binding::{self, Kind};
 use crate::saml::cert::{self, Certificate};
 use crate::saml::dsig::Signer;
+use crate::saml::xml::El;
 use crate::state::AppState;
 
 /// Certificates are containers for the key, not trust anchors; SPs that
@@ -84,7 +86,7 @@ pub async fn list(state: &AppState, tenant_id: Uuid) -> AppResult<Vec<SamlKeyVie
     let loaded = state
         .cache
         .get_or_load(&cache_keys::saml_keys(tenant_id), LIST_TTL, || async move {
-            let mut tx = db::tenant_tx(&db, tenant_id).await?;
+            let mut tx = db::read_tx(&db, tenant_id).await?;
             let rows = repos::saml::list_keys(&mut *tx, tenant_id).await?;
             tx.commit().await?;
             Ok(Some(rows.iter().map(SamlKeyView::from).collect::<Vec<_>>()))
@@ -210,6 +212,37 @@ async fn first_key(state: &AppState, tenant: &Tenant) -> AppResult<Uuid> {
         }
         Err(e) => Err(e),
     }
+}
+
+/// Sign `el` (enveloped, at `position`) on the blocking pool: an RSA
+/// signature is about a millisecond of CPU, too long for a runtime thread.
+pub async fn sign_enveloped(signer: &Arc<Signer>, mut el: El, position: usize) -> AppResult<El> {
+    let signer = signer.clone();
+    tokio::task::spawn_blocking(move || signer.sign_enveloped(&mut el, position).map(|()| el))
+        .await
+        .map_err(|e| AppError::Internal(format!("saml signing task: {e}")))?
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
+/// [`binding::to_redirect`] with the query signed on the blocking pool.
+pub async fn to_redirect(
+    signer: Option<&Arc<Signer>>,
+    endpoint: &str,
+    kind: Kind,
+    xml: String,
+    relay: Option<&str>,
+) -> AppResult<String> {
+    let (signer, endpoint, relay) = (
+        signer.cloned(),
+        endpoint.to_string(),
+        relay.map(str::to_string),
+    );
+    tokio::task::spawn_blocking(move || {
+        binding::to_redirect(&endpoint, kind, &xml, relay.as_deref(), signer.as_deref())
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("saml signing task: {e}")))?
+    .map_err(|e| AppError::Internal(e.to_string()))
 }
 
 /// The signer for the active key (the key decrypted once per node).

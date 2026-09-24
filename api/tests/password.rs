@@ -300,6 +300,7 @@ async fn expired_password_requires_change() {
         .await
         .unwrap();
     tx.commit().await.unwrap();
+    users::forget(&app.state, tid, &[user.id]).await;
     let u = users::get(&app.state, tid, user.id).await.unwrap();
     assert_eq!(
         password::verify_and_upgrade(&app.state, tid, &policy, &u, pw("valid-password-1"))

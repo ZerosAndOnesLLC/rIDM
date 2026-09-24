@@ -19,7 +19,6 @@ use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use ridm_core::providers::Encrypted;
 use serde::Serialize;
 use sha2::Sha256;
-use tokio::sync::broadcast::error::RecvError;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -250,6 +249,8 @@ pub async fn create(
     let secret = random_secret();
     let enc = encrypt_secret(state, tenant_id, id, &secret).await?;
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    crate::services::limits::ensure_room(&mut *tx, tenant_id, crate::services::limits::WEBHOOKS)
+        .await?;
     let w = repos::webhooks::insert(
         &mut *tx,
         tenant_id,
@@ -458,28 +459,23 @@ async fn deliver_promptly(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
             break;
         }
     }
-    let _: () = conn.del(&key).await.unwrap_or(());
+    if let Err(e) = conn.del::<_, ()>(&key).await {
+        // The lock expires on its own after PROMPT_LOCK_SECS.
+        tracing::warn!(error = %e, "webhooks: could not release the prompt-delivery lock");
+    }
     Ok(())
 }
 
-/// Subscribe to the event bus and queue deliveries; the delivery job sends them.
+/// Subscribe to the event bus and queue deliveries; the delivery job sends
+/// them. The subscription is durable, so a burst delays deliveries rather
+/// than skipping them.
 pub fn spawn_dispatcher(state: AppState) -> tokio::task::JoinHandle<()> {
-    let mut rx = state.events.subscribe();
+    let mut rx = state.events.subscribe_durable();
     tokio::spawn(async move {
-        loop {
-            match rx.recv().await {
-                Ok(envelope) => {
-                    if let Err(err) = dispatch(&state, &envelope.event).await {
-                        tracing::error!(event = envelope.event.name(), error = %err, "webhook dispatch failed");
-                    }
-                }
-                Err(RecvError::Lagged(n)) => {
-                    tracing::warn!(
-                        skipped = n,
-                        "webhooks: event bus lagged, deliveries skipped"
-                    );
-                }
-                Err(RecvError::Closed) => break,
+        while let Some(envelope) = rx.recv().await {
+            metrics::gauge!("ridm_webhook_dispatch_queue_depth").set(rx.len() as f64);
+            if let Err(err) = dispatch(&state, &envelope.event).await {
+                tracing::error!(event = envelope.event.name(), error = %err, "webhook dispatch failed");
             }
         }
     })
@@ -697,7 +693,7 @@ pub async fn list_deliveries(
     tenant_id: Uuid,
     webhook_id: Uuid,
     status: Option<DeliveryStatus>,
-    limit: i64,
+    limit: Option<u32>,
 ) -> AppResult<Vec<WebhookDelivery>> {
     get(state, tenant_id, webhook_id).await?;
     let mut tx = db::read_tx(&state.db, tenant_id).await?;
@@ -706,7 +702,7 @@ pub async fn list_deliveries(
         tenant_id,
         webhook_id,
         status,
-        limit.clamp(1, 500),
+        crate::util::cursor::page_size(limit),
     )
     .await?;
     tx.commit().await?;

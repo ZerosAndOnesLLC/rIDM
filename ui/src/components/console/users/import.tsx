@@ -4,7 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { TextArea } from "@/components/console/form";
 import { Badge, Button, Modal } from "@/components/console/ui";
-import { tenantBase } from "@/lib/api";
+import { adminBase, downloadWithToken } from "@/lib/console/ops";
 import { sessionStore, useConsole } from "@/lib/console/session";
 
 type Report = { dry_run: boolean; total: number; created: number; failed: number; errors: { row: number; username?: string | null; error: string }[] };
@@ -111,29 +111,13 @@ export function ImportUsers({ tenant, open, onOpenChange, onImported }: { tenant
   );
 }
 
-function adminBase(): string {
-  return tenantBase("x").replace(/\/t\/x$/, "");
-}
-
 /** Fetch the export with the console's token and hand the file to the browser. */
 export function ExportUsers({ tenant, open, onOpenChange }: { tenant: string; open: boolean; onOpenChange: (o: boolean) => void }) {
   const { can } = useConsole();
   const [format, setFormat] = useState<"json" | "csv">("json");
   const download = useMutation({
     mutationFn: async () => {
-      const token = await sessionStore.token();
-      const res = await fetch(`${adminBase()}/admin/tenants/${encodeURIComponent(tenant)}/users/export?format=${format}`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { detail?: string; title?: string } | null;
-        throw new Error(body?.detail ?? body?.title ?? `Export failed (${res.status}).`);
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${tenant}-users.${format}`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await downloadWithToken(`/admin/tenants/${encodeURIComponent(tenant)}/users/export?format=${format}`, `${tenant}-users.${format}`);
     },
     onSuccess: () => onOpenChange(false),
   });

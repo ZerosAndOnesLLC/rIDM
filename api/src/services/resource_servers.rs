@@ -169,6 +169,12 @@ pub async fn create(
         ensure_signing_key(state, tenant_id, alg).await?;
     }
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    crate::services::limits::ensure_room(
+        &mut *tx,
+        tenant_id,
+        crate::services::limits::RESOURCE_SERVERS,
+    )
+    .await?;
     let rs = repos::resource_servers::insert(
         &mut *tx,
         tenant_id,

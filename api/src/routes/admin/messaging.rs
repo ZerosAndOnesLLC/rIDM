@@ -287,7 +287,7 @@ impl From<OutboundMessage> for LogEntry {
 struct LogQuery {
     #[param(inline)]
     status: Option<MessageStatus>,
-    limit: Option<i64>,
+    limit: Option<u32>,
 }
 
 #[utoipa::path(get, path = "/admin/tenants/{slug}/messaging/log", tag = "messaging", params(("slug" = String, Path, description = "Tenant slug"), LogQuery), responses((status = 200, body = Vec<LogEntry>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
@@ -298,7 +298,7 @@ async fn log(
     Query(q): Query<LogQuery>,
 ) -> AppResult<Json<Vec<LogEntry>>> {
     admin.require(tenant.id, P_READ)?;
-    let rows = messaging::recent(&state, tenant.id, q.status, q.limit.unwrap_or(100)).await?;
+    let rows = messaging::recent(&state, tenant.id, q.status, q.limit).await?;
     Ok(Json(rows.into_iter().map(LogEntry::from).collect()))
 }
 

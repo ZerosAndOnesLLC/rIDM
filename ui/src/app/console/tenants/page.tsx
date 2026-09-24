@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Settings2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -9,6 +9,7 @@ import { Field, SelectInput, TextInput } from "@/components/console/form";
 import { Badge, Button, Modal, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
 import { formatDate } from "@/i18n";
+import { useDebounced } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
 import { isValidSlug } from "@/lib/console/settings";
 import { useConsoleTenant } from "@/lib/console/tenant";
@@ -19,25 +20,20 @@ export default function TenantsPage() {
   const current = useConsoleTenant();
   const [filter, setFilter] = useState("");
   const [creating, setCreating] = useState(false);
-  const tenants = useQuery({
-    queryKey: ["tenants", "all"],
-    queryFn: async () => {
-      const out: { id: string; slug: string; display_name: string; status: string; created_at: string; data_region?: string | null; relocating?: boolean }[] = [];
-      let cursor: string | undefined;
-      for (let page = 0; page < 20; page += 1) {
-        const { data, error } = await client.GET("/admin/tenants", { params: { query: { limit: 100, cursor } } });
-        if (error) throw new Error(error.detail ?? error.title);
-        out.push(...data.items);
-        if (!data.next_cursor) break;
-        cursor = data.next_cursor;
-      }
-      return out;
+  const search = useDebounced(filter.trim(), 250);
+  const tenants = useInfiniteQuery({
+    queryKey: ["tenants", "list", search],
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }) => {
+      const { data, error } = await client.GET("/admin/tenants", { params: { query: { search: search || undefined, cursor: pageParam, limit: 100 } } });
+      if (error) throw new Error(error.detail ?? error.title);
+      return data;
     },
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
   });
   const regions = useRegions(me?.scope === "global");
   const regional = (regions.data?.length ?? 0) > 1;
-  const q = filter.trim().toLowerCase();
-  const rows = (tenants.data ?? []).filter((t) => !q || t.slug.includes(q) || t.display_name.toLowerCase().includes(q));
+  const rows = tenants.data?.pages.flatMap((p) => p.items) ?? [];
   const canCreate = me?.scope === "global" && can("ridm:tenants:create");
 
   return (
@@ -55,7 +51,7 @@ export default function TenantsPage() {
         }
       />
       <div className="mb-4 max-w-sm">
-        <TextInput aria-label="Filter tenants" placeholder="Filter by slug or name…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <TextInput aria-label="Filter tenants" placeholder="Slug or name starts with…" value={filter} onChange={(e) => setFilter(e.target.value)} />
       </div>
       {tenants.isError ? (
         <p role="alert" className="text-[0.9rem] text-danger">
@@ -104,6 +100,13 @@ export default function TenantsPage() {
               ))}
             </tbody>
           </table>
+          {tenants.hasNextPage && (
+            <div className="border-t border-line px-4 py-2.5 text-center">
+              <Button onClick={() => void tenants.fetchNextPage()} disabled={tenants.isFetchingNextPage}>
+                {tenants.isFetchingNextPage ? "Loading…" : "Load more"}
+              </Button>
+            </div>
+          )}
         </div>
       )}
       {canCreate && <CreateTenant open={creating} onOpenChange={setCreating} regions={regional ? (regions.data ?? []) : []} />}

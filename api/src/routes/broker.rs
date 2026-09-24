@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
 use crate::middleware::TenantCtx;
+use crate::middleware::security_headers::no_store;
 use crate::models::IdpKind;
 use crate::models::Tenant;
 use crate::services::broker::{self, BrokerError, CallbackParams, Mode, Outcome};
@@ -35,12 +36,6 @@ struct StartQuery {
     flow: Option<Uuid>,
     /// A link ticket from the account API.
     ticket: Option<String>,
-}
-
-pub(crate) fn no_store(mut res: Response) -> Response {
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    res
 }
 
 pub(crate) fn redirect(url: &str) -> Response {

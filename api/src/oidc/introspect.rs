@@ -8,17 +8,17 @@ use std::net::{IpAddr, SocketAddr};
 
 use axum::Router;
 use axum::extract::{ConnectInfo, State};
-use axum::http::{HeaderMap, HeaderValue, header};
+use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use chrono::Utc;
 use serde_json::{Value, json};
-use sha2::{Digest as _, Sha256};
 
 use crate::error::{OAuthError, OAuthErrorCode};
 use crate::middleware::{TenantCtx, client_ip_addr};
 use crate::oidc::authorize::RawParams;
 use crate::oidc::client_auth;
+use crate::oidc::form::FormParams;
 use crate::oidc::mtls::{ClientCert, ClientCertificate};
 use crate::services::tokens::{self, VerifyOptions};
 use crate::state::AppState;
@@ -33,16 +33,14 @@ async fn introspect(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     cert: ClientCertificate,
     headers: HeaderMap,
-    body: String,
+    FormParams(params): FormParams,
 ) -> Response {
     let ip = client_ip_addr(&state, &headers, Some(peer));
-    let params = RawParams::parse(&body);
     let mut res = match handle(&state, &tenant, &headers, &params, ip, cert.get()).await {
         Ok(v) => axum::Json(v).into_response(),
         Err(e) => e.into_response(),
     };
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(res.headers_mut());
     res
 }
 
@@ -54,7 +52,7 @@ async fn handle(
     ip: Option<IpAddr>,
     cert: Option<&ClientCert>,
 ) -> Result<Value, OAuthError> {
-    let token_endpoint = format!("{}/token", tenant.issuer(state));
+    let token_endpoint = tenant.token_endpoint(state);
     let (client, method) =
         client_auth::authenticate(state, tenant, headers, params, &token_endpoint, ip, cert)
             .await?;
@@ -71,12 +69,7 @@ async fn handle(
     let inactive = json!({"active": false});
 
     if token.starts_with("rt_") {
-        let hash = Sha256::digest(token.as_bytes()).to_vec();
-        let mut tx = crate::db::tenant_tx(&state.db, tenant.id()).await?;
-        let rec =
-            crate::repos::refresh_tokens::find_by_hash_for_update(&mut *tx, tenant.id(), &hash)
-                .await?;
-        tx.commit().await?;
+        let rec = crate::services::refresh_tokens::find(state, tenant.id(), token).await?;
         let Some(rec) = rec else { return Ok(inactive) };
         if rec.client_id != client.client_id || !rec.is_usable(Utc::now()) {
             return Ok(inactive);

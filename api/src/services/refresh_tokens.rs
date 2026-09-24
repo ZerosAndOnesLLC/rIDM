@@ -197,7 +197,7 @@ pub async fn redeem(
         let count =
             repos::refresh_tokens::revoke_family(&mut *tx, tenant_id, current.family_id).await?;
         tx.commit().await?;
-        tracing::warn!(tenant = %tenant_id, family = %current.family_id, client = %client_id, "refresh token reuse detected; family revoked");
+        tracing::warn!(tenant = %tenant_id, family = %current.family_id, client = %client_id, revoked = count, "refresh token reuse detected; family revoked");
         state.events.publish(Event::new(
             Some(tenant_id),
             Actor::Client { id: Uuid::nil() },
@@ -207,7 +207,6 @@ pub async fn redeem(
                 user_id: current.user_id,
             },
         ));
-        let _ = count;
         return Err(OAuthError::new(
             OAuthErrorCode::InvalidGrant,
             "refresh token reuse detected",
@@ -384,6 +383,20 @@ pub async fn revoke_for_session(
         ));
     }
     Ok(count)
+}
+
+/// The stored record of a presented refresh token, read without locking
+/// it: introspection reports on the token and changes nothing. Read from the
+/// primary so a rotation or revocation shows at once.
+pub async fn find(
+    state: &AppState,
+    tenant_id: Uuid,
+    presented: &str,
+) -> AppResult<Option<RefreshToken>> {
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let rec = repos::refresh_tokens::find_by_hash(&mut *tx, tenant_id, &hash(presented)).await?;
+    tx.commit().await?;
+    Ok(rec)
 }
 
 pub async fn list_live_for_user(

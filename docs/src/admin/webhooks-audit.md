@@ -67,6 +67,7 @@ those of the event's `kind` document (next to `type`).
 | `invitation.created` | `invitation_id`, `email` |
 | `invitation.accepted` | `invitation_id`, `user_id` |
 | `invitation.revoked` | `invitation_id` |
+| `invitation.resent` | `invitation_id` |
 | `scope.created`, `scope.updated`, `scope.deleted` | `scope_id` |
 | `claim_mapper.created`, `claim_mapper.updated`, `claim_mapper.deleted` | `mapper_id` |
 | `resource_server.created`, `resource_server.updated`, `resource_server.deleted` | `resource_server_id` |
@@ -132,7 +133,7 @@ receiver.
 | `GET`, `PATCH`, `DELETE …/webhooks/{webhook}` | read, change any field above, delete (its deliveries go with it) |
 | `POST …/webhooks/{webhook}/secret` | new secret, returned once; later deliveries use it |
 | `POST …/webhooks/{webhook}/test` | send a `webhook.test` event now, whatever the event filter; returns the delivery |
-| `GET …/webhooks/{webhook}/deliveries?status=&limit=` | delivery log, newest first (`limit` 100 by default, at most 500) |
+| `GET …/webhooks/{webhook}/deliveries?status=&limit=` | delivery log, newest first (`limit` 50 by default, at most 500) |
 | `GET …/webhooks/{webhook}/deliveries/{delivery}` | one delivery with its payload, last status and the first 512 bytes of the last response |
 | `POST …/deliveries/{delivery}/redeliver` | send one delivered, failed or dead delivery again now |
 | `POST …/deliveries/redeliver-dead` | requeue every dead delivery of the webhook; answers `{"requeued": n}` |
@@ -483,11 +484,11 @@ that keeps growing means the receiver is refusing rows or can't keep up.
 
 ## Caveats
 
-- Events travel on an in-process bus with room for 1,024 events per subscriber, and the
-  audit writer and the webhook dispatcher record them after the action has committed.
-  Under a burst large enough to overrun that buffer, the oldest undelivered events are
-  skipped (logged as `event bus lagged`) and neither audited nor sent. Watch for that
-  warning on busy nodes.
+- Events travel on an in-process bus, and the audit writer and the webhook dispatcher
+  record them after the action has committed. Each has its own queue, so a burst
+  delays events rather than skipping them (watch `ridm_audit_queue_depth` and
+  `ridm_webhook_dispatch_queue_depth`), but a node that stops before its queues drain
+  loses what was still waiting.
 - An event is dispatched only on the node where it happened; webhooks and audit rows
   are not duplicated across nodes.
 - Webhook payloads contain identifiers, email addresses (in `invitation.created`,

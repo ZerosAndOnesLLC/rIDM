@@ -171,15 +171,26 @@ pub async fn delete<'e>(exec: impl PgExecutor<'e>, id: Uuid) -> Result<bool, sql
 }
 
 /// Keyset-paginated list ordered by `(created_at, id)`; fetches `limit + 1` rows.
+/// Keyset-paginated list with optional case-insensitive prefix search on
+/// slug / display name.
 pub async fn list<'e>(
     exec: impl PgExecutor<'e>,
+    search: Option<&str>,
     after: Option<Cursor>,
     limit: i64,
 ) -> Result<Vec<Tenant>, sqlx::Error> {
     let mut qb = QueryBuilder::new("SELECT ");
-    qb.push(COLUMNS).push(" FROM tenants");
+    qb.push(COLUMNS).push(" FROM tenants WHERE true");
+    if let Some(s) = search.map(str::trim).filter(|s| !s.is_empty()) {
+        let pattern = format!("{}%", super::users::escape_like(s));
+        qb.push(" AND (slug ILIKE ")
+            .push_bind(pattern.clone())
+            .push(" OR display_name ILIKE ")
+            .push_bind(pattern)
+            .push(")");
+    }
     if let Some(c) = after {
-        qb.push(" WHERE (created_at, id) > (")
+        qb.push(" AND (created_at, id) > (")
             .push_bind(c.created_at)
             .push(", ")
             .push_bind(c.id)

@@ -34,7 +34,7 @@ async fn export(
     if let Ok(v) = "application/json".parse() {
         h.insert(header::CONTENT_TYPE, v);
     }
-    if let Ok(v) = format!("attachment; filename=\"tenant-{}.json\"", tenant.slug).parse() {
+    if let Ok(v) = format!("attachment; filename=\"{}.ridm.json\"", tenant.slug).parse() {
         h.insert(header::CONTENT_DISPOSITION, v);
     }
     if let Ok(v) = "no-store".parse() {

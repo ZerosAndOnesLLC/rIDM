@@ -40,6 +40,8 @@ const P_DELETE: &str = "ridm:tenants:delete";
 #[derive(Deserialize, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
 struct ListQuery {
+    /// Case-insensitive prefix of the slug or display name.
+    search: Option<String>,
     cursor: Option<String>,
     limit: Option<u32>,
 }
@@ -54,7 +56,7 @@ async fn list(
     if admin.is_global() {
         admin.require_global(P_READ)?;
         return Ok(Json(
-            tenants::list(&state, q.cursor.as_deref(), q.limit).await?,
+            tenants::list(&state, q.search.as_deref(), q.cursor.as_deref(), q.limit).await?,
         ));
     }
     admin.require(admin.tenant.id, P_READ)?;

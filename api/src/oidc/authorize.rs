@@ -34,10 +34,48 @@ use crate::services::{clients, consents, flows, geoip, impersonation, ip_rules, 
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
-    Router::new().route(
-        "/t/{slug}/authorize",
-        get(authorize_get).post(authorize_post),
+    Router::new()
+        .route(
+            "/t/{slug}/authorize",
+            get(authorize_get).post(authorize_post),
+        )
+        .route("/t/{slug}/authorize/denied/{id}", get(denied))
+}
+
+/// `GET /t/{slug}/authorize/denied/{id}`: deliver a denial or refusal of the
+/// sign-in page to the client in its response mode (a form post or a signed
+/// JARM response cannot be a plain URL). One-time.
+async fn denied(
+    State(state): State<AppState>,
+    tenant: TenantCtx,
+    axum::extract::Path((_, id)): axum::extract::Path<(String, Uuid)>,
+) -> Response {
+    let denial = match flows::take_denial(&state, tenant.id(), id).await {
+        Ok(Some(d)) => d,
+        Ok(None) => {
+            return error_page(
+                StatusCode::NOT_FOUND,
+                "invalid_request",
+                "this answer was already delivered or has expired",
+            );
+        }
+        Err(e) => return e.into_response(),
+    };
+    let client = match clients::get(&state, tenant.id(), denial.client_id).await {
+        Ok(c) => c,
+        Err(e) => return e.into_response(),
+    };
+    let err =
+        OAuthError::new(OAuthErrorCode::AccessDenied, denial.description).with_state(denial.state);
+    error_redirect(
+        &state,
+        &tenant,
+        &client,
+        &denial.redirect_uri,
+        denial.response_mode,
+        err,
     )
+    .await
 }
 
 /// Raw parameters as sent (query for GET, form body for POST). Repeated
@@ -747,7 +785,9 @@ pub(crate) async fn decide(
         let page = if create { "register" } else { "login" };
         return Ok(redirect_to_ui(state, tenant, page, flow.id));
     }
-    let session = session.expect("session present when no auth needed");
+    // `needs_auth` is false only with a live session.
+    let session = session
+        .ok_or_else(|| AppError::Internal("authorization decided without a session".into()))?;
 
     // Consent.
     let pending = if req.skip_consent && !force_consent {
@@ -912,8 +952,7 @@ fn redirect_to_ui(state: &AppState, tenant: &TenantCtx, page: &str, flow_id: Uui
         &[("tenant", tenant.slug()), ("flow", &flow_id.to_string())],
     );
     let mut res = Redirect::to(&url).into_response();
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(res.headers_mut());
     res
 }
 
@@ -921,7 +960,13 @@ fn redirect_to_ui(state: &AppState, tenant: &TenantCtx, page: &str, flow_id: Uui
 pub fn deliver(redirect_uri: &str, mode: ResponseMode, params: &[(&str, String)]) -> Response {
     let mut res = match mode.base() {
         ResponseMode::Query => {
-            let mut u = url::Url::parse(redirect_uri).expect("validated redirect uri");
+            let Ok(mut u) = url::Url::parse(redirect_uri) else {
+                return error_page(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "server_error",
+                    "the redirect URI cannot be parsed",
+                );
+            };
             {
                 let mut q = u.query_pairs_mut();
                 for (k, v) in params {
@@ -931,7 +976,13 @@ pub fn deliver(redirect_uri: &str, mode: ResponseMode, params: &[(&str, String)]
             Redirect::to(u.as_str()).into_response()
         }
         ResponseMode::Fragment => {
-            let mut u = url::Url::parse(redirect_uri).expect("validated redirect uri");
+            let Ok(mut u) = url::Url::parse(redirect_uri) else {
+                return error_page(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "server_error",
+                    "the redirect URI cannot be parsed",
+                );
+            };
             let frag: String = url::form_urlencoded::Serializer::new(String::new())
                 .extend_pairs(params.iter().map(|(k, v)| (*k, v.as_str())))
                 .finish();
@@ -979,8 +1030,7 @@ pub fn deliver(redirect_uri: &str, mode: ResponseMode, params: &[(&str, String)]
         }
     };
     let h = res.headers_mut();
-    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    h.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+    crate::middleware::security_headers::set_no_store(h);
     h.insert(
         header::REFERRER_POLICY,
         HeaderValue::from_static("no-referrer"),

@@ -139,7 +139,7 @@ async fn first_sighting(state: &AppState, k: String, ttl: u64) -> AppResult<bool
 
 fn html_headers(mut res: Response) -> Response {
     let h = res.headers_mut();
-    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    crate::middleware::security_headers::set_no_store(h);
     h.insert(
         header::REFERRER_POLICY,
         HeaderValue::from_static("no-referrer"),
@@ -238,22 +238,21 @@ pub async fn start(
     } else {
         None
     };
-    let internal = |e: SamlError| AppError::Internal(e.to_string());
     let res = match s.sso_binding {
         SloBinding::Redirect => {
-            let url = binding::to_redirect(
+            let url = saml_keys::to_redirect(
+                signer.as_ref(),
                 &s.sso_url,
                 Kind::Request,
-                &el.to_string(),
+                el.to_string(),
                 Some(&relay),
-                signer.as_deref(),
             )
-            .map_err(internal)?;
+            .await?;
             Redirect::to(&url).into_response()
         }
         SloBinding::Post => {
             if let Some(signer) = &signer {
-                signer.sign_enveloped(&mut el, 1).map_err(internal)?;
+                el = saml_keys::sign_enveloped(signer, el, 1).await?;
             }
             binding::to_post(&s.sso_url, Kind::Request, &el.to_document(), Some(&relay))
         }
@@ -801,15 +800,14 @@ async fn deliver(
         .as_deref()
         .ok_or_else(|| AppError::Internal("the identity provider has no logout service".into()))?;
     let signer = saml_keys::signer(state, tenant).await?;
-    let internal = |e: SamlError| AppError::Internal(e.to_string());
     let res = match s.slo_binding {
         SloBinding::Redirect => {
-            let to = binding::to_redirect(url, kind, &el.to_string(), relay, Some(&signer))
-                .map_err(internal)?;
+            let to =
+                saml_keys::to_redirect(Some(&signer), url, kind, el.to_string(), relay).await?;
             Redirect::to(&to).into_response()
         }
         SloBinding::Post => {
-            signer.sign_enveloped(&mut el, 1).map_err(internal)?;
+            el = saml_keys::sign_enveloped(&signer, el, 1).await?;
             binding::to_post(url, kind, &el.to_document(), relay)
         }
     };

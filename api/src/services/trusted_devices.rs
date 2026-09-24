@@ -138,7 +138,7 @@ pub async fn list(
     tenant_id: Uuid,
     user_id: Uuid,
 ) -> AppResult<Vec<TrustedDevice>> {
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     let rows = repos::trusted_devices::list_for_user(&mut *tx, tenant_id, user_id).await?;
     tx.commit().await?;
     Ok(rows)

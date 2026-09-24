@@ -262,8 +262,7 @@ impl IntoResponse for AdminRejection {
                 res.headers_mut().insert(header::WWW_AUTHENTICATE, v);
             }
         }
-        res.headers_mut()
-            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+        crate::middleware::security_headers::set_no_store(res.headers_mut());
         res
     }
 }

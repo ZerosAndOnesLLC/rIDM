@@ -488,6 +488,7 @@ pub async fn set_password(
     )
     .await?;
     tx.commit().await?;
+    crate::services::users::forget(state, tenant_id, &[user_id]).await;
 
     state.events.publish(Event::new(
         Some(tenant_id),
@@ -570,6 +571,7 @@ pub async fn import_hash(
     if !ok {
         return Err(AppError::NotFound("user"));
     }
+    crate::services::users::forget(state, tenant_id, &[user_id]).await;
     Ok(())
 }
 
@@ -641,6 +643,7 @@ pub async fn verify_and_upgrade(
         .execute(&mut *tx)
         .await?;
         tx.commit().await?;
+        crate::services::users::forget(state, tenant_id, &[user.id]).await;
         state.events.publish(Event::new(
             Some(tenant_id),
             Actor::System,

@@ -11,6 +11,7 @@ use utoipa_axum::routes;
 use uuid::Uuid;
 
 use crate::error::AppResult;
+use crate::middleware::security_headers::no_store;
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
 use crate::models::{DeliveryStatus, NewWebhook, Webhook, WebhookDelivery, WebhookUpdate};
 use crate::services::webhooks::{self, WebhookWithSecret};
@@ -40,14 +41,6 @@ const P_WRITE: &str = "ridm:webhooks:write";
 #[derive(Deserialize)]
 struct WebhookPath {
     webhook: Uuid,
-}
-
-fn no_store(mut res: Response) -> Response {
-    if let Ok(v) = "no-store".parse() {
-        res.headers_mut()
-            .insert(axum::http::header::CACHE_CONTROL, v);
-    }
-    res
 }
 
 #[utoipa::path(get, path = "/admin/tenants/{slug}/webhooks", tag = "webhooks", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Vec<Webhook>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
@@ -147,7 +140,7 @@ async fn test(
 struct DeliveriesQuery {
     #[param(inline)]
     status: Option<DeliveryStatus>,
-    limit: Option<i64>,
+    limit: Option<u32>,
 }
 
 #[utoipa::path(get, path = "/admin/tenants/{slug}/webhooks/{webhook}/deliveries", tag = "webhooks", params(("slug" = String, Path, description = "Tenant slug"), ("webhook" = Uuid, Path), DeliveriesQuery), responses((status = 200, body = Vec<WebhookDelivery>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
@@ -160,8 +153,7 @@ async fn deliveries(
 ) -> AppResult<Json<Vec<WebhookDelivery>>> {
     admin.require(tenant.id, P_READ)?;
     Ok(Json(
-        webhooks::list_deliveries(&state, tenant.id, webhook, q.status, q.limit.unwrap_or(100))
-            .await?,
+        webhooks::list_deliveries(&state, tenant.id, webhook, q.status, q.limit).await?,
     ))
 }
 
