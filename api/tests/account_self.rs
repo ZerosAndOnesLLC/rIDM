@@ -175,6 +175,7 @@ async fn token(fx: &Fx, user_id: Uuid, age_secs: i64) -> (String, Uuid) {
             acr: None,
             ip: Some("203.0.113.9".into()),
             user_agent: Some("Test/1.0".into()),
+            device_id: None,
             policy: &fx.tenant.settings.session,
         },
     )

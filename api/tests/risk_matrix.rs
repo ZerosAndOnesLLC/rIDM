@@ -191,6 +191,7 @@ async fn every_signal_combination_under_every_policy() {
                             ip: Some(if failing { FAILING_IP } else { CLEAN_IP }),
                             location: location.as_ref(),
                             new_device,
+                            ip_failures: None,
                         },
                     )
                     .await
@@ -226,6 +227,7 @@ async fn every_signal_combination_under_every_policy() {
                 ip: Some(FAILING_IP),
                 location: location.as_ref(),
                 new_device: true,
+                ip_failures: None,
             },
         )
         .await
@@ -275,6 +277,7 @@ async fn a_user_with_no_history_is_new_to_nothing() {
             ip: Some(CLEAN_IP),
             location: Some(&at("JP", Some((35.68, 139.69)))),
             new_device: false,
+            ip_failures: None,
         },
     )
     .await

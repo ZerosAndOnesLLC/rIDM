@@ -131,22 +131,22 @@ async fn fixture() -> Fx {
     )
     .await
     .unwrap();
-    let mut tx = ridm_api::db::tenant_tx(&app.state.db, tid).await.unwrap();
     for event in ["magic_link", "password_reset"] {
-        ridm_api::repos::messages::upsert_template(
-            &mut *tx,
+        ridm_api::services::messaging::put_template(
+            &app.state,
             tid,
             MessageChannel::Email,
             event,
             "de",
-            Some("DE {{tenant.display_name}}"),
-            "Link: {{link}}",
-            None,
+            ridm_api::services::messaging::TemplateBody {
+                subject: Some("DE {{tenant.display_name}}".into()),
+                body_text: "Link: {{link}}".into(),
+                body_html: None,
+            },
         )
         .await
         .unwrap();
     }
-    tx.commit().await.unwrap();
     Fx { app, email, tenant }
 }
 

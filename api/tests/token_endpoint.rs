@@ -95,6 +95,7 @@ async fn cookie(fx: &Fx) -> String {
             acr: None,
             ip: None,
             user_agent: None,
+            device_id: None,
             policy: &tenant.settings.session,
         },
     )

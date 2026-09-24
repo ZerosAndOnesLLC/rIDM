@@ -124,6 +124,7 @@ async fn cleanup_removes_spent_rows_past_retention_and_keeps_the_rest() {
                 acr: None,
                 ip: None,
                 user_agent: None,
+                device_id: None,
                 policy: &tenant.settings.session,
             },
         )

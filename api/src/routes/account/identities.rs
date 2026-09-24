@@ -68,7 +68,7 @@ async fn start_link(
     Json(body): Json<LinkRequest>,
 ) -> AppResult<Json<LinkStart>> {
     ctx.require_recent(&state).await?;
-    let idp = identity_providers::get(&state, ctx.tenant.id, &body.alias).await?;
+    let idp = identity_providers::get_cached(&state, ctx.tenant.id, &body.alias).await?;
     // A directory identity is linked by signing in with the directory
     // password, not through a redirect.
     if !idp.enabled || !idp.redirects() {

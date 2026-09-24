@@ -452,6 +452,13 @@ async fn auto_join_happens_at_sign_in() {
         .await
         .unwrap();
     tx.commit().await.unwrap();
+    // As the service does after a verification.
+    fx.app
+        .state
+        .cache
+        .invalidate(&[ridm_api::cache::keys::org_auto_join_domains(tid)])
+        .await
+        .unwrap();
 
     // The user is not a member yet; signing in makes them one, and the token
     // names the organization they were just put in.

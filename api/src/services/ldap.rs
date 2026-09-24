@@ -170,8 +170,23 @@ fn unavailable(dir: &Directory, e: LdapFailure) -> AppError {
     AppError::Unavailable(format!("directory `{}`: {e}", dir.idp.alias))
 }
 
-/// Load a directory by provider id; `None` when it is gone or not LDAP.
+/// Load a directory by provider id for a sign-in, from the tenant's cached
+/// providers; `None` when it is gone or not LDAP.
 pub async fn load(state: &AppState, tenant_id: Uuid, idp_id: Uuid) -> AppResult<Option<Directory>> {
+    match identity_providers::get_cached(state, tenant_id, &idp_id.to_string()).await {
+        Ok(idp) => Ok(Directory::from_idp(idp)),
+        Err(AppError::NotFound(_)) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// [`load`] from the row itself, for the sync, which reads (and moves on)
+/// the sync cursor stored with it.
+async fn load_fresh(
+    state: &AppState,
+    tenant_id: Uuid,
+    idp_id: Uuid,
+) -> AppResult<Option<Directory>> {
     match identity_providers::get(state, tenant_id, &idp_id.to_string()).await {
         Ok(idp) => Ok(Directory::from_idp(idp)),
         Err(AppError::NotFound(_)) => Ok(None),
@@ -655,7 +670,23 @@ async fn publish_memberships(
     if changes.is_empty() {
         return Ok(());
     }
-    crate::services::roles::bump_roles_version(state, tenant_id).await?;
+    // Memberships only reach the users whose groups changed.
+    let mut users: Vec<Uuid> = vec![];
+    let mut only_memberships = true;
+    for kind in &changes {
+        match kind {
+            EventKind::GroupMemberAdded { user_id, .. }
+            | EventKind::GroupMemberRemoved { user_id, .. } => users.push(*user_id),
+            _ => only_memberships = false,
+        }
+    }
+    if only_memberships {
+        users.sort_unstable();
+        users.dedup();
+        crate::services::roles::bump_user_access(state, tenant_id, &users).await?;
+    } else {
+        crate::services::roles::bump_roles_version(state, tenant_id).await?;
+    }
     for kind in changes {
         state
             .events
@@ -980,7 +1011,7 @@ pub async fn sync(
     idp_id: Uuid,
     full: bool,
 ) -> AppResult<LdapSyncStats> {
-    let Some(dir) = load(state, tenant_id, idp_id).await? else {
+    let Some(dir) = load_fresh(state, tenant_id, idp_id).await? else {
         return Err(AppError::NotFound("identity provider"));
     };
     let Some(lock) =

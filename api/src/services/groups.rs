@@ -174,7 +174,7 @@ pub async fn add_member(
         .map_err(AppError::from_db)?;
     tx.commit().await?;
     if added {
-        bump_roles_version(state, tenant_id).await?;
+        crate::services::roles::bump_user_access(state, tenant_id, &[user_id]).await?;
         state.events.publish(Event::new(
             Some(tenant_id),
             actor,
@@ -195,7 +195,7 @@ pub async fn remove_member(
     let removed = repos::groups::remove_member(&mut *tx, tenant_id, group_id, user_id).await?;
     tx.commit().await?;
     if removed {
-        bump_roles_version(state, tenant_id).await?;
+        crate::services::roles::bump_user_access(state, tenant_id, &[user_id]).await?;
         state.events.publish(Event::new(
             Some(tenant_id),
             actor,
@@ -226,7 +226,7 @@ pub async fn groups_of_user(
     user_id: Uuid,
     effective: bool,
 ) -> AppResult<Vec<Group>> {
-    let version = crate::services::roles::roles_version(state, tenant_id).await?;
+    let version = crate::services::roles::access_version(state, tenant_id, user_id).await?;
     let key = crate::cache::keys::user_groups(tenant_id, &version, user_id, effective);
     let db = state.db.clone();
     let loaded = state

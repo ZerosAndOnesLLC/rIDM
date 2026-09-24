@@ -47,6 +47,7 @@ async fn stats_reflect_attempts_sessions_and_authorizations() {
             acr: None,
             ip: None,
             user_agent: None,
+            device_id: None,
             policy: &tenant.settings.session,
         },
     )

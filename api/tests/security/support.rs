@@ -77,6 +77,7 @@ pub async fn session(app: &TestApp, tenant_id: Uuid, slug: &str, user_id: Uuid) 
             acr: None,
             ip: None,
             user_agent: None,
+            device_id: None,
             policy: &tenant.settings.session,
         },
     )

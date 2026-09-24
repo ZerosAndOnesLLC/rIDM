@@ -400,6 +400,7 @@ async fn role_changes_and_session_end_take_effect_immediately() {
             acr: None,
             ip: None,
             user_agent: None,
+            device_id: None,
             policy: &tenant.settings.session,
         },
     )

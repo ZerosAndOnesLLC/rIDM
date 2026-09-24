@@ -23,36 +23,42 @@ const TABLES: &[EncryptedTable] = &[
         column: "private_key_enc",
         aad_prefix: "signing_keys",
         id_column: "id",
+        id_type: "uuid",
     },
     EncryptedTable {
         table: "credentials",
         column: "data_enc",
         aad_prefix: "credentials",
         id_column: "id",
+        id_type: "uuid",
     },
     EncryptedTable {
         table: "tenant_provider_settings",
         column: "config_enc",
         aad_prefix: "provider_settings",
         id_column: "kind",
+        id_type: "text",
     },
     EncryptedTable {
         table: "identity_providers",
         column: "client_secret_enc",
         aad_prefix: "identity_providers",
         id_column: "id",
+        id_type: "uuid",
     },
     EncryptedTable {
         table: "webhooks",
         column: "secret_enc",
         aad_prefix: "webhooks",
         id_column: "id",
+        id_type: "uuid",
     },
     EncryptedTable {
         table: "saml_signing_keys",
         column: "private_key_enc",
         aad_prefix: "saml_signing_keys",
         id_column: "id",
+        id_type: "uuid",
     },
 ];
 
@@ -62,6 +68,8 @@ struct EncryptedTable {
     aad_prefix: &'static str,
     /// Row identifier column (uuid `id`, or a text key for keyed tables).
     id_column: &'static str,
+    /// Its type, for casting the text form back.
+    id_type: &'static str,
 }
 
 impl EncryptedTable {
@@ -232,69 +240,123 @@ pub async fn rotate_all(state: &AppState) -> AppResult<RotationReport> {
     Ok(report)
 }
 
+/// Rows re-encrypted at the same time within a batch (a key custody
+/// backend may be a network round trip per row).
+const REENCRYPT_CONCURRENCY: usize = 8;
+
+/// Move every row of `t` in this database onto generation `target`, one
+/// older generation at a time, in `(tenant_id, id)` order from a cursor: each
+/// batch is one index range read and one update, and a row that fails is
+/// passed over by the cursor (and counted) rather than read again.
 async fn rotate_table(
     state: &AppState,
     pool: &sqlx::PgPool,
     t: &EncryptedTable,
     target: u32,
 ) -> AppResult<(u64, u64)> {
+    use futures::StreamExt as _;
     let mut ok = 0u64;
     let mut failed = 0u64;
-    let mut skip: Vec<String> = vec![];
-    loop {
-        // Fetch a batch of rows still on an older generation, skipping ones
-        // that already failed in this pass so we cannot loop forever.
+    // The generations in use besides the target, one index probe each (a
+    // loose index scan over `key_version`), not a scan of the table.
+    let versions: Vec<i32> = {
         let sql = format!(
-            "SELECT {id}::text, tenant_id, {col}, key_version FROM {table} \
-             WHERE key_version <> $1 AND NOT ({id}::text = ANY($2)) ORDER BY tenant_id, {id} LIMIT $3",
-            id = t.id_column,
-            col = t.column,
+            "WITH RECURSIVE v AS ( \
+               SELECT min(key_version) AS k FROM {table} \
+               UNION ALL \
+               SELECT (SELECT min(key_version) FROM {table} WHERE key_version > v.k) FROM v WHERE v.k IS NOT NULL) \
+             SELECT k FROM v WHERE k IS NOT NULL AND k <> $1",
             table = t.table
         );
         let mut tx = db::bypass_tx(pool).await?;
-        let rows: Vec<(String, Uuid, Vec<u8>, i32)> = sqlx::query_as(sqlx::AssertSqlSafe(sql))
+        let versions = sqlx::query_scalar(sqlx::AssertSqlSafe(sql))
             .bind(target as i32)
-            .bind(&skip)
-            .bind(BATCH)
             .fetch_all(&mut *tx)
             .await?;
         tx.commit().await?;
-        if rows.is_empty() {
-            break;
-        }
-        for (id, tenant_id, blob, old_version) in rows {
-            match reencrypt(state, t, tenant_id, &id, &blob).await {
-                Ok(new_blob) => {
-                    let sql = format!(
-                        "UPDATE {table} SET {col} = $1, key_version = $2 \
-                         WHERE {idc}::text = $3 AND tenant_id = $4 AND key_version = $5",
-                        col = t.column,
-                        table = t.table,
-                        idc = t.id_column
-                    );
-                    let mut tx = db::bypass_tx(pool).await?;
-                    let n = sqlx::query(sqlx::AssertSqlSafe(sql))
-                        .bind(&new_blob)
-                        .bind(target as i32)
-                        .bind(&id)
-                        .bind(tenant_id)
-                        .bind(old_version)
-                        .execute(&mut *tx)
-                        .await?
-                        .rows_affected();
-                    tx.commit().await?;
-                    if n == 1 {
-                        ok += 1;
-                    } else {
-                        // Rewritten concurrently by someone else; nothing to do.
-                        skip.push(id);
+        versions
+    };
+    for version in versions {
+        let mut after: Option<(Uuid, String)> = None;
+        loop {
+            let mut sql = format!(
+                "SELECT {id}::text, tenant_id, {col} FROM {table} WHERE key_version = $1",
+                id = t.id_column,
+                col = t.column,
+                table = t.table
+            );
+            if after.is_some() {
+                sql.push_str(&format!(
+                    " AND (tenant_id, {id}) > ($3, $4::{ty})",
+                    id = t.id_column,
+                    ty = t.id_type
+                ));
+            }
+            sql.push_str(&format!(" ORDER BY tenant_id, {} LIMIT $2", t.id_column));
+            let mut tx = db::bypass_tx(pool).await?;
+            let mut query = sqlx::query_as::<_, (String, Uuid, Vec<u8>)>(sqlx::AssertSqlSafe(sql))
+                .bind(version)
+                .bind(BATCH);
+            if let Some((tenant_id, id)) = &after {
+                query = query.bind(*tenant_id).bind(id.clone());
+            }
+            let rows = query.fetch_all(&mut *tx).await?;
+            tx.commit().await?;
+            let Some((last_id, last_tenant, _)) = rows.last() else {
+                break;
+            };
+            after = Some((*last_tenant, last_id.clone()));
+            let full = rows.len() as i64 == BATCH;
+            let outcomes: Vec<(String, Uuid, AppResult<Vec<u8>>)> = futures::stream::iter(rows)
+                .map(|(id, tenant_id, blob)| async move {
+                    let fresh = reencrypt(state, t, tenant_id, &id, &blob).await;
+                    (id, tenant_id, fresh)
+                })
+                .buffer_unordered(REENCRYPT_CONCURRENCY)
+                .collect()
+                .await;
+            let (mut ids, mut tenants, mut blobs) = (vec![], vec![], vec![]);
+            for (id, tenant_id, fresh) in outcomes {
+                match fresh {
+                    Ok(blob) => {
+                        ids.push(id);
+                        tenants.push(tenant_id);
+                        blobs.push(blob);
+                    }
+                    Err(err) => {
+                        tracing::error!(table = t.table, %id, %tenant_id, error = %err, "re-encryption failed");
+                        failed += 1;
                     }
                 }
-                Err(err) => {
-                    tracing::error!(table = t.table, %id, %tenant_id, error = %err, "re-encryption failed");
-                    failed += 1;
-                    skip.push(id);
-                }
+            }
+            if !ids.is_empty() {
+                // Only rows still on the generation they were read under: one
+                // rewritten meanwhile (by a writer or another rotation run) is
+                // left as it is.
+                let sql = format!(
+                    "UPDATE {table} AS t SET {col} = u.blob, key_version = $4 \
+                     FROM unnest($1::text[], $2::uuid[], $3::bytea[]) AS u(id, tenant_id, blob) \
+                     WHERE t.{idc} = u.id::{ty} AND t.tenant_id = u.tenant_id AND t.key_version = $5",
+                    table = t.table,
+                    col = t.column,
+                    idc = t.id_column,
+                    ty = t.id_type
+                );
+                let mut tx = db::bypass_tx(pool).await?;
+                let n = sqlx::query(sqlx::AssertSqlSafe(sql))
+                    .bind(&ids)
+                    .bind(&tenants)
+                    .bind(&blobs)
+                    .bind(target as i32)
+                    .bind(version)
+                    .execute(&mut *tx)
+                    .await?
+                    .rows_affected();
+                tx.commit().await?;
+                ok += n;
+            }
+            if !full {
+                break;
             }
         }
     }

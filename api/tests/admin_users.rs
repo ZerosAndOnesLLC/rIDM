@@ -31,6 +31,7 @@ fn new_session<'a>(uid: Uuid, policy: &'a SessionPolicy) -> NewSession<'a> {
         acr: None,
         ip: Some("10.0.0.1".into()),
         user_agent: Some("UA".into()),
+        device_id: None,
         policy,
     }
 }

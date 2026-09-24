@@ -98,39 +98,39 @@ pub async fn touch<'e>(
     Ok(())
 }
 
-/// Revoke one of a user's tokens. `Ok(false)` when it is not theirs or
-/// already revoked.
+/// Revoke one of a user's tokens; returns its hash (to evict it from the
+/// cache), or `None` when it is not theirs or already revoked.
 pub async fn revoke<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
     user_id: Uuid,
     id: Uuid,
-) -> Result<bool, sqlx::Error> {
-    let res = sqlx::query(
+) -> Result<Option<Vec<u8>>, sqlx::Error> {
+    sqlx::query_scalar(
         "UPDATE personal_access_tokens SET revoked_at = now() \
-         WHERE tenant_id = $1 AND user_id = $2 AND id = $3 AND revoked_at IS NULL",
+         WHERE tenant_id = $1 AND user_id = $2 AND id = $3 AND revoked_at IS NULL \
+         RETURNING token_hash",
     )
     .bind(tenant_id)
     .bind(user_id)
     .bind(id)
-    .execute(exec)
-    .await?;
-    Ok(res.rows_affected() > 0)
+    .fetch_optional(exec)
+    .await
 }
 
-/// Every live token of a user (account deletion, admin sign-out everywhere).
+/// Every live token of a user (account deletion, admin sign-out everywhere);
+/// returns their hashes.
 pub async fn revoke_all_for_user<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
     user_id: Uuid,
-) -> Result<u64, sqlx::Error> {
-    let res = sqlx::query(
+) -> Result<Vec<Vec<u8>>, sqlx::Error> {
+    sqlx::query_scalar(
         "UPDATE personal_access_tokens SET revoked_at = now() \
-         WHERE tenant_id = $1 AND user_id = $2 AND revoked_at IS NULL",
+         WHERE tenant_id = $1 AND user_id = $2 AND revoked_at IS NULL RETURNING token_hash",
     )
     .bind(tenant_id)
     .bind(user_id)
-    .execute(exec)
-    .await?;
-    Ok(res.rows_affected())
+    .fetch_all(exec)
+    .await
 }

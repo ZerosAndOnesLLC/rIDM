@@ -419,11 +419,21 @@ pub async fn set_password(
     {
         return Ok(());
     }
+    // Read what the checks need, then let the connection go: the breach
+    // lookup is an HTTP call and each history entry an argon2 verification,
+    // none of which should hold a pooled connection.
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let user = repos::users::find_by_id(&mut *tx, tenant_id, user_id)
         .await?
         .filter(|u| u.deleted_at.is_none())
         .ok_or(AppError::NotFound("user"))?;
+    let history = if !opts.skip_policy && policy.history > 0 {
+        repos::password_history::recent(&mut *tx, tenant_id, user_id, i64::from(policy.history - 1))
+            .await?
+    } else {
+        vec![]
+    };
+    tx.commit().await?;
 
     if !opts.skip_policy {
         let problems = check_policy(policy, &password, Some(&user));
@@ -441,26 +451,26 @@ pub async fn set_password(
         if policy.check_breached {
             check_breached(state, tenant_id, &password).await?;
         }
-        // "history N" = the last N passwords including the current one.
+        // "history N" = the last N passwords including the current one,
+        // compared all at once.
         if policy.history > 0 {
-            let mut previous = repos::password_history::recent(
-                &mut *tx,
-                tenant_id,
-                user_id,
-                i64::from(policy.history - 1),
-            )
-            .await?;
+            let mut previous = history;
             if let Some(current) = &user.password_hash {
                 previous.push(current.clone());
             }
-            for old in previous {
-                let v = verify_blocking(state.hasher.clone(), password.clone(), old).await;
-                if matches!(v, Ok(PasswordVerification { valid: true, .. })) {
-                    return Err(AppError::Validation(vec![crate::error::FieldError {
-                        field: "password".into(),
-                        message: format!("must differ from the last {} passwords", policy.history),
-                    }]));
-                }
+            let reused = futures::future::join_all(
+                previous
+                    .into_iter()
+                    .map(|old| verify_blocking(state.hasher.clone(), password.clone(), old)),
+            )
+            .await
+            .into_iter()
+            .any(|v| matches!(v, Ok(PasswordVerification { valid: true, .. })));
+            if reused {
+                return Err(AppError::Validation(vec![crate::error::FieldError {
+                    field: "password".into(),
+                    message: format!("must differ from the last {} passwords", policy.history),
+                }]));
             }
         }
     }
@@ -470,6 +480,17 @@ pub async fn set_password(
         .max_age_days
         .map(|days| Utc::now() + Duration::days(i64::from(days)));
 
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    // The checks above judged the password the user had when they started;
+    // one changed meanwhile would slip past the history rule.
+    let current = repos::users::password_hash_for_update(&mut *tx, tenant_id, user_id)
+        .await?
+        .ok_or(AppError::NotFound("user"))?;
+    if current != user.password_hash {
+        return Err(AppError::Conflict(
+            "the password was changed at the same time; try again".into(),
+        ));
+    }
     if let Some(old) = &user.password_hash
         && policy.history > 1
     {

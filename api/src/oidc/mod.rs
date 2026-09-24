@@ -12,6 +12,7 @@ pub mod introspect;
 pub mod jar;
 pub mod mtls;
 pub mod par;
+pub mod park;
 pub mod pkce;
 pub mod redirect_uri;
 pub mod register;

@@ -4,3 +4,4 @@ pub mod outbound;
 pub mod patch;
 pub mod secret;
 pub mod security_txt;
+pub mod templating;

@@ -13,16 +13,30 @@
 //! | `email_changed` | `user.username`, `when`, `new_email` |
 //! | `backchannel_request` | `user.username`, `when`, `client_name`, `binding_message`, `link`, `expires_minutes` |
 //!
-//! Every message also gets `tenant.display_name` and `tenant.slug` ([`tenant`],
-//! added by [`crate::messaging::send`]).
+//! Every message also gets `tenant.display_name`, `tenant.slug` and
+//! `tenant.host` (the host the tenant's sign-in pages are served on, which
+//! the WebOTP line of a code SMS names) ([`tenant`], added by
+//! [`crate::messaging::send`]).
 
 use serde_json::{Value, json};
 
 use crate::models::Tenant;
 
-/// `tenant`, present in every message.
-pub fn tenant(tenant: &Tenant) -> Value {
-    json!({"display_name": tenant.display_name, "slug": tenant.slug})
+/// `tenant`, present in every message. `host` is the host of the tenant's
+/// sign-in pages ([`sign_in_host`]).
+pub fn tenant(tenant: &Tenant, host: &str) -> Value {
+    json!({"display_name": tenant.display_name, "slug": tenant.slug, "host": host})
+}
+
+/// The host the tenant's sign-in pages are served on: its custom domain when
+/// this node serves the pages there, else `UI_URL`'s. A code sent by SMS names
+/// it on its last line (`@host #code`), which is how Chrome on Android knows
+/// which page may fill the code in (WebOTP).
+pub fn sign_in_host(state: &crate::state::AppState, tenant: &Tenant) -> String {
+    url::Url::parse(&state.ui_page(tenant, "login", &[]))
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
+        .unwrap_or_default()
 }
 
 /// `verify_email`, `password_reset` and `magic_link`: a link that expires.
@@ -84,7 +98,7 @@ pub fn notification(username: &str, when: &str, mut fields: Value) -> Value {
 
 /// The variables of `event` with sample values, `tenant` included: what the
 /// console's preview renders a template with. `None` for an unknown event.
-pub fn sample(event: &str, t: &Tenant) -> Option<Value> {
+pub fn sample(event: &str, t: &Tenant, host: &str) -> Option<Value> {
     const USER: &str = "sample";
     const WHEN: &str = "2026-01-31 09:30 UTC";
     let mut vars = match event {
@@ -109,7 +123,7 @@ pub fn sample(event: &str, t: &Tenant) -> Option<Value> {
         ),
         _ => return None,
     };
-    vars["tenant"] = tenant(t);
+    vars["tenant"] = tenant(t, host);
     Some(vars)
 }
 
@@ -134,10 +148,10 @@ mod tests {
             relocating: false,
         };
         for event in EVENTS {
-            let vars = sample(event, &t).unwrap_or_else(|| panic!("{event}"));
+            let vars = sample(event, &t, "id.example.com").unwrap_or_else(|| panic!("{event}"));
             assert!(vars["tenant"]["slug"].is_string(), "{event}");
         }
-        assert!(sample("nope", &t).is_none());
+        assert!(sample("nope", &t, "id.example.com").is_none());
 
         // Every placeholder of every built-in template is a variable the
         // event really carries (strict mode fails on a missing one), so the
@@ -145,7 +159,7 @@ mod tests {
         let mut strict = handlebars::Handlebars::new();
         strict.set_strict_mode(true);
         for event in EVENTS {
-            let vars = sample(event, &t).unwrap();
+            let vars = sample(event, &t, "id.example.com").unwrap();
             for channel in [MessageChannel::Email, MessageChannel::Sms] {
                 let Some(tpl) = builtin_template(channel, event) else {
                     continue;

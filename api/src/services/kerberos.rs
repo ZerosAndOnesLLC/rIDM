@@ -225,7 +225,7 @@ async fn realm_for(
     service: &Principal,
 ) -> AppResult<Option<Realm>> {
     for o in offered(state, tenant_id).await? {
-        let idp = match identity_providers::get(state, tenant_id, &o.id.to_string()).await {
+        let idp = match identity_providers::get_cached(state, tenant_id, &o.id.to_string()).await {
             Ok(p) => p,
             Err(AppError::NotFound(_)) => continue,
             Err(e) => return Err(e),

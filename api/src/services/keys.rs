@@ -13,8 +13,6 @@ use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
-use redis::AsyncCommands as _;
-
 use crate::cache::keys as cache_keys;
 use crate::db;
 use crate::error::{AppError, AppResult};
@@ -339,39 +337,29 @@ pub async fn rotate_alg(
 }
 
 /// Current keys version for a tenant, creating one if absent. Every cached
-/// JWKS document hangs off it.
+/// JWKS document, parsed verification key set and active signing key hangs
+/// off it (held briefly per node, evicted everywhere by a bump).
 pub async fn keys_version(state: &AppState, tenant_id: Uuid) -> AppResult<String> {
-    let key = cache_keys::keys_version(tenant_id);
-    let mut conn = state.redis.get().await?;
-    if let Some(v) = conn.get::<_, Option<String>>(&key).await? {
-        return Ok(v);
-    }
-    let fresh = Uuid::now_v7().simple().to_string();
-    // SET NX so concurrent initialisers agree on one token.
-    let set: bool = redis::cmd("SET")
-        .arg(&key)
-        .arg(&fresh)
-        .arg("NX")
-        .arg("EX")
-        .arg(KEYS_VERSION_TTL)
-        .query_async(&mut conn)
-        .await?;
-    if set {
-        return Ok(fresh);
-    }
-    Ok(conn.get::<_, Option<String>>(&key).await?.unwrap_or(fresh))
+    state
+        .cache
+        .version(
+            &cache_keys::keys_version(tenant_id),
+            std::time::Duration::from_secs(KEYS_VERSION_TTL),
+        )
+        .await
 }
 
 /// Replace the keys version, orphaning every cached JWKS document of the
 /// tenant. Used instead of deleting the entry: a document read before a key
 /// change can still be written after it, and would then outlive the delete.
 pub async fn bump_keys_version(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
-    let key = cache_keys::keys_version(tenant_id);
-    let mut conn = state.redis.get().await?;
-    let _: () = conn
-        .set_ex(&key, Uuid::now_v7().simple().to_string(), KEYS_VERSION_TTL)
-        .await?;
-    Ok(())
+    state
+        .cache
+        .bump_version(
+            &cache_keys::keys_version(tenant_id),
+            std::time::Duration::from_secs(KEYS_VERSION_TTL),
+        )
+        .await
 }
 
 /// The active key for the tenant's default algorithm, created on first use.
@@ -520,15 +508,35 @@ pub async fn list(
     Ok(rows)
 }
 
-/// The key currently used to sign for `alg`, if any.
+/// How long a node keeps the active key it read; any key change moves the
+/// keys version, which orphans the entry at once.
+const ACTIVE_KEY_L1_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// The key currently used to sign for `alg`, if any. Cached per node under
+/// the tenant's keys version, so issuing a token reads no database; every
+/// key change moves the version. Only a key found is cached: with none,
+/// [`ensure_active_alg`] must see the database while it makes the first.
 pub async fn active(
     state: &AppState,
     tenant_id: Uuid,
     alg: SigningAlg,
 ) -> AppResult<Option<SigningKey>> {
+    let version = keys_version(state, tenant_id).await?;
+    let cache_key = cache_keys::active_signing_key(tenant_id, alg.as_str(), &version);
+    if let Some(k) = state.cache.material().get::<SigningKey>(&cache_key) {
+        return Ok(Some((*k).clone()));
+    }
+    // The primary: a replica behind a rotation would put the old key under
+    // the new version.
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let k = repos::signing_keys::find_active(&mut *tx, tenant_id, alg).await?;
     tx.commit().await?;
+    if let Some(k) = &k {
+        state
+            .cache
+            .material()
+            .insert(cache_key, std::sync::Arc::new(k.clone()), ACTIVE_KEY_L1_TTL);
+    }
     Ok(k)
 }
 

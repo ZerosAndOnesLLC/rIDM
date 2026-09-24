@@ -75,6 +75,7 @@ async fn accept(
             acr: Some(flows::ACR_SINGLE.to_string()),
             ip: ctx.ip.clone(),
             user_agent: ctx.user_agent.clone(),
+            device_id: None,
             policy,
         },
     )

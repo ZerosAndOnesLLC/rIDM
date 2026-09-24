@@ -159,6 +159,8 @@ pub async fn list_live_for_user<'e>(
 
 /// Earlier sessions of the user (excluding `exclude_session`): whether any
 /// exist at all, and whether any came from the same browser (user agent).
+/// Two existence checks, each stopping at the first row, rather than an
+/// aggregate over every session the user ever had.
 pub async fn browser_history<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
@@ -167,8 +169,10 @@ pub async fn browser_history<'e>(
     exclude_session: Uuid,
 ) -> Result<(bool, bool), sqlx::Error> {
     sqlx::query_as(
-        "SELECT count(*) > 0, COALESCE(bool_or(user_agent = $3), false) FROM sso_sessions \
-         WHERE tenant_id = $1 AND user_id = $2 AND id <> $4",
+        "SELECT \
+           EXISTS (SELECT 1 FROM sso_sessions WHERE tenant_id = $1 AND user_id = $2 AND id <> $4), \
+           EXISTS (SELECT 1 FROM sso_sessions WHERE tenant_id = $1 AND user_id = $2 AND id <> $4 \
+                   AND user_agent = $3)",
     )
     .bind(tenant_id)
     .bind(user_id)

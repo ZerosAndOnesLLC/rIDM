@@ -858,13 +858,20 @@ async fn attributes(
     granted: &[String],
     org_id: Option<Uuid>,
 ) -> AppResult<Vec<protocol::Attribute>> {
-    let role_list = roles::effective_roles(state, tenant.id, user.id, org_id).await?;
-    let group_list = groups::groups_of_user(state, tenant.id, user.id, true).await?;
-    let defs = scopes::list(state, tenant.id).await?;
+    // Independent lookups (mostly cache hits): one round of them.
+    // Boxed: joined inline, their state would make one future too large for
+    // a debug build's stack.
+    let (role_list, group_list, defs, schema, mappers) = tokio::try_join!(
+        Box::pin(roles::effective_roles(state, tenant.id, user.id, org_id)),
+        Box::pin(groups::groups_of_user(state, tenant.id, user.id, true)),
+        Box::pin(scopes::list(state, tenant.id)),
+        Box::pin(profile_schema::get(state, tenant.id)),
+        Box::pin(crate::oidc::token::effective_mappers_for(
+            state, tenant.id, client
+        )),
+    )?;
     let mut claims: Map<String, Value> = scope_claims(user, granted, &defs);
-    let schema = profile_schema::get(state, tenant.id).await?;
     profile_claims(user, &schema, Exposure::IdToken, &mut claims);
-    let mappers = crate::oidc::token::effective_mappers_for(state, tenant.id, client).await?;
     let ctx = ClaimContext {
         tenant,
         user: Some(user),
@@ -979,10 +986,11 @@ pub async fn respond(
         )
         .await);
     }
-    let sp = saml_sps::find_by_client(state, tenant.id(), client.id)
-        .await?
-        .ok_or(AppError::NotFound("SAML service provider"))?;
-    let user = users::get(state, tenant.id(), session.user_id).await?;
+    let (sp, user) = tokio::try_join!(
+        Box::pin(saml_sps::find_by_client(state, tenant.id(), client.id)),
+        Box::pin(users::get(state, tenant.id(), session.user_id)),
+    )?;
+    let sp = sp.ok_or(AppError::NotFound("SAML service provider"))?;
 
     let (name_id, spnq) = match ctx.name_id_format {
         NameIdFormat::Persistent => {

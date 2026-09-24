@@ -385,6 +385,24 @@ pub async fn delete_domain<'e>(
     Ok(res.rows_affected() > 0)
 }
 
+/// Every domain at which a verified address joins an organization: verified,
+/// set to auto-join, of an active organization (the conditions of
+/// [`auto_join_org_for_domain`]).
+pub async fn auto_join_domains<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT d.domain FROM organization_domains d \
+           JOIN organizations o ON o.tenant_id = d.tenant_id AND o.id = d.org_id \
+         WHERE d.tenant_id = $1 AND d.auto_join \
+           AND d.verified_at IS NOT NULL AND o.status = 'active'",
+    )
+    .bind(tenant_id)
+    .fetch_all(exec)
+    .await
+}
+
 /// The organization a verified auto-join domain points at, if any. One row at
 /// most: a domain belongs to one organization per tenant.
 pub async fn auto_join_org_for_domain<'e>(

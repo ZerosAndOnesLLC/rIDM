@@ -64,6 +64,7 @@ async fn account_token(fx: &Fx, user_id: Uuid, recent: bool) -> String {
             acr: None,
             ip: None,
             user_agent: None,
+            device_id: None,
             policy: &tenant.settings.session,
         },
     )

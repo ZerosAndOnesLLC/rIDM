@@ -54,7 +54,7 @@ async fn saml_idp(
     tenant: &TenantCtx,
     alias: &str,
 ) -> Result<IdentityProvider, Box<Response>> {
-    match identity_providers::get(state, tenant.id(), alias).await {
+    match identity_providers::get_cached(state, tenant.id(), alias).await {
         Ok(i) if i.kind == IdpKind::Saml => Ok(i),
         Ok(_) => Err(Box::new(
             crate::error::AppError::NotFound("SAML identity provider").into_response(),

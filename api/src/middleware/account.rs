@@ -26,7 +26,7 @@ use crate::services::flows::is_mfa_acr;
 use crate::services::personal_access_tokens as pats;
 use crate::services::sessions::Impersonator;
 use crate::services::tokens::{self, VerifyOptions};
-use crate::services::{tenants, users};
+use crate::services::users;
 use crate::state::AppState;
 
 /// How recent a sign-in must be for a security change (adding or removing
@@ -36,7 +36,7 @@ pub const RECENT_AUTH_SECS: i64 = 15 * 60;
 /// The signed-in user of an account API call.
 #[derive(Debug, Clone)]
 pub struct AccountCtx {
-    pub user: User,
+    pub user: std::sync::Arc<User>,
     pub tenant: Arc<Tenant>,
     pub session_id: Option<Uuid>,
     pub auth_time: Option<DateTime<Utc>>,
@@ -129,7 +129,7 @@ impl FromRequestParts<AppState> for AccountCtx {
                 );
             }
             return Ok(Self {
-                user: auth.user,
+                user: auth.user.into(),
                 tenant: auth.tenant,
                 session_id: None,
                 auth_time: None,
@@ -140,19 +140,10 @@ impl FromRequestParts<AppState> for AccountCtx {
                 delegated: false,
             });
         }
-        let tenant_id = tokens::access_token_tenant_hint(state, &token)
-            .await?
-            .ok_or_else(AdminRejection::invalid)?;
-        let tenant = tenants::get_cached(state, tenant_id)
-            .await?
-            .ok_or_else(AdminRejection::invalid)?;
-        if !tenant.is_active() {
-            return Err(AppError::Forbidden("tenant is disabled".into()).into());
-        }
-        let claims = tokens::verify_access(
+        let (tenant, claims) = tokens::access_token_with_tenant(
             state,
-            &tenant,
             &token,
+            None,
             &VerifyOptions {
                 audience: Some(ACCOUNT_AUDIENCE.into()),
                 ..Default::default()
@@ -162,7 +153,8 @@ impl FromRequestParts<AppState> for AccountCtx {
         .map_err(|e| match e {
             AppError::Unauthorized => AdminRejection::invalid(),
             other => other.into(),
-        })?;
+        })?
+        .ok_or_else(AdminRejection::invalid)?;
         if tenant.id != path_tenant.id() {
             return Err(AppError::Forbidden("this token belongs to another tenant".into()).into());
         }
@@ -188,7 +180,7 @@ impl FromRequestParts<AppState> for AccountCtx {
         let user_id = tokens::subject_user_id(state, &tenant, &claims)
             .await?
             .ok_or_else(|| AppError::Forbidden("account access requires a user subject".into()))?;
-        let user = users::get(state, tenant.id, user_id).await?;
+        let user = users::get_shared(state, tenant.id, user_id).await?;
         if user.status != UserStatus::Active && user.status != UserStatus::Pending {
             return Err(AppError::Forbidden("account is not active".into()).into());
         }

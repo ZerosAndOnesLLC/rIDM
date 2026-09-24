@@ -24,6 +24,23 @@ pub async fn list<'e>(
     qb.build_query_as::<Webhook>().fetch_all(exec).await
 }
 
+/// Several webhooks of a tenant by id (a delivery pass loads the ones its
+/// claimed deliveries go to, secrets included, in one read).
+pub async fn find_many<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    ids: &[Uuid],
+) -> Result<Vec<Webhook>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("SELECT ");
+    qb.push(COLUMNS)
+        .push(" FROM webhooks WHERE tenant_id = ")
+        .push_bind(tenant_id)
+        .push(" AND id = ANY(")
+        .push_bind(ids)
+        .push(")");
+    qb.build_query_as::<Webhook>().fetch_all(exec).await
+}
+
 pub async fn find_by_id<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,

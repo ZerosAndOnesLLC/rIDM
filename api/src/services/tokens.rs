@@ -299,14 +299,14 @@ pub fn encoding_key_from_der(alg: SigningAlg, der: &[u8]) -> AppResult<EncodingK
 /// Parsed signing material, cached per node.
 async fn encoding_key(state: &AppState, key: &SigningKey) -> AppResult<Arc<EncodingKey>> {
     let cache_key = cache_keys::signing_key_material(key.id);
-    if let Some(k) = state.cache.l1().get::<EncodingKey>(&cache_key) {
+    if let Some(k) = state.cache.material().get::<EncodingKey>(&cache_key) {
         return Ok(k);
     }
     let der = keys::private_der(state, key).await?;
     let encoding = Arc::new(encoding_key_from_der(key.alg, &der)?);
     state
         .cache
-        .l1()
+        .material()
         .insert(cache_key, encoding.clone(), MATERIAL_L1_TTL);
     Ok(encoding)
 }
@@ -621,7 +621,7 @@ type VerificationKeys = HashMap<String, (SigningAlg, DecodingKey)>;
 async fn verification_keys(state: &AppState, tenant_id: Uuid) -> AppResult<Arc<VerificationKeys>> {
     let version = keys::keys_version(state, tenant_id).await?;
     let cache_key = cache_keys::verification_keys(tenant_id, &version);
-    if let Some(k) = state.cache.l1().get::<VerificationKeys>(&cache_key) {
+    if let Some(k) = state.cache.material().get::<VerificationKeys>(&cache_key) {
         return Ok(k);
     }
     let mut parsed = VerificationKeys::new();
@@ -645,7 +645,7 @@ async fn verification_keys(state: &AppState, tenant_id: Uuid) -> AppResult<Arc<V
     let parsed = Arc::new(parsed);
     state
         .cache
-        .l1()
+        .material()
         .insert(cache_key, parsed.clone(), MATERIAL_L1_TTL);
     Ok(parsed)
 }
@@ -721,6 +721,72 @@ pub async fn verify_access(
     if tenant_id != tenant.id {
         return Err(AppError::Unauthorized);
     }
+    check_opaque(state, tenant, claims, opts).await
+}
+
+/// An access token presented to the admin, account or feature API: the
+/// tenant it belongs to, verified, and its claims. An opaque token is looked
+/// up once for both. A token of another tenant than `expected` (when the
+/// path names one) is `Forbidden` before anything else is checked, as its
+/// issuer would not verify here anyway. `Ok(None)`: no such token, or its
+/// tenant is gone; a disabled tenant is `Forbidden`.
+pub async fn access_token_with_tenant(
+    state: &AppState,
+    token: &str,
+    expected: Option<Uuid>,
+    opts: &VerifyOptions,
+) -> AppResult<Option<(Arc<Tenant>, Map<String, Value>)>> {
+    let check = |tenant_id: Uuid| -> AppResult<()> {
+        match expected {
+            Some(e) if e != tenant_id => Err(AppError::Forbidden(
+                "this token belongs to another tenant".into(),
+            )),
+            _ => Ok(()),
+        }
+    };
+    let tenant_of = |tenant: Option<Arc<Tenant>>| -> AppResult<Option<Arc<Tenant>>> {
+        match tenant {
+            Some(t) if !t.is_active() => Err(AppError::Forbidden("tenant is disabled".into())),
+            other => Ok(other),
+        }
+    };
+    if opaque_tokens::looks_like(token) {
+        let Some((tenant_id, claims)) = opaque_tokens::lookup(state, token).await? else {
+            return Ok(None);
+        };
+        check(tenant_id)?;
+        let Some(tenant) =
+            tenant_of(crate::services::tenants::get_cached(state, tenant_id).await?)?
+        else {
+            return Ok(None);
+        };
+        let claims = check_opaque(state, &tenant, claims, opts).await?;
+        return Ok(Some((tenant, claims)));
+    }
+    let Some(tenant_id) = unverified_tenant_id(token) else {
+        return Ok(None);
+    };
+    check(tenant_id)?;
+    let Some(tenant) = tenant_of(crate::services::tenants::get_cached(state, tenant_id).await?)?
+    else {
+        return Ok(None);
+    };
+    let opts = VerifyOptions {
+        typ: Some("at+jwt".into()),
+        ..opts.clone()
+    };
+    let claims = verify(state, &tenant, token, &opts).await?;
+    Ok(Some((tenant, claims)))
+}
+
+/// The checks an opaque token's stored claims still need: expiry,
+/// audience, revocation.
+async fn check_opaque(
+    state: &AppState,
+    tenant: &Tenant,
+    claims: Map<String, Value>,
+    opts: &VerifyOptions,
+) -> AppResult<Map<String, Value>> {
     // The entry expires with the token; the clock is checked too, so a
     // lagging expiry never stretches a token's life.
     let exp = claims
@@ -747,17 +813,6 @@ pub async fn verify_access(
         return Err(AppError::Unauthorized);
     }
     Ok(claims)
-}
-
-/// The tenant an access token claims to belong to, read without verifying
-/// it, to pick the key set (or opaque entry) that [`verify_access`] then
-/// checks against: the `tid` claim of a JWT, or the tenant an opaque token
-/// was issued in.
-pub async fn access_token_tenant_hint(state: &AppState, token: &str) -> AppResult<Option<Uuid>> {
-    if opaque_tokens::looks_like(token) {
-        return Ok(opaque_tokens::lookup(state, token).await?.map(|(t, _)| t));
-    }
-    Ok(unverified_tenant_id(token))
 }
 
 /// The `tid` claim of a JWT read without verification, only to pick the key

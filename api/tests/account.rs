@@ -143,6 +143,7 @@ async fn token(fx: &Fx, user_id: Uuid, auth: Auth) -> String {
                 acr: auth.acr.map(str::to_string),
                 ip: None,
                 user_agent: None,
+                device_id: None,
                 policy: &fx.tenant.settings.session,
             },
         )

@@ -140,6 +140,8 @@ pub struct NewSession<'a> {
     pub acr: Option<String>,
     pub ip: Option<String>,
     pub user_agent: Option<String>,
+    /// The trusted device the browser presented, bound from the start.
+    pub device_id: Option<Uuid>,
     pub policy: &'a SessionPolicy,
 }
 
@@ -174,7 +176,7 @@ pub async fn create(
         acr: req.acr,
         ip: req.ip,
         user_agent: req.user_agent,
-        device_id: None,
+        device_id: req.device_id,
         org_id: None,
         impersonator: None,
         created_at: now,

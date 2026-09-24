@@ -116,20 +116,20 @@ async fn renders_with_locale_fallback_and_tenant_overrides_and_delivers() {
     );
 
     // A German override for the tenant is picked up for de-CH via the language fallback.
-    let mut tx = ridm_api::db::tenant_tx(&state.db, tenant.id).await.unwrap();
-    ridm_api::repos::messages::upsert_template(
-        &mut *tx,
+    ridm_api::services::messaging::put_template(
+        &state,
         tenant.id,
         MessageChannel::Email,
         "otp",
         "de",
-        Some("Ihr Code: {{code}}"),
-        "Ihr Code lautet {{code}}.",
-        None,
+        ridm_api::services::messaging::TemplateBody {
+            subject: Some("Ihr Code: {{code}}".into()),
+            body_text: "Ihr Code lautet {{code}}.".into(),
+            body_html: None,
+        },
     )
     .await
     .unwrap();
-    tx.commit().await.unwrap();
     let msg = messaging::send(
         &state,
         &tenant,

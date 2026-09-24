@@ -465,6 +465,7 @@ pub async fn put_template(
     )
     .await?;
     tx.commit().await?;
+    crate::messaging::forget_templates(state, tenant_id).await?;
     Ok(TemplateView {
         source: TemplateSource::Override,
         channel,
@@ -492,6 +493,7 @@ pub async fn delete_template(
         .ok_or(AppError::NotFound("template override"))?;
     repos::messages::delete_template(&mut *tx, tenant_id, row.id).await?;
     tx.commit().await?;
+    crate::messaging::forget_templates(state, tenant_id).await?;
     Ok(())
 }
 
@@ -539,7 +541,8 @@ pub async fn preview(state: &AppState, tenant: &Tenant, req: PreviewRequest) -> 
         }
     };
     // The event's real variables (`messaging::vars`), with sample values.
-    let mut vars = messaging::vars::sample(&req.event, tenant)
+    let host = messaging::vars::sign_in_host(state, tenant);
+    let mut vars = messaging::vars::sample(&req.event, tenant, &host)
         .ok_or_else(|| AppError::BadRequest(format!("unknown event `{}`", req.event)))?;
     if let Some(extra) = req.vars {
         if !extra.is_object() {

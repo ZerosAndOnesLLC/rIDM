@@ -186,6 +186,7 @@ async fn account_token_in(fx: &Fx, user_id: Uuid, with_session: bool) -> String 
             acr: None,
             ip: None,
             user_agent: None,
+            device_id: None,
             policy: &fx.tenant.settings.session,
         },
     )

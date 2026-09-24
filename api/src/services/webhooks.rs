@@ -453,17 +453,22 @@ async fn deliver_promptly(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
     }
     // Rows the current pass may have committed after this one's claim are
     // few; drain until a pass finds nothing so none waits for the job.
-    loop {
-        let (delivered, failed) = deliver_due(state, tenant_id, PROMPT_BATCH).await?;
-        if delivered + failed == 0 {
-            break;
+    let drained = async {
+        loop {
+            let (delivered, failed) = deliver_due(state, tenant_id, PROMPT_BATCH).await?;
+            if delivered + failed == 0 {
+                return Ok::<(), AppError>(());
+            }
         }
     }
+    .await;
+    // Released however the pass ended, so the next event's pass need not
+    // wait out the lock.
     if let Err(e) = conn.del::<_, ()>(&key).await {
         // The lock expires on its own after PROMPT_LOCK_SECS.
         tracing::warn!(error = %e, "webhooks: could not release the prompt-delivery lock");
     }
-    Ok(())
+    drained
 }
 
 /// Events the dispatcher takes off its queue at a time.
@@ -612,9 +617,35 @@ async fn attempt(w: &Webhook, secret: &str, delivery: &WebhookDelivery) -> AppRe
     })
 }
 
-/// What one delivery pass sends with: each enabled webhook the claimed rows
-/// point at, with its secret decrypted once for the pass.
-type Targets = HashMap<Uuid, (Webhook, Zeroizing<String>)>;
+/// What one delivery pass sends with: each webhook the claimed rows point
+/// at, with its secret decrypted once for the pass (`None`: disabled).
+type Targets = HashMap<Uuid, Option<(Webhook, Zeroizing<String>)>>;
+
+/// The webhooks `claimed` goes to, read in the claim's transaction (the
+/// cached list carries no secrets), each secret decrypted once. A webhook
+/// deleted under the queue is absent (its deliveries went with it).
+async fn targets_of(
+    state: &AppState,
+    tx: &mut sqlx::PgConnection,
+    tenant_id: Uuid,
+    claimed: &[WebhookDelivery],
+) -> AppResult<Targets> {
+    let mut ids: Vec<Uuid> = claimed.iter().map(|d| d.webhook_id).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    let mut targets = Targets::new();
+    for w in repos::webhooks::find_many(&mut *tx, tenant_id, &ids).await? {
+        let id = w.id;
+        let target = if w.enabled {
+            let secret = decrypt_secret(state, &w).await?;
+            Some((w, secret))
+        } else {
+            None
+        };
+        targets.insert(id, target);
+    }
+    Ok(targets)
+}
 
 /// Deliver due deliveries of one tenant, several at a time. Returns
 /// (delivered, failed); a failure that is dead raises `webhook.delivery_dead`.
@@ -626,21 +657,12 @@ pub async fn deliver_due(
 ) -> AppResult<(usize, usize)> {
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let claimed = repos::webhooks::claim_due(&mut *tx, tenant_id, limit).await?;
-    tx.commit().await?;
     if claimed.is_empty() {
+        tx.commit().await?;
         return Ok((0, 0));
     }
-    let hooks = enabled_cached(state, tenant_id).await?;
-    let mut targets: Targets = HashMap::new();
-    for d in &claimed {
-        if targets.contains_key(&d.webhook_id) {
-            continue;
-        }
-        if let Some(w) = hooks.iter().find(|w| w.id == d.webhook_id) {
-            let secret = decrypt_secret(state, w).await?;
-            targets.insert(w.id, (w.clone(), secret));
-        }
-    }
+    let targets = targets_of(state, &mut tx, tenant_id, &claimed).await?;
+    tx.commit().await?;
     let targets = &targets;
     let outcomes: Vec<AppResult<bool>> = futures::stream::iter(claimed)
         .map(|d| deliver_one(state, tenant_id, targets, d))
@@ -666,19 +688,15 @@ async fn deliver_one(
     d: WebhookDelivery,
 ) -> AppResult<bool> {
     let outcome = match targets.get(&d.webhook_id) {
-        Some((w, secret)) => attempt(w, secret, &d).await?,
-        // Not among the enabled ones: disabled, or deleted under the queue
-        // (the cascade takes its rows too, so there is nothing to record).
-        None => match get(state, tenant_id, d.webhook_id).await {
-            Ok(_) => Attempt {
-                status: None,
-                snippet: None,
-                error: Some("webhook is disabled".into()),
-                retryable: false,
-            },
-            Err(AppError::NotFound(_)) => return Ok(false),
-            Err(err) => return Err(err),
+        Some(Some((w, secret))) => attempt(w, secret, &d).await?,
+        Some(None) => Attempt {
+            status: None,
+            snippet: None,
+            error: Some("webhook is disabled".into()),
+            retryable: false,
         },
+        // Deleted under the queue: the cascade took its rows too.
+        None => return Ok(false),
     };
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let result = match outcome.error {
@@ -756,17 +774,13 @@ pub async fn redeliver_dead(state: &AppState, tenant_id: Uuid, webhook_id: Uuid)
 /// tenant's queue is sent along with it.
 async fn deliver_now(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<()> {
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    let claimed = repos::webhooks::claim_one(&mut *tx, tenant_id, id).await?;
-    tx.commit().await?;
-    let Some(d) = claimed else {
+    let Some(d) = repos::webhooks::claim_one(&mut *tx, tenant_id, id).await? else {
         // Taken by a delivery pass in the meantime.
+        tx.commit().await?;
         return Ok(());
     };
-    let mut targets = Targets::new();
-    let hooks = enabled_cached(state, tenant_id).await?;
-    if let Some(w) = hooks.iter().find(|w| w.id == d.webhook_id) {
-        targets.insert(w.id, (w.clone(), decrypt_secret(state, w).await?));
-    }
+    let targets = targets_of(state, &mut tx, tenant_id, std::slice::from_ref(&d)).await?;
+    tx.commit().await?;
     deliver_one(state, tenant_id, &targets, d).await?;
     Ok(())
 }

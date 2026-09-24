@@ -232,7 +232,6 @@ pub async fn public_state(
     tenant: &Tenant,
     flow: &LoginFlow,
 ) -> AppResult<PublicFlow> {
-    let client = client_of(state, flow).await?;
     let auth = &tenant.settings.auth;
     let mut methods = vec![];
     if auth.password {
@@ -250,7 +249,47 @@ pub async fn public_state(
     if auth.passkey {
         methods.push("passkey");
     }
-    let all_scopes = crate::services::scopes::list(state, tenant.id).await?;
+    // Every lookup below is independent of the others: one round of them.
+    let (
+        client,
+        all_scopes,
+        (missing_attributes, user, user_locale, mfa),
+        captcha,
+        organizations,
+        identity_providers,
+        kerberos,
+    ) = tokio::try_join!(
+        // Each lookup is boxed: joined inline, their state would make one
+        // future too large for a debug build's stack.
+        Box::pin(client_of(state, flow)),
+        Box::pin(crate::services::scopes::list(state, tenant.id)),
+        Box::pin(public_user(state, tenant, flow)),
+        Box::pin(captcha_required(state, tenant, flow)),
+        Box::pin(async {
+            if flow.stage != FlowStage::Organization {
+                return Ok(vec![]);
+            }
+            Ok(selectable_organizations(state, tenant.id, flow.user_id)
+                .await?
+                .into_iter()
+                .map(|o| PublicOrganization {
+                    id: o.id,
+                    slug: o.slug,
+                    display_name: o.display_name,
+                })
+                .collect())
+        }),
+        Box::pin(crate::services::identity_providers::offered(
+            state, tenant.id
+        )),
+        Box::pin(async {
+            if flow.stage == FlowStage::Authenticate {
+                crate::services::kerberos::public(state, tenant.id).await
+            } else {
+                Ok(None)
+            }
+        }),
+    )?;
     let pending_scopes = flow
         .pending_scopes
         .iter()
@@ -262,51 +301,6 @@ pub async fn public_state(
                 .and_then(|s| s.description.clone()),
         })
         .collect();
-    let (missing_attributes, user, user_locale, mfa) = match flow.user_id {
-        Some(uid) => {
-            let u = users::get(state, tenant.id, uid).await?;
-            let missing = if flow.stage == FlowStage::Profile {
-                missing_required(state, tenant.id, &u).await?
-            } else {
-                vec![]
-            };
-            let mfa = if flow.stage == FlowStage::Mfa {
-                let f = totp::factors_of(state, tenant.id, uid).await?;
-                let mut factors = vec![];
-                if f.totp {
-                    factors.push(totp::KIND_TOTP);
-                }
-                if f.webauthn {
-                    factors.push(passkeys::KIND);
-                }
-                if f.email_otp {
-                    factors.push(otp_factors::KIND_EMAIL);
-                }
-                if f.sms_otp {
-                    factors.push(otp_factors::KIND_SMS);
-                }
-                Some(MfaInfo {
-                    factors,
-                    methods: offered_factors(tenant, &u),
-                    enroll: !f.any(),
-                    recovery_codes: f.any() && f.recovery_codes > 0,
-                    phone: u.phone.as_deref().map(otp_factors::mask_phone),
-                })
-            } else {
-                None
-            };
-            (
-                missing,
-                Some(PublicUser {
-                    username: u.username,
-                    email: u.email,
-                }),
-                u.locale,
-                mfa,
-            )
-        }
-        None => (vec![], None, None, None),
-    };
     let locale = locale::negotiate(
         &flow.request.ui_locales,
         user_locale.as_deref(),
@@ -337,28 +331,70 @@ pub async fn public_state(
         privacy_url: tenant.settings.registration.privacy_url.clone(),
         user,
         attempts: flow.attempts,
-        captcha: captcha_required(state, tenant, flow).await?,
+        captcha,
         mfa,
-        organizations: if flow.stage == FlowStage::Organization {
-            selectable_organizations(state, tenant.id, flow.user_id)
-                .await?
-                .into_iter()
-                .map(|o| PublicOrganization {
-                    id: o.id,
-                    slug: o.slug,
-                    display_name: o.display_name,
-                })
-                .collect()
-        } else {
-            vec![]
-        },
-        identity_providers: crate::services::identity_providers::offered(state, tenant.id).await?,
-        kerberos: if flow.stage == FlowStage::Authenticate {
-            crate::services::kerberos::public(state, tenant.id).await?
-        } else {
-            None
-        },
+        organizations,
+        identity_providers,
+        kerberos,
     })
+}
+
+/// The signed-in user's part of the public flow: missing profile
+/// attributes (profile stage), who they are, their locale, and what second
+/// steps they can take (MFA stage).
+async fn public_user(
+    state: &AppState,
+    tenant: &Tenant,
+    flow: &LoginFlow,
+) -> AppResult<(
+    Vec<AttributeDef>,
+    Option<PublicUser>,
+    Option<String>,
+    Option<MfaInfo>,
+)> {
+    let Some(uid) = flow.user_id else {
+        return Ok((vec![], None, None, None));
+    };
+    let u = users::get(state, tenant.id, uid).await?;
+    let missing = if flow.stage == FlowStage::Profile {
+        missing_required(state, tenant.id, &u).await?
+    } else {
+        vec![]
+    };
+    let mfa = if flow.stage == FlowStage::Mfa {
+        let f = totp::factors_of(state, tenant.id, uid).await?;
+        let mut factors = vec![];
+        if f.totp {
+            factors.push(totp::KIND_TOTP);
+        }
+        if f.webauthn {
+            factors.push(passkeys::KIND);
+        }
+        if f.email_otp {
+            factors.push(otp_factors::KIND_EMAIL);
+        }
+        if f.sms_otp {
+            factors.push(otp_factors::KIND_SMS);
+        }
+        Some(MfaInfo {
+            factors,
+            methods: offered_factors(tenant, &u),
+            enroll: !f.any(),
+            recovery_codes: f.any() && f.recovery_codes > 0,
+            phone: u.phone.as_deref().map(otp_factors::mask_phone),
+        })
+    } else {
+        None
+    };
+    Ok((
+        missing,
+        Some(PublicUser {
+            username: u.username,
+            email: u.email,
+        }),
+        u.locale,
+        mfa,
+    ))
 }
 
 async fn missing_required(
@@ -593,19 +629,32 @@ pub async fn password_step(
     )
     .await?;
 
-    // IP throttle.
-    if lockout.ip_max_failures > 0
-        && let Some(ip) = &ip
+    // Failed attempts from this address: the IP throttle's window and the
+    // risk policy's velocity window, counted in one read.
+    let risk_policy = &tenant.tenant.settings.risk;
+    let velocity = risk_policy.enabled && risk_policy.velocity_max_failures > 0;
+    let mut velocity_failures = None;
+    if let Some(ip) = &ip
+        && (lockout.ip_max_failures > 0 || velocity)
     {
+        let throttle_since =
+            Utc::now() - Duration::minutes(i64::from(lockout.ip_window_minutes.max(1)));
+        let velocity_since = risk::velocity_since(risk_policy.velocity_window_minutes);
         let mut tx = db::tenant_tx(&state.db, tid).await?;
-        let since = Utc::now() - Duration::minutes(i64::from(lockout.ip_window_minutes.max(1)));
-        let n = repos::login_attempts::failures_from_ip(&mut *tx, tid, ip, since).await?;
+        let (throttled, recent) = repos::login_attempts::failures_from_ip_since(
+            &mut *tx,
+            tid,
+            ip,
+            [throttle_since, velocity_since],
+        )
+        .await?;
         tx.commit().await?;
-        if n >= i64::from(lockout.ip_max_failures) {
+        if lockout.ip_max_failures > 0 && throttled >= i64::from(lockout.ip_max_failures) {
             return Err(AppError::RateLimited {
                 retry_after_secs: u64::from(lockout.ip_window_minutes) * 60,
             });
         }
+        velocity_failures = velocity.then_some(recent);
     }
 
     let mut user = users::find_by_identifier(state, tid, &identifier).await?;
@@ -665,16 +714,16 @@ pub async fn password_step(
             };
             // Scored before anything is written: a refused sign-in leaves no
             // session, no flow and no successful attempt behind it.
-            let assessment = assess(state, &tenant.tenant, &user, &ctx).await?;
+            let assessment = assess(state, &tenant.tenant, &user, &ctx, velocity_failures).await?;
             if assessment.risk.is_blocked() {
                 return refuse(state, &tenant.tenant, &flow, &user, &assessment.risk, &ctx).await;
             }
             let mut tx = db::tenant_tx(&state.db, tid).await?;
-            repos::users::record_login_success(&mut *tx, tid, user.id).await?;
+            let updated = repos::users::record_login_success(&mut *tx, tid, user.id).await?;
             repos::login_attempts::record(&mut *tx, tid, &identifier, ip.as_deref(), true, None)
                 .await?;
             tx.commit().await?;
-            crate::services::users::forget(state, tid, &[user.id]).await;
+            remember_signed_in(state, tid, user.id, updated).await;
             metrics::counter!("ridm_logins_total", "method" => "password", "outcome" => "success")
                 .increment(1);
 
@@ -1118,16 +1167,36 @@ async fn assess(
     tenant: &Tenant,
     user: &User,
     ctx: &RequestContext,
+    ip_failures: Option<i64>,
 ) -> AppResult<Assessment> {
-    let trusted = match &ctx.device_secret {
-        Some(secret) => {
-            trusted_devices::verify_secret(state, tenant, user.id, secret, ctx.ip.as_deref())
-                .await?
-        }
-        None => None,
-    };
-    let new_browser = trusted.is_none()
-        && is_new_browser(state, tenant.id, user.id, ctx.user_agent.as_deref(), None).await?;
+    // The device cookie and the browser history are independent reads.
+    // Boxed: joined inline, their state would make one future too large for
+    // a debug build's stack.
+    let (trusted, seen_elsewhere) = tokio::try_join!(
+        Box::pin(async {
+            match &ctx.device_secret {
+                Some(secret) => {
+                    trusted_devices::verify_secret(
+                        state,
+                        tenant,
+                        user.id,
+                        secret,
+                        ctx.ip.as_deref(),
+                    )
+                    .await
+                }
+                None => Ok(None),
+            }
+        }),
+        Box::pin(is_new_browser(
+            state,
+            tenant.id,
+            user.id,
+            ctx.user_agent.as_deref(),
+            None
+        )),
+    )?;
+    let new_browser = trusted.is_none() && seen_elsewhere;
     let risk = risk::evaluate(
         state,
         tenant,
@@ -1136,6 +1205,7 @@ async fn assess(
             ip: ctx.ip.as_deref(),
             location: ctx.location.as_ref(),
             new_device: new_browser,
+            ip_failures,
         },
     )
     .await?;
@@ -1355,6 +1425,7 @@ pub async fn unfinished_stage(
             ip,
             location,
             new_device: false,
+            ip_failures: None,
         },
     )
     .await?;
@@ -1907,6 +1978,7 @@ async fn open_session(
             s
         }
         _ => {
+            // A trusted device is bound as the session is written, not after.
             let session = sessions::create(
                 state,
                 tenant.id,
@@ -1916,6 +1988,7 @@ async fn open_session(
                     acr,
                     ip: ip.clone(),
                     user_agent: user_agent.clone(),
+                    device_id: trusted.as_ref().map(|d| d.id),
                     policy: &tenant.settings.session,
                 },
             )
@@ -1975,6 +2048,15 @@ async fn open_session(
     Ok(session)
 }
 
+/// After a successful sign-in updated the user's row: evict the old one on
+/// every node and keep the new one here, where the flow reads it next.
+async fn remember_signed_in(state: &AppState, tenant_id: Uuid, user_id: Uuid, row: Option<User>) {
+    crate::services::users::forget(state, tenant_id, &[user_id]).await;
+    if let Some(row) = row {
+        crate::services::users::remember(state, row);
+    }
+}
+
 /// True when the user has signed in before but never from this browser.
 /// Without a user agent nothing can be compared, so nothing is claimed.
 ///
@@ -2018,15 +2100,15 @@ pub async fn complete_authentication(
     let tid = tenant.id();
     // Scored before anything is written: a refused sign-in leaves no session,
     // no flow and no successful attempt behind it.
-    let assessment = assess(state, &tenant.tenant, user, &ctx).await?;
+    let assessment = assess(state, &tenant.tenant, user, &ctx, None).await?;
     if assessment.risk.is_blocked() {
         return refuse(state, &tenant.tenant, &flow, user, &assessment.risk, &ctx).await;
     }
     let mut tx = db::tenant_tx(&state.db, tid).await?;
-    repos::users::record_login_success(&mut *tx, tid, user.id).await?;
+    let updated = repos::users::record_login_success(&mut *tx, tid, user.id).await?;
     repos::login_attempts::record(&mut *tx, tid, &user.username, ip.as_deref(), true, None).await?;
     tx.commit().await?;
-    crate::services::users::forget(state, tid, &[user.id]).await;
+    remember_signed_in(state, tid, user.id, updated).await;
     metrics::counter!(
         "ridm_logins_total",
         "method" => amr.first().cloned().unwrap_or_else(|| "unknown".into()),

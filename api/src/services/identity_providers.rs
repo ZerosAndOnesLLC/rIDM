@@ -1200,15 +1200,52 @@ fn from_existing(idp: &IdentityProvider) -> Resolved {
     }
 }
 
-async fn invalidate(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
+/// Evict everything cached about a tenant's identity providers, after any
+/// write to one (configuration, a metadata refresh).
+pub(crate) async fn invalidate(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
     state
         .cache
         .invalidate(&[
             keys::identity_providers(tenant_id),
+            keys::identity_providers_full(tenant_id),
             keys::ldap_directories(tenant_id),
             keys::kerberos_realms(tenant_id),
         ])
         .await
+}
+
+/// How long a node keeps a tenant's providers (every write evicts them).
+const FULL_L1_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// [`get`] for the sign-in paths (brokering, LDAP, Kerberos, SAML), which
+/// ask on every request: served from the tenant's providers as this node
+/// last read them. Administration and jobs read the row itself with [`get`].
+pub async fn get_cached(
+    state: &AppState,
+    tenant_id: Uuid,
+    key: &str,
+) -> AppResult<IdentityProvider> {
+    let cache_key = keys::identity_providers_full(tenant_id);
+    let l1 = state.cache.l1();
+    let all = match l1.get::<Vec<IdentityProvider>>(&cache_key) {
+        Some(all) => all,
+        None => {
+            let ticket = l1.ticket(&cache_key);
+            let all = Arc::new(list(state, tenant_id).await?);
+            l1.insert_fresh(cache_key, all.clone(), FULL_L1_TTL, ticket);
+            all
+        }
+    };
+    let found = match Uuid::parse_str(key) {
+        Ok(id) => all.iter().find(|i| i.id == id),
+        Err(_) => {
+            let alias = key.to_lowercase();
+            all.iter().find(|i| i.alias == alias)
+        }
+    };
+    found
+        .cloned()
+        .ok_or(AppError::NotFound("identity provider"))
 }
 
 pub async fn list(state: &AppState, tenant_id: Uuid) -> AppResult<Vec<IdentityProvider>> {

@@ -342,7 +342,7 @@ pub async fn permissions_of_user(
     user_id: Uuid,
     scope: OrgScope,
 ) -> AppResult<Arc<PermissionSet>> {
-    let version = roles::roles_version(state, tenant_id).await?;
+    let version = roles::access_version(state, tenant_id, user_id).await?;
     let key = keys::admin_permissions(tenant_id, &version, user_id, scope.cache_suffix());
     let db = state.db.clone();
     let state_for_roles = state.clone();

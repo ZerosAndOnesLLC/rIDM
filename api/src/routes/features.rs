@@ -13,8 +13,8 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::middleware::{AdminRejection, TenantCtx, bearer_with_scheme, require_binding};
+use crate::services::features;
 use crate::services::tokens::{self, VerifyOptions};
-use crate::services::{features, tenants};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -50,21 +50,18 @@ async fn features_of(
     parts: &mut Parts,
 ) -> Result<Features, AdminRejection> {
     let (scheme, token) = bearer_with_scheme(&parts.headers).ok_or_else(AdminRejection::missing)?;
-    let tenant_id = tokens::access_token_tenant_hint(state, &token)
-        .await?
-        .ok_or_else(AdminRejection::invalid)?;
-    if tenant_id != path_tenant.id() {
-        return Err(AppError::Forbidden("this token belongs to another tenant".into()).into());
-    }
-    let tenant = tenants::get_cached(state, tenant_id)
-        .await?
-        .ok_or_else(AdminRejection::invalid)?;
-    let claims = tokens::verify_access(state, &tenant, &token, &VerifyOptions::default())
-        .await
-        .map_err(|e| match e {
-            AppError::Unauthorized => AdminRejection::invalid(),
-            other => other.into(),
-        })?;
+    let (tenant, claims) = tokens::access_token_with_tenant(
+        state,
+        &token,
+        Some(path_tenant.id()),
+        &VerifyOptions::default(),
+    )
+    .await
+    .map_err(|e| match e {
+        AppError::Unauthorized => AdminRejection::invalid(),
+        other => other.into(),
+    })?
+    .ok_or_else(AdminRejection::invalid)?;
     require_binding(state, &tenant, scheme, &token, &claims, parts).await?;
     let org_id = claims
         .get("org_id")

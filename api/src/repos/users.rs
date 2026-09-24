@@ -284,20 +284,40 @@ pub async fn set_password<'e>(
     Ok(res.rows_affected() > 0)
 }
 
+/// A live user's stored password hash, locking the row for the transaction;
+/// `None` when the user is gone (`Some(None)`: no password).
+pub async fn password_hash_for_update<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+) -> Result<Option<Option<String>>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT password_hash FROM users WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL \
+         FOR UPDATE",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .fetch_optional(exec)
+    .await
+}
+
+/// Record a successful sign-in; returns the row as it now is, so the caller
+/// can cache it rather than read it again.
 pub async fn record_login_success<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
     id: Uuid,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(
+) -> Result<Option<User>, sqlx::Error> {
+    let mut qb = QueryBuilder::new(
         "UPDATE users SET last_login_at = now(), failed_attempts = 0, locked_until = NULL \
-         WHERE tenant_id = $1 AND id = $2",
-    )
-    .bind(tenant_id)
-    .bind(id)
-    .execute(exec)
-    .await?;
-    Ok(())
+         WHERE tenant_id = ",
+    );
+    qb.push_bind(tenant_id)
+        .push(" AND id = ")
+        .push_bind(id)
+        .push(" RETURNING ")
+        .push(COLUMNS);
+    qb.build_query_as::<User>().fetch_optional(exec).await
 }
 
 /// Increment the failure counter and lock when `lock_after` is reached.

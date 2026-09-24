@@ -585,16 +585,15 @@ pub async fn authenticate_client(
     let cert = cert.ok_or_else(|| invalid_client("a client certificate is required"))?;
     match client.token_endpoint_auth_method {
         TokenEndpointAuthMethod::TlsClientAuth => {
-            let anchors = mtls_trust_anchors::cached(state, tenant.id())
+            let Some(verifier) = mtls_trust_anchors::verifier(state, tenant.id())
                 .await
-                .map_err(OAuthError::from)?;
-            if anchors.is_empty() {
+                .map_err(OAuthError::from)?
+            else {
                 return Err(invalid_client(
                     "no certificate authority is configured for client certificates",
                 ));
-            }
-            verify_chain(cert, &anchors.iter().map(|a| a.der.as_slice()).collect::<Vec<_>>())
-                .map_err(|e| {
+            };
+            verifier.verify(cert).map_err(|e| {
                     tracing::debug!(error = %e, client_id = %client.client_id, "client certificate chain refused");
                     invalid_client("the client certificate is not trusted")
                 })?;
@@ -662,34 +661,46 @@ pub fn describe_ca(der: &[u8]) -> Result<CaInfo, String> {
     })
 }
 
-/// Verify `cert` chains to one of `anchors` (DER), is valid now and may be
-/// used for client authentication. Intermediates come from what the client
-/// presented; an anchor may itself be an intermediate CA.
-pub fn verify_chain(cert: &ClientCert, anchors: &[&[u8]]) -> Result<(), String> {
-    let mut roots = rustls::RootCertStore::empty();
-    for der in anchors {
-        roots
-            .add(CertificateDer::from(der.to_vec()))
-            .map_err(|e| format!("trust anchor: {e}"))?;
+/// A verifier for client certificates against a set of trust anchors,
+/// built once and reused for every certificate (see
+/// [`mtls_trust_anchors::verifier`]).
+pub struct ChainVerifier(Arc<dyn rustls::server::danger::ClientCertVerifier>);
+
+impl ChainVerifier {
+    /// From `anchors` (DER); an anchor may itself be an intermediate CA.
+    pub fn new(anchors: &[&[u8]]) -> Result<Self, String> {
+        let mut roots = rustls::RootCertStore::empty();
+        for der in anchors {
+            roots
+                .add(CertificateDer::from(der.to_vec()))
+                .map_err(|e| format!("trust anchor: {e}"))?;
+        }
+        let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+        let verifier =
+            rustls::server::WebPkiClientVerifier::builder_with_provider(Arc::new(roots), provider)
+                .build()
+                .map_err(|e| e.to_string())?;
+        Ok(Self(verifier))
     }
-    let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
-    let verifier =
-        rustls::server::WebPkiClientVerifier::builder_with_provider(Arc::new(roots), provider)
-            .build()
-            .map_err(|e| e.to_string())?;
-    let intermediates: Vec<CertificateDer<'static>> = cert
-        .chain
-        .iter()
-        .map(|d| CertificateDer::from(d.clone()))
-        .collect();
-    verifier
-        .verify_client_cert(
-            &CertificateDer::from(cert.der.clone()),
-            &intermediates,
-            UnixTime::now(),
-        )
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+
+    /// Does `cert` chain to one of the anchors, is it valid now, and may it
+    /// be used for client authentication? Intermediates come from what the
+    /// client presented.
+    pub fn verify(&self, cert: &ClientCert) -> Result<(), String> {
+        let intermediates: Vec<CertificateDer<'static>> = cert
+            .chain
+            .iter()
+            .map(|d| CertificateDer::from(d.clone()))
+            .collect();
+        self.0
+            .verify_client_cert(
+                &CertificateDer::from(cert.der.clone()),
+                &intermediates,
+                UnixTime::now(),
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
 }
 
 /// The certificate thumbprint a token is bound to, if any.

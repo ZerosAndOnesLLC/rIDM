@@ -47,7 +47,7 @@ pub async fn send(
     if !vars.is_object() {
         vars = Value::Object(Default::default());
     }
-    vars["tenant"] = super::vars::tenant(tenant);
+    vars["tenant"] = super::vars::tenant(tenant, &super::vars::sign_in_host(state, tenant));
     let locale = out.locale.unwrap_or(&tenant.settings.locale.default);
     let template = templates::resolve(
         state,

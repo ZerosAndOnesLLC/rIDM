@@ -9,7 +9,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use redis::AsyncCommands as _;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use uuid::Uuid;
 
@@ -189,7 +188,7 @@ pub async fn assign(
         .map_err(AppError::from_db)?;
     tx.commit().await?;
     if added {
-        bump_roles_version(state, tenant_id).await?;
+        bump_for(state, tenant_id, principal).await?;
         let (user_id, group_id) = principal_ids(principal);
         state.events.publish(Event::new(
             Some(tenant_id),
@@ -215,7 +214,7 @@ pub async fn unassign(
     let removed = repos::roles::unassign(&mut *tx, tenant_id, role_id, principal, None).await?;
     tx.commit().await?;
     if removed {
-        bump_roles_version(state, tenant_id).await?;
+        bump_for(state, tenant_id, principal).await?;
         let (user_id, group_id) = principal_ids(principal);
         state.events.publish(Event::new(
             Some(tenant_id),
@@ -333,37 +332,67 @@ pub async fn composites_of(
     Ok(rows)
 }
 
-/// Current version token for a tenant's role graph, creating one if absent.
+/// Current version token for a tenant's role graph, creating one if absent
+/// (held briefly per node, evicted everywhere by a bump).
 pub async fn roles_version(state: &AppState, tenant_id: Uuid) -> AppResult<String> {
-    let key = keys::roles_version(tenant_id);
-    let mut conn = state.redis.get().await?;
-    if let Some(v) = conn.get::<_, Option<String>>(&key).await? {
-        return Ok(v);
-    }
-    let fresh = Uuid::now_v7().simple().to_string();
-    // SET NX so concurrent initialisers agree on one token.
-    let set: bool = redis::cmd("SET")
-        .arg(&key)
-        .arg(&fresh)
-        .arg("NX")
-        .arg("EX")
-        .arg(ROLES_VERSION_TTL)
-        .query_async(&mut conn)
-        .await?;
-    if set {
-        return Ok(fresh);
-    }
-    Ok(conn.get::<_, Option<String>>(&key).await?.unwrap_or(fresh))
+    state
+        .cache
+        .version(
+            &keys::roles_version(tenant_id),
+            std::time::Duration::from_secs(ROLES_VERSION_TTL),
+        )
+        .await
 }
 
 /// Replace the version token, orphaning every cached resolution for the tenant.
 pub async fn bump_roles_version(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
-    let key = keys::roles_version(tenant_id);
-    let mut conn = state.redis.get().await?;
-    let _: () = conn
-        .set_ex(&key, Uuid::now_v7().simple().to_string(), ROLES_VERSION_TTL)
-        .await?;
+    state
+        .cache
+        .bump_version(
+            &keys::roles_version(tenant_id),
+            std::time::Duration::from_secs(ROLES_VERSION_TTL),
+        )
+        .await
+}
+
+/// The version one user's cached access (roles, groups, organizations,
+/// admin permissions) hangs off: the tenant's role graph, and that user's
+/// own memberships and grants. A role or group-tree change moves the first
+/// for everyone; a membership or a direct grant moves only the second.
+pub async fn access_version(state: &AppState, tenant_id: Uuid, user_id: Uuid) -> AppResult<String> {
+    let user_key = keys::user_access_version(tenant_id, user_id);
+    let (tenant, user) = tokio::try_join!(
+        roles_version(state, tenant_id),
+        state
+            .cache
+            .version(&user_key, std::time::Duration::from_secs(ROLES_VERSION_TTL),),
+    )?;
+    Ok(format!("{tenant}.{user}"))
+}
+
+/// A change to what these users alone hold (a membership, a grant to the
+/// user): only their cached access is orphaned.
+pub async fn bump_user_access(state: &AppState, tenant_id: Uuid, users: &[Uuid]) -> AppResult<()> {
+    let versions: Vec<String> = users
+        .iter()
+        .map(|u| keys::user_access_version(tenant_id, *u))
+        .collect();
+    for chunk in versions.chunks(500) {
+        state
+            .cache
+            .bump_versions(chunk, std::time::Duration::from_secs(ROLES_VERSION_TTL))
+            .await?;
+    }
     Ok(())
+}
+
+/// After a grant to `principal` changed: a user's is theirs alone, a
+/// group's reaches every member (and the members of its subgroups).
+pub async fn bump_for(state: &AppState, tenant_id: Uuid, principal: Principal) -> AppResult<()> {
+    match principal {
+        Principal::User { id } => bump_user_access(state, tenant_id, &[id]).await,
+        Principal::Group { .. } => bump_roles_version(state, tenant_id).await,
+    }
 }
 
 /// Effective roles of a user (direct + groups incl. ancestors + composites),
@@ -375,7 +404,7 @@ pub async fn effective_roles(
     user_id: Uuid,
     org_id: Option<Uuid>,
 ) -> AppResult<Arc<Vec<Role>>> {
-    let version = roles_version(state, tenant_id).await?;
+    let version = access_version(state, tenant_id, user_id).await?;
     let key = keys::effective_roles(tenant_id, &version, user_id, org_id);
     let db = state.db.clone();
     let roles = state
@@ -399,7 +428,7 @@ pub async fn effective_roles_anywhere(
     tenant_id: Uuid,
     user_id: Uuid,
 ) -> AppResult<Arc<Vec<Role>>> {
-    let version = roles_version(state, tenant_id).await?;
+    let version = access_version(state, tenant_id, user_id).await?;
     let key = keys::effective_roles_anywhere(tenant_id, &version, user_id);
     let db = state.db.clone();
     let roles = state

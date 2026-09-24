@@ -492,12 +492,18 @@ async fn auto_join_needs_a_verified_domain_and_a_verified_address() {
         None
     );
 
-    // Verify it the way a passing DNS lookup would.
+    // Verify it the way a passing DNS lookup would (and, as the service does
+    // after one, evict the tenant's cached auto-join domains).
     let mut tx = ridm_api::db::tenant_tx(&app.state.db, tid).await.unwrap();
     ridm_api::repos::organizations::mark_domain_verified(&mut *tx, tid, org.id, domain.id)
         .await
         .unwrap();
     tx.commit().await.unwrap();
+    app.state
+        .cache
+        .invalidate(&[ridm_api::cache::keys::org_auto_join_domains(tid)])
+        .await
+        .unwrap();
 
     assert_eq!(
         organizations::ensure_auto_join(&app.state, tid, &user)

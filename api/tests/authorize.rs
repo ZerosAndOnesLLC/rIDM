@@ -68,6 +68,7 @@ async fn login(fx: &Fx) -> String {
             acr: None,
             ip: None,
             user_agent: None,
+            device_id: None,
             policy: &tenant.settings.session,
         },
     )
@@ -545,18 +546,41 @@ async fn native_clients_may_vary_loopback_ports_and_confidential_clients_may_ski
         location(&res)
     );
 
-    // POST form works the same as GET.
+    // A POSTed form is parked and the browser sent back with a GET (a
+    // cross-site POST would not carry the SameSite=Lax session cookie); the
+    // GET then works the same as one carrying the parameters.
     let res = web
         .app
         .http
         .post(web.app.tenant_url("/authorize"))
         .form(&p)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 303);
+    let back = res.headers()["location"].to_str().unwrap().to_string();
+    assert!(back.starts_with("?parked="), "{back}");
+    let resume = format!("{}{back}", web.app.tenant_url("/authorize"));
+    let res = web
+        .app
+        .http
+        .get(&resume)
         .header("Cookie", &cookie)
         .send()
         .await
         .unwrap();
     assert_eq!(res.status(), 303);
     assert!(query(&location(&res), "code").is_some());
+    // Once.
+    let res = web
+        .app
+        .http
+        .get(&resume)
+        .header("Cookie", &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
     let res = web
         .app
         .http

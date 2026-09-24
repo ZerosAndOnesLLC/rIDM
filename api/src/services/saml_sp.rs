@@ -841,7 +841,7 @@ pub async fn logout_upstream(
     let Some(up) = upstream else {
         return Ok(target);
     };
-    let idp = match identity_providers::get(state, tenant.id, &up.idp_id.to_string()).await {
+    let idp = match identity_providers::get_cached(state, tenant.id, &up.idp_id.to_string()).await {
         Ok(i) => i,
         Err(AppError::NotFound(_)) => return Ok(target),
         Err(e) => return Err(e),
@@ -1262,6 +1262,7 @@ pub async fn refresh_metadata(
             )
             .await?;
             tx.commit().await?;
+            identity_providers::invalidate(state, tenant_id).await?;
             count("failed");
             return Err(e);
         }
@@ -1304,6 +1305,7 @@ pub async fn refresh_metadata(
     )
     .await?;
     tx.commit().await?;
+    identity_providers::invalidate(state, tenant_id).await?;
     count(if changed { "changed" } else { "unchanged" });
     if changed {
         state.events.publish(Event::new(
