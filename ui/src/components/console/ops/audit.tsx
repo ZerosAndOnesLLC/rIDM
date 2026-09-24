@@ -52,7 +52,7 @@ export function AuditPage({ tenant }: { tenant: string }) {
       for (const [k, v] of Object.entries(query)) if (v) q.set(k, v);
       q.set("format", format);
       const path = scope === "global" ? `/admin/audit/export?${q}` : `/admin/tenants/${encodeURIComponent(tenant)}/audit/export?${q}`;
-      await downloadWithToken(path, `audit-${scope === "global" ? "global" : tenant}.${format}`);
+      await downloadWithToken(path);
     },
   });
   const apply = () => {

@@ -267,6 +267,11 @@ release renames that heading to the version and date.
   migrations, master-key rotation and the lookups of SCIM tokens and personal
   access tokens run over every database; a node starts while a region is down.
 
+- `POST /admin/download-tickets`: a single-use URL (60 s) for one export
+  `GET`, so a browser downloads the exports (tenant configuration, users,
+  audit) with its own download manager, streamed to disk, instead of
+  holding them in memory. The console downloads every export this way.
+
 ### Changed
 
 - `ridm-api migrate` applies migrations to every configured database, the home
@@ -293,6 +298,9 @@ release renames that heading to the version and date.
   consents carry the client's name and public `client_id`. Group and
   organization details count members instead of loading them. SCIM
   `/Groups` honours `excludedAttributes=members`.
+- Export file names: the users export is `{slug}-users.json` / `.csv` (was
+  `users.json`) and the tenant configuration `{slug}.ridm.json` (was
+  `tenant-{slug}.json`), the names the console already saved them under.
 
 ### Fixed
 

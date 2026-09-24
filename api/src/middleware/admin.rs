@@ -34,6 +34,7 @@ use crate::models::{MASTER_TENANT_ID, Tenant, UserStatus};
 use crate::oidc::bearer::Scheme;
 use crate::oidc::dpop;
 use crate::services::admin_access::{self, ADMIN_AUDIENCE, OrgScope, PermissionSet};
+use crate::services::download_tickets;
 use crate::services::personal_access_tokens as pats;
 use crate::services::tokens::{self, VerifyOptions};
 use crate::services::{roles, users};
@@ -323,8 +324,25 @@ impl FromRequestParts<AppState> for AdminCtx {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, AdminRejection> {
-        let (scheme, token) =
-            bearer_with_scheme(&parts.headers).ok_or_else(AdminRejection::missing)?;
+        // A download ticket stands in for the header on the one export
+        // `GET` it was issued for (see `services::download_tickets`).
+        let (scheme, token, by_ticket) = match bearer_with_scheme(&parts.headers) {
+            Some((scheme, token)) => (scheme, token, false),
+            None => {
+                let ticket = download_tickets::ticket_of(parts.uri.query())
+                    .filter(|_| parts.method == axum::http::Method::GET)
+                    .ok_or_else(AdminRejection::missing)?;
+                let (scheme, token) = download_tickets::redeem(
+                    state,
+                    ticket,
+                    parts.uri.path(),
+                    parts.uri.query().unwrap_or_default(),
+                )
+                .await?
+                .ok_or_else(AdminRejection::invalid)?;
+                (scheme, token, true)
+            }
+        };
         if pats::looks_like_pat(&token) {
             return Self::from_personal_token(state, &token).await;
         }
@@ -344,7 +362,11 @@ impl FromRequestParts<AppState> for AdminCtx {
             other => other.into(),
         })?
         .ok_or_else(AdminRejection::invalid)?;
-        require_binding(state, &tenant, scheme, &token, &claims, parts).await?;
+        // A ticket was issued to a request whose binding was checked; the
+        // browser navigation that redeems it cannot carry a DPoP proof.
+        if !by_ticket {
+            require_binding(state, &tenant, scheme, &token, &claims, parts).await?;
+        }
         // Administration is done as oneself. A token that acts for someone
         // else (an impersonated session, a token exchange) never reaches it,
         // even should its subject be granted an admin role meanwhile.

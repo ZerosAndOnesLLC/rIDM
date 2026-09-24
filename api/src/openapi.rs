@@ -100,6 +100,7 @@ pub fn admin_router() -> OpenApiRouter<AppState> {
         .merge(admin::auth_router())
         .merge(admin::tenants_router())
         .merge(admin::tenant_config_router())
+        .merge(admin::downloads_router())
         .merge(admin::clients_router())
         .merge(admin::users_router())
         .merge(admin::groups_router())

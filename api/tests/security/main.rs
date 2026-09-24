@@ -7,6 +7,7 @@ mod common;
 mod broker_binding;
 mod bulk_import;
 mod custom_domains;
+mod download_tickets;
 mod kerberos;
 mod ldap;
 mod legacy_hash_cost;

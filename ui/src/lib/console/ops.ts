@@ -3,7 +3,7 @@
 import type { Schemas } from "@api/client";
 import { tenantBase } from "@/lib/api";
 import { sessionStore } from "./session";
-import { saveResponse } from "@/lib/download";
+import { downloadUrl } from "@/lib/download";
 
 export type SigningKey = Schemas["SigningKey"];
 export type KeyStatus = Schemas["KeyStatus"];
@@ -82,15 +82,22 @@ export function adminBase(): string {
   return tenantBase("x").replace(/\/t\/x$/, "");
 }
 
-/** Fetch a file through the console's token and hand it to the browser. */
-export async function downloadWithToken(path: string, filename: string): Promise<void> {
+/** Download an export (`path`: its path and query). The console's token
+ * buys a single-use URL for it, which the browser then downloads itself,
+ * streaming to disk however large the export is; the server names the file. */
+export async function downloadWithToken(path: string): Promise<void> {
   const token = await sessionStore.token();
-  const res = await fetch(`${adminBase()}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetch(`${adminBase()}/admin/download-tickets`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { detail?: string; title?: string } | null;
     throw new Error(body?.detail ?? body?.title ?? `Download failed (${res.status}).`);
   }
-  await saveResponse(res, filename);
+  const { url } = (await res.json()) as { url: string };
+  downloadUrl(url);
 }
 
 /** `datetime-local` value → RFC 3339 with `Z` (the API rejects `+00:00`). */

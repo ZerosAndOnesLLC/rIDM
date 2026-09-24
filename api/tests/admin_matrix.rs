@@ -26,6 +26,10 @@ const SOURCES: &[(&str, &str)] = &[
     ("auth", include_str!("../src/routes/admin/auth.rs")),
     ("clients", include_str!("../src/routes/admin/clients.rs")),
     ("dcr", include_str!("../src/routes/admin/dcr.rs")),
+    (
+        "downloads",
+        include_str!("../src/routes/admin/downloads.rs"),
+    ),
     ("groups", include_str!("../src/routes/admin/groups.rs")),
     (
         "identity_providers",

@@ -3,6 +3,18 @@
  * it. */
 const REVOKE_AFTER_MS = 60_000;
 
+/** Let the browser fetch and save `url` itself, streamed to disk by its
+ * download manager (the server names the file in `Content-Disposition`). */
+export function downloadUrl(url: string): void {
+  const a = document.createElement("a");
+  a.href = url;
+  a.rel = "noopener noreferrer";
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 /** Hand a fetched file to the browser: the name the server gave it in
  * `Content-Disposition`, else `fallbackName`. */
 export async function saveResponse(res: Response, fallbackName: string): Promise<void> {

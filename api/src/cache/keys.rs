@@ -486,3 +486,9 @@ pub fn tenant_user_total(tenant_id: Uuid) -> String {
 pub fn kerberos_keytab(tenant_id: Uuid, idp_id: Uuid, updated_at_micros: i64) -> String {
     format!("{PREFIX}:t:{tenant_id}:krb:keytab:{idp_id}:{updated_at_micros}")
 }
+
+/// A download ticket, by its hash (deployment-wide: it is redeemed before
+/// the tenant is known).
+pub fn download_ticket(ticket_hash: &str) -> String {
+    format!("{PREFIX}:dlt:{ticket_hash}")
+}

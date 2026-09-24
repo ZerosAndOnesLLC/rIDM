@@ -354,6 +354,82 @@
         ]
       }
     },
+    "/admin/download-tickets": {
+      "post": {
+        "tags": [
+          "downloads"
+        ],
+        "summary": "A single-use URL for one of the exports, so a browser can download it\nwith its own download manager (streamed to disk) instead of holding it in\nmemory. The caller must hold what the export itself requires.",
+        "operationId": "downloads_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewDownloadTicket"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/admin/master-key": {
       "get": {
         "tags": [
@@ -22342,6 +22418,24 @@
           }
         }
       },
+      "DownloadTicket": {
+        "type": "object",
+        "required": [
+          "url",
+          "expires_in"
+        ],
+        "properties": {
+          "expires_in": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "url": {
+            "type": "string",
+            "description": "The export's URL with the ticket: one `GET` of it, without an\n`Authorization` header, within `expires_in` seconds."
+          }
+        }
+      },
       "EditableBy": {
         "type": "string",
         "description": "Who may set the attribute.",
@@ -25789,6 +25883,19 @@
               "null"
             ],
             "default": null
+          }
+        },
+        "additionalProperties": false
+      },
+      "NewDownloadTicket": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The export to download, as its path and query, e.g.\n`/admin/tenants/acme/users/export?format=csv`."
           }
         },
         "additionalProperties": false

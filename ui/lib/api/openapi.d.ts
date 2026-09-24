@@ -52,6 +52,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/download-tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A single-use URL for one of the exports, so a browser can download it
+         *     with its own download manager (streamed to disk) instead of holding it in
+         *     memory. The caller must hold what the export itself requires.
+         */
+        post: operations["downloads_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/master-key": {
         parameters: {
             query?: never;
@@ -3636,6 +3657,15 @@ export interface components {
              */
             email_domains: string[];
         };
+        DownloadTicket: {
+            /** Format: int64 */
+            expires_in: number;
+            /**
+             * @description The export's URL with the ticket: one `GET` of it, without an
+             *     `Authorization` header, within `expires_in` seconds.
+             */
+            url: string;
+        };
         /**
          * @description Who may set the attribute.
          * @enum {string}
@@ -4988,6 +5018,13 @@ export interface components {
             token_endpoint_auth_method: null | components["schemas"]["TokenEndpointAuthMethod"];
             /** @default null */
             tos_uri: string | null;
+        };
+        NewDownloadTicket: {
+            /**
+             * @description The export to download, as its path and query, e.g.
+             *     `/admin/tenants/acme/users/export?format=csv`.
+             */
+            path: string;
         };
         NewEmail: {
             email: string;
@@ -7427,6 +7464,65 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Verification"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    downloads_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewDownloadTicket"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadTicket"];
                 };
             };
             /** @description Bad request */
