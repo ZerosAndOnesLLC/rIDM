@@ -474,3 +474,9 @@ pub fn tenant_stats(tenant_id: Uuid, days: u32) -> String {
 pub fn tenant_user_counts(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:stats:users")
 }
+
+/// How many live users a tenant has, for SCIM's `totalResults` (cached
+/// briefly: a provisioning client pages through while it writes).
+pub fn tenant_user_total(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:users:total")
+}

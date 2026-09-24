@@ -12,6 +12,7 @@ import { useDebounced } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
 import { userHref } from "@/lib/console/users";
 import { ErrorLine } from "./common";
+import { MemberList } from "./member-list";
 
 export function OrganizationMembers({
   tenant,
@@ -30,17 +31,6 @@ export function OrganizationMembers({
   const [adding, setAdding] = useState(false);
   const [search, setSearch] = useState("");
   const q = useDebounced(search.trim(), 200);
-  const members = useQuery({
-    queryKey: ["organization", tenant, id, "members"],
-    queryFn: async () => {
-      const { data, error } = await client.GET(
-        "/admin/tenants/{slug}/organizations/{org}/members",
-        { params: { path: { slug: tenant, org: id } } },
-      );
-      if (error) throw new Error(error.detail ?? error.title);
-      return data;
-    },
-  });
   const candidates = useQuery({
     queryKey: ["users", tenant, "pick", q],
     enabled: adding && !confined && q.length >= 1,
@@ -68,10 +58,8 @@ export function OrganizationMembers({
       void qc.invalidateQueries({ queryKey: ["organization", tenant, id], exact: true });
     },
   });
-  const have = new Set(members.data?.map((u) => u.id) ?? []);
-  const items: PickerItem[] = (candidates.data ?? [])
-    .filter((u) => !have.has(u.id))
-    .map((u) => ({
+  // Adding someone who is already a member changes nothing.
+  const items: PickerItem[] = (candidates.data ?? []).map((u) => ({
       id: u.id,
       group: "Users",
       label: u.username,
@@ -90,36 +78,33 @@ export function OrganizationMembers({
         ) : undefined
       }
     >
-      {members.isPending ? (
-        <Spinner label="Loading members…" />
-      ) : members.isError ? (
-        <ErrorLine error={members.error} />
-      ) : members.data.length === 0 ? (
-        <p className="text-[0.875rem] text-muted">
-          No members. An invitation or a verified auto-join domain adds them.
-        </p>
-      ) : (
-        <ul className="divide-y divide-line">
-          {members.data.map((u) => (
-            <li key={u.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
-              <Link href={userHref(tenant, u.id)} className="text-ink hover:underline underline-offset-4">
-                {u.username}
-                {u.org_id === id && <Badge>primary</Badge>}
-              </Link>
-              {editable && (
-                <Button
-                  variant="danger"
-                  className="min-h-8 px-2.5 text-[0.8125rem]"
-                  disabled={change.isPending}
-                  onClick={() => change.mutate({ remove: u.id })}
-                >
-                  Remove
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <MemberList
+        tenant={tenant}
+        of={{ kind: "organization", id }}
+        empty={
+          <p className="text-[0.875rem] text-muted">
+            No members. An invitation or a verified auto-join domain adds them.
+          </p>
+        }
+        row={(u) => (
+          <li key={u.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
+            <Link href={userHref(tenant, u.id)} className="text-ink hover:underline underline-offset-4">
+              {u.username}
+              {u.org_id === id && <Badge>primary</Badge>}
+            </Link>
+            {editable && (
+              <Button
+                variant="danger"
+                className="min-h-8 px-2.5 text-[0.8125rem]"
+                disabled={change.isPending}
+                onClick={() => change.mutate({ remove: u.id })}
+              >
+                Remove
+              </Button>
+            )}
+          </li>
+        )}
+      />
       <ErrorLine error={change.error} />
       <Picker
         open={adding}

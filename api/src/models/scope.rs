@@ -108,6 +108,21 @@ pub struct Consent {
     pub revoked_at: Option<DateTime<Utc>>,
 }
 
+/// A consent with what listings show of its client.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct ConsentWithClient {
+    #[serde(flatten)]
+    #[sqlx(flatten)]
+    pub consent: Consent,
+    /// The client's display name.
+    pub client_name: String,
+    /// The client's public `client_id`.
+    pub client: String,
+    pub logo_uri: Option<String>,
+    pub tos_uri: Option<String>,
+    pub policy_uri: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct ResourceServer {
     pub id: Uuid,

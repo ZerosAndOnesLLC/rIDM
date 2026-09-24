@@ -144,7 +144,13 @@ members, and requests that add nobody new, are unaffected.
 
 `GET /Users` and `GET /Groups` accept `filter`, `startIndex` (1-based) and `count`.
 `count` defaults to and is capped at 200; a `startIndex` beyond 2,000 is refused with
-`tooMany`.
+`tooMany`. An unfiltered user list reads only the requested page, and its
+`totalResults` may lag writes by up to 30 seconds.
+
+`GET /Groups` and `GET /Groups/{id}` accept `excludedAttributes=members` (RFC 7644
+§3.9), which leaves the member list out: for a large group it is most of the document,
+and Microsoft Entra ID asks for groups this way. Without it, a group lists its members
+only for the groups on the requested page, unless the filter itself tests `members`.
 
 Filters follow the RFC 7644 grammar: the operators `eq ne co sw ew gt ge lt le pr`,
 `and`, `or`, `not`, parentheses, dotted paths (`name.givenName`), value filters
@@ -156,7 +162,8 @@ A user filter that is a single equality on `userName`, `externalId`, `emails`
 further conditions. Any other user filter is evaluated over the tenant's users and only
 works while the tenant has at most 2,000 of them; beyond that it is refused with
 `tooMany`. Provisioning systems look users up by `userName` or `externalId` before
-creating them, which is the indexed path. Group filters are evaluated over all groups.
+creating them, which is the indexed path. Group filters are evaluated over all groups;
+an equality on `displayName` skips the others before anything else is read.
 
 ## PATCH
 

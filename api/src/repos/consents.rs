@@ -3,7 +3,7 @@
 use sqlx::PgExecutor;
 use uuid::Uuid;
 
-use crate::models::Consent;
+use crate::models::{Consent, ConsentWithClient};
 
 const COLUMNS: &str = "tenant_id, user_id, client_id, scopes, granted_at, revoked_at";
 
@@ -65,17 +65,21 @@ pub async fn revoke<'e>(
     Ok(res.rows_affected() > 0)
 }
 
+/// A user's live consents with their clients, newest first.
 pub async fn list_for_user<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
     user_id: Uuid,
-) -> Result<Vec<Consent>, sqlx::Error> {
-    let mut qb = sqlx::QueryBuilder::new("SELECT ");
-    qb.push(COLUMNS)
-        .push(" FROM consents WHERE tenant_id = ")
-        .push_bind(tenant_id)
-        .push(" AND user_id = ")
-        .push_bind(user_id)
-        .push(" AND revoked_at IS NULL ORDER BY granted_at DESC");
-    qb.build_query_as::<Consent>().fetch_all(exec).await
+) -> Result<Vec<ConsentWithClient>, sqlx::Error> {
+    sqlx::query_as::<_, ConsentWithClient>(
+        "SELECT cs.tenant_id, cs.user_id, cs.client_id, cs.scopes, cs.granted_at, cs.revoked_at, \
+                c.name AS client_name, c.client_id AS client, c.logo_uri, c.tos_uri, c.policy_uri \
+         FROM consents cs JOIN clients c ON c.tenant_id = cs.tenant_id AND c.id = cs.client_id \
+         WHERE cs.tenant_id = $1 AND cs.user_id = $2 AND cs.revoked_at IS NULL \
+         ORDER BY cs.granted_at DESC",
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .fetch_all(exec)
+    .await
 }

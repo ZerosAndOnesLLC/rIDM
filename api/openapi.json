@@ -3753,6 +3753,33 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Only members whose username or email starts with this.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -3761,10 +3788,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/User"
-                  }
+                  "$ref": "#/components/schemas/Page_Member"
                 }
               }
             }
@@ -9899,6 +9923,33 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Only members whose username or email starts with this.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -9907,10 +9958,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/User"
-                  }
+                  "$ref": "#/components/schemas/Page_Member"
                 }
               }
             }
@@ -10353,6 +10401,24 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -10361,10 +10427,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/RoleAssignment"
-                  }
+                  "$ref": "#/components/schemas/Page_RoleHolder"
                 }
               }
             }
@@ -11976,6 +12039,24 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -11984,10 +12065,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/RoleAssignment"
-                  }
+                  "$ref": "#/components/schemas/Page_RoleHolder"
                 }
               }
             }
@@ -14631,7 +14709,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/Consent"
+                    "$ref": "#/components/schemas/ConsentWithClient"
                   }
                 }
               }
@@ -21832,6 +21910,49 @@
           }
         }
       },
+      "ConsentWithClient": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Consent"
+          },
+          {
+            "type": "object",
+            "required": [
+              "client_name",
+              "client"
+            ],
+            "properties": {
+              "client": {
+                "type": "string",
+                "description": "The client's public `client_id`."
+              },
+              "client_name": {
+                "type": "string",
+                "description": "The client's display name."
+              },
+              "logo_uri": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "policy_uri": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tos_uri": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "A consent with what listings show of its client."
+      },
       "ConsentedApp": {
         "type": "object",
         "description": "An application the user granted scopes to.",
@@ -22643,7 +22764,7 @@
             "properties": {
               "member_count": {
                 "type": "integer",
-                "minimum": 0
+                "format": "int64"
               },
               "roles": {
                 "type": "array",
@@ -25003,6 +25124,26 @@
           }
         }
       },
+      "Member": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/User"
+          },
+          {
+            "type": "object",
+            "required": [
+              "joined_at"
+            ],
+            "properties": {
+              "joined_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        ],
+        "description": "A direct member of a group or organization: the user, and when they\njoined (the order member lists are paged in)."
+      },
       "MessageChannel": {
         "type": "string",
         "enum": [
@@ -26412,7 +26553,7 @@
               },
               "member_count": {
                 "type": "integer",
-                "minimum": 0
+                "format": "int64"
               }
             }
           }
@@ -26774,6 +26915,43 @@
           }
         }
       },
+      "Page_Member": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/User"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "joined_at"
+                  ],
+                  "properties": {
+                    "joined_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              ],
+              "description": "A direct member of a group or organization: the user, and when they\njoined (the order member lists are paged in)."
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "Page_Organization": {
         "type": "object",
         "required": [
@@ -26829,6 +27007,42 @@
                   "format": "date-time"
                 }
               }
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "Page_RoleHolder": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/RoleAssignment"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "username": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              ],
+              "description": "A role assignment as the holder listings show it: with the user's\nusername when the principal is a user."
             }
           },
           "next_cursor": {
@@ -28430,6 +28644,25 @@
           }
         },
         "additionalProperties": false
+      },
+      "RoleHolder": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RoleAssignment"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "username": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "A role assignment as the holder listings show it: with the user's\nusername when the principal is a user."
       },
       "RoleUpdate": {
         "type": "object",

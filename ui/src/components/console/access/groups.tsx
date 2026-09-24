@@ -17,6 +17,7 @@ import { roleName, userHref } from "@/lib/console/users";
 import { JsonInput } from "../users/attributes";
 import { useRolesAndGroups } from "../users/invite";
 import { CreateDialog, DeleteButton, ErrorLine, Split } from "./common";
+import { MemberList } from "./member-list";
 
 export function GroupsPage({ tenant, selected }: { tenant: string; selected: string | null }) {
   const { can } = useConsole();
@@ -315,14 +316,6 @@ function GroupMembers({ tenant, id, editable }: { tenant: string; id: string; ed
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const q = useDebounced(query.trim(), 200);
-  const members = useQuery({
-    queryKey: ["group", tenant, id, "members"],
-    queryFn: async () => {
-      const { data, error } = await client.GET("/admin/tenants/{slug}/groups/{group}/members", { params: { path: { slug: tenant, group: id } } });
-      if (error) throw new Error(error.detail ?? error.title);
-      return data;
-    },
-  });
   const candidates = useQuery({
     queryKey: ["users", tenant, "pick", q],
     enabled: adding && q.length >= 1,
@@ -342,9 +335,8 @@ function GroupMembers({ tenant, id, editable }: { tenant: string; id: string; ed
       void qc.invalidateQueries({ queryKey: ["group", tenant, id] });
     },
   });
-  const have = new Set(members.data?.map((u) => u.id) ?? []);
+  // Adding someone who is already a member changes nothing.
   const items: PickerItem[] = (candidates.data ?? [])
-    .filter((u) => !have.has(u.id))
     .map((u) => ({ id: u.id, group: "Users", label: u.username, hint: u.email && u.email !== u.username ? u.email : undefined, onSelect: () => change.mutate({ add: u.id }) }));
   return (
     <Card
@@ -358,28 +350,23 @@ function GroupMembers({ tenant, id, editable }: { tenant: string; id: string; ed
         ) : undefined
       }
     >
-      {members.isPending ? (
-        <Spinner label="Loading…" />
-      ) : members.isError ? (
-        <ErrorLine error={members.error} />
-      ) : members.data.length === 0 ? (
-        <p className="text-[0.875rem] text-muted">No direct members.</p>
-      ) : (
-        <ul className="divide-y divide-line">
-          {members.data.map((u) => (
-            <li key={u.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
-              <Link href={userHref(tenant, u.id, "groups")} className="font-medium text-ink hover:underline underline-offset-4">
-                {u.username}
-              </Link>
-              {editable && (
-                <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={change.isPending} onClick={() => change.mutate({ remove: u.id })}>
-                  Remove
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <MemberList
+        tenant={tenant}
+        of={{ kind: "group", id }}
+        empty={<p className="text-[0.875rem] text-muted">No direct members.</p>}
+        row={(u) => (
+          <li key={u.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
+            <Link href={userHref(tenant, u.id, "groups")} className="font-medium text-ink hover:underline underline-offset-4">
+              {u.username}
+            </Link>
+            {editable && (
+              <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={change.isPending} onClick={() => change.mutate({ remove: u.id })}>
+                Remove
+              </Button>
+            )}
+          </li>
+        )}
+      />
       <ErrorLine error={change.error} />
       <Picker open={adding} onOpenChange={setAdding} title="Add member" placeholder="Search users by username or email…" query={query} onQueryChange={setQuery} items={items} loading={candidates.isFetching} empty={q ? "No user matches." : "Type to search."} />
     </Card>

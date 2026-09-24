@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::models::{
     NewOrganization, NewOrganizationDomain, Organization, OrganizationDomain,
-    OrganizationDomainUpdate, OrganizationFilter, OrganizationUpdate, User,
+    OrganizationDomainUpdate, OrganizationFilter, OrganizationUpdate,
 };
 use crate::repos::users::escape_like;
 
@@ -13,10 +13,6 @@ const COLUMNS: &str = "id, tenant_id, slug, display_name, description, status, a
     created_at, updated_at";
 const DOMAIN_COLUMNS: &str = "id, tenant_id, org_id, domain, verification, verified_at, \
     auto_join, created_at, updated_at";
-const USER_COLUMNS: &str = "u.id, u.tenant_id, u.org_id, u.username, u.email, u.email_verified, u.phone, \
-    u.phone_verified, u.password_hash, u.password_algo, u.must_change_password, u.password_expires_at, \
-    u.password_changed_at, u.status, u.attributes, u.locale, u.external_id, u.last_login_at, u.failed_attempts, \
-    u.locked_until, u.deleted_at, u.terms_accepted_at, u.created_at, u.updated_at";
 
 pub async fn find_by_id<'e>(
     exec: impl PgExecutor<'e>,
@@ -218,26 +214,6 @@ pub async fn is_member<'e>(
     .bind(user_id)
     .fetch_one(exec)
     .await
-}
-
-/// Members of an organization (not soft-deleted), ordered by username.
-pub async fn members<'e>(
-    exec: impl PgExecutor<'e>,
-    tenant_id: Uuid,
-    org_id: Uuid,
-) -> Result<Vec<User>, sqlx::Error> {
-    let mut qb = QueryBuilder::new("SELECT ");
-    qb.push(USER_COLUMNS)
-        .push(
-            " FROM organization_members om \
-               JOIN users u ON u.tenant_id = om.tenant_id AND u.id = om.user_id \
-              WHERE om.tenant_id = ",
-        )
-        .push_bind(tenant_id)
-        .push(" AND om.org_id = ")
-        .push_bind(org_id)
-        .push(" AND u.deleted_at IS NULL ORDER BY u.username");
-    qb.build_query_as::<User>().fetch_all(exec).await
 }
 
 /// The organizations a user belongs to, ordered by name. The login flow asks

@@ -2,20 +2,21 @@
 //! roles a group carries. Adding a member or a role is checked against the
 //! caller's own admin permissions (no escalation through groups).
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 use uuid::Uuid;
 
 use crate::error::AppResult;
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
-use crate::models::{Group, GroupUpdate, NewGroup, Principal, Role, User};
+use crate::models::{Group, GroupUpdate, Member, NewGroup, Principal, Role};
 use crate::services::admin_access::{self, Grant};
 use crate::services::{groups, roles, users};
 use crate::state::AppState;
+use crate::util::cursor::Page;
 
 pub fn groups_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -64,7 +65,18 @@ struct GroupDetail {
     group: Group,
     /// Roles assigned to this group itself (ancestors' roles are inherited at runtime).
     roles: Vec<Role>,
-    member_count: usize,
+    member_count: i64,
+}
+
+/// A page of a group's or organization's members.
+#[derive(Deserialize, Default, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+#[serde(default)]
+pub(crate) struct MembersQuery {
+    /// Only members whose username or email starts with this.
+    pub(crate) search: Option<String>,
+    pub(crate) cursor: Option<String>,
+    pub(crate) limit: Option<u32>,
 }
 
 async fn roles_of_group(state: &AppState, tenant_id: Uuid, group_id: Uuid) -> AppResult<Vec<Role>> {
@@ -88,7 +100,7 @@ async fn get_one(
 ) -> AppResult<Json<GroupDetail>> {
     admin.require(tenant.id, P_READ)?;
     let g = groups::get(&state, tenant.id, group).await?;
-    let member_count = groups::members(&state, tenant.id, group).await?.len();
+    let member_count = groups::member_count(&state, tenant.id, group).await?;
     Ok(Json(GroupDetail {
         roles: roles_of_group(&state, tenant.id, group).await?,
         group: g,
@@ -123,15 +135,26 @@ async fn delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/groups/{group}/members", tag = "groups", params(("slug" = String, Path, description = "Tenant slug"), ("group" = Uuid, Path)), responses((status = 200, body = Vec<User>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/groups/{group}/members", tag = "groups", params(("slug" = String, Path, description = "Tenant slug"), ("group" = Uuid, Path), MembersQuery), responses((status = 200, body = Page<Member>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn members(
     State(state): State<AppState>,
     admin: AdminCtx,
     AdminTenantPath(tenant): AdminTenantPath,
     Path(GroupPath { group }): Path<GroupPath>,
-) -> AppResult<Json<Vec<User>>> {
+    Query(q): Query<MembersQuery>,
+) -> AppResult<Json<Page<Member>>> {
     admin.require(tenant.id, P_READ)?;
-    Ok(Json(groups::members(&state, tenant.id, group).await?))
+    Ok(Json(
+        groups::members(
+            &state,
+            tenant.id,
+            group,
+            q.search.as_deref(),
+            q.cursor.as_deref(),
+            q.limit,
+        )
+        .await?,
+    ))
 }
 
 #[derive(serde::Deserialize)]

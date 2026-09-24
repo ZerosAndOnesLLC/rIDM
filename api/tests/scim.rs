@@ -6,9 +6,9 @@ mod common;
 use common::TestApp;
 use common::admin::{admin_token, call};
 use reqwest::{Method, Response, StatusCode};
-use ridm_api::models::{NewScimToken, NewUser};
+use ridm_api::models::{NewGroup, NewScimToken, NewUser};
 use ridm_api::services::admin_access::{ADMIN_ROLE, USER_MANAGER_ROLE, VIEWER_ROLE};
-use ridm_api::services::{scim_tokens, users};
+use ridm_api::services::{groups, scim_tokens, users};
 use ridm_core::events::Actor;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -505,6 +505,31 @@ async fn listing_pages_through_users() {
         .json(Method::GET, "/Users?startIndex=7&count=3", None)
         .await;
     assert_eq!(page3["itemsPerPage"], 1);
+    assert_eq!(page3["totalResults"], 7);
+    // Each user on a page carries its groups (read for the page at once).
+    let last = page3["Resources"][0]["id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let g = groups::create(
+        &fx.app.state,
+        fx.app.tenant.id,
+        Actor::System,
+        NewGroup {
+            name: "paged".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    groups::add_member(&fx.app.state, fx.app.tenant.id, Actor::System, g.id, last)
+        .await
+        .unwrap();
+    let (_, page3) = fx
+        .json(Method::GET, "/Users?startIndex=7&count=3", None)
+        .await;
+    assert_eq!(page3["Resources"][0]["groups"][0]["display"], "paged");
     let (_, all) = fx.json(Method::GET, "/Users?count=1000", None).await;
     assert_eq!(
         all["itemsPerPage"], 7,
@@ -574,6 +599,38 @@ async fn group_lifecycle_with_members() {
         )
         .await;
     assert_eq!(list["totalResults"], 0);
+
+    // excludedAttributes=members leaves the members out of a get and a list,
+    // and a PATCH still sees them (a is kept until removed below).
+    let (_, lean) = fx
+        .json(
+            Method::GET,
+            &format!("/Groups/{gid}?excludedAttributes=members"),
+            None,
+        )
+        .await;
+    assert_eq!(lean["displayName"], "Engineering");
+    assert!(lean.get("members").is_none(), "{lean}");
+    let (_, list) = fx
+        .json(Method::GET, "/Groups?excludedAttributes=members", None)
+        .await;
+    assert_eq!(list["totalResults"], 1);
+    assert!(list["Resources"][0].get("members").is_none(), "{list}");
+    let (_, list) = fx.json(Method::GET, "/Groups", None).await;
+    assert_eq!(list["Resources"][0]["members"][0]["value"], a);
+    // A filter on members reads them, excluded from the answer or not.
+    let (_, list) = fx
+        .json(
+            Method::GET,
+            &format!(
+                "/Groups?excludedAttributes=members&filter={}",
+                urlencoding(&format!("members.value eq \"{a}\""))
+            ),
+            None,
+        )
+        .await;
+    assert_eq!(list["totalResults"], 1, "{list}");
+    assert!(list["Resources"][0].get("members").is_none(), "{list}");
 
     // PATCH members: add b, remove a; rename.
     let (status, patched) = fx

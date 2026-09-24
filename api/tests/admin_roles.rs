@@ -309,11 +309,12 @@ async fn admin_runs_the_role_lifecycle_with_composites_and_grants() {
     let (_, holders, _) =
         get_json(&app, &format!("{base}/{editor_id}/holders"), Some(&admin)).await;
     assert!(
-        holders
+        holders["items"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|h| h["user_id"] == holder.to_string())
+            .any(|h| h["user_id"] == holder.to_string() && h["username"].is_string()),
+        "{holders}"
     );
     let (status, _, _) = call(
         &app,

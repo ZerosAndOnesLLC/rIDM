@@ -6,10 +6,11 @@ use uuid::Uuid;
 
 use crate::db;
 use crate::error::{AppError, AppResult};
-use crate::models::{Group, GroupUpdate, NewGroup, User};
+use crate::models::{Group, GroupUpdate, Member, NewGroup};
 use crate::repos;
 use crate::services::roles::bump_roles_version;
 use crate::state::AppState;
+use crate::util::cursor::{Cursor, Page, page_size};
 
 /// Group memberships are versioned by the roles version; the TTL only bounds
 /// a missed bump.
@@ -205,17 +206,76 @@ pub async fn remove_member(
     Ok(())
 }
 
-pub async fn members(state: &AppState, tenant_id: Uuid, group_id: Uuid) -> AppResult<Vec<User>> {
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+/// One page of the direct members (not soft-deleted), in the order they
+/// joined; `search` keeps those whose username or email starts with it.
+pub async fn members(
+    state: &AppState,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    search: Option<&str>,
+    cursor: Option<&str>,
+    limit: Option<u32>,
+) -> AppResult<Page<Member>> {
+    let after = cursor.map(Cursor::decode).transpose()?;
+    let limit = page_size(limit);
+    let of = repos::memberships::Of::Group(group_id);
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     if repos::groups::find_by_id(&mut *tx, tenant_id, group_id)
         .await?
         .is_none()
     {
         return Err(AppError::NotFound("group"));
     }
-    let rows = repos::groups::members(&mut *tx, tenant_id, group_id).await?;
+    let rows = repos::memberships::page(&mut *tx, tenant_id, of, search, after, limit).await?;
+    tx.commit().await?;
+    Ok(Page::from_rows(rows, limit, |m| Cursor {
+        created_at: m.joined_at,
+        id: m.user.id,
+    }))
+}
+
+/// Every direct member's id and username, ordered by username (a SCIM
+/// group document's `members`).
+pub async fn member_refs(
+    state: &AppState,
+    tenant_id: Uuid,
+    group_id: Uuid,
+) -> AppResult<Vec<(Uuid, String)>> {
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let rows =
+        repos::memberships::refs(&mut *tx, tenant_id, repos::memberships::Of::Group(group_id))
+            .await?;
     tx.commit().await?;
     Ok(rows)
+}
+
+/// The groups each of `user_ids` belongs to directly, in one read (a page of
+/// SCIM user documents).
+pub async fn direct_groups_of_users(
+    state: &AppState,
+    tenant_id: Uuid,
+    user_ids: &[Uuid],
+) -> AppResult<std::collections::HashMap<Uuid, Vec<Group>>> {
+    let mut out: std::collections::HashMap<Uuid, Vec<Group>> = Default::default();
+    if user_ids.is_empty() {
+        return Ok(out);
+    }
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let rows = repos::memberships::direct_groups_of_users(&mut *tx, tenant_id, user_ids).await?;
+    tx.commit().await?;
+    for (user_id, group) in rows {
+        out.entry(user_id).or_default().push(group);
+    }
+    Ok(out)
+}
+
+/// How many direct members (not soft-deleted) there are.
+pub async fn member_count(state: &AppState, tenant_id: Uuid, group_id: Uuid) -> AppResult<i64> {
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
+    let n = repos::memberships::count(&mut *tx, tenant_id, repos::memberships::Of::Group(group_id))
+        .await?;
+    tx.commit().await?;
+    Ok(n)
 }
 
 /// A user's groups, cached under the roles version (membership, group and

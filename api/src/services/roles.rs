@@ -15,9 +15,10 @@ use uuid::Uuid;
 use crate::cache::keys;
 use crate::db;
 use crate::error::{AppError, AppResult};
-use crate::models::{NewRole, Principal, Role, RoleAssignment, RoleUpdate};
+use crate::models::{NewRole, Principal, Role, RoleAssignment, RoleHolder, RoleUpdate};
 use crate::repos;
 use crate::state::AppState;
+use crate::util::cursor::{Cursor, Page, page_size};
 
 const EFFECTIVE_ROLES_TTL: Duration = Duration::from_secs(60);
 const ROLES_VERSION_TTL: u64 = 24 * 60 * 60;
@@ -230,15 +231,35 @@ pub async fn unassign(
 }
 
 /// Users and groups holding the role directly.
+/// One page of the principals holding a role directly, in grant order.
 pub async fn holders_of(
     state: &AppState,
     tenant_id: Uuid,
     role_id: Uuid,
-) -> AppResult<Vec<RoleAssignment>> {
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    let rows = repos::roles::assignments_of_role(&mut *tx, tenant_id, role_id).await?;
+    cursor: Option<&str>,
+    limit: Option<u32>,
+) -> AppResult<Page<RoleHolder>> {
+    let after = cursor.map(Cursor::decode).transpose()?;
+    let limit = page_size(limit);
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
+    let rows = repos::roles::holders(
+        &mut *tx,
+        tenant_id,
+        repos::roles::HoldersOf::Role(role_id),
+        after,
+        limit,
+    )
+    .await?;
     tx.commit().await?;
-    Ok(rows)
+    Ok(holders_page(rows, limit))
+}
+
+/// A page of holders from `limit + 1` rows.
+pub fn holders_page(rows: Vec<RoleHolder>, limit: i64) -> Page<RoleHolder> {
+    Page::from_rows(rows, limit, |h| Cursor {
+        created_at: h.assignment.created_at,
+        id: h.assignment.id,
+    })
 }
 
 pub async fn assignments_of(

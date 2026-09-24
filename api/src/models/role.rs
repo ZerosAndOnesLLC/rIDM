@@ -58,3 +58,13 @@ pub struct RoleAssignment {
     pub org_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
 }
+
+/// A role assignment as the holder listings show it: with the user's
+/// username when the principal is a user.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct RoleHolder {
+    #[serde(flatten)]
+    #[sqlx(flatten)]
+    pub assignment: RoleAssignment,
+    pub username: Option<String>,
+}

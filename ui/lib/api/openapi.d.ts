@@ -3486,6 +3486,16 @@ export interface components {
             /** Format: uuid */
             user_id: string;
         };
+        /** @description A consent with what listings show of its client. */
+        ConsentWithClient: components["schemas"]["Consent"] & {
+            /** @description The client's public `client_id`. */
+            client: string;
+            /** @description The client's display name. */
+            client_name: string;
+            logo_uri?: string | null;
+            policy_uri?: string | null;
+            tos_uri?: string | null;
+        };
         /** @description An application the user granted scopes to. */
         ConsentedApp: {
             /** @description The client's public `client_id`. */
@@ -3760,6 +3770,7 @@ export interface components {
             updated_at: string;
         };
         GroupDetail: components["schemas"]["Group"] & {
+            /** Format: int64 */
             member_count: number;
             /** @description Roles assigned to this group itself (ancestors' roles are inherited at runtime). */
             roles: components["schemas"]["Role"][];
@@ -4748,6 +4759,14 @@ export interface components {
             id: string;
             slug: string;
         };
+        /**
+         * @description A direct member of a group or organization: the user, and when they
+         *     joined (the order member lists are paged in).
+         */
+        Member: components["schemas"]["User"] & {
+            /** Format: date-time */
+            joined_at: string;
+        };
         /** @enum {string} */
         MessageChannel: "email" | "sms";
         /** @enum {string} */
@@ -5273,6 +5292,7 @@ export interface components {
         };
         OrganizationDetail: components["schemas"]["Organization"] & {
             domains: components["schemas"]["OrganizationDomain"][];
+            /** Format: int64 */
             member_count: number;
         };
         /**
@@ -5388,6 +5408,13 @@ export interface components {
             }[];
             next_cursor?: string | null;
         };
+        Page_Member: {
+            items: (components["schemas"]["User"] & {
+                /** Format: date-time */
+                joined_at: string;
+            })[];
+            next_cursor?: string | null;
+        };
         Page_Organization: {
             items: {
                 attributes: unknown;
@@ -5404,6 +5431,12 @@ export interface components {
                 /** Format: date-time */
                 updated_at: string;
             }[];
+            next_cursor?: string | null;
+        };
+        Page_RoleHolder: {
+            items: (components["schemas"]["RoleAssignment"] & {
+                username?: string | null;
+            })[];
             next_cursor?: string | null;
         };
         Page_Tenant: {
@@ -6065,6 +6098,13 @@ export interface components {
              * @default []
              */
             permissions: string[];
+        };
+        /**
+         * @description A role assignment as the holder listings show it: with the user's
+         *     username when the principal is a user.
+         */
+        RoleHolder: components["schemas"]["RoleAssignment"] & {
+            username?: string | null;
         };
         RoleUpdate: {
             /** @default null */
@@ -9811,7 +9851,12 @@ export interface operations {
     };
     groups_members: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Only members whose username or email starts with this. */
+                search?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 /** @description Tenant slug */
@@ -9827,7 +9872,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["User"][];
+                    "application/json": components["schemas"]["Page_Member"];
                 };
             };
             /** @description Bad request */
@@ -14046,7 +14091,12 @@ export interface operations {
     };
     organizations_members: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Only members whose username or email starts with this. */
+                search?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 /** @description Tenant slug */
@@ -14062,7 +14112,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["User"][];
+                    "application/json": components["schemas"]["Page_Member"];
                 };
             };
             /** @description Bad request */
@@ -14343,7 +14393,10 @@ export interface operations {
     };
     organizations_role_grants: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 /** @description Tenant slug */
@@ -14359,7 +14412,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RoleAssignment"][];
+                    "application/json": components["schemas"]["Page_RoleHolder"];
                 };
             };
             /** @description Bad request */
@@ -15476,7 +15529,10 @@ export interface operations {
     };
     roles_holders: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 /** @description Tenant slug */
@@ -15492,7 +15548,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RoleAssignment"][];
+                    "application/json": components["schemas"]["Page_RoleHolder"];
                 };
             };
             /** @description Bad request */
@@ -17283,7 +17339,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Consent"][];
+                    "application/json": components["schemas"]["ConsentWithClient"][];
                 };
             };
             /** @description Bad request */

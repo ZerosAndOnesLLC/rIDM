@@ -16,13 +16,13 @@ use crate::cache::keys;
 use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    NewOrganization, NewOrganizationDomain, Organization, OrganizationDomain,
+    Member, NewOrganization, NewOrganizationDomain, Organization, OrganizationDomain,
     OrganizationDomainUpdate, OrganizationFilter, OrganizationUpdate, Principal, User,
 };
 use crate::repos;
 use crate::services::roles::bump_roles_version;
 use crate::state::AppState;
-use crate::util::cursor::{Cursor, Page};
+use crate::util::cursor::{Cursor, Page, page_size};
 
 /// Memberships are versioned by the roles version (org-scoped grants hang off
 /// the same graph); the TTL only bounds a missed bump.
@@ -263,17 +263,45 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
 
 // Membership ---------------------------------------------------------------
 
-pub async fn members(state: &AppState, tenant_id: Uuid, org_id: Uuid) -> AppResult<Vec<User>> {
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+/// One page of the direct members (not soft-deleted), in the order they
+/// joined; `search` keeps those whose username or email starts with it.
+pub async fn members(
+    state: &AppState,
+    tenant_id: Uuid,
+    org_id: Uuid,
+    search: Option<&str>,
+    cursor: Option<&str>,
+    limit: Option<u32>,
+) -> AppResult<Page<Member>> {
+    let after = cursor.map(Cursor::decode).transpose()?;
+    let limit = page_size(limit);
+    let of = repos::memberships::Of::Organization(org_id);
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     if repos::organizations::find_by_id(&mut *tx, tenant_id, org_id)
         .await?
         .is_none()
     {
         return Err(AppError::NotFound("organization"));
     }
-    let rows = repos::organizations::members(&mut *tx, tenant_id, org_id).await?;
+    let rows = repos::memberships::page(&mut *tx, tenant_id, of, search, after, limit).await?;
     tx.commit().await?;
-    Ok(rows)
+    Ok(Page::from_rows(rows, limit, |m| Cursor {
+        created_at: m.joined_at,
+        id: m.user.id,
+    }))
+}
+
+/// How many direct members (not soft-deleted) there are.
+pub async fn member_count(state: &AppState, tenant_id: Uuid, org_id: Uuid) -> AppResult<i64> {
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
+    let n = repos::memberships::count(
+        &mut *tx,
+        tenant_id,
+        repos::memberships::Of::Organization(org_id),
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(n)
 }
 
 pub async fn add_member(
@@ -469,21 +497,33 @@ pub async fn unassign_role(
 }
 
 /// Role grants scoped to this organization.
+/// One page of the role grants scoped to an organization, in grant order.
 pub async fn role_grants(
     state: &AppState,
     tenant_id: Uuid,
     org_id: Uuid,
-) -> AppResult<Vec<crate::models::RoleAssignment>> {
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    cursor: Option<&str>,
+    limit: Option<u32>,
+) -> AppResult<Page<crate::models::RoleHolder>> {
+    let after = cursor.map(Cursor::decode).transpose()?;
+    let limit = page_size(limit);
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     if repos::organizations::find_by_id(&mut *tx, tenant_id, org_id)
         .await?
         .is_none()
     {
         return Err(AppError::NotFound("organization"));
     }
-    let rows = repos::roles::assignments_of_org(&mut *tx, tenant_id, org_id).await?;
+    let rows = repos::roles::holders(
+        &mut *tx,
+        tenant_id,
+        repos::roles::HoldersOf::Organization(org_id),
+        after,
+        limit,
+    )
+    .await?;
     tx.commit().await?;
-    Ok(rows)
+    Ok(crate::services::roles::holders_page(rows, limit))
 }
 
 // Domains ------------------------------------------------------------------

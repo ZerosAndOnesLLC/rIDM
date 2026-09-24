@@ -3,14 +3,10 @@
 use sqlx::{PgExecutor, QueryBuilder};
 use uuid::Uuid;
 
-use crate::models::{Group, GroupUpdate, NewGroup, User};
+use crate::models::{Group, GroupUpdate, NewGroup};
 
 const COLUMNS: &str =
     "id, tenant_id, parent_id, name, description, attributes, created_at, updated_at";
-const USER_COLUMNS: &str = "u.id, u.tenant_id, u.org_id, u.username, u.email, u.email_verified, u.phone, \
-    u.phone_verified, u.password_hash, u.password_algo, u.must_change_password, u.password_expires_at, \
-    u.password_changed_at, u.status, u.attributes, u.locale, u.external_id, u.last_login_at, u.failed_attempts, \
-    u.locked_until, u.deleted_at, u.terms_accepted_at, u.created_at, u.updated_at";
 
 pub async fn find_by_id<'e>(
     exec: impl PgExecutor<'e>,
@@ -158,23 +154,6 @@ pub async fn remove_member<'e>(
     .execute(exec)
     .await?;
     Ok(res.rows_affected() > 0)
-}
-
-/// Direct members of a group (not soft-deleted), ordered by username.
-pub async fn members<'e>(
-    exec: impl PgExecutor<'e>,
-    tenant_id: Uuid,
-    group_id: Uuid,
-) -> Result<Vec<User>, sqlx::Error> {
-    let mut qb = QueryBuilder::new("SELECT ");
-    qb.push(USER_COLUMNS)
-        .push(" FROM group_members gm JOIN users u ON u.tenant_id = gm.tenant_id AND u.id = gm.user_id \
-                WHERE gm.tenant_id = ")
-        .push_bind(tenant_id)
-        .push(" AND gm.group_id = ")
-        .push_bind(group_id)
-        .push(" AND u.deleted_at IS NULL ORDER BY u.username");
-    qb.build_query_as::<User>().fetch_all(exec).await
 }
 
 /// Groups a user belongs to directly.

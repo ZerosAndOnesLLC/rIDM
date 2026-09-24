@@ -48,6 +48,16 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
 }
 
+/// A direct member of a group or organization: the user, and when they
+/// joined (the order member lists are paged in).
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct Member {
+    #[serde(flatten)]
+    #[sqlx(flatten)]
+    pub user: User,
+    pub joined_at: DateTime<Utc>,
+}
+
 impl User {
     pub fn has_password(&self) -> bool {
         self.password_hash.is_some()

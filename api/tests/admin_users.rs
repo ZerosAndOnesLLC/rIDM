@@ -501,6 +501,8 @@ async fn sessions_devices_credentials_and_consents_are_listed_and_revoked() {
     assert_eq!(status, 200, "{list}");
     assert_eq!(list.as_array().unwrap().len(), 1);
     assert_eq!(list[0]["client_id"], client.id.to_string());
+    assert_eq!(list[0]["client_name"], client.name);
+    assert_eq!(list[0]["client"], client.client_id);
     let (status, _, _) = call(
         &app,
         Method::DELETE,

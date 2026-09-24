@@ -15,6 +15,7 @@ pub mod invitations;
 pub mod ip_rules;
 pub mod ldap;
 pub mod login_attempts;
+pub mod memberships;
 pub mod messages;
 pub mod mtls_trust_anchors;
 pub mod organizations;

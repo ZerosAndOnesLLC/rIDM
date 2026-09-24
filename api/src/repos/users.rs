@@ -360,6 +360,25 @@ pub async fn unlock<'e>(
     Ok(res.rows_affected() > 0)
 }
 
+/// Live users `offset` rows into creation order, at most `limit` of them:
+/// SCIM's `startIndex` paging, whose offset is capped (`scim::SCAN_LIMIT`).
+pub async fn window<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    offset: i64,
+    limit: i64,
+) -> Result<Vec<User>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("SELECT ");
+    qb.push(COLUMNS)
+        .push(" FROM users WHERE tenant_id = ")
+        .push_bind(tenant_id)
+        .push(" AND deleted_at IS NULL ORDER BY created_at, id OFFSET ")
+        .push_bind(offset)
+        .push(" LIMIT ")
+        .push_bind(limit);
+    qb.build_query_as::<User>().fetch_all(exec).await
+}
+
 /// Keyset-paginated list; fetches `limit + 1` rows.
 pub async fn list<'e>(
     exec: impl PgExecutor<'e>,

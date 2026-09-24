@@ -36,36 +36,26 @@ pub struct ConsentedApp {
     pub granted_at: DateTime<Utc>,
 }
 
-/// Live consents with the client behind each; a consent whose client is
-/// gone is left out.
+/// Live consents with the client behind each (read together), newest first.
 pub async fn consented_apps(
     state: &AppState,
     tenant_id: Uuid,
     user_id: Uuid,
 ) -> AppResult<Vec<ConsentedApp>> {
-    let mut out = vec![];
-    for c in consents::list_for_user(state, tenant_id, user_id).await? {
-        if c.revoked_at.is_some() {
-            continue;
-        }
-        let client = match clients::get(state, tenant_id, c.client_id).await {
-            Ok(client) => client,
-            Err(AppError::NotFound(_)) => continue,
-            Err(e) => return Err(e),
-        };
-        out.push(ConsentedApp {
-            client_id: client.id,
-            client: client.client_id,
-            name: client.name,
-            logo_uri: client.logo_uri,
-            tos_uri: client.tos_uri,
-            policy_uri: client.policy_uri,
-            scopes: c.scopes,
-            granted_at: c.granted_at,
-        });
-    }
-    out.sort_by_key(|a| std::cmp::Reverse(a.granted_at));
-    Ok(out)
+    Ok(consents::list_for_user(state, tenant_id, user_id)
+        .await?
+        .into_iter()
+        .map(|c| ConsentedApp {
+            client_id: c.consent.client_id,
+            client: c.client,
+            name: c.client_name,
+            logo_uri: c.logo_uri,
+            tos_uri: c.tos_uri,
+            policy_uri: c.policy_uri,
+            scopes: c.consent.scopes,
+            granted_at: c.consent.granted_at,
+        })
+        .collect())
 }
 
 /// Withdraw a client's consent and the refresh tokens it holds for the user.

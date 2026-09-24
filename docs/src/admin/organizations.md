@@ -40,11 +40,11 @@ GET    /admin/tenants/{slug}/organizations/{org}     # with member_count and dom
 PATCH  /admin/tenants/{slug}/organizations/{org}
 DELETE /admin/tenants/{slug}/organizations/{org}
 
-GET    /admin/tenants/{slug}/organizations/{org}/members
+GET    /admin/tenants/{slug}/organizations/{org}/members     # ?search= &cursor= &limit=
 PUT    /admin/tenants/{slug}/organizations/{org}/members/{user_id}
 DELETE /admin/tenants/{slug}/organizations/{org}/members/{user_id}
 
-GET    /admin/tenants/{slug}/organizations/{org}/roles
+GET    /admin/tenants/{slug}/organizations/{org}/roles       # ?cursor= &limit=
 GET    /admin/tenants/{slug}/organizations/{org}/grantable-roles   # with `grantable` per role
 PUT    /admin/tenants/{slug}/organizations/{org}/members/{user_id}/roles/{role_id}
 DELETE /admin/tenants/{slug}/organizations/{org}/members/{user_id}/roles/{role_id}
@@ -62,7 +62,10 @@ POST   /admin/tenants/{slug}/organizations/{org}/domains/{id}/verify
 DELETE /admin/tenants/{slug}/organizations/{org}/domains/{id}
 ```
 
-The [API reference](../reference/admin-api/index.html) has the bodies.
+The [API reference](../reference/admin-api/index.html) has the bodies. Member lists
+(an organization's and a group's) come a page at a time in the order people joined,
+each member with `joined_at`; `search` keeps those whose username or email starts
+with it. Role grants come a page at a time too, a user's with their `username`.
 
 ```bash
 ORG=$(curl -fsS -X POST "$API/admin/tenants/acme/organizations" \

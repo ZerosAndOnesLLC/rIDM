@@ -285,6 +285,14 @@ release renames that heading to the version and date.
   `AUDIT_SINK_SECRET` is set. `syslog+tls://` (RFC 5425) and
   `AUDIT_SINK_CA_FILE` are new. `ridm_audit_sink_dropped_total` is gone;
   watch `ridm_audit_sink_lag_rows` instead.
+- Admin API lists that returned every row now page like the others
+  (`{items, next_cursor}`, `?cursor= &limit=`): a group's and an
+  organization's members (in the order they joined, each with `joined_at`,
+  and `?search=` on username or email), a role's holders and an
+  organization's role grants (each with the user's `username`). A user's
+  consents carry the client's name and public `client_id`. Group and
+  organization details count members instead of loading them. SCIM
+  `/Groups` honours `excludedAttributes=members`.
 
 ### Fixed
 
