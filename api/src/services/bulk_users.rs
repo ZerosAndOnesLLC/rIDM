@@ -1,10 +1,11 @@
 //! Bulk user import (JSON or CSV, with legacy password hashes) and export.
-//! Import works row by row: a bad row is reported and skipped, good rows
-//! land. Export streams pages so a tenant of any size can be dumped.
+//! Import checks every row first, then imports the good ones a few at a
+//! time: a bad row is reported and skipped, good rows land. Export streams
+//! pages so a tenant of any size can be dumped.
 
 use std::collections::HashMap;
 
-use futures::stream::{self, Stream};
+use futures::stream::{self, Stream, StreamExt as _};
 use ridm_core::events::Actor;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -414,6 +415,90 @@ fn check_grants(
     can_grant(&perms)
 }
 
+/// Rows imported at once: each holds one pooled connection at a time.
+const IMPORT_CONCURRENCY: usize = 4;
+
+/// What a failed row reports.
+fn row_error(e: AppError) -> String {
+    match e {
+        AppError::BadRequest(d) | AppError::Conflict(d) | AppError::Forbidden(d) => d,
+        AppError::Validation(fields) => fields
+            .iter()
+            .map(|f| format!("{}: {}", f.field, f.message))
+            .collect::<Vec<_>>()
+            .join("; "),
+        other => other.to_string(),
+    }
+}
+
+/// The row's username and email, normalized as they are stored.
+fn identifiers_of(row: &ImportRow) -> impl Iterator<Item = String> + '_ {
+    users::normalize_username(&row.username)
+        .ok()
+        .into_iter()
+        .chain(
+            row.email
+                .as_deref()
+                .and_then(|e| users::normalize_email(e).ok()),
+        )
+}
+
+/// Claim the row's username and email for row `i`, refusing one an earlier
+/// row of the import already claimed.
+fn claim(claimed: &mut HashMap<String, usize>, i: usize, row: &ImportRow) -> AppResult<()> {
+    let ids: Vec<String> = identifiers_of(row).collect();
+    if let Some(earlier) = ids.iter().find_map(|id| claimed.get(id)) {
+        return Err(AppError::Conflict(format!(
+            "username or email already used by row {}",
+            earlier + 1
+        )));
+    }
+    for id in ids {
+        claimed.insert(id, i);
+    }
+    Ok(())
+}
+
+/// A row that passed the checks: imported, or on a dry run looked up.
+async fn import_checked(
+    state: &AppState,
+    tenant: &Tenant,
+    actor: &Actor,
+    lookups: &Lookups,
+    taken: &std::collections::HashSet<String>,
+    dry_run: bool,
+    checked: &Result<ImportRow, String>,
+) -> Result<(), String> {
+    let row = checked.as_ref().map_err(Clone::clone)?;
+    if dry_run {
+        return if identifiers_of(row).any(|id| taken.contains(&id)) {
+            Err("username or email already in use".into())
+        } else {
+            Ok(())
+        };
+    }
+    import_one(state, tenant, actor, lookups, row.clone())
+        .await
+        .map(|_| ())
+        .map_err(row_error)
+}
+
+/// Which of `identifiers` a live user already has as username or email, in
+/// one read.
+async fn taken_identifiers(
+    state: &AppState,
+    tenant_id: Uuid,
+    identifiers: &[String],
+) -> AppResult<std::collections::HashSet<String>> {
+    if identifiers.is_empty() {
+        return Ok(Default::default());
+    }
+    let mut tx = crate::db::read_tx(&state.db, tenant_id).await?;
+    let found = crate::repos::users::taken_identifiers(&mut *tx, tenant_id, identifiers).await?;
+    tx.commit().await?;
+    Ok(found.into_iter().collect())
+}
+
 /// Import rows one at a time; failures are reported per row and never stop
 /// the rest. With `dry_run` nothing is written and only validation runs
 /// (uniqueness is then checked against existing users, not within the batch).
@@ -435,34 +520,45 @@ pub async fn import(
         total: rows.len(),
         ..Default::default()
     };
-    for (i, row) in rows.into_iter().enumerate() {
-        let username = Some(row.username.clone()).filter(|u| !u.is_empty());
-        let checked =
-            validate(&row, tenant, &lookups).and_then(|()| check_grants(&row, &granted, can_grant));
-        let outcome = match checked {
-            Err(e) => Err(e),
-            Ok(()) if dry_run => {
-                let taken = users::find_by_identifier(state, tenant.id, &row.username)
-                    .await?
-                    .is_some()
-                    || match &row.email {
-                        Some(e) => users::find_by_identifier(state, tenant.id, e)
-                            .await?
-                            .is_some(),
-                        None => false,
-                    };
-                if taken {
-                    Err(AppError::Conflict(
-                        "username or email already in use".into(),
-                    ))
-                } else {
-                    Ok(())
-                }
-            }
-            Ok(()) => import_one(state, tenant, &actor, &lookups, row)
-                .await
-                .map(|_| ()),
-        };
+    // Checks that need no database first, in row order: a username or email
+    // a valid earlier row already claims fails here, so which of two
+    // duplicates lands does not depend on which insert wins.
+    let mut claimed: HashMap<String, usize> = HashMap::new();
+    let checked: Vec<(Option<String>, Result<ImportRow, String>)> = rows
+        .into_iter()
+        .enumerate()
+        .map(|(i, row)| {
+            let username = Some(row.username.clone()).filter(|u| !u.is_empty());
+            let checked = validate(&row, tenant, &lookups)
+                .and_then(|()| check_grants(&row, &granted, can_grant))
+                .and_then(|()| claim(&mut claimed, i, &row))
+                .map(|()| row)
+                .map_err(row_error);
+            (username, checked)
+        })
+        .collect();
+    let taken = if dry_run {
+        let identifiers: Vec<String> = claimed.into_keys().collect();
+        taken_identifiers(state, tenant.id, &identifiers).await?
+    } else {
+        Default::default()
+    };
+    // Rows are independent: several at a time (each is a few short
+    // transactions and, for a password, a hash on the blocking pool), their
+    // outcomes kept in row order.
+    // (Collected first: a closure inside the stream trips the Send check of
+    // the handler's future.)
+    let pending: Vec<_> = checked
+        .iter()
+        .map(|(_, checked)| {
+            import_checked(state, tenant, &actor, &lookups, &taken, dry_run, checked)
+        })
+        .collect();
+    let outcomes: Vec<Result<(), String>> = stream::iter(pending)
+        .buffered(IMPORT_CONCURRENCY)
+        .collect()
+        .await;
+    for (i, ((username, _), outcome)) in checked.into_iter().zip(outcomes).enumerate() {
         match outcome {
             Ok(()) => report.created += 1,
             Err(e) => {
@@ -470,17 +566,7 @@ pub async fn import(
                 report.errors.push(ImportError {
                     row: i + 1,
                     username,
-                    error: match e {
-                        AppError::BadRequest(d)
-                        | AppError::Conflict(d)
-                        | AppError::Forbidden(d) => d,
-                        AppError::Validation(fields) => fields
-                            .iter()
-                            .map(|f| format!("{}: {}", f.field, f.message))
-                            .collect::<Vec<_>>()
-                            .join("; "),
-                        other => other.to_string(),
-                    },
+                    error: e,
                 });
             }
         }

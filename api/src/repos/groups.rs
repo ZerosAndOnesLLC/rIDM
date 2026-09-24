@@ -156,6 +156,43 @@ pub async fn remove_member<'e>(
     Ok(res.rows_affected() > 0)
 }
 
+/// Add these users to a group; the ones that were not members yet.
+pub async fn add_members<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    user_ids: &[Uuid],
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        "INSERT INTO group_members (tenant_id, group_id, user_id) \
+         SELECT $1, $2, u FROM unnest($3::uuid[]) AS u \
+         ON CONFLICT DO NOTHING RETURNING user_id",
+    )
+    .bind(tenant_id)
+    .bind(group_id)
+    .bind(user_ids)
+    .fetch_all(exec)
+    .await
+}
+
+/// Remove these users from a group; the ones that were members.
+pub async fn remove_members<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    user_ids: &[Uuid],
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        "DELETE FROM group_members WHERE tenant_id = $1 AND group_id = $2 AND user_id = ANY($3) \
+         RETURNING user_id",
+    )
+    .bind(tenant_id)
+    .bind(group_id)
+    .bind(user_ids)
+    .fetch_all(exec)
+    .await
+}
+
 /// Groups a user belongs to directly.
 pub async fn direct_groups_of_user<'e>(
     exec: impl PgExecutor<'e>,

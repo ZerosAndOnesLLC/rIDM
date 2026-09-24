@@ -78,6 +78,41 @@ pub async fn find_by_identifier<'e>(
     qb.build_query_as::<User>().fetch_optional(exec).await
 }
 
+/// Which of `ids` are live, active users.
+pub async fn active_among<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    ids: &[Uuid],
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT id FROM users WHERE tenant_id = $1 AND id = ANY($2) \
+         AND status = 'active' AND deleted_at IS NULL",
+    )
+    .bind(tenant_id)
+    .bind(ids)
+    .fetch_all(exec)
+    .await
+}
+
+/// Which of `identifiers` live users have as a username or an email.
+pub async fn taken_identifiers<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    identifiers: &[String],
+) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT username FROM users \
+          WHERE tenant_id = $1 AND deleted_at IS NULL AND username = ANY($2) \
+         UNION \
+         SELECT email FROM users \
+          WHERE tenant_id = $1 AND deleted_at IS NULL AND email = ANY($2)",
+    )
+    .bind(tenant_id)
+    .bind(identifiers)
+    .fetch_all(exec)
+    .await
+}
+
 pub async fn insert<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,

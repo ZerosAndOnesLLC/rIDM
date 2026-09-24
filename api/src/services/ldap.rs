@@ -51,6 +51,8 @@ use crate::state::AppState;
 
 /// Entries per page of a sync search.
 const PAGE_SIZE: i32 = 500;
+/// Members added or removed per statement by a group sync.
+const MEMBERSHIP_CHUNK: usize = 1000;
 /// How long a sync may hold its per-directory lock.
 const SYNC_LOCK: Duration = Duration::from_secs(3600);
 /// Directory groups a single user's sign-in looks at.
@@ -1077,22 +1079,21 @@ async fn sync_groups(
                 .await?
                 .into_iter()
                 .collect();
-        for u in desired.difference(&current) {
-            if repos::groups::add_member(&mut *tx, tenant_id, group_id, *u).await? {
+        // One statement each way per group (in chunks), not one per member.
+        let to_add: Vec<Uuid> = desired.difference(&current).copied().collect();
+        let to_remove: Vec<Uuid> = current.difference(&desired).copied().collect();
+        for chunk in to_add.chunks(MEMBERSHIP_CHUNK) {
+            for user_id in repos::groups::add_members(&mut *tx, tenant_id, group_id, chunk).await? {
                 stats.memberships_added += 1;
-                changes.push(EventKind::GroupMemberAdded {
-                    group_id,
-                    user_id: *u,
-                });
+                changes.push(EventKind::GroupMemberAdded { group_id, user_id });
             }
         }
-        for u in current.difference(&desired) {
-            if repos::groups::remove_member(&mut *tx, tenant_id, group_id, *u).await? {
+        for chunk in to_remove.chunks(MEMBERSHIP_CHUNK) {
+            for user_id in
+                repos::groups::remove_members(&mut *tx, tenant_id, group_id, chunk).await?
+            {
                 stats.memberships_removed += 1;
-                changes.push(EventKind::GroupMemberRemoved {
-                    group_id,
-                    user_id: *u,
-                });
+                changes.push(EventKind::GroupMemberRemoved { group_id, user_id });
             }
         }
         tx.commit().await?;
@@ -1375,19 +1376,21 @@ async fn disable_missing(
             break;
         };
         after = last.1.clone();
-        for (user_id, subject, _) in page {
-            if seen.contains(&subject) {
-                continue;
-            }
-            let user = match users::get(state, tenant_id, user_id).await {
-                Ok(u) => u,
-                Err(AppError::NotFound(_)) => continue,
-                Err(e) => return Err(e),
-            };
-            if user.status == UserStatus::Active {
-                set_status(state, tenant_id, dir, user_id, false).await?;
-                stats.disabled += 1;
-            }
+        let missing: Vec<Uuid> = page
+            .into_iter()
+            .filter(|(_, subject, _)| !seen.contains(subject))
+            .map(|(user_id, _, _)| user_id)
+            .collect();
+        if missing.is_empty() {
+            continue;
+        }
+        // Which of them are still active, in one read.
+        let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+        let active = repos::users::active_among(&mut *tx, tenant_id, &missing).await?;
+        tx.commit().await?;
+        for user_id in active {
+            set_status(state, tenant_id, dir, user_id, false).await?;
+            stats.disabled += 1;
         }
     }
     Ok(())
