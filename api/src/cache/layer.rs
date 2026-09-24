@@ -71,7 +71,16 @@ pub struct InvalidationMessage {
 }
 
 /// One lock per key being loaded on this node.
-type Loading = Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>;
+/// A key's single-flight gate. It holds the last load's failure while
+/// callers still wait on it, so they get that failure instead of running the
+/// failing load again one after another.
+type Gate = Arc<tokio::sync::Mutex<Option<FailedLoad>>>;
+type Loading = Arc<Mutex<HashMap<String, Gate>>>;
+
+struct FailedLoad {
+    at: std::time::Instant,
+    error: AppError,
+}
 
 #[derive(Clone)]
 pub struct CacheLayer {
@@ -165,10 +174,22 @@ impl CacheLayer {
 
         // One load per key per node: concurrent misses (a hot tenant or
         // client just invalidated) wait for it and read what it stored.
+        let arrived = std::time::Instant::now();
         let gate = self.gate(key);
-        let loading = gate.lock().await;
-        let result = self.load_after_wait(key, ttl, loader, ticket).await;
-        drop(loading);
+        let mut last = gate.lock().await;
+        let result = match last.as_ref() {
+            // The load this caller waited for failed: share its failure.
+            Some(failed) if failed.at >= arrived => Err(failed.error.shared()),
+            _ => {
+                let result = self.load_after_wait(key, ttl, loader, ticket).await;
+                *last = result.as_ref().err().map(|e| FailedLoad {
+                    at: std::time::Instant::now(),
+                    error: e.shared(),
+                });
+                result
+            }
+        };
+        drop(last);
         self.release_gate(key, &gate);
         result
     }
@@ -223,7 +244,7 @@ impl CacheLayer {
         }
     }
 
-    fn gate(&self, key: &str) -> Arc<tokio::sync::Mutex<()>> {
+    fn gate(&self, key: &str) -> Gate {
         self.loading
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -233,7 +254,7 @@ impl CacheLayer {
     }
 
     /// Drop the key's lock once nobody else holds or waits on it.
-    fn release_gate(&self, key: &str, gate: &Arc<tokio::sync::Mutex<()>>) {
+    fn release_gate(&self, key: &str, gate: &Gate) {
         let mut loading = self.loading.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(current) = loading.get(key)
             && Arc::ptr_eq(current, gate)

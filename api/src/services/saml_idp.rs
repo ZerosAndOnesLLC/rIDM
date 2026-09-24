@@ -787,20 +787,38 @@ async fn record_participant(
     p: &Participant,
 ) -> AppResult<()> {
     let ttl = (session.expires_at - Utc::now()).num_seconds().max(60);
-    let mut conn = state.redis.get().await?;
     let key = participants_key(session.tenant_id, session.id);
-    let _: () = conn
-        .hset(&key, p.client_id.to_string(), serde_json::to_string(p)?)
-        .await?;
-    let _: () = conn.expire(&key, ttl).await?;
-    let _: () = conn
-        .set_ex(
-            index_key(session.tenant_id, &p.session_index),
-            session.id.to_string(),
-            ttl as u64,
-        )
-        .await?;
-    Ok(())
+    let entry = serde_json::to_string(p)?;
+    // The participant list (field and lifetime set together) and the
+    // session-index entry are separate keys, written at once on separate
+    // connections: they need not share a slot.
+    let (listed, indexed) = tokio::join!(
+        async {
+            let mut conn = state.redis.get().await?;
+            let _: () = redis::pipe()
+                .atomic()
+                .hset(&key, p.client_id.to_string(), entry)
+                .ignore()
+                .expire(&key, ttl)
+                .ignore()
+                .query_async(&mut conn)
+                .await?;
+            Ok::<_, AppError>(())
+        },
+        async {
+            let mut conn = state.redis.get().await?;
+            let _: () = conn
+                .set_ex(
+                    index_key(session.tenant_id, &p.session_index),
+                    session.id.to_string(),
+                    ttl as u64,
+                )
+                .await?;
+            Ok::<_, AppError>(())
+        },
+    );
+    listed?;
+    indexed
 }
 
 /// The SAML SPs that took part in a session.

@@ -72,6 +72,29 @@ pub struct Problem {
 }
 
 impl AppError {
+    /// A copy with the same status and client-facing meaning, for handing
+    /// one failure to several callers (a database error, which cannot be
+    /// cloned, becomes the internal error it is shown as).
+    pub fn shared(&self) -> AppError {
+        match self {
+            Self::BadRequest(d) => Self::BadRequest(d.clone()),
+            Self::Validation(f) => Self::Validation(f.clone()),
+            Self::Unauthorized => Self::Unauthorized,
+            Self::Forbidden(d) => Self::Forbidden(d.clone()),
+            Self::ReauthenticationRequired { mfa } => Self::ReauthenticationRequired { mfa: *mfa },
+            Self::ImpersonationForbidden => Self::ImpersonationForbidden,
+            Self::NotFound(what) => Self::NotFound(what),
+            Self::Conflict(d) => Self::Conflict(d.clone()),
+            Self::RateLimited { retry_after_secs } => Self::RateLimited {
+                retry_after_secs: *retry_after_secs,
+            },
+            Self::Unavailable(d) => Self::Unavailable(d.clone()),
+            Self::Database(e) => Self::Internal(format!("database error: {e}")),
+            Self::Cache(d) => Self::Cache(d.clone()),
+            Self::Internal(d) => Self::Internal(d.clone()),
+        }
+    }
+
     pub fn status(&self) -> StatusCode {
         match self {
             Self::BadRequest(_) | Self::Validation(_) => StatusCode::BAD_REQUEST,

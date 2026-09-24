@@ -93,10 +93,8 @@ pub async fn check_send_limit(
 ) -> AppResult<()> {
     let key = keys::passwordless_sends(tenant_id, identifier);
     let mut conn = state.redis.get().await?;
-    let n: i64 = conn.incr(&key, 1).await?;
-    if n == 1 {
-        let _: () = conn.expire(&key, SEND_WINDOW_SECS as i64).await?;
-    }
+    let n =
+        crate::cache::commands::count_in_window(&mut conn, &key, SEND_WINDOW_SECS as i64).await?;
     if n > SEND_LIMIT {
         return Err(AppError::RateLimited {
             retry_after_secs: SEND_WINDOW_SECS,

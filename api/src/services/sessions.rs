@@ -282,12 +282,9 @@ async fn track(state: &AppState, session: &SsoSession) -> AppResult<()> {
     let key = keys::user_sessions(session.tenant_id, session.user_id);
     let ttl = (session.expires_at - Utc::now()).num_seconds().max(60);
     let mut conn = state.redis.get().await?;
-    let _: () = conn.sadd(&key, session.id.to_string()).await?;
-    // Never shorten the set's life below a member's remaining lifetime.
-    let current: i64 = conn.ttl(&key).await?;
-    if current < ttl {
-        let _: () = conn.expire(&key, ttl).await?;
-    }
+    // The set lives at least as long as its longest session.
+    crate::cache::commands::add_to_set_for_at_least(&mut conn, &key, &session.id.to_string(), ttl)
+        .await?;
     Ok(())
 }
 
@@ -416,15 +413,19 @@ pub async fn bind_device(
 /// module use.
 pub async fn revoke(state: &AppState, tenant_id: Uuid, session_id: Uuid) -> AppResult<bool> {
     let mut conn = state.redis.get().await?;
-    let raw: Option<String> = conn.get(keys::sso_session(tenant_id, session_id)).await?;
-    let removed: i64 = conn.del(keys::sso_session(tenant_id, session_id)).await?;
+    // Read and removed at once: of two concurrent revocations only one sees
+    // the session, so it is announced and untracked once.
+    let raw: Option<String> = conn
+        .get_del(keys::sso_session(tenant_id, session_id))
+        .await?;
+    let live = raw.is_some();
     drop(conn);
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     repos::sessions::mark_revoked(&mut *tx, tenant_id, session_id).await?;
     tx.commit().await?;
     let ended = raw.and_then(|raw| serde_json::from_str::<SsoSession>(&raw).ok());
     let owner = ended.as_ref().map(|s| s.user_id);
-    if let Some(s) = ended.as_ref().filter(|_| removed > 0) {
+    if let Some(s) = ended.as_ref() {
         crate::services::impersonation::announce_end(state, s);
     }
     if let Some(user_id) = owner {
@@ -440,7 +441,7 @@ pub async fn revoke(state: &AppState, tenant_id: Uuid, session_id: Uuid) -> AppR
     }
     let actor = owner.map_or(Actor::System, |id| Actor::User { id });
     refresh_tokens::revoke_for_session(state, tenant_id, actor, session_id).await?;
-    Ok(removed > 0)
+    Ok(live)
 }
 
 /// Live sessions of a user, oldest first. Prunes ids whose session expired.

@@ -10,7 +10,7 @@ protect them from anyone else who can connect.
 | Service | Supported | Tested |
 |---------|-----------|--------|
 | Postgres | 16 or later | 18.6 (CI, compose) |
-| Valkey | Valkey 9; Redis-compatible servers with `GETDEL` (Redis 6.2+) should work but are not tested | 9.1.2 (CI, compose) |
+| Valkey | Valkey 9; Redis-compatible servers with `GETDEL` and `EXPIRE … NX/GT` (Redis 7.0+) should work but are not tested | 9.1.2 (CI, compose) |
 
 The migrations create three extensions: `pgcrypto`, and `pg_trgm` with `btree_gin` (the
 indexes behind the organization, client and tenant searches). All three are trusted

@@ -761,22 +761,35 @@ async fn record_upstream(
 ) -> AppResult<()> {
     let ttl = (session.expires_at - Utc::now()).num_seconds().max(60);
     let index = by_name_id_key(session.tenant_id, up.idp_id, &up.name_id);
-    let mut conn = state.redis.get().await?;
-    let _: () = conn
-        .set_ex(
-            upstream_key(session.tenant_id, session.id),
-            serde_json::to_string(up)?,
-            ttl as u64,
-        )
-        .await?;
-    let _: () = conn.sadd(&index, session.id.to_string()).await?;
-    // The set lives as long as its longest session; ended ones in it are
-    // skipped when read.
-    let current: i64 = conn.ttl(&index).await?;
-    if current < ttl {
-        let _: () = conn.expire(&index, ttl).await?;
-    }
-    Ok(())
+    let value = serde_json::to_string(up)?;
+    // Two keys, written at once (on separate connections: they need not
+    // share a slot). The set lives as long as its longest session; ended
+    // ones in it are skipped when read.
+    let (session_entry, indexed) = tokio::join!(
+        async {
+            let mut conn = state.redis.get().await?;
+            let _: () = conn
+                .set_ex(
+                    upstream_key(session.tenant_id, session.id),
+                    value,
+                    ttl as u64,
+                )
+                .await?;
+            Ok::<_, AppError>(())
+        },
+        async {
+            let mut conn = state.redis.get().await?;
+            crate::cache::commands::add_to_set_for_at_least(
+                &mut conn,
+                &index,
+                &session.id.to_string(),
+                ttl,
+            )
+            .await
+        },
+    );
+    session_entry?;
+    indexed
 }
 
 /// The upstream SAML session behind a rIDM session, if it was brokered.

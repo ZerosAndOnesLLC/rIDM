@@ -56,17 +56,31 @@ pub async fn issue(
     let ttl_ms = (expires_at - Utc::now()).num_milliseconds().max(1) as u64;
     let token = random_token();
     let h = hash(&token);
-    let mut conn = state.redis.get().await?;
-    let _: () = conn
-        .pset_ex(
-            keys::opaque_access_token_claims(tenant_id, &h),
-            serde_json::to_string(claims)?,
-            ttl_ms,
-        )
-        .await?;
-    let _: () = conn
-        .pset_ex(keys::opaque_access_token(&h), tenant_id.to_string(), ttl_ms)
-        .await?;
+    let claims = serde_json::to_string(claims)?;
+    // The claims live in the tenant's Valkey and the entry naming the tenant
+    // in the deployment's: two writes at once, each on its own connection.
+    let (claims_set, entry_set) = tokio::join!(
+        async {
+            let mut conn = state.redis.get().await?;
+            let _: () = conn
+                .pset_ex(
+                    keys::opaque_access_token_claims(tenant_id, &h),
+                    claims,
+                    ttl_ms,
+                )
+                .await?;
+            Ok::<_, AppError>(())
+        },
+        async {
+            let mut conn = state.redis.get().await?;
+            let _: () = conn
+                .pset_ex(keys::opaque_access_token(&h), tenant_id.to_string(), ttl_ms)
+                .await?;
+            Ok::<_, AppError>(())
+        },
+    );
+    claims_set?;
+    entry_set?;
     Ok(token)
 }
 

@@ -1,3 +1,4 @@
+pub mod commands;
 pub mod keys;
 mod l1;
 mod layer;
