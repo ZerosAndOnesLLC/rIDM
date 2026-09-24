@@ -15,7 +15,7 @@ test("email code: a wrong code is refused, the emailed one signs in", async ({ p
   await expect(page.getByText(s.email)).toBeVisible();
   await expectAccessible(page);
 
-  const mail = await mailpit.waitFor(s.email);
+  const mail = await mailpit.waitFor(s.email, 15_000, "code:");
   const code = /\b(\d{6})\b/.exec(mail.text)?.[1];
   expect(code, mail.text).toBeTruthy();
 

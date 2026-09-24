@@ -115,7 +115,7 @@ export async function registerVerifiedUser(
     body: JSON.stringify({ csrf: state.csrf, email, password, terms_accepted: true }),
   });
   if (!res.ok) throw new Error(`registration failed: ${res.status} ${await res.text()}`);
-  const mail = await mailpit.waitFor(email);
+  const mail = await mailpit.waitFor(email, 15_000, "Verify your email");
   const token = new URL(mail.links.find((l) => l.includes("token="))!).searchParams.get("token");
   const confirm = await fetch(`${API}${t("/verification/email/confirm")}`, {
     method: "POST",
@@ -206,12 +206,24 @@ export async function loginWithPassword(page: Page, state: State, extra: Record<
 }
 
 /**
- * Drop the tenant's roles version, so role assignments, group membership and
- * organization membership written by SQL are re-resolved on the next request.
+ * Drop the tenant's roles version and its users' access versions (grants to
+ * a user and their memberships hang off the latter), so role assignments,
+ * group membership and organization membership written by SQL are
+ * re-resolved on the next request. API nodes keep a version in memory for a
+ * couple of seconds, so the eviction is announced the way the API announces
+ * its own.
  */
 export function clearRolesVersion(tid: string = tenantId()) {
   try {
-    execFileSync("redis-cli", ["-u", REDIS_URL, "del", `ridm:t:${tid}:roles:ver`]);
+    const perUser = execFileSync("redis-cli", ["-u", REDIS_URL, "--scan", "--pattern", `ridm:t:${tid}:user:*:access_version`])
+      .toString()
+      .split("\n")
+      .filter(Boolean);
+    const keys = [`ridm:t:${tid}:roles:ver`, ...perUser];
+    execFileSync("redis-cli", ["-u", REDIS_URL, "del", ...keys]);
+    // From no node in particular (the nil id), so every node evicts.
+    const message = JSON.stringify({ node_id: "00000000-0000-0000-0000-000000000000", keys });
+    execFileSync("redis-cli", ["-u", REDIS_URL, "publish", "ridm:cache:invalidate", message]);
   } catch (e) {
     console.warn("redis-cli unavailable; roles cache not cleared:", String(e).split("\n")[0]);
   }

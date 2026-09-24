@@ -10,7 +10,7 @@ test("magic link: request by email, open the link, reach the callback", async ({
   await expect(page.getByText("Check your email")).toBeVisible();
   await expectAccessible(page);
 
-  const mail = await mailpit.waitFor(s.email);
+  const mail = await mailpit.waitFor(s.email, 15_000, "Sign in to");
   const link = mail.links.find((l) => l.includes("magic="));
   expect(link, mail.text).toBeTruthy();
   await page.goto(link!);
