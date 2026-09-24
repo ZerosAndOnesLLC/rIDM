@@ -570,8 +570,14 @@ async fn prove(
         (IdpAuthMethod::ClientSecretPost, Some(s)) => form.push(("client_secret", s)),
         _ => {}
     }
-    let tokens =
-        identity_providers::post_form("token endpoint", token_endpoint, &form, basic).await?;
+    let tokens = identity_providers::post_form(
+        &state.outbound,
+        "token endpoint",
+        token_endpoint,
+        &form,
+        basic,
+    )
+    .await?;
     let access_token = tokens["access_token"].as_str().map(str::to_string);
     let mut claims = Map::new();
     if let Some(u) = apple_user
@@ -600,7 +606,9 @@ async fn prove(
         let need_userinfo = idp.kind == IdpKind::Oauth2
             || claim(&claims, idp.mappers.0.email.as_deref().unwrap_or("email")).is_none();
         if need_userinfo {
-            let info = identity_providers::get_json("userinfo", endpoint, Some(at)).await?;
+            let info =
+                identity_providers::get_json(&state.outbound, "userinfo", endpoint, Some(at))
+                    .await?;
             if let Value::Object(m) = info {
                 for (k, v) in m {
                     if verified_subject.is_some() && k == "sub" {
@@ -612,7 +620,7 @@ async fn prove(
             if idp.preset.as_deref() == Some("github")
                 && claim(&claims, "email").and_then(Value::as_str).is_none()
             {
-                github_primary_email(endpoint, at, &mut claims).await;
+                github_primary_email(&state.outbound, endpoint, at, &mut claims).await;
             }
         }
     }
@@ -662,12 +670,13 @@ pub fn identity_from_claims(
 
 /// GitHub keeps addresses behind `/user/emails`; take the primary verified one.
 async fn github_primary_email(
+    http: &reqwest::Client,
     userinfo_endpoint: &str,
     access_token: &str,
     claims: &mut Map<String, Value>,
 ) {
     let url = format!("{}/emails", userinfo_endpoint.trim_end_matches('/'));
-    match identity_providers::get_json("userinfo emails", &url, Some(access_token)).await {
+    match identity_providers::get_json(http, "userinfo emails", &url, Some(access_token)).await {
         Ok(Value::Array(list)) => {
             let pick = list
                 .iter()

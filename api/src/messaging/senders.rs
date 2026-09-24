@@ -94,7 +94,12 @@ impl SenderFactory for DefaultSenderFactory {
                     url,
                     auth_header,
                     from,
-                } => Arc::new(HttpEmailSender::new(url, auth_header.clone(), from)),
+                } => Arc::new(HttpEmailSender::new(
+                    url,
+                    auth_header.clone(),
+                    from,
+                    state.outbound.clone(),
+                )),
             };
             self.email.insert(key, sender.clone());
             return Ok(Some(sender));
@@ -137,7 +142,8 @@ impl SenderFactory for DefaultSenderFactory {
         if let Some(sender) = self.sms.get(&key) {
             return Ok(Some(sender));
         }
-        let sender: Arc<dyn SmsSender> = Arc::new(WebhookSmsSender::new(&cfg));
+        let sender: Arc<dyn SmsSender> =
+            Arc::new(WebhookSmsSender::new(&cfg, state.outbound.clone()));
         self.sms.insert(key, sender.clone());
         Ok(Some(sender))
     }
@@ -312,14 +318,16 @@ pub struct HttpEmailSender {
     url: String,
     auth_header: Option<String>,
     from: String,
+    http: reqwest::Client,
 }
 
 impl HttpEmailSender {
-    pub fn new(url: &str, auth_header: Option<String>, from: &str) -> Self {
+    pub fn new(url: &str, auth_header: Option<String>, from: &str, http: reqwest::Client) -> Self {
         Self {
             url: url.to_string(),
             auth_header,
             from: from.to_string(),
+            http,
         }
     }
 }
@@ -343,7 +351,8 @@ impl EmailSender for HttpEmailSender {
         crate::util::outbound::check_url(&self.url).map_err(ProviderError::Rejected)?;
         // A tenant chose this URL: the shared outbound client reaches public
         // addresses only (SSRF).
-        let mut req = crate::util::outbound::shared()
+        let mut req = self
+            .http
             .post(&self.url)
             .timeout(HTTP_SEND_TIMEOUT)
             .json(&body);
@@ -369,14 +378,16 @@ pub struct WebhookSmsSender {
     url: String,
     auth_header: Option<String>,
     from: Option<String>,
+    http: reqwest::Client,
 }
 
 impl WebhookSmsSender {
-    pub fn new(cfg: &SmsProviderConfig) -> Self {
+    pub fn new(cfg: &SmsProviderConfig, http: reqwest::Client) -> Self {
         Self {
             url: cfg.url.clone(),
             auth_header: cfg.auth_header.clone(),
             from: cfg.from.clone(),
+            http,
         }
     }
 }
@@ -392,7 +403,8 @@ impl SmsSender for WebhookSmsSender {
         crate::util::outbound::check_url(&self.url).map_err(ProviderError::Rejected)?;
         // A tenant chose this URL: the shared outbound client reaches public
         // addresses only (SSRF).
-        let mut req = crate::util::outbound::shared()
+        let mut req = self
+            .http
             .post(&self.url)
             .timeout(HTTP_SEND_TIMEOUT)
             .json(&body);

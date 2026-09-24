@@ -547,7 +547,12 @@ pub struct Attempt {
     pub retryable: bool,
 }
 
-async fn attempt(w: &Webhook, secret: &str, delivery: &WebhookDelivery) -> AppResult<Attempt> {
+async fn attempt(
+    http: &reqwest::Client,
+    w: &Webhook,
+    secret: &str,
+    delivery: &WebhookDelivery,
+) -> AppResult<Attempt> {
     let body = serde_json::to_vec(&serde_json::json!({
         "delivery_id": delivery.id,
         "attempt": delivery.attempts + 1,
@@ -566,7 +571,7 @@ async fn attempt(w: &Webhook, secret: &str, delivery: &WebhookDelivery) -> AppRe
     let ts = Utc::now().timestamp();
     // The shared outbound client: one connection pool for every delivery,
     // names resolving to public addresses only (see [`outbound`]).
-    let mut req = outbound::shared()
+    let mut req = http
         .post(&w.url)
         .timeout(REQUEST_TIMEOUT)
         .header("user-agent", "rIDM-Webhooks/1")
@@ -688,7 +693,7 @@ async fn deliver_one(
     d: WebhookDelivery,
 ) -> AppResult<bool> {
     let outcome = match targets.get(&d.webhook_id) {
-        Some(Some((w, secret))) => attempt(w, secret, &d).await?,
+        Some(Some((w, secret))) => attempt(&state.outbound, w, secret, &d).await?,
         Some(None) => Attempt {
             status: None,
             snippet: None,

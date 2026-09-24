@@ -357,7 +357,7 @@ async fn ping(state: &AppState, rec: &CibaRecord) {
         tracing::warn!(client = %client.client_id, error = %e, "CIBA ping refused");
         return;
     }
-    let http = outbound::shared();
+    let http = &state.outbound;
     let body = serde_json::json!({ "auth_req_id": auth_req_id });
     for (attempt, wait) in [0u64, 1, 4].into_iter().enumerate() {
         if wait > 0 {

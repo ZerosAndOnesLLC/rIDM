@@ -115,12 +115,15 @@ pub struct DiscoverBody {
 /// Fetch an issuer's OpenID discovery document (to preview the endpoints).
 #[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/discover", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug")), request_body = DiscoverBody, responses((status = 200, body = Discovery), (status = 400, description = "Not an issuer, or its document is unusable", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 503, description = "The issuer could not be reached", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn discover(
+    State(state): State<AppState>,
     admin: AdminCtx,
     AdminTenantPath(tenant): AdminTenantPath,
     Json(body): Json<DiscoverBody>,
 ) -> AppResult<Json<Discovery>> {
     admin.require(tenant.id, P_WRITE)?;
-    Ok(Json(identity_providers::discover(&body.issuer).await?))
+    Ok(Json(
+        identity_providers::discover(&state.outbound, &body.issuer).await?,
+    ))
 }
 
 #[derive(Deserialize, utoipa::ToSchema)]
@@ -139,6 +142,7 @@ pub struct SamlMetadataBody {
 /// is stored.
 #[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/saml-metadata", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug")), request_body = SamlMetadataBody, responses((status = 200, body = SamlUpstreamSettings), (status = 400, description = "Not usable IdP metadata", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 503, description = "The metadata URL could not be read", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn saml_metadata(
+    State(state): State<AppState>,
     admin: AdminCtx,
     AdminTenantPath(tenant): AdminTenantPath,
     Json(body): Json<SamlMetadataBody>,
@@ -149,7 +153,7 @@ async fn saml_metadata(
         (None, Some(u)) => {
             let u = identity_providers::validate_endpoint("url", &u)?;
             (
-                identity_providers::get_text("SAML metadata", &u).await?,
+                identity_providers::get_text(&state.outbound, "SAML metadata", &u).await?,
                 Some(u),
             )
         }

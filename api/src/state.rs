@@ -31,6 +31,9 @@ pub struct AppState {
     pub master_keys: Arc<crate::key_custody::EnvelopeEncryptor>,
     /// Builds per-tenant email/SMS senders; tests swap in mocks.
     pub senders: Arc<dyn crate::messaging::SenderFactory>,
+    /// Every request to someone else's URL (upstream IdPs, webhooks, CAPTCHA,
+    /// HTTP email and SMS, back-channel logout, CIBA pings, `jwks_uri`).
+    pub outbound: reqwest::Client,
     /// Breached-password lookups; `None` when the deployment switched them off.
     pub breach: Option<Arc<dyn ridm_core::providers::BreachChecker>>,
     /// External destination every audit row is also shipped to, by
@@ -97,6 +100,7 @@ impl AppState {
             key_encryptor,
             master_keys,
             senders: Arc::new(crate::messaging::DefaultSenderFactory::default()),
+            outbound: crate::util::outbound::pooled(),
             breach,
             audit_sink,
             ui,

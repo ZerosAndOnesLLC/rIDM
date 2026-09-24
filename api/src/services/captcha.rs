@@ -22,13 +22,14 @@ pub struct SiteverifyCaptcha {
     site_key: String,
     secret: String,
     verify_url: String,
+    http: reqwest::Client,
 }
 
 /// Siteverify answers quickly or not at all.
 const VERIFY_TIMEOUT: Duration = Duration::from_secs(5);
 
 impl SiteverifyCaptcha {
-    pub fn from_config(cfg: &CaptchaConfig) -> Self {
+    pub fn from_config(cfg: &CaptchaConfig, http: reqwest::Client) -> Self {
         let (kind, default_url) = match cfg.provider {
             CaptchaProvider::Turnstile => (CaptchaKind::Turnstile, TURNSTILE_VERIFY_URL),
             CaptchaProvider::HCaptcha => (CaptchaKind::HCaptcha, HCAPTCHA_VERIFY_URL),
@@ -41,6 +42,7 @@ impl SiteverifyCaptcha {
                 .verify_url
                 .clone()
                 .unwrap_or_else(|| default_url.to_string()),
+            http,
         }
     }
 }
@@ -76,7 +78,8 @@ impl Captcha for SiteverifyCaptcha {
         // `verify_url` is a tenant's choice: the shared outbound client
         // reaches public addresses only (SSRF).
         crate::util::outbound::check_url(&self.verify_url).map_err(ProviderError::Rejected)?;
-        let res = crate::util::outbound::shared()
+        let res = self
+            .http
             .post(&self.verify_url)
             .timeout(VERIFY_TIMEOUT)
             .form(&form)
@@ -132,7 +135,10 @@ impl Captcha for DisabledCaptcha {
 /// Provider for a tenant, from its encrypted configuration.
 pub async fn provider_for(state: &AppState, tenant_id: Uuid) -> AppResult<Arc<dyn Captcha>> {
     match provider_settings::get::<CaptchaConfig>(state, tenant_id, ProviderKind::Captcha).await? {
-        Some(cfg) => Ok(Arc::new(SiteverifyCaptcha::from_config(&cfg))),
+        Some(cfg) => Ok(Arc::new(SiteverifyCaptcha::from_config(
+            &cfg,
+            state.outbound.clone(),
+        ))),
         None => Ok(Arc::new(DisabledCaptcha)),
     }
 }

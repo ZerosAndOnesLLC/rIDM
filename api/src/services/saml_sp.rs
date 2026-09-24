@@ -1257,7 +1257,7 @@ pub async fn refresh_metadata(
         ));
     };
     let read = async {
-        let text = identity_providers::get_text("SAML metadata", &url).await?;
+        let text = identity_providers::get_text(&state.outbound, "SAML metadata", &url).await?;
         let m =
             metadata::parse_idp_metadata(&text).map_err(|e| AppError::BadRequest(e.to_string()))?;
         if m.entity_id != s.entity_id {
