@@ -114,6 +114,7 @@ the pool sizes, `masterKey.version`/`previous` for a
 [master key rotation](../admin/key-rotation.md), `keyCustody.*` for
 [an HSM or KMS holding the master key](key-custody.md#kubernetes-and-openshift),
 `dataRegions.*` for [regional databases](data-residency.md#kubernetes),
+`mtls.*` for [mutual TLS](../admin/mtls.md#kubernetes),
 `smtp.*` for the deployment's mail defaults. Anything else goes in `env` (plain values), `extraEnv` (full `EnvVar` entries)
 or `extraEnvFrom`:
 

@@ -37,12 +37,13 @@ export function href(page: string, tenant: string, params: Record<string, string
   return `/console/${page}/?${new URLSearchParams({ tenant, ...params })}`;
 }
 
-/** Every event name the server emits (mirrors `ridm_core::events::EventKind::name`). */
+/** Every event name the server emits (mirrors `ridm_core::events::EventKind::name`;
+ * `api/tests/event_catalogue.rs` fails when they drift). */
 export const EVENT_NAMES = [
   "audit.chain_broken", "authorization.granted", "backchannel.denied", "backchannel.requested",
   "claim_mapper.created", "claim_mapper.deleted", "claim_mapper.updated",
   "client.created", "client.deleted", "client.secret_rotated", "client.updated",
-  "consent.granted", "consent.revoked", "device.revoked", "device.trusted",
+  "consent.granted", "consent.revoked", "dcr_token.created", "dcr_token.revoked", "device.revoked", "device.trusted",
   "directory.synced",
   "group.created", "group.deleted", "group.member_added", "group.member_removed", "group.updated",
   "organization.created", "organization.deleted", "organization.domain_added", "organization.domain_removed",
@@ -50,13 +51,18 @@ export const EVENT_NAMES = [
   "identity.linked", "identity.unlinked",
   "identity_provider.created", "identity_provider.deleted", "identity_provider.updated",
   "impersonation.ended", "impersonation.requested", "impersonation.started",
+  "ip_rule.created", "ip_rule.deleted", "ip_rule.updated",
   "invitation.accepted", "invitation.created", "invitation.revoked",
   "login.brokered", "login.failed", "login.new_device", "login.passwordless_sent", "login.succeeded",
   "logout.upstream",
   "master_key.generation_created", "master_key.rotated", "mfa.changed", "mtls_trust_anchor.created", "mtls_trust_anchor.deleted",
+  "permission.created", "permission.deleted", "permission.granted", "permission.revoked",
+  "personal_token.created", "personal_token.revoked",
+  "resource_server.created", "resource_server.deleted", "resource_server.updated",
   "risk.blocked", "risk.step_up",
   "saml_key.created", "saml_key.status_changed",
   "role.assigned", "role.composite_added", "role.composite_removed", "role.created", "role.deleted", "role.unassigned", "role.updated",
+  "scim_token.created", "scim_token.revoked",
   "scope.created", "scope.deleted", "scope.updated",
   "session.created", "session.revoked", "signing_key.created", "signing_key.status_changed",
   "system.bootstrapped", "tenant.created", "tenant.deleted", "tenant.moved", "tenant.profile_schema_updated", "tenant.updated",
@@ -64,6 +70,8 @@ export const EVENT_NAMES = [
   "user.created", "user.deleted", "user.email_changed", "user.email_verified", "user.locked",
   "user.password_changed", "user.password_hash_upgraded", "user.password_reset_completed", "user.password_reset_requested",
   "user.registered", "user.terms_accepted", "user.updated",
+  "webhook.created", "webhook.deleted", "webhook.delivery_dead", "webhook.secret_rotated", "webhook.test",
+  "webhook.updated",
 ];
 
 /** `user.*`, `client.*`, … for webhook patterns. */

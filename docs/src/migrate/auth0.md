@@ -31,10 +31,10 @@ draft of a [tenant document](../reference/tenant-document.md). Read
 | AD/LDAP connector's Kerberos (Windows integrated auth) | [Kerberos provider](../admin/kerberos.md) (`kerberos`), with the LDAP directory owning the users | rIDM validates the ticket itself with the service's keytab; no agent |
 | Passwordless connections (email, SMS) | `settings.auth.magic_link`, `email_otp`, `sms_otp` | |
 | Custom database connection with "Import users to Auth0" (lazy migration) | No equivalent | rIDM cannot check a password against another system at sign-in |
-| Organizations | Not yet | Organizations are planned (Phase 12), not present |
+| Organizations | [Organizations](../admin/organizations.md) | Members, verified domains with auto-join, invitations, per-organization roles and administrators; the `org_id` claim |
 | Rules, Actions | Claim mappers, where they only add claims | See [Rules and Actions](#rules-and-actions) |
 | MFA (Guardian): one-time password, SMS, email, WebAuthn | [Second factors](../concepts/mfa.md): TOTP, SMS and email codes, passkeys; policy in `settings.mfa` | Push notifications are not supported. Enrolments do not carry over |
-| Adaptive MFA | Not yet | Planned (Phase 12) |
+| Adaptive MFA | [Risk-based authentication](../admin/adaptive-auth.md) | New device, new country, impossible travel and failed-attempt velocity add to a score that can require a second factor or refuse the sign-in |
 | Attack protection: brute-force, suspicious IP throttling | `settings.lockout` (per user and per IP) | |
 | Attack protection: breached password detection | `settings.password.check_breached` | Checks passwords as they are set, against a Have I Been Pwned compatible range API |
 | Bot detection | `settings.captcha` (Turnstile or hCaptcha) | |

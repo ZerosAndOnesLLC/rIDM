@@ -1268,7 +1268,10 @@ needs `GRANT EXECUTE ON FUNCTION audit_ensure_partitions(integer) TO <role>`.
 
 Tenant settings cover the password, session, MFA, registration, locale, branding,
 key, discovery, DCR, auth-method, lockout, CAPTCHA, notification, audit-retention and
-account (self-deletion, deletion retention) policies plus a free-form `features` flag map;
+account (self-deletion, deletion retention) policies plus feature flags (`settings.features`:
+each flag `{enabled, description, organizations}` with per-organization values, edited at
+`/console/features/`, read by applications from the `features` scope/claim or live at
+`GET /t/{slug}/features`; see `docs/src/admin/feature-flags.md`);
 IP rules, webhooks, identity providers and messaging have their own resources. The
 CAPTCHA policy lives under `settings.captcha` (`on_registration` among it); the former
 `settings.registration.captcha` is gone, and a `PATCH` naming it is a `400` (an import

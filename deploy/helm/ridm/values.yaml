@@ -209,6 +209,28 @@ service:
   port: 80
   annotations: {}
 
+# Mutual TLS for client authentication and certificate-bound tokens
+# (docs: admin/mtls.md). A client certificate reaches rIDM either through its
+# own listener or from a proxy that forwards it; publicUrl needs one of them.
+mtls:
+  # Where clients reach the mTLS endpoints (MTLS_PUBLIC_URL); discovery
+  # publishes them as mtls_endpoint_aliases.
+  publicUrl: ""
+  # A proxy asks for the certificate and forwards it in this header
+  # (CLIENT_CERT_HEADER); rIDM reads it only from trustedProxies.
+  clientCertHeader: ""
+  listener:
+    # rIDM's own listener on 8443 (MTLS_BIND) terminates TLS in the pod, so
+    # it must be reached at layer 4: its own Service (a LoadBalancer, or an
+    # ingress controller's TLS passthrough), never a TLS-terminating ingress.
+    enabled: false
+    # A kubernetes.io/tls Secret holding the listener's certificate and key.
+    tlsSecret: ""
+    service:
+      type: ClusterIP
+      port: 443
+      annotations: {}
+
 ingress:
   enabled: false
   className: ""

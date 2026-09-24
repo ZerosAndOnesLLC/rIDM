@@ -55,6 +55,11 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
+            {{- if .Values.mtls.listener.enabled }}
+            - name: mtls
+              containerPort: 8443
+              protocol: TCP
+            {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ $fullname }}
@@ -79,6 +84,22 @@ spec:
             - name: MASTER_KEY_FILE
               value: /run/secrets/ridm/master-key
             {{- end }}
+            {{- with .Values.mtls.publicUrl }}
+            - name: MTLS_PUBLIC_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.mtls.clientCertHeader }}
+            - name: CLIENT_CERT_HEADER
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.mtls.listener.enabled }}
+            - name: MTLS_BIND
+              value: "0.0.0.0:8443"
+            - name: MTLS_CERT
+              value: /run/secrets/ridm-mtls/tls.crt
+            - name: MTLS_KEY
+              value: /run/secrets/ridm-mtls/tls.key
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -98,12 +119,22 @@ spec:
               mountPath: /run/secrets/ridm
               readOnly: true
             {{- end }}
+            {{- if .Values.mtls.listener.enabled }}
+            - name: mtls-tls
+              mountPath: /run/secrets/ridm-mtls
+              readOnly: true
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
         {{- if include "ridm.masterKeyFile" . }}
         {{- include "ridm.masterKeyVolume" (dict "root" . "secret" $fullname) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.mtls.listener.enabled }}
+        - name: mtls-tls
+          secret:
+            secretName: {{ .Values.mtls.listener.tlsSecret }}
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

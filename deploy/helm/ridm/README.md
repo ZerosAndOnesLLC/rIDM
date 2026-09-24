@@ -25,6 +25,7 @@ and validated by [`values.schema.json`](values.schema.json).
 | Secret | when any secret value is given inline |
 | Job (+ hook Secret) running `ridm-api migrate` | `pre-install`/`pre-upgrade`, `migrations.enabled` |
 | Ingress | `ingress.enabled` |
+| Service `<release>-mtls` for the mutual TLS listener | `mtls.listener.enabled` |
 | HorizontalPodAutoscaler | `autoscaling.enabled` |
 | PodDisruptionBudget | `podDisruptionBudget.enabled` and more than one replica |
 | ServiceMonitor | `metrics.serviceMonitor.enabled` (Prometheus Operator) |

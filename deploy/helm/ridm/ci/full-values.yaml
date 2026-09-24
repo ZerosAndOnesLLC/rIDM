@@ -36,6 +36,15 @@ dataRegions:
 env:
   RETENTION_DAYS: 14
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+mtls:
+  publicUrl: https://mtls.id.example.com
+  clientCertHeader: X-Client-Cert
+  listener:
+    enabled: true
+    tlsSecret: ridm-mtls-tls
+    service:
+      type: LoadBalancer
+      annotations: {service.beta.kubernetes.io/aws-load-balancer-type: nlb}
 ingress:
   enabled: true
   className: nginx

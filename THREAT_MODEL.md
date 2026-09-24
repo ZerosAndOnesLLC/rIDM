@@ -243,8 +243,6 @@ Recorded rather than hidden; each is either scheduled or a deliberate trade-off.
   a session ended without one (an administrator's revocation, a password change) does
   not reach them, and there is no SOAP back-channel logout. An SP that never answers
   its logout request stops the walk at its page. The same holds for upstream SAML IdPs.
-- **No hardware security module or cloud key management backend.** The
-  `KeyEncryptor` interface exists for it; backends are Phase 13.
 
 ## 8. Reporting
 

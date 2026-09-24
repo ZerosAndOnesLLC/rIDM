@@ -1,9 +1,12 @@
-# Every change requires review from a code owner (enforced by branch protection).
+# Code owners for every change. Their review is required only once the `RequirePR`
+# ruleset turns on code-owner review (the plan close-out lock-down).
 *                       @mack42
 
 # Security-sensitive areas
 /api/src/oidc/          @mack42
-/api/src/flows/         @mack42
+/api/src/services/flows.rs        @mack42
+/api/src/services/login_flows.rs  @mack42
+/api/src/routes/flows.rs          @mack42
 /api/src/middleware/    @mack42
 /api/migrations/        @mack42
 /deny.toml              @mack42
