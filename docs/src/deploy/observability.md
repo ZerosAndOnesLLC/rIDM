@@ -9,7 +9,7 @@ two health endpoints.
 | Endpoint | Checks | Response |
 |----------|--------|----------|
 | `GET /healthz` | Nothing beyond the process answering HTTP | Always `200 {"status":"ok","version":"0.1.0"}` while the server runs |
-| `GET /readyz` | `SELECT 1` on the primary Postgres pool and `PING` to Valkey, in parallel | `200 {"status":"ok","checks":{"database":"ok","cache":"ok"}}`, or `503` with `"status":"degraded"` and `"fail"` against the failed check |
+| `GET /readyz` | `SELECT 1` on the primary Postgres pool and `PING` to Valkey, in parallel, and the depth of the in-process event queues | `200 {"status":"ok","checks":{"database":"ok","cache":"ok","events":"ok"}}`, or `503` with `"status":"degraded"` and `"fail"` against the failed check (`"events":"saturated"` when a queue is past 80% of `EVENT_QUEUE_CAPACITY`) |
 
 Use `/healthz` for liveness and `/readyz` for readiness and load-balancer health checks.
 A failed readiness check is also logged as a warning with the error. Neither probe
@@ -84,6 +84,11 @@ Scrape every node: counters are per process.
 | `ridm_audit_events_total` | counter | | Audit rows written |
 | `ridm_audit_queue_depth` | gauge | | Events waiting for the audit writer on this node |
 | `ridm_webhook_dispatch_queue_depth` | gauge | | Events waiting for the webhook dispatcher on this node |
+| `ridm_event_queue_depth` | gauge | `subscriber` (`audit`, `webhooks`) | Events waiting in an in-process consumer's queue, read at scrape time (so a stuck consumer still shows) |
+| `ridm_event_queue_capacity` | gauge | `subscriber` | That queue's bound (`EVENT_QUEUE_CAPACITY`); `/readyz` fails at 80% of it |
+| `ridm_event_queue_dropped_total` | counter | `subscriber` | Events dropped because the queue was full |
+| `ridm_audit_parked_events` | gauge | | Audit events held for chains that cannot be written for now (a tenant being moved, a region down), retried every 5 s |
+| `ridm_audit_events_dropped_total` | counter | | Audit events dropped because too many were held for unavailable chains |
 | `ridm_audit_sink_rows_total` | counter | | Audit rows shipped to the sink |
 | `ridm_audit_sink_failures_total` | counter | | Sink deliveries that failed (they are retried) |
 | `ridm_audit_sink_lag_rows` | gauge | | Audit rows recorded but not yet shipped, over every chain |
@@ -141,10 +146,13 @@ setting; the `audit_retention` job purges older rows daily. How to read, filter 
 verify the log is in [Webhooks and the audit log](../admin/webhooks-audit.md), and the
 event model in [Events, audit and webhooks](../concepts/events.md).
 
-Rows are recorded asynchronously from an in-process event bus. The writer's queue
-skips nothing; `ridm_audit_queue_depth` rising and staying up means the database
-cannot keep up with the event rate. A node that stops before its queue drains loses
-the rest, so compare `ridm_audit_events_total` with your expectations after incidents.
+Rows are recorded asynchronously from an in-process event bus. The writer's queue is
+bounded (`EVENT_QUEUE_CAPACITY`): `ridm_audit_queue_depth` rising and staying up means
+the database cannot keep up with the event rate, `/readyz` fails the node once the queue
+is 80% full, and `ridm_event_queue_dropped_total{subscriber="audit"}` counts events lost
+to a full queue — alert on it. A node that is stopped gives its queues 15 seconds to
+drain after its last request and loses what is left, so compare
+`ridm_audit_events_total` with your expectations after incidents.
 
 To keep a copy off the host, set `AUDIT_SINK_URL`. One node at a time ships rows from
 the database, exactly as stored (with chain sequence and hash), and records per chain

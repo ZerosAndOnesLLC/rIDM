@@ -60,6 +60,20 @@ rewrites your own `~/.config/ridm/config.json`.
   release no longer uses, one release after it stopped. The same goes for anything
   stored in Valkey. A migration that cannot keep this goes under **Upgrade notes** in
   `CHANGELOG.md` ([Upgrading](docs/src/deploy/upgrading.md)).
+- Nothing may block writes to an existing table for longer than an instant (the
+  migrations suite checks every migration from `20260923220219` on):
+  - an index on an existing table is created (or dropped) `CONCURRENTLY`, in a
+    migration whose first line is `-- no-transaction` and that holds that one
+    statement; Postgres refuses `CONCURRENTLY` in a transaction, and several statements
+    sent together run in one. A partitioned table cannot be indexed concurrently: its
+    migration says why blocking it is acceptable (the word "partitioned" in a comment);
+  - a foreign key on an existing table is added `NOT VALID` and validated by the next
+    migration (`VALIDATE CONSTRAINT` does not block writes);
+  - a new column on an existing table has no volatile default (`gen_random_uuid()`,
+    `random()`, `clock_timestamp()`): add it, then backfill;
+  - an index a tenant-scoped query uses leads with `tenant_id`; one that serves every
+    tenant at once (the cleanup job's, the delivery jobs', key rotation's) is listed in
+    `GLOBAL_LOOKUP_INDEXES` with the reason.
 - Tested locally with `sqlx migrate run` before committing.
 - Tenant-scoped tables call `enable_tenant_rls('table')`, which enables and forces the
   `tenant_isolation` policy. Child tables use composite `(tenant_id, id)` foreign keys.

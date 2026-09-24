@@ -17,7 +17,7 @@ The **Limit** column names the rate-limit family a route counts against (see [Ra
 | Method | Path | Auth | Limit | Purpose |
 |--------|------|------|-------|---------|
 | GET | `/healthz` | none | — | Liveness: `{"status": "ok", "version": "..."}`. Never touches a dependency. |
-| GET | `/readyz` | none | — | Readiness: pings Postgres and Valkey; `200` with `{"status": "ok", "checks": {"database": "ok", "cache": "ok"}}`, or `503` with `"status": "degraded"` and the failing check as `"fail"`. |
+| GET | `/readyz` | none | — | Readiness: pings Postgres and Valkey and checks the in-process event queues; `200` with `{"status": "ok", "checks": {"database": "ok", "cache": "ok", "events": "ok"}}`, or `503` with `"status": "degraded"` and the failing check as `"fail"` (`"events": "saturated"` when an event queue is 80% full). |
 | GET | `/metrics` | `Bearer <METRICS_TOKEN>` when that variable is set, otherwise none | — | Prometheus exposition (`text/plain; version=0.0.4`). See [Observability](../deploy/observability.md). |
 | GET | `/openapi.json` | none | — | The admin and account API's OpenAPI 3 document. Always served. |
 | GET | `/docs` | none | — | Swagger UI over `/openapi.json`; mounted only when `DOCS_ENABLED=true`. |

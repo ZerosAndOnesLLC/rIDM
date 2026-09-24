@@ -140,7 +140,7 @@ database from before the upgrade.
 | Endpoint | Meaning | Use as |
 |----------|---------|--------|
 | `GET /healthz` | The process is up and serving HTTP. Never touches Postgres or Valkey. `200 {"status":"ok","version":"..."}` | Liveness probe |
-| `GET /readyz` | Postgres and Valkey both answer. `200` with `{"status":"ok","checks":{"database":"ok","cache":"ok"}}`, or `503` with `"status":"degraded"` and the failing check as `"fail"` | Readiness probe, load-balancer health check |
+| `GET /readyz` | Postgres and Valkey both answer and no event queue is 80% full. `200` with `{"status":"ok","checks":{"database":"ok","cache":"ok","events":"ok"}}`, or `503` with `"status":"degraded"` and the failing check as `"fail"` (`"saturated"` for `events`) | Readiness probe, load-balancer health check |
 
 Use `/healthz` for liveness so a database outage does not make the orchestrator restart
 every node, and `/readyz` for readiness so traffic stops reaching a node that cannot
