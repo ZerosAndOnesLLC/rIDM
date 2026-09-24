@@ -146,11 +146,7 @@ fn check_signature(
     received: &Received,
     doc: &roxmltree::Document,
 ) -> Result<bool, SamlError> {
-    let certs: Vec<Certificate> = sp
-        .signing_certificates
-        .iter()
-        .filter_map(|c| Certificate::parse(c).ok())
-        .collect();
+    let certs = Certificate::parse_registered(&sp.signing_certificates);
     let enveloped = dsig::signature_of(doc.root_element())?.is_some();
     let signed = match (&received.signature, enveloped) {
         (Some(_), true) => {
@@ -1058,7 +1054,7 @@ pub async fn respond(
             .encryption_certificate
             .as_deref()
             .ok_or_else(|| AppError::Internal("encryption certificate missing".into()))
-            .and_then(|c| Certificate::parse(c).map_err(internal))?;
+            .and_then(|c| Certificate::parse_cached(c).map_err(internal))?;
         let encrypted = xmlenc::encrypt(
             &assertion.to_string(),
             &cert,

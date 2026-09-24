@@ -91,10 +91,7 @@ fn settings(idp: &IdentityProvider) -> AppResult<&SamlUpstream> {
 }
 
 fn certificates(s: &SamlUpstream) -> Vec<Certificate> {
-    s.signing_certificates
-        .iter()
-        .filter_map(|c| Certificate::parse(c).ok())
-        .collect()
+    Certificate::parse_registered(&s.signing_certificates)
 }
 
 fn key(tenant_id: Uuid, what: &str, id: &str) -> String {
@@ -467,21 +464,34 @@ pub async fn acs(
     let ep = endpoints(state, &tenant.tenant, &idp.alias);
     let certs = certificates(s);
     let keys = saml_keys::decryption_keys(state, &tenant.tenant).await?;
-    let key_refs: Vec<&[u8]> = keys.iter().map(|k| k.as_slice()).collect();
-    let checked = sp::validate_response(
-        &received.xml,
-        &Expected {
-            idp_entity_id: &s.entity_id,
-            sp_entity_id: &ep.entity_id,
-            acs_url: &ep.acs_url,
-            in_response_to: request_id.as_deref(),
-            certificates: &certs,
-            decryption_keys: &key_refs,
-            want_assertions_signed: s.want_assertions_signed,
-            require_encrypted: s.require_encrypted_assertions,
-            now: Utc::now(),
-        },
-    );
+    // Parsing up to 256 KB of XML, canonicalizing it, checking signatures and
+    // RSA-decrypting the content key take milliseconds of CPU: off the async
+    // workers, like the other RSA work.
+    let xml = received.xml.clone();
+    let idp_entity_id = s.entity_id.clone();
+    let (want_signed, require_encrypted) =
+        (s.want_assertions_signed, s.require_encrypted_assertions);
+    let expected_request = request_id.clone();
+    let (sp_entity_id, acs_url) = (ep.entity_id.clone(), ep.acs_url.clone());
+    let checked = tokio::task::spawn_blocking(move || {
+        let key_refs: Vec<&[u8]> = keys.iter().map(|k| k.as_slice()).collect();
+        sp::validate_response(
+            &xml,
+            &Expected {
+                idp_entity_id: &idp_entity_id,
+                sp_entity_id: &sp_entity_id,
+                acs_url: &acs_url,
+                in_response_to: expected_request.as_deref(),
+                certificates: &certs,
+                decryption_keys: &key_refs,
+                want_assertions_signed: want_signed,
+                require_encrypted,
+                now: Utc::now(),
+            },
+        )
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("SAML response check: {e}")))?;
     let asserted = match checked {
         Ok(a) => a,
         Err(ResponseError::Status {

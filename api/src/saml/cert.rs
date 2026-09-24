@@ -82,6 +82,30 @@ impl Certificate {
         Self::from_der(der)
     }
 
+    /// Every certificate of a registration that parses, each parsed once per
+    /// node: a registered IdP's or SP's certificates are read on every
+    /// message it sends, and change only when it is re-registered.
+    pub fn parse_registered(inputs: &[String]) -> Vec<Self> {
+        inputs
+            .iter()
+            .filter_map(|input| Self::parse_cached(input).ok())
+            .collect()
+    }
+
+    /// [`Certificate::parse`], once per node for a given text.
+    pub fn parse_cached(input: &str) -> SamlResult<Self> {
+        use sha2::Digest as _;
+        static PARSED: std::sync::LazyLock<moka::sync::Cache<[u8; 32], Certificate>> =
+            std::sync::LazyLock::new(|| moka::sync::Cache::new(10_000));
+        let id: [u8; 32] = sha2::Sha256::digest(input.as_bytes()).into();
+        if let Some(cert) = PARSED.get(&id) {
+            return Ok(cert);
+        }
+        let cert = Self::parse(input)?;
+        PARSED.insert(id, cert.clone());
+        Ok(cert)
+    }
+
     pub fn from_der(der: Vec<u8>) -> SamlResult<Self> {
         use x509_parser::public_key::PublicKey;
         let (rest, cert) = x509_parser::parse_x509_certificate(&der)
