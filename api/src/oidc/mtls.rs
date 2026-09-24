@@ -60,6 +60,8 @@ pub struct ClientCert {
     thumbprint: String,
     subject: Vec<Vec<(String, Option<String>)>>,
     subject_dn: String,
+    /// See [`ClientCert::subject_is_textual`].
+    textual: bool,
     dns: Vec<String>,
     uris: Vec<String>,
     ips: Vec<IpAddr>,
@@ -78,6 +80,15 @@ impl ClientCert {
         }
         let subject = name_parts(cert.subject());
         let subject_dn = format_dn(&subject);
+        // Only a subject whose printed DN names it again can be registered:
+        // every attribute a string under a well-formed OID, and the string
+        // parsing back to the same RDNs (a mangled certificate can carry an
+        // attribute type with no OID, which prints as `=`).
+        let textual = !subject.is_empty()
+            && subject.iter().all(|rdn| {
+                !rdn.is_empty() && rdn.iter().all(|(oid, v)| v.is_some() && is_dotted_oid(oid))
+            })
+            && dn_matches(&subject, &subject_dn);
         let (mut dns, mut uris, mut ips, mut emails) = (vec![], vec![], vec![], vec![]);
         if let Ok(Some(san)) = cert.subject_alternative_name() {
             for name in &san.value.general_names {
@@ -105,6 +116,7 @@ impl ClientCert {
             thumbprint,
             subject,
             subject_dn,
+            textual,
             dns,
             uris,
             ips,
@@ -136,15 +148,12 @@ impl ClientCert {
         self.not_after
     }
 
-    /// Whether the subject is non-empty and every attribute of it a string,
-    /// so that [`Self::subject_dn`] can be registered and matched. (A
-    /// certificate that names its holder only in SANs has an empty subject.)
+    /// Whether the subject is non-empty, every attribute of it a string
+    /// under a well-formed OID, and [`Self::subject_dn`] matches it again, so
+    /// that it can be registered and matched. (A certificate that names its
+    /// holder only in SANs has an empty subject.)
     pub fn subject_is_textual(&self) -> bool {
-        !self.subject.is_empty()
-            && self
-                .subject
-                .iter()
-                .all(|rdn| !rdn.is_empty() && rdn.iter().all(|(_, v)| v.is_some()))
+        self.textual
     }
 }
 
@@ -311,11 +320,14 @@ fn oid_of(name: &str) -> Option<String> {
     if upper == "E" {
         return Some("1.2.840.113549.1.9.1".into());
     }
-    let dotted = !upper.is_empty()
-        && upper
-            .split('.')
-            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()));
-    dotted.then(|| upper.to_string())
+    is_dotted_oid(upper).then(|| upper.to_string())
+}
+
+/// `1.2.840…`: non-empty arcs of digits.
+fn is_dotted_oid(s: &str) -> bool {
+    !s.is_empty()
+        && s.split('.')
+            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
 }
 
 fn name_of(oid: &str) -> &str {
@@ -479,11 +491,15 @@ fn same_value(a: &str, b: &str) -> bool {
 /// Whether a certificate's subject is the registered DN: the same RDNs in
 /// the same order, each with the same attributes (in any order within it).
 pub fn subject_matches(cert: &ClientCert, registered: &str) -> bool {
+    dn_matches(&cert.subject, registered)
+}
+
+fn dn_matches(subject: &[Vec<(String, Option<String>)>], registered: &str) -> bool {
     let Ok(want) = parse_dn(registered) else {
         return false;
     };
-    want.len() == cert.subject.len()
-        && want.iter().zip(&cert.subject).all(|(w, have)| {
+    want.len() == subject.len()
+        && want.iter().zip(subject).all(|(w, have)| {
             w.len() == have.len()
                 && w.iter().all(|(oid, v)| {
                     have.iter().any(|(o, hv)| {

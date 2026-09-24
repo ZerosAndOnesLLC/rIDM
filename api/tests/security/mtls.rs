@@ -174,3 +174,20 @@ async fn a_certificate_bound_token_is_not_exchanged_into_a_looser_one() {
     .unwrap();
     assert_eq!(claims["cnf"]["x5t#S256"], x5t);
 }
+
+/// Fuzzing (`client_cert`) found a certificate whose subject attribute type
+/// is not a usable OID: rIDM printed its subject as `=`, a DN that cannot
+/// match the certificate it came from. A subject is offered for registration
+/// only when what rIDM prints of it names it again.
+#[test]
+fn a_printed_subject_names_its_certificate_again() {
+    let der = include_bytes!("../fixtures/mtls/fuzz-subject-dn-roundtrip.der").to_vec();
+    let cert = mtls::ClientCert::from_chain(der, vec![]).expect("parses");
+    if cert.subject_is_textual() {
+        assert!(
+            mtls::subject_matches(&cert, cert.subject_dn()),
+            "the subject `{}` does not match its own certificate",
+            cert.subject_dn()
+        );
+    }
+}
