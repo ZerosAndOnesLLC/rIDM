@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Briefcase, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -22,18 +22,20 @@ export function OrganizationsPage({ tenant, selected }: { tenant: string; select
   // An administrator whose `ridm:orgs:read` comes from a grant inside one
   // organization cannot list the tenant's others; the page opens theirs.
   const confined = confinedToOrg("ridm:orgs:read") && !!org;
-  const list = useQuery({
+  const list = useInfiniteQuery({
     queryKey: ["organizations", tenant, q],
     enabled: !confined,
-    queryFn: async () => {
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }) => {
       const { data, error } = await client.GET("/admin/tenants/{slug}/organizations", {
-        params: { path: { slug: tenant }, query: q ? { search: q } : {} },
+        params: { path: { slug: tenant }, query: { ...(q ? { search: q } : {}), ...(pageParam ? { cursor: pageParam } : {}) } },
       });
       if (error) throw new Error(error.detail ?? error.title);
       return data;
     },
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
   });
-  const items = list.data?.items ?? [];
+  const items = list.data?.pages.flatMap((p) => p.items) ?? [];
 
   if (confined) {
     return (
@@ -94,6 +96,13 @@ export function OrganizationsPage({ tenant, selected }: { tenant: string; select
                   </li>
                 ))}
               </ul>
+            )}
+            {list.hasNextPage && (
+              <div className="mt-2 text-center">
+                <Button onClick={() => void list.fetchNextPage()} disabled={list.isFetchingNextPage}>
+                  {list.isFetchingNextPage ? "Loading…" : "Load more"}
+                </Button>
+              </div>
             )}
           </Card>
         }

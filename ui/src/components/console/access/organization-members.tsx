@@ -63,7 +63,9 @@ export function OrganizationMembers({
       if (r.error) throw new Error(r.error.detail ?? r.error.title);
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["organization", tenant, id] });
+      // The member list, and the organization itself for its member count.
+      void qc.invalidateQueries({ queryKey: ["organization", tenant, id, "members"] });
+      void qc.invalidateQueries({ queryKey: ["organization", tenant, id], exact: true });
     },
   });
   const have = new Set(members.data?.map((u) => u.id) ?? []);

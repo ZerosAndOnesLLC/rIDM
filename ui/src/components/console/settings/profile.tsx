@@ -7,6 +7,7 @@ import { Field, NumberInput, SaveIndicator, SelectInput, TagsInput, TextInput, T
 import { Button, IconButton } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
 import { useAutoSave } from "@/lib/console/autosave";
+import { useRowKeys } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
 import type { AttributeDef, ProfileSchema } from "@/lib/console/users";
 import { CheckList } from "../clients/pickers";
@@ -53,7 +54,7 @@ export function ProfileSchemaSection({ tenant, editable }: { tenant: string; edi
     },
     [client, qc, tenant],
   );
-  const { queue, status, error } = useAutoSave<ProfileSchema>(save);
+  const { queue, status, error } = useAutoSave<ProfileSchema>(save, { baseline: query.data });
   const update = (next: ProfileSchema) => {
     setDraft(next);
     if (editable) queue(next);
@@ -64,6 +65,7 @@ export function ProfileSchemaSection({ tenant, editable }: { tenant: string; edi
       setResetCount((n) => n + 1);
     },
   });
+  const rows = useRowKeys(draft?.attributes.length ?? 0);
 
   if (query.isError)
     return (
@@ -98,7 +100,7 @@ export function ProfileSchemaSection({ tenant, editable }: { tenant: string; edi
         <Toggle label="Accept undeclared attributes" hint="Stored verbatim; only administrators, imports and mappers can set them." checked={draft.allow_undeclared} disabled={!editable} onChange={(v) => update({ ...draft, allow_undeclared: v })} />
         {attrs.length === 0 && <p className="text-[0.875rem] text-muted">No attributes declared.</p>}
         {attrs.map((a, i) => (
-          <div key={i} className="rounded-[var(--radius)] border border-line p-4" data-testid="attribute-row">
+          <div key={rows.keys[i]} className="rounded-[var(--radius)] border border-line p-4" data-testid="attribute-row">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Name" hint="Lowercase letters, digits and underscores.">
                 {(id, by) => <TextInput id={id} aria-describedby={by} value={a.name} disabled={!editable} autoCapitalize="none" spellCheck={false} onChange={(e) => setAttr(i, { name: e.target.value })} />}
@@ -170,7 +172,10 @@ export function ProfileSchemaSection({ tenant, editable }: { tenant: string; edi
             </div>
             {editable && (
               <div className="mt-3 flex justify-end">
-                <IconButton label={`Remove attribute ${a.name || i + 1}`} className="text-danger hover:bg-danger-soft" onClick={() => update({ ...draft, attributes: attrs.filter((_, j) => j !== i) })}>
+                <IconButton label={`Remove attribute ${a.name || i + 1}`} className="text-danger hover:bg-danger-soft" onClick={() => {
+                    rows.removeKey(i);
+                    update({ ...draft, attributes: attrs.filter((_, j) => j !== i) });
+                  }}>
                   <Trash2 className="size-4" aria-hidden />
                 </IconButton>
               </div>

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Field, SaveIndicator, Section, SelectInput, TextInput } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
@@ -22,10 +22,11 @@ export function RolesPage({ tenant, selected }: { tenant: string; selected: stri
   const clients = useClientNames(tenant);
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState("");
-  const names = clients.data ?? {};
-  const list = (roles.data ?? [])
-    .filter((r) => !filter || r.name.toLowerCase().includes(filter.toLowerCase()))
-    .sort((a, b) => (a.client_id ?? "").localeCompare(b.client_id ?? "") || a.name.localeCompare(b.name));
+  const names = useMemo(() => clients.data ?? {}, [clients.data]);
+  const list = useMemo(() => {
+    const needle = filter.toLowerCase();
+    return (roles.data ?? []).filter((r) => !needle || r.name.toLowerCase().includes(needle)).sort((a, b) => (a.client_id ?? "").localeCompare(b.client_id ?? "") || a.name.localeCompare(b.name));
+  }, [roles.data, filter]);
   return (
     <>
       <PageHeader
@@ -153,7 +154,7 @@ function RoleDetailView({ tenant, id, clientNames }: { tenant: string; id: strin
     },
     [client, qc, tenant, id],
   );
-  const { queue, status, error } = useAutoSave(save);
+  const { queue, status, error } = useAutoSave(save, { baseline: query.data });
   const update = (patch: Partial<Role>) => {
     setDraft((d) => (d ? { ...d, ...patch } : d));
     if (editable) queue(patch);
@@ -263,12 +264,14 @@ function RolePermissions({ tenant, id, permissions, editable, onChanged }: { ten
     staleTime: 60_000,
     enabled: editable && Boolean(servers.data),
     queryFn: async () => {
-      const out: { id: string; label: string }[] = [];
-      for (const rs of servers.data ?? []) {
-        const { data } = await client.GET("/admin/tenants/{slug}/resource-servers/{rs}/permissions", { params: { path: { slug: tenant, rs: rs.id } } });
-        for (const p of data ?? []) out.push({ id: p.id, label: `${rs.name}: ${p.name}` });
-      }
-      return out.sort((a, b) => a.label.localeCompare(b.label));
+      // One request per resource server, all at once.
+      const lists = await Promise.all(
+        (servers.data ?? []).map(async (rs) => {
+          const { data } = await client.GET("/admin/tenants/{slug}/resource-servers/{rs}/permissions", { params: { path: { slug: tenant, rs: rs.id } } });
+          return (data ?? []).map((p) => ({ id: p.id, label: `${rs.name}: ${p.name}` }));
+        }),
+      );
+      return lists.flat().sort((a, b) => a.label.localeCompare(b.label));
     },
   });
   const change = useMutation({

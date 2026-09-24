@@ -20,21 +20,17 @@
     "e2e:report": "playwright show-report"
   },
   "dependencies": {
-    "@hookform/resolvers": "5.9.1",
     "@radix-ui/react-dialog": "1.1.23",
     "@radix-ui/react-select": "2.3.7",
     "@simplewebauthn/browser": "14.0.0",
     "@tanstack/react-query": "5.102.8",
-    "@tanstack/react-table": "9.2.4",
     "lucide-react": "1.46.0",
     "next": "16.3.5",
     "openapi-fetch": "0.17.0",
     "qrcode": "1.5.4",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "react-hook-form": "7.88.0",
-    "recharts": "3.10.1",
-    "zod": "4.6.5"
+    "recharts": "3.10.1"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

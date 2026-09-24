@@ -77,7 +77,7 @@ function Editor({ tenant, initial, onReload }: { tenant: string; initial: Flags;
     },
     [client, qc, tenant, onReload],
   );
-  const { queue, status, error } = useAutoSave<FlagsPatch>(save);
+  const { queue, status, error } = useAutoSave<FlagsPatch>(save, { baseline: initial });
 
   const change = (key: string, next: Flag | null, patch: FlagsPatch[string]) => {
     setFlags((f) => {

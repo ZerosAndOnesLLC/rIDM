@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Plus, UserRoundPlus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Picker, type PickerItem } from "@/components/console/picker";
 import { Field, SaveIndicator, Section, SelectInput, TextInput } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
@@ -22,29 +22,8 @@ export function GroupsPage({ tenant, selected }: { tenant: string; selected: str
   const { can } = useConsole();
   const { groups } = useRolesAndGroups(tenant);
   const [creating, setCreating] = useState<{ parent: string | null } | null>(null);
-  const all = groups.data ?? [];
-  const children = (parent: string | null) => all.filter((g) => (g.parent_id ?? null) === parent).sort((a, b) => a.name.localeCompare(b.name));
-
-  const Tree = ({ parent, depth }: { parent: string | null; depth: number }) => (
-    <ul role={depth === 0 ? "tree" : "group"} className={depth ? "ms-4 border-s border-line" : ""}>
-      {children(parent).map((g) => {
-        const kids = children(g.id);
-        return (
-          <li key={g.id} role="treeitem" aria-selected={g.id === selected} aria-expanded={kids.length ? true : undefined}>
-            <Link
-              href={href("groups", tenant, { group: g.id })}
-              aria-current={g.id === selected ? "page" : undefined}
-              className={`flex items-center gap-1.5 rounded-[var(--radius)] px-2 py-1.5 text-[0.875rem] ${g.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
-            >
-              <ChevronRight className={`size-3.5 shrink-0 text-muted ${kids.length ? "" : "invisible"}`} aria-hidden />
-              <span className="truncate">{g.name}</span>
-            </Link>
-            {kids.length > 0 && <Tree parent={g.id} depth={depth + 1} />}
-          </li>
-        );
-      })}
-    </ul>
-  );
+  const all = useMemo(() => groups.data ?? [], [groups.data]);
+  const tree = useMemo(() => childrenIndex(all), [all]);
 
   return (
     <>
@@ -63,13 +42,64 @@ export function GroupsPage({ tenant, selected }: { tenant: string; selected: str
       <Split
         list={
           <Card title="Tree">
-            {groups.isPending ? <Spinner label="Loading…" /> : groups.isError ? <ErrorLine error={groups.error} /> : all.length === 0 ? <p className="text-[0.875rem] text-muted">No groups yet.</p> : <Tree parent={null} depth={0} />}
+            {groups.isPending ? <Spinner label="Loading…" /> : groups.isError ? <ErrorLine error={groups.error} /> : all.length === 0 ? <p className="text-[0.875rem] text-muted">No groups yet.</p> : <GroupTree tree={tree} parent={null} depth={0} tenant={tenant} selected={selected} />}
           </Card>
         }
         detail={selected ? <GroupDetailView key={selected} tenant={tenant} id={selected} all={all} onCreateChild={() => setCreating({ parent: selected })} /> : <p className="text-[0.9rem] text-muted">Choose a group.</p>}
       />
       <CreateGroup tenant={tenant} all={all} open={creating !== null} parent={creating?.parent ?? null} onOpenChange={(o) => !o && setCreating(null)} />
     </>
+  );
+}
+
+/** Each group's children, sorted by name, built once per group list (the tree renders from it without scanning the list per node). */
+function childrenIndex(all: Group[]): Map<string | null, Group[]> {
+  const index = new Map<string | null, Group[]>();
+  for (const g of all) {
+    const parent = g.parent_id ?? null;
+    const list = index.get(parent);
+    if (list) list.push(g);
+    else index.set(parent, [g]);
+  }
+  for (const list of index.values()) list.sort((a, b) => a.name.localeCompare(b.name));
+  return index;
+}
+
+/** Every group below `id` in the tree. */
+function descendantsOf(tree: Map<string | null, Group[]>, id: string): Set<string> {
+  const out = new Set<string>();
+  const stack = [id];
+  while (stack.length) {
+    for (const g of tree.get(stack.pop() as string) ?? []) {
+      if (!out.has(g.id)) {
+        out.add(g.id);
+        stack.push(g.id);
+      }
+    }
+  }
+  return out;
+}
+
+function GroupTree({ tree, parent, depth, tenant, selected }: { tree: Map<string | null, Group[]>; parent: string | null; depth: number; tenant: string; selected: string | null }) {
+  return (
+    <ul role={depth === 0 ? "tree" : "group"} className={depth ? "ms-4 border-s border-line" : ""}>
+      {(tree.get(parent) ?? []).map((g) => {
+        const kids = tree.get(g.id)?.length ?? 0;
+        return (
+          <li key={g.id} role="treeitem" aria-selected={g.id === selected} aria-expanded={kids ? true : undefined}>
+            <Link
+              href={href("groups", tenant, { group: g.id })}
+              aria-current={g.id === selected ? "page" : undefined}
+              className={`flex items-center gap-1.5 rounded-[var(--radius)] px-2 py-1.5 text-[0.875rem] ${g.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
+            >
+              <ChevronRight className={`size-3.5 shrink-0 text-muted ${kids ? "" : "invisible"}`} aria-hidden />
+              <span className="truncate">{g.name}</span>
+            </Link>
+            {kids > 0 && <GroupTree tree={tree} parent={g.id} depth={depth + 1} tenant={tenant} selected={selected} />}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -151,7 +181,10 @@ function GroupDetailView({ tenant, id, all, onCreateChild }: { tenant: string; i
     },
     [client, qc, tenant, id],
   );
-  const { queue, status, error } = useAutoSave(save);
+  const { queue, status, error } = useAutoSave(save, { baseline: query.data });
+  const paths = useMemo(() => groupPaths(all), [all]);
+  // A group cannot move under itself or a descendant.
+  const descendants = useMemo(() => descendantsOf(childrenIndex(all), id), [all, id]);
   const update = (patch: Partial<GroupDetail>) => {
     setDraft((d) => (d ? { ...d, ...patch } : d));
     if (editable) queue(patch);
@@ -168,11 +201,6 @@ function GroupDetailView({ tenant, id, all, onCreateChild }: { tenant: string; i
   });
   if (query.isError) return <ErrorLine error={query.error} />;
   if (!draft) return <Spinner label="Loading group…" />;
-  const paths = groupPaths(all);
-  // A group cannot move under itself or a descendant.
-  const descendants = new Set<string>();
-  const walk = (gid: string) => all.filter((g) => g.parent_id === gid).forEach((g) => (descendants.add(g.id), walk(g.id)));
-  walk(id);
 
   return (
     <div className="flex flex-col gap-4">

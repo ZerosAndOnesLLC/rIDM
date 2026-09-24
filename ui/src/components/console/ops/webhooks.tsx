@@ -166,7 +166,7 @@ function WebhookView({ tenant, id, onReveal }: { tenant: string; id: string; onR
     },
     [client, qc, tenant, id],
   );
-  const { queue, status, error } = useAutoSave(save);
+  const { queue, status, error } = useAutoSave(save, { baseline: query.data });
   const update = (patch: Partial<Webhook>) => {
     setDraft((d) => (d ? { ...d, ...patch } : d));
     if (editable) queue(patch);
@@ -252,7 +252,8 @@ function Deliveries({ tenant, id, editable }: { tenant: string; id: string; edit
   const [open, setOpen] = useState<string | null>(null);
   const list = useQuery({
     queryKey: ["webhook", tenant, id, "deliveries", status],
-    refetchInterval: 10_000,
+    // Quick while something is still on its way, slow once it all settled.
+    refetchInterval: (q) => (q.state.data?.some((d) => d.status === "pending" || d.status === "failed" || d.status === "sending") ? 10_000 : 60_000),
     queryFn: async () => {
       const { data, error } = await client.GET("/admin/tenants/{slug}/webhooks/{webhook}/deliveries", { params: { path: { slug: tenant, webhook: id }, query: { status: status || undefined, limit: 50 } } });
       if (error) throw new Error(error.detail ?? error.title);
