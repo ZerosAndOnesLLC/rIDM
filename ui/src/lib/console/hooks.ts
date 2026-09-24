@@ -45,7 +45,9 @@ export function useResourceServers(tenant: string | null) {
 }
 
 /** Every client of the tenant by id → name, for labels and pickers. Pages
- * through the whole list (no silent cut-off), cached a minute. */
+ * through the whole list (no silent cut-off) at the API's largest page, one
+ * page after another (each cursor comes from the page before), cached a
+ * minute. */
 export function useClientNames(tenant: string) {
   const { client } = useConsole();
   return useQuery({
@@ -55,7 +57,7 @@ export function useClientNames(tenant: string) {
       const names: Record<string, string> = {};
       let cursor: string | undefined;
       do {
-        const { data, error } = await client.GET("/admin/tenants/{slug}/clients", { params: { path: { slug: tenant }, query: { limit: 200, cursor } } });
+        const { data, error } = await client.GET("/admin/tenants/{slug}/clients", { params: { path: { slug: tenant }, query: { limit: 500, cursor } } });
         if (error) throw new Error(error.detail ?? error.title);
         for (const c of data.items) names[c.id] = c.name;
         cursor = data.next_cursor ?? undefined;

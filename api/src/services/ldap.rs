@@ -1210,7 +1210,9 @@ async fn run_sync(
     dir: &Directory,
     force_full: bool,
 ) -> AppResult<(LdapSyncStats, Option<String>)> {
-    let tenant = tenants::get(state, tenant_id).await?;
+    let tenant = tenants::get_cached(state, tenant_id)
+        .await?
+        .ok_or(AppError::NotFound("tenant"))?;
     let full_due = dir.cfg.last_full_sync_at.is_none_or(|t| {
         t < Utc::now() - chrono::Duration::hours(i64::from(dir.cfg.full_sync_interval_hours))
     });

@@ -265,7 +265,9 @@ pub async fn update_as(
                 new_email: user.email.clone(),
             },
         ));
-        let tenant = crate::services::tenants::get(state, tenant_id).await?;
+        let tenant = crate::services::tenants::get_cached(state, tenant_id)
+            .await?
+            .ok_or(AppError::NotFound("tenant"))?;
         crate::services::notifications::email_changed(
             state,
             &tenant,
@@ -277,7 +279,9 @@ pub async fn update_as(
     // Disabled by any path (admin API, SCIM, import): signed out everywhere
     // at once, and the relying parties are told.
     if user.status == UserStatus::Disabled && before.status != UserStatus::Disabled {
-        let tenant = crate::services::tenants::get(state, tenant_id).await?;
+        let tenant = crate::services::tenants::get_cached(state, tenant_id)
+            .await?
+            .ok_or(AppError::NotFound("tenant"))?;
         crate::services::logout::end_sessions_for_user(state, &tenant, id, None).await?;
     }
     Ok(user)
@@ -300,7 +304,9 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
     ));
     // Deleted by any path (admin API, SCIM, self-service): signed out
     // everywhere, and the relying parties are told.
-    let tenant = crate::services::tenants::get(state, tenant_id).await?;
+    let tenant = crate::services::tenants::get_cached(state, tenant_id)
+        .await?
+        .ok_or(AppError::NotFound("tenant"))?;
     crate::services::logout::end_sessions_for_user(state, &tenant, id, None).await?;
     Ok(())
 }
