@@ -169,6 +169,27 @@ pub async fn add_member<'e>(
     Ok(res.rows_affected() > 0)
 }
 
+/// Clear the primary organization of up to `limit` of the users whose
+/// primary organization is `org_id`; the ones cleared.
+pub async fn clear_primary_org_batch<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    org_id: Uuid,
+    limit: i64,
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        "UPDATE users SET org_id = NULL \
+          WHERE tenant_id = $1 AND id IN ( \
+                SELECT id FROM users WHERE tenant_id = $1 AND org_id = $2 LIMIT $3) \
+          RETURNING id",
+    )
+    .bind(tenant_id)
+    .bind(org_id)
+    .bind(limit)
+    .fetch_all(exec)
+    .await
+}
+
 /// Users whose primary organization is `org_id`.
 pub async fn users_with_primary_org<'e>(
     exec: impl PgExecutor<'e>,

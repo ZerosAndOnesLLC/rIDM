@@ -27,6 +27,8 @@ use crate::util::cursor::{Cursor, Page, page_size};
 /// Memberships are versioned by the roles version (org-scoped grants hang off
 /// the same graph); the TTL only bounds a missed bump.
 const ORGS_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+/// Users whose primary organization a delete clears per transaction.
+const PRIMARY_ORG_BATCH: i64 = 1000;
 
 /// The DNS label a domain's proof is published under: a TXT record at
 /// `_ridm-challenge.<domain>` whose value is the domain's `verification`.
@@ -242,8 +244,26 @@ pub async fn update(
 /// grants go with it; members keep their accounts, and a member whose primary
 /// organization this was is left without one.
 pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -> AppResult<()> {
+    // Users whose primary organization this is lose it first, a batch per
+    // short transaction, each batch evicted as it goes: one statement over
+    // all of them would lock every row (and list every id) at once.
+    loop {
+        let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+        let cleared = repos::organizations::clear_primary_org_batch(
+            &mut *tx,
+            tenant_id,
+            id,
+            PRIMARY_ORG_BATCH,
+        )
+        .await?;
+        tx.commit().await?;
+        if cleared.is_empty() {
+            break;
+        }
+        crate::services::users::forget(state, tenant_id, &cleared).await;
+    }
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    // Their `org_id` is cleared by the foreign key: evict their rows.
+    // Anyone who joined meanwhile is cleared by the foreign key: evict them.
     let primary_of = repos::organizations::users_with_primary_org(&mut *tx, tenant_id, id).await?;
     let deleted = repos::organizations::delete(&mut *tx, tenant_id, id).await?;
     tx.commit().await?;
