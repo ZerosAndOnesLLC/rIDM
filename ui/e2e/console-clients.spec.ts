@@ -128,10 +128,13 @@ test.describe("clients", () => {
     await expect(page.getByRole("button", { name: "Sign in as a user" })).toBeEnabled({ timeout: 10_000 });
     await expectAccessible(page);
 
-    // The browser already holds the tenant session: straight back with a code.
-    await page.getByRole("button", { name: "Sign in as a user" }).click();
-    await page.waitForURL(/\/console\/playground\/\?tenant=master&client=/, { timeout: 20_000 });
+    // The sign-in runs in a popup; the browser already holds the tenant
+    // session, so it comes straight back with a code, hands it over and closes.
+    const [popup] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: "Sign in as a user" }).click()]);
+    await popup.waitForEvent("close", { timeout: 20_000 });
     await expect(page.getByRole("heading", { name: "Token response" })).toBeVisible({ timeout: 15_000 });
+    // Nothing of the run (the tokens, a client secret) is left in storage.
+    expect(await page.evaluate(() => Object.keys(sessionStorage).filter((k) => k.startsWith("ridm.playground")))).toEqual([]);
     await expect(page.getByRole("heading", { name: "ID token claims" })).toBeVisible();
     await expect(page.getByText('"iss"').first()).toBeVisible();
     await page.getByRole("button", { name: "Call userinfo" }).click();
