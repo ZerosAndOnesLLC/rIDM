@@ -112,7 +112,24 @@ pub fn parse_ca(pem: &str) -> Result<Vec<CertificateDer<'static>>, String> {
     Ok(certs)
 }
 
+/// TLS configurations built once per node: the platform verifier loads the
+/// system's trust store when it is made, and a CA bundle is parsed; neither
+/// should happen on every sign-in. Keyed by a hash of the bundle.
+static TLS_CONFIGS: std::sync::LazyLock<moka::sync::Cache<[u8; 32], Arc<rustls::ClientConfig>>> =
+    std::sync::LazyLock::new(|| moka::sync::Cache::new(1024));
+
 fn tls_config(ca: Option<&str>) -> Result<Arc<rustls::ClientConfig>, LdapFailure> {
+    use sha2::Digest as _;
+    let id: [u8; 32] = sha2::Sha256::digest(ca.unwrap_or("\0platform").as_bytes()).into();
+    if let Some(config) = TLS_CONFIGS.get(&id) {
+        return Ok(config);
+    }
+    let config = build_tls_config(ca)?;
+    TLS_CONFIGS.insert(id, config.clone());
+    Ok(config)
+}
+
+fn build_tls_config(ca: Option<&str>) -> Result<Arc<rustls::ClientConfig>, LdapFailure> {
     let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
     let builder = rustls::ClientConfig::builder_with_provider(provider.clone())
         .with_safe_default_protocol_versions()
@@ -139,8 +156,11 @@ fn tls_config(ca: Option<&str>) -> Result<Arc<rustls::ClientConfig>, LdapFailure
     Ok(Arc::new(config))
 }
 
-/// An open connection. Dropping it closes the socket; [`Conn::close`]
-/// unbinds politely first.
+/// An open connection. Clones share it (operations are multiplexed on one
+/// socket), so a clone is for searches only: a bind changes who the
+/// connection is for every clone. Dropping the last one closes the socket;
+/// [`Conn::close`] unbinds politely first.
+#[derive(Clone)]
 pub struct Conn {
     ldap: Ldap,
     timeout: Duration,

@@ -200,6 +200,125 @@ pub fn directory(idp: IdentityProvider) -> AppResult<Directory> {
         .ok_or_else(|| AppError::BadRequest("not an LDAP identity provider".into()))
 }
 
+/// Service-bound connections kept per directory and node, for the searches
+/// sign-ins make; a user's own bind never goes on one (it would change who
+/// the shared connection is).
+const POOLED_CONNECTIONS: usize = 4;
+/// How long a directory's pool is kept unused before its connections close.
+const POOL_IDLE: Duration = Duration::from_secs(600);
+
+/// A directory's pooled connections, and what they were opened with.
+struct Pool {
+    /// A changed URL, CA, bind DN, or any change to the provider (its
+    /// service password included) makes a new pool.
+    fingerprint: [u8; 32],
+    slots: Vec<tokio::sync::Mutex<Option<Conn>>>,
+    next: std::sync::atomic::AtomicUsize,
+}
+
+static POOLS: std::sync::LazyLock<moka::sync::Cache<Uuid, std::sync::Arc<Pool>>> =
+    std::sync::LazyLock::new(|| {
+        moka::sync::Cache::builder()
+            .max_capacity(10_000)
+            .time_to_idle(POOL_IDLE)
+            .build()
+    });
+
+fn fingerprint(dir: &Directory) -> [u8; 32] {
+    use sha2::Digest as _;
+    let o = dir.options();
+    let mut h = sha2::Sha256::new();
+    for part in [
+        o.url.as_str(),
+        if o.starttls { "starttls" } else { "" },
+        o.ca_certificate.as_deref().unwrap_or(""),
+        dir.cfg.bind_dn.as_deref().unwrap_or(""),
+        &o.timeout.as_millis().to_string(),
+        &dir.idp.updated_at.to_rfc3339(),
+    ] {
+        h.update(part.as_bytes());
+        h.update([0]);
+    }
+    h.finalize().into()
+}
+
+/// A service-bound connection from the directory's pool, opened (and bound)
+/// on first use. For searches only.
+async fn pooled(state: &AppState, dir: &Directory) -> AppResult<(Conn, usize)> {
+    let fp = fingerprint(dir);
+    let pool = match POOLS.get(&dir.idp.id).filter(|p| p.fingerprint == fp) {
+        Some(p) => p,
+        None => {
+            let p = std::sync::Arc::new(Pool {
+                fingerprint: fp,
+                slots: (0..POOLED_CONNECTIONS)
+                    .map(|_| tokio::sync::Mutex::new(None))
+                    .collect(),
+                next: Default::default(),
+            });
+            POOLS.insert(dir.idp.id, p.clone());
+            p
+        }
+    };
+    let slot = pool.next.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % POOLED_CONNECTIONS;
+    let mut held = pool.slots[slot].lock().await;
+    if let Some(conn) = held.as_ref() {
+        return Ok((conn.clone(), slot));
+    }
+    let conn = connect(state, dir).await?;
+    *held = Some(conn.clone());
+    Ok((conn, slot))
+}
+
+/// Forget a pooled connection that failed, so the next use opens a new one.
+async fn discard(dir: &Directory, slot: usize) {
+    if let Some(pool) = POOLS.get(&dir.idp.id) {
+        *pool.slots[slot].lock().await = None;
+    }
+}
+
+/// A search on a pooled connection. A connection the directory closed
+/// (idle timeout, restart) fails at its next use: it is replaced and the
+/// search made once more.
+async fn search_pooled(
+    state: &AppState,
+    dir: &Directory,
+    base: &str,
+    scope: Scope,
+    filter: &str,
+    attrs: &[String],
+    limit: i32,
+) -> AppResult<Vec<Entry>> {
+    for attempt in 0..2 {
+        let (mut conn, slot) = pooled(state, dir).await?;
+        match conn.search(base, scope, filter, attrs, limit).await {
+            Ok(found) => return Ok(found),
+            Err(LdapFailure::Connect(e)) if attempt == 0 => {
+                tracing::debug!(provider = %dir.idp.alias, error = %e, "pooled directory connection lost; reconnecting");
+                discard(dir, slot).await;
+            }
+            Err(e) => return Err(unavailable(dir, e)),
+        }
+    }
+    Err(AppError::Unavailable(format!(
+        "directory `{}` could not be reached",
+        dir.idp.alias
+    )))
+}
+
+/// A user's own bind, on a connection of its own, closed after.
+async fn bind_as(dir: &Directory, dn: &str, password: &str) -> AppResult<bool> {
+    let mut conn = Conn::open(&dir.options())
+        .await
+        .map_err(|e| unavailable(dir, e))?;
+    let ok = conn
+        .bind(dn, password)
+        .await
+        .map_err(|e| unavailable(dir, e));
+    conn.close().await;
+    ok
+}
+
 /// Connect and bind as the service account (or stay anonymous without one).
 async fn connect(state: &AppState, dir: &Directory) -> AppResult<Conn> {
     let mut conn = Conn::open(&dir.options())
@@ -231,20 +350,20 @@ async fn service_bind(state: &AppState, dir: &Directory, conn: &mut Conn) -> App
 
 /// The one entry with this subject, if the directory still has it.
 async fn find_by_subject(
+    state: &AppState,
     dir: &Directory,
-    conn: &mut Conn,
     subject: &str,
 ) -> AppResult<Option<Entry>> {
-    let found = conn
-        .search(
-            &dir.cfg.users_dn,
-            dir.scope(),
-            &dir.user_filter(Some(dir.subject_filter(subject))),
-            &dir.user_attributes(),
-            2,
-        )
-        .await
-        .map_err(|e| unavailable(dir, e))?;
+    let found = search_pooled(
+        state,
+        dir,
+        &dir.cfg.users_dn,
+        dir.scope(),
+        &dir.user_filter(Some(dir.subject_filter(subject))),
+        &dir.user_attributes(),
+        2,
+    )
+    .await?;
     Ok(match <[Entry; 1]>::try_from(found) {
         Ok([one]) => Some(one),
         Err(_) => None,
@@ -287,22 +406,16 @@ pub async fn verify_password(
     if !dir.idp.enabled || password.is_empty() {
         return Ok(Some(false));
     }
-    let mut conn = connect(state, &dir).await?;
-    let Some(entry) = find_by_subject(&dir, &mut conn, &subject).await? else {
-        conn.close().await;
+    let Some(entry) = find_by_subject(state, &dir, &subject).await? else {
         return Ok(Some(false));
     };
-    let ok = conn
-        .bind(&entry.dn, password)
-        .await
-        .map_err(|e| unavailable(&dir, e))?;
-    if !ok || dir.disabled(&entry) {
-        conn.close().await;
+    if !bind_as(&dir, &entry.dn, password).await? || dir.disabled(&entry) {
         return Ok(Some(false));
     }
-    let tenant = tenants::get(state, tenant_id).await?;
-    let groups = user_groups_after_bind(state, &dir, &mut conn, &entry).await;
-    conn.close().await;
+    let tenant = tenants::get_cached(state, tenant_id)
+        .await?
+        .ok_or(AppError::NotFound("tenant"))?;
+    let groups = user_groups_after_bind(state, &dir, &entry).await;
     refresh(state, &tenant, &dir, user, &entry, true).await?;
     apply_user_groups(state, tenant_id, &dir, user.id, groups).await?;
     Ok(Some(true))
@@ -311,7 +424,9 @@ pub async fn verify_password(
 /// Sign in an identifier no local account has: find a single entry that it
 /// names in one of the tenant's directories, bind as it, and import it
 /// through the provider's link policy. `Ok(None)` when no directory knows
-/// it or the password is wrong.
+/// it or the password is wrong. Every directory is searched at once; the
+/// first (in the configured order) that has the name decides, as when they
+/// were asked one after another.
 pub async fn sign_in_unknown(
     state: &AppState,
     tenant: &Tenant,
@@ -321,24 +436,36 @@ pub async fn sign_in_unknown(
     if password.is_empty() || identifier.is_empty() || identifier.len() > 256 {
         return Ok(None);
     }
-    let mut outage = None;
+    let mut dirs = vec![];
     for idp_id in identity_providers::directories(state, tenant.id).await? {
-        let Some(dir) = load(state, tenant.id, idp_id).await? else {
-            continue;
-        };
-        if !dir.idp.enabled {
-            continue;
+        if let Some(dir) = load(state, tenant.id, idp_id).await?
+            && dir.idp.enabled
+        {
+            dirs.push(dir);
         }
-        match sign_in_at(state, tenant, &dir, identifier, password).await {
-            Ok(Found::No) => {}
-            Ok(Found::Refused) => return Ok(None),
-            Ok(Found::User(u)) => return Ok(Some(*u)),
+    }
+    let found =
+        futures::future::join_all(dirs.iter().map(|d| lookup_login(state, d, identifier))).await;
+    let mut outage = None;
+    for (dir, found) in dirs.iter().zip(found) {
+        let entry = match found {
+            Ok(found) => match <[Entry; 1]>::try_from(found) {
+                Ok([one]) => one,
+                Err(v) if v.is_empty() => continue,
+                Err(_) => {
+                    tracing::warn!(provider = %dir.idp.alias, "a sign-in identifier matches several directory entries; refused");
+                    return Ok(None);
+                }
+            },
             Err(e @ AppError::Unavailable(_)) => {
                 tracing::warn!(provider = %dir.idp.alias, error = %e, "directory unavailable at sign-in");
                 outage = Some(e);
+                continue;
             }
             Err(e) => return Err(e),
-        }
+        };
+        // This directory has the name: it decides, whatever the others say.
+        return sign_in_at(state, tenant, dir, entry, password).await;
     }
     match outage {
         Some(e) => Err(e),
@@ -346,76 +473,58 @@ pub async fn sign_in_unknown(
     }
 }
 
-enum Found {
-    /// The directory has no such entry.
-    No,
-    /// It has one, and the sign-in failed (wrong password, ambiguous,
-    /// disabled, refused by the link policy): no other directory is asked.
-    Refused,
-    User(Box<User>),
-}
-
-async fn sign_in_at(
+/// The entries a sign-in identifier names in `dir` (at most two: one more
+/// than an unambiguous answer).
+async fn lookup_login(
     state: &AppState,
-    tenant: &Tenant,
     dir: &Directory,
     identifier: &str,
-    password: &str,
-) -> AppResult<Found> {
-    let mut conn = connect(state, dir).await?;
+) -> AppResult<Vec<Entry>> {
     let by_login: Vec<String> = dir
         .cfg
         .login_attributes
         .iter()
         .map(|a| proto::eq(a, identifier))
         .collect();
-    let found = conn
-        .search(
-            &dir.cfg.users_dn,
-            dir.scope(),
-            &dir.user_filter(Some(proto::or(&by_login))),
-            &dir.user_attributes(),
-            2,
-        )
-        .await
-        .map_err(|e| unavailable(dir, e))?;
-    let entry = match <[Entry; 1]>::try_from(found) {
-        Ok([one]) => one,
-        Err(v) if v.is_empty() => {
-            conn.close().await;
-            return Ok(Found::No);
-        }
-        Err(_) => {
-            tracing::warn!(provider = %dir.idp.alias, "a sign-in identifier matches several directory entries; refused");
-            conn.close().await;
-            return Ok(Found::Refused);
-        }
-    };
-    let ok = conn
-        .bind(&entry.dn, password)
-        .await
-        .map_err(|e| unavailable(dir, e))?;
-    if !ok || dir.disabled(&entry) {
-        conn.close().await;
-        return Ok(Found::Refused);
+    search_pooled(
+        state,
+        dir,
+        &dir.cfg.users_dn,
+        dir.scope(),
+        &dir.user_filter(Some(proto::or(&by_login))),
+        &dir.user_attributes(),
+        2,
+    )
+    .await
+}
+
+/// Bind as `entry` with the password and import it. `None` when the
+/// sign-in fails (wrong password, disabled, refused by the link policy).
+async fn sign_in_at(
+    state: &AppState,
+    tenant: &Tenant,
+    dir: &Directory,
+    entry: Entry,
+    password: &str,
+) -> AppResult<Option<User>> {
+    if !bind_as(dir, &entry.dn, password).await? || dir.disabled(&entry) {
+        return Ok(None);
     }
     let Some(identity) = dir.identity(&entry) else {
         tracing::warn!(provider = %dir.idp.alias, dn = %entry.dn, "directory entry has no usable uuid attribute");
-        conn.close().await;
-        return Ok(Found::Refused);
+        return Ok(None);
     };
-    let groups = user_groups_after_bind(state, dir, &mut conn, &entry).await;
-    conn.close().await;
+    let groups = user_groups_after_bind(state, dir, &entry).await;
     let user = match broker::resolve_user(state, tenant, &dir.idp, &identity).await? {
         Ok(u) => u,
         Err(e) => {
             tracing::info!(provider = %dir.idp.alias, reason = e.code(), "directory user not imported");
-            return Ok(Found::Refused);
+            return Ok(None);
         }
     };
     let user = refresh(state, tenant, dir, &user, &entry, true).await?;
     apply_user_groups(state, tenant.id, dir, user.id, groups).await?;
-    Ok(Found::User(Box::new(user)))
+    Ok(Some(user))
 }
 
 /// What a directory says about a name another mechanism already proved.
@@ -442,40 +551,32 @@ pub async fn sign_in_proven(
     if !dir.idp.enabled || value.is_empty() || value.len() > 512 {
         return Ok(DirectoryMatch::Refused);
     }
-    let mut conn = connect(state, dir).await?;
-    let found = conn
-        .search(
-            &dir.cfg.users_dn,
-            dir.scope(),
-            &dir.user_filter(Some(proto::eq(attribute, value))),
-            &dir.user_attributes(),
-            2,
-        )
-        .await
-        .map_err(|e| unavailable(dir, e))?;
+    let found = search_pooled(
+        state,
+        dir,
+        &dir.cfg.users_dn,
+        dir.scope(),
+        &dir.user_filter(Some(proto::eq(attribute, value))),
+        &dir.user_attributes(),
+        2,
+    )
+    .await?;
     let entry = match <[Entry; 1]>::try_from(found) {
         Ok([one]) => one,
-        Err(v) if v.is_empty() => {
-            conn.close().await;
-            return Ok(DirectoryMatch::None);
-        }
+        Err(v) if v.is_empty() => return Ok(DirectoryMatch::None),
         Err(_) => {
             tracing::warn!(provider = %dir.idp.alias, %attribute, "a proven name matches several directory entries; refused");
-            conn.close().await;
             return Ok(DirectoryMatch::Refused);
         }
     };
     if dir.disabled(&entry) {
-        conn.close().await;
         return Ok(DirectoryMatch::Refused);
     }
     let Some(identity) = dir.identity(&entry) else {
         tracing::warn!(provider = %dir.idp.alias, dn = %entry.dn, "directory entry has no usable uuid attribute");
-        conn.close().await;
         return Ok(DirectoryMatch::Refused);
     };
-    let groups = user_groups_after_bind(state, dir, &mut conn, &entry).await;
-    conn.close().await;
+    let groups = user_groups_after_bind(state, dir, &entry).await;
     let user = match broker::resolve_user(state, tenant, &dir.idp, &identity).await? {
         Ok(u) => u,
         Err(e) => {
@@ -517,9 +618,16 @@ async fn refresh(
         },
     )
     .await?;
-    repos::ldap::clear_password(&mut *tx, tid, user.id).await?;
+    // A directory user has no local password; one left from before the link
+    // is cleared (once: most sign-ins find none, and touch no user row).
+    let cleared = user.password_hash.is_some();
+    if cleared {
+        repos::ldap::clear_password(&mut *tx, tid, user.id).await?;
+    }
     tx.commit().await?;
-    crate::services::users::forget(state, tid, &[user.id]).await;
+    if cleared {
+        crate::services::users::forget(state, tid, &[user.id]).await;
+    }
 
     let mut patch = UserUpdate::default();
     if identity.email.is_some() && identity.email != user.email {
@@ -567,12 +675,12 @@ async fn refresh(
 // ---------------------------------------------------------------------------
 
 /// The directory groups of the entry just bound as, read as the service
-/// account (the user may not see them). `None` when group sync is off or
-/// the lookup failed (the sign-in goes on; the next sync catches up).
+/// account (the user may not see them), on a pooled connection. `None` when
+/// group sync is off or the lookup failed (the sign-in goes on; the next
+/// sync catches up).
 async fn user_groups_after_bind(
     state: &AppState,
     dir: &Directory,
-    conn: &mut Conn,
     entry: &Entry,
 ) -> Option<Vec<Entry>> {
     let groups_dn = dir.cfg.groups_dn.as_ref()?;
@@ -580,21 +688,20 @@ async fn user_groups_after_bind(
         LdapMembership::Dn => entry.dn.clone(),
         LdapMembership::Username => entry.first(&dir.cfg.username_attribute)?.to_string(),
     };
-    let lookup = async {
-        service_bind(state, dir, conn).await?;
-        conn.search(
-            groups_dn,
-            Scope::Subtree,
-            &proto::and(&[
-                dir.cfg.group_object_filter.clone(),
-                proto::eq(&dir.cfg.group_member_attribute, &value),
-            ]),
-            &group_attributes(dir, false),
-            USER_GROUPS_LIMIT,
-        )
-        .await
-        .map_err(|e| unavailable(dir, e))
-    };
+    let filter = proto::and(&[
+        dir.cfg.group_object_filter.clone(),
+        proto::eq(&dir.cfg.group_member_attribute, &value),
+    ]);
+    let attrs = group_attributes(dir, false);
+    let lookup = search_pooled(
+        state,
+        dir,
+        groups_dn,
+        Scope::Subtree,
+        &filter,
+        &attrs,
+        USER_GROUPS_LIMIT,
+    );
     match lookup.await {
         Ok(g) => Some(g),
         Err(e) => {
@@ -627,11 +734,20 @@ async fn apply_user_groups(
     let Some(groups) = groups else {
         return Ok(());
     };
-    let mut links = group_link_map(state, tenant_id, dir).await?;
+    // Only the links (and group names) of this user's groups, not every
+    // link the directory has.
+    let external: Vec<String> = groups
+        .iter()
+        .filter_map(|g| g.uuid(&dir.cfg.uuid_attribute))
+        .collect();
+    let mut links = group_links_of(state, tenant_id, dir, Some(&external)).await?;
+    let mut names = group_names(state, tenant_id, &links).await?;
     let mut stats = LdapSyncStats::default();
     let mut desired = HashSet::new();
     for g in &groups {
-        if let Some(id) = ensure_group(state, tenant_id, dir, &mut links, g, &mut stats).await? {
+        if let Some(id) =
+            ensure_group(state, tenant_id, dir, &mut links, &mut names, g, &mut stats).await?
+        {
             desired.insert(id);
         }
     }
@@ -695,18 +811,45 @@ async fn publish_memberships(
     Ok(())
 }
 
-async fn group_link_map(
+/// The directory's group links by external id: every one (`None`, for
+/// the sync) or those of `only`.
+async fn group_links_of(
     state: &AppState,
     tenant_id: Uuid,
     dir: &Directory,
+    only: Option<&[String]>,
 ) -> AppResult<HashMap<String, repos::ldap::GroupLink>> {
+    if only.is_some_and(<[String]>::is_empty) {
+        return Ok(HashMap::new());
+    }
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    let links = repos::ldap::group_links(&mut *tx, tenant_id, dir.idp.id).await?;
+    let links = match only {
+        None => repos::ldap::group_links(&mut *tx, tenant_id, dir.idp.id).await?,
+        Some(ids) => {
+            repos::ldap::group_links_by_external_id(&mut *tx, tenant_id, dir.idp.id, ids).await?
+        }
+    };
     tx.commit().await?;
     Ok(links
         .into_iter()
         .map(|l| (l.external_id.clone(), l))
         .collect())
+}
+
+/// The current names of the groups `links` point at, in one read.
+async fn group_names(
+    state: &AppState,
+    tenant_id: Uuid,
+    links: &HashMap<String, repos::ldap::GroupLink>,
+) -> AppResult<HashMap<Uuid, String>> {
+    if links.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let ids: Vec<Uuid> = links.values().map(|l| l.group_id).collect();
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let names = repos::groups::names_of(&mut *tx, tenant_id, &ids).await?;
+    tx.commit().await?;
+    Ok(names.into_iter().collect())
 }
 
 /// The rIDM group a directory group maps to, created (or renamed) as
@@ -717,6 +860,7 @@ async fn ensure_group(
     tenant_id: Uuid,
     dir: &Directory,
     links: &mut HashMap<String, repos::ldap::GroupLink>,
+    names: &mut HashMap<Uuid, String>,
     entry: &Entry,
     stats: &mut LdapSyncStats,
 ) -> AppResult<Option<Uuid>> {
@@ -733,13 +877,12 @@ async fn ensure_group(
     };
     if let Some(link) = links.get_mut(&external_id) {
         let group_id = link.group_id;
-        let group = match groups::get(state, tenant_id, group_id).await {
-            Ok(g) => g,
-            Err(AppError::NotFound(_)) => return Ok(None),
-            Err(e) => return Err(e),
+        // Read with the links; absent: the group went under the link.
+        let Some(current) = names.get(&group_id).cloned() else {
+            return Ok(None);
         };
         let fallback = format!("{name} ({})", dir.idp.alias);
-        if group.name != name && group.name != fallback {
+        if current != name && current != fallback {
             for candidate in [&name, &fallback] {
                 match groups::update(
                     state,
@@ -754,6 +897,7 @@ async fn ensure_group(
                 .await
                 {
                     Ok(_) => {
+                        names.insert(group_id, candidate.clone());
                         stats.groups_updated += 1;
                         break;
                     }
@@ -813,6 +957,7 @@ async fn ensure_group(
     repos::ldap::insert_group_link(&mut *tx, tenant_id, dir.idp.id, &link).await?;
     tx.commit().await?;
     links.insert(external_id, link);
+    names.insert(group.id, group.name.clone());
     stats.groups_created += 1;
     Ok(Some(group.id))
 }
@@ -897,7 +1042,8 @@ async fn sync_groups(
     let Some(groups_dn) = dir.cfg.groups_dn.clone() else {
         return Ok(());
     };
-    let mut links = group_link_map(state, tenant_id, dir).await?;
+    let mut links = group_links_of(state, tenant_id, dir, None).await?;
+    let mut names = group_names(state, tenant_id, &links).await?;
     let mut search = conn
         .search_paged(
             &groups_dn,
@@ -915,7 +1061,8 @@ async fn sync_groups(
     let mut seen = HashSet::new();
     let mut changes = vec![];
     for entry in &entries {
-        let Some(group_id) = ensure_group(state, tenant_id, dir, &mut links, entry, stats).await?
+        let Some(group_id) =
+            ensure_group(state, tenant_id, dir, &mut links, &mut names, entry, stats).await?
         else {
             continue;
         };
@@ -1312,14 +1459,14 @@ pub async fn set_password(
             crate::services::password::check_breached(state, tenant_id, password).await?;
         }
     }
-    let mut conn = connect(state, &dir).await?;
-    let Some(entry) = find_by_subject(&dir, &mut conn, &subject).await? else {
-        conn.close().await;
+    let Some(entry) = find_by_subject(state, &dir, &subject).await? else {
         return Err(AppError::BadRequest(format!(
             "the account is no longer in {}",
             dir.idp.display_name
         )));
     };
+    // The write goes on a connection of its own, not a pooled one.
+    let mut conn = connect(state, &dir).await?;
     let written = if dir.is_ad() {
         conn.set_ad_password(&entry.dn, password).await
     } else {
@@ -1447,14 +1594,14 @@ pub async fn write_profile(
     if mods.is_empty() {
         return Ok(());
     }
-    let mut conn = connect(state, &dir).await?;
-    let Some(entry) = find_by_subject(&dir, &mut conn, &subject).await? else {
-        conn.close().await;
+    let Some(entry) = find_by_subject(state, &dir, &subject).await? else {
         return Err(AppError::BadRequest(format!(
             "the account is no longer in {}",
             dir.idp.display_name
         )));
     };
+    // The write goes on a connection of its own, not a pooled one.
+    let mut conn = connect(state, &dir).await?;
     let written = conn.modify(&entry.dn, mods).await;
     conn.close().await;
     written.map_err(|e| match e {

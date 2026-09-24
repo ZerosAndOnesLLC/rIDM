@@ -219,3 +219,16 @@ pub async fn effective_groups_of_user<'e>(
     .fetch_all(exec)
     .await
 }
+
+/// The names of these groups (those that exist).
+pub async fn names_of<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    ids: &[Uuid],
+) -> Result<Vec<(Uuid, String)>, sqlx::Error> {
+    sqlx::query_as("SELECT id, name FROM groups WHERE tenant_id = $1 AND id = ANY($2)")
+        .bind(tenant_id)
+        .bind(ids)
+        .fetch_all(exec)
+        .await
+}
