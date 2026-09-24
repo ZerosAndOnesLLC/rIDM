@@ -90,7 +90,7 @@ needs its certificate in `jwks` (a key's `x5c`) or a `jwks_uri`.
 | `post_logout_redirect_uris` | `[]` | Where RP-initiated logout may return to |
 | `cors_origins` | `[]` | Browser origins (`scheme://host[:port]`, no path) allowed to call the token, userinfo and other endpoints from JavaScript |
 | `backchannel_logout_uri` | `null` | Receives a signed logout token when a session the client took part in ends |
-| `frontchannel_logout_uri` | `null` | Loaded in an iframe on the logout page when a session ends |
+| `frontchannel_logout_uri` | `null` | Loaded in an iframe on the logout page when a session ends. Browsers that block third-party cookies (Safari, Firefox, private windows in every browser, Android WebView) do not send the application's own session cookie to that iframe, so it cannot end the application's session there: use `backchannel_logout_uri` wherever the application can receive it |
 | `initiate_login_uri` | `null` | Where a third party may start a login at the client |
 
 Redirect and post-logout URIs must be `https`, `http` only on a loopback host

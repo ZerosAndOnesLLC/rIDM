@@ -307,7 +307,7 @@ jobs:
         run: npm ci
       - name: playwright browsers
         working-directory: ui
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit firefox
       - name: redis-cli (protocol-compatible client; global setup clears the tenant cache in Valkey), ldap-utils (the LDAP spec seeds its directory) and MIT GSSAPI (Chromium's Kerberos, for the SPNEGO spec)
         run: sudo apt-get update -q && sudo apt-get install -y -q redis-tools ldap-utils libgssapi-krb5-2
       # The suite drives the artifact that ships: the static export compiled

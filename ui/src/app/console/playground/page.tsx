@@ -167,6 +167,13 @@ function Runner({ tenant, c, canEdit, onRegistered, onResult, onError }: { tenan
       return;
     }
     const verifier = randomToken(48);
+    let challenge: string;
+    try {
+      challenge = await pkceChallenge(verifier);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+      return;
+    }
     const p = {
       tenant,
       id: c.id,
@@ -187,7 +194,7 @@ function Runner({ tenant, c, canEdit, onRegistered, onResult, onError }: { tenan
       scope: p.scope,
       state: p.state,
       nonce: p.nonce,
-      code_challenge: await pkceChallenge(verifier),
+      code_challenge: challenge,
       code_challenge_method: "S256",
     });
     if (resource) q.set("resource", resource);

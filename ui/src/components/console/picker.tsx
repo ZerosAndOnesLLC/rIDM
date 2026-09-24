@@ -98,7 +98,7 @@ export function Picker({
             }
           }}
           placeholder={placeholder}
-          className="min-h-12 w-full bg-transparent text-[0.9375rem] text-ink outline-none placeholder:text-muted/70"
+          className="min-h-12 w-full bg-transparent text-[1rem] text-ink outline-none placeholder:text-muted/70 sm:text-[0.9375rem]"
         />
         {loading && <Loader2 className="size-4 animate-spin text-muted" aria-hidden />}
       </div>

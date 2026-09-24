@@ -83,7 +83,7 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
     },
     [api, qc, tenant, id],
   );
-  const { queue, status, error } = useAutoSave<Patch>(save);
+  const { queue, status, error } = useAutoSave<Patch>(save, { baseline: query.data });
   const update = useCallback(
     (patch: Patch) => {
       setDraft((d) => (d ? ({ ...d, ...patch } as ClientView) : d));
@@ -335,7 +335,7 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
           <Field label="Back-channel logout URI" hint="Receives a logout token when the session ends.">
             {(fid, by) => <TextInput id={fid} aria-describedby={by} type="url" value={c.backchannel_logout_uri ?? ""} disabled={!editable} onChange={(e) => update({ backchannel_logout_uri: e.target.value || null })} />}
           </Field>
-          <Field label="Front-channel logout URI" hint="Loaded in a frame on the sign-out page.">
+          <Field label="Front-channel logout URI" hint="Loaded in a frame on the sign-out page. Safari, Firefox and private windows block the app's cookies in that frame, so it cannot end the app's session there: prefer back-channel logout.">
             {(fid, by) => <TextInput id={fid} aria-describedby={by} type="url" value={c.frontchannel_logout_uri ?? ""} disabled={!editable} onChange={(e) => update({ frontchannel_logout_uri: e.target.value || null })} />}
           </Field>
         </Section>

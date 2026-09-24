@@ -63,7 +63,7 @@ export const TextField = forwardRef<HTMLInputElement, FieldProps>(function TextF
           id={inputId}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy || undefined}
-          className={`min-h-11 w-full rounded-[var(--radius)] border bg-paper px-3.5 text-ink placeholder:text-muted/70 ${
+          className={`min-h-11 w-full rounded-[var(--radius)] border bg-paper px-3.5 text-[1rem] text-ink placeholder:text-muted/70 sm:text-[0.9375rem] ${
             trailing ? "pe-11" : ""
           } ${error ? "border-danger" : "border-line hover:border-muted/60"}`}
           {...rest}

@@ -104,6 +104,10 @@ function randomToken(bytes = 32): string {
 }
 
 async function challengeOf(verifier: string): Promise<string> {
+  // Browsers only offer Web Crypto on https and localhost.
+  if (!globalThis.crypto?.subtle) {
+    throw new AuthError("insecure_context", "Signing in needs a secure connection: open the console over https (or on localhost).");
+  }
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
   return base64url(digest);
 }

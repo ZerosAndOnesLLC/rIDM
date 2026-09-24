@@ -84,7 +84,8 @@ function Frame({ children }: { children: ReactNode }) {
       <a href="#main" className="skip-link">
         Skip to content
       </a>
-      <aside className="sticky top-0 hidden h-screen flex-col border-e border-line bg-paper md:flex">{sidebar}</aside>
+      {/* dvh, not vh: iPad Safari measures vh with its toolbar hidden, which would put the bottom of the sidebar under the toolbar. */}
+      <aside className="sticky top-0 hidden h-dvh flex-col border-e border-line bg-paper md:flex">{sidebar}</aside>
 
       <div className="flex min-h-screen flex-col">
         <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-paper/90 px-3 backdrop-blur sm:px-5">

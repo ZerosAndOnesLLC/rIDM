@@ -59,6 +59,10 @@ export function randomToken(bytes = 32): string {
 }
 
 export async function pkceChallenge(verifier: string): Promise<string> {
+  // Browsers only offer Web Crypto on https and localhost.
+  if (!globalThis.crypto?.subtle) {
+    throw new PlaygroundError("insecure_context", "PKCE needs a secure connection: open the console over https (or on localhost).");
+  }
   return base64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
 }
 
