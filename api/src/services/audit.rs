@@ -125,7 +125,8 @@ pub async fn record(state: &AppState, event: &Event) -> AppResult<AuditEvent> {
 }
 
 /// Append `events`, all of one chain, in order and in one transaction: the
-/// chain is locked and its head read and advanced once for the lot.
+/// chain is locked, its head read from `audit_chains` and advanced once for
+/// the lot, and the rows go in with one multi-row insert.
 async fn record_chain(
     state: &AppState,
     tenant_id: Option<Uuid>,
@@ -134,17 +135,32 @@ async fn record_chain(
     let chain = repos::audit::chain_id(tenant_id);
     let mut tx = db::bypass_tx(chain_db(state, tenant_id).await?).await?;
     repos::audit::lock_chain(&mut *tx, chain).await?;
-    let mut head = repos::audit::chain_head(&mut *tx, chain).await?;
+    // The head is kept in `audit_chains` in the same transaction as every
+    // append; the rows themselves are read only for a chain with no entry
+    // there yet (a new chain has none, and nothing to read either).
+    let mut head = match repos::audit_chains::head(&mut *tx, chain).await? {
+        Some(head) => Some(head),
+        None => repos::audit::chain_head(&mut *tx, chain).await?,
+    };
+    let new_chain = head.is_none();
     let mut rows = Vec::with_capacity(events.len());
     for event in events {
         let row = chain_row(event, head.take())?;
-        repos::audit::insert(&mut *tx, &row).await?;
         head = Some((row.seq, row.hash.clone()));
         rows.push(row);
     }
-    if let Some(last) = rows.last() {
-        repos::audit_chains::advance_head(&mut *tx, chain, last.tenant_id, last.seq, &last.hash)
-            .await?;
+    repos::audit::insert_many(&mut tx, &rows).await?;
+    if let (Some(first), Some(last)) = (rows.first(), rows.last()) {
+        repos::audit_chains::advance_head(
+            &mut *tx,
+            chain,
+            last.tenant_id,
+            last.seq,
+            &last.hash,
+            first.occurred_at,
+            new_chain,
+        )
+        .await?;
     }
     tx.commit().await?;
     Ok(rows)
@@ -152,26 +168,138 @@ async fn record_chain(
 
 /// Most events the writer takes off its queue for one round of appends.
 const WRITE_BATCH: usize = 256;
+/// Chains appended to at the same time within one round: each has its own
+/// lock, and chains of different databases have nothing in common.
+const WRITE_CONCURRENCY: usize = 8;
+/// How often chains that could not be written are tried again.
+const RETRY_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// A failure that passes: the tenant is being moved between regions, or its
+/// database cannot be reached right now. Anything else is the event's fault
+/// and would fail again.
+fn transient(err: &AppError) -> bool {
+    match err {
+        AppError::Unavailable(_) => true,
+        AppError::Database(e) => match e {
+            sqlx::Error::PoolTimedOut
+            | sqlx::Error::PoolClosed
+            | sqlx::Error::Io(_)
+            | sqlx::Error::Tls(_)
+            | sqlx::Error::WorkerCrashed => true,
+            // Connection exceptions, operator intervention (shutdown,
+            // recovery) and insufficient resources.
+            sqlx::Error::Database(db) => db.code().is_some_and(|c| {
+                c.starts_with("08") || c.starts_with("57P") || c.starts_with("53")
+            }),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+/// Events of chains that cannot be written right now (a tenant being moved,
+/// a region's database down), kept in order and tried again every
+/// [`RETRY_EVERY`]. New events of a parked chain queue up behind the parked
+/// ones, so its order holds. Bounded like the bus queue it drains: past
+/// `limit` events the oldest are dropped, logged and counted.
+struct Parked {
+    chains:
+        std::collections::HashMap<Option<Uuid>, std::collections::VecDeque<std::sync::Arc<Event>>>,
+    len: usize,
+    limit: usize,
+}
+
+impl Parked {
+    fn new(limit: usize) -> Self {
+        Self {
+            chains: Default::default(),
+            len: 0,
+            limit,
+        }
+    }
+
+    fn holds(&self, chain: Option<Uuid>) -> bool {
+        self.chains.contains_key(&chain)
+    }
+
+    fn park(
+        &mut self,
+        chain: Option<Uuid>,
+        events: impl IntoIterator<Item = std::sync::Arc<Event>>,
+    ) {
+        let queue = self.chains.entry(chain).or_default();
+        for event in events {
+            queue.push_back(event);
+            self.len += 1;
+        }
+        while self.len > self.limit {
+            // Drop from the longest chain: the outage behind it is the one
+            // costing the memory.
+            let Some(queue) = self.chains.values_mut().max_by_key(|q| q.len()) else {
+                break;
+            };
+            if let Some(event) = queue.pop_front() {
+                self.len -= 1;
+                metrics::counter!("ridm_audit_events_dropped_total").increment(1);
+                tracing::error!(
+                    event = event.name(),
+                    tenant = ?event.tenant_id,
+                    "audit: too many events waiting for an unavailable chain; the oldest was dropped"
+                );
+            }
+        }
+        self.chains.retain(|_, q| !q.is_empty());
+        metrics::gauge!("ridm_audit_parked_events").set(self.len as f64);
+    }
+
+    fn take_all(&mut self) -> Vec<(Option<Uuid>, Vec<std::sync::Arc<Event>>)> {
+        self.len = 0;
+        metrics::gauge!("ridm_audit_parked_events").set(0.0);
+        self.chains
+            .drain()
+            .map(|(chain, events)| (chain, events.into()))
+            .collect()
+    }
+}
 
 /// Subscribe to the event bus and append everything that comes through. The
-/// subscription is durable, so nothing is skipped however far the writer
-/// falls behind; it drains what has queued up and appends each chain's share
-/// in one transaction, so a burst costs a round of appends rather than one
-/// per event. A failed append is logged: the audit log is never a reason to
-/// fail the action itself.
+/// subscription is durable, so nothing is skipped while the writer keeps up;
+/// it drains what has queued up and appends each chain's share in one
+/// transaction with one insert, several chains at a time, so a burst costs a
+/// round of appends rather than one per event. A chain that cannot be
+/// written for now is parked and retried; a failed append is otherwise
+/// logged: the audit log is never a reason to fail the action itself.
 pub fn spawn_writer(state: AppState) -> tokio::task::JoinHandle<()> {
-    let mut rx = state.events.subscribe_durable();
+    let mut rx = state.events.subscribe_durable("audit");
+    let mut parked = Parked::new(state.events.durable_capacity());
     tokio::spawn(async move {
         let mut batch = Vec::with_capacity(WRITE_BATCH);
-        while rx.recv_many(&mut batch, WRITE_BATCH).await > 0 {
-            metrics::gauge!("ridm_audit_queue_depth").set(rx.len() as f64);
-            write_batch(&state, batch.drain(..).map(|e| e.event)).await;
+        let mut retry = tokio::time::interval(RETRY_EVERY);
+        retry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            tokio::select! {
+                n = rx.recv_many(&mut batch, WRITE_BATCH) => {
+                    if n == 0 {
+                        break;
+                    }
+                    let _busy = state.background.busy();
+                    metrics::gauge!("ridm_audit_queue_depth").set(rx.len() as f64);
+                    let chains = group_by_chain(batch.drain(..).map(|e| e.event));
+                    write_chains(&state, chains, &mut parked).await;
+                }
+                _ = retry.tick(), if parked.len > 0 => {
+                    let chains = parked.take_all();
+                    write_chains(&state, chains, &mut parked).await;
+                }
+            }
         }
     })
 }
 
-/// Append a batch, grouped by chain with each chain's events in order.
-async fn write_batch(state: &AppState, events: impl Iterator<Item = std::sync::Arc<Event>>) {
+/// Group a batch by chain, each chain's events in order.
+fn group_by_chain(
+    events: impl Iterator<Item = std::sync::Arc<Event>>,
+) -> Vec<(Option<Uuid>, Vec<std::sync::Arc<Event>>)> {
     let mut chains: Vec<(Option<Uuid>, Vec<std::sync::Arc<Event>>)> = vec![];
     for event in events {
         match chains.iter_mut().find(|(t, _)| *t == event.tenant_id) {
@@ -179,36 +307,78 @@ async fn write_batch(state: &AppState, events: impl Iterator<Item = std::sync::A
             None => chains.push((event.tenant_id, vec![event])),
         }
     }
-    for (tenant_id, list) in chains {
-        let refs: Vec<&Event> = list.iter().map(|e| &**e).collect();
-        match record_chain(state, tenant_id, &refs).await {
-            Ok(rows) => {
-                metrics::counter!("ridm_audit_events_total").increment(rows.len() as u64);
-            }
-            // The tenant is being moved between regions: its chain is closed
-            // until the move is done, so keep the events.
-            Err(AppError::Unavailable(_)) => {
-                tokio::spawn(record_after_move(state.clone(), list));
-            }
-            // One bad event must not cost the rest of the batch: record them
-            // one at a time, which names the event that fails.
-            Err(_) if list.len() > 1 => {
-                for event in list {
-                    record_or_log(state, event).await;
-                }
-            }
-            Err(err) => log_failure(&list[0], &err),
+    chains
+}
+
+/// Append each chain's events, [`WRITE_CONCURRENCY`] chains at a time; a
+/// chain already parked, or that fails for a passing reason, is parked.
+async fn write_chains(
+    state: &AppState,
+    chains: Vec<(Option<Uuid>, Vec<std::sync::Arc<Event>>)>,
+    parked: &mut Parked,
+) {
+    use futures::StreamExt as _;
+    let mut ready = vec![];
+    for (chain, list) in chains {
+        if parked.holds(chain) {
+            parked.park(chain, list);
+        } else {
+            ready.push((chain, list));
+        }
+    }
+    type Outcome = (
+        Option<Uuid>,
+        Vec<std::sync::Arc<Event>>,
+        Result<(), (usize, AppError)>,
+    );
+    let outcomes: Vec<Outcome> = futures::stream::iter(ready)
+        .map(|(chain, list)| async move {
+            let result = write_chain(state, chain, &list).await;
+            (chain, list, result)
+        })
+        .buffer_unordered(WRITE_CONCURRENCY)
+        .collect()
+        .await;
+    for (chain, mut list, result) in outcomes {
+        if let Err((written, err)) = result {
+            let rest = list.split_off(written);
+            tracing::warn!(tenant = ?chain, events = rest.len(), error = %err, "audit: chain unavailable; events parked");
+            parked.park(chain, rest);
         }
     }
 }
 
-async fn record_or_log(state: &AppState, event: std::sync::Arc<Event>) {
-    match record(state, &event).await {
-        Ok(_) => metrics::counter!("ridm_audit_events_total").increment(1),
-        Err(AppError::Unavailable(_)) => {
-            tokio::spawn(record_after_move(state.clone(), vec![event]));
+/// Append one chain's events. `Err((n, e))` only for a passing failure: the
+/// first `n` events are in, the rest should be kept and tried again. Any
+/// other failure has been logged.
+async fn write_chain(
+    state: &AppState,
+    tenant_id: Option<Uuid>,
+    list: &[std::sync::Arc<Event>],
+) -> Result<(), (usize, AppError)> {
+    let refs: Vec<&Event> = list.iter().map(|e| &**e).collect();
+    match record_chain(state, tenant_id, &refs).await {
+        Ok(rows) => {
+            metrics::counter!("ridm_audit_events_total").increment(rows.len() as u64);
+            Ok(())
         }
-        Err(err) => log_failure(&event, &err),
+        Err(err) if transient(&err) => Err((0, err)),
+        // One bad event must not cost the rest of the batch: record them
+        // one at a time, which names the event that fails.
+        Err(_) if list.len() > 1 => {
+            for (i, event) in list.iter().enumerate() {
+                match record(state, event).await {
+                    Ok(_) => metrics::counter!("ridm_audit_events_total").increment(1),
+                    Err(err) if transient(&err) => return Err((i, err)),
+                    Err(err) => log_failure(event, &err),
+                }
+            }
+            Ok(())
+        }
+        Err(err) => {
+            log_failure(&list[0], &err);
+            Ok(())
+        }
     }
 }
 
@@ -220,38 +390,6 @@ fn log_failure(event: &Event, err: &AppError) {
     );
 }
 
-/// Record an event of a tenant that is being moved once the move is over,
-/// trying every few seconds for as long as a move may reasonably take.
-async fn record_after_move(state: AppState, events: Vec<std::sync::Arc<Event>>) {
-    const RETRY: std::time::Duration = std::time::Duration::from_secs(5);
-    const GIVE_UP: std::time::Duration = std::time::Duration::from_secs(6 * 3600);
-    let started = tokio::time::Instant::now();
-    let Some(first) = events.first() else {
-        return;
-    };
-    let tenant_id = first.tenant_id;
-    let refs: Vec<&Event> = events.iter().map(|e| &**e).collect();
-    loop {
-        tokio::time::sleep(RETRY).await;
-        match record_chain(&state, tenant_id, &refs).await {
-            Ok(rows) => {
-                metrics::counter!("ridm_audit_events_total").increment(rows.len() as u64);
-                return;
-            }
-            Err(AppError::Unavailable(_)) if started.elapsed() < GIVE_UP => {}
-            Err(err) => {
-                tracing::error!(
-                    event = first.name(),
-                    events = events.len(),
-                    error = %err,
-                    "audit: could not record events after the tenant's move"
-                );
-                return;
-            }
-        }
-    }
-}
-
 /// The audit trail of a one-shot command (`ridm-api bootstrap`,
 /// `ridm-api rotate-master-key`, `ridm bootstrap`). A server records through
 /// [`spawn_writer`]; a command exits as soon as it has acted, before a
@@ -259,13 +397,13 @@ async fn record_after_move(state: AppState, events: Vec<std::sync::Arc<Event>>) 
 /// and writes what was published before it exits. The export sink ships
 /// the rows later, from the database, like any others.
 pub struct CommandRecorder {
-    rx: mpsc::UnboundedReceiver<Envelope>,
+    rx: mpsc::Receiver<Envelope>,
 }
 
 impl CommandRecorder {
     pub fn start(state: &AppState) -> Self {
         Self {
-            rx: state.events.subscribe_durable(),
+            rx: state.events.subscribe_durable("audit_command"),
         }
     }
 
@@ -697,20 +835,56 @@ pub async fn purge(
         tx.commit().await?;
         head
     };
-    let Some(up_to) = up_to else {
-        return Ok(0);
-    };
     let mut total = 0;
-    loop {
-        let mut tx = db::bypass_tx(pool).await?;
-        let n = repos::audit::purge_prefix(&mut *tx, chain, up_to, PURGE_BATCH).await?;
-        tx.commit().await?;
-        total += n;
-        if (n as i64) < PURGE_BATCH {
-            break;
+    if let Some(up_to) = up_to {
+        loop {
+            let mut tx = db::bypass_tx(pool).await?;
+            let n = repos::audit::purge_prefix(&mut *tx, chain, up_to, PURGE_BATCH).await?;
+            tx.commit().await?;
+            total += n;
+            if (n as i64) < PURGE_BATCH {
+                break;
+            }
         }
     }
+    // Where the chain now starts, so the next pass skips it until that
+    // row expires too.
+    // Under the chain's lock: an append in between would otherwise be
+    // missed (the writer sets the oldest time only on an emptied chain).
+    let mut tx = db::bypass_tx(pool).await?;
+    repos::audit::lock_chain(&mut *tx, chain).await?;
+    let first = repos::audit::first_row_at(&mut *tx, chain).await?;
+    repos::audit_chains::set_oldest(&mut *tx, chain, first).await?;
+    tx.commit().await?;
     Ok(total)
+}
+
+/// Drop the monthly partitions of one database that every retention there
+/// has expired: `governed` is each chain whose retention this job applies
+/// (`0` keeps everything) in that database. A month goes when it ended
+/// before the longest of those retentions, and every chain with rows in it
+/// is one of them; a chain nobody governs (a deleted tenant's) keeps its
+/// month. Returns the partitions dropped.
+pub async fn drop_expired_partitions(pool: &PgPool, governed: &[(Uuid, u32)]) -> AppResult<i32> {
+    // A chain kept forever is not vouched for: its months stay.
+    let vouched: Vec<Uuid> = governed
+        .iter()
+        .filter(|(_, days)| *days > 0)
+        .map(|(chain, _)| *chain)
+        .collect();
+    let Some(longest) = governed
+        .iter()
+        .filter(|(_, days)| *days > 0)
+        .map(|(_, days)| *days)
+        .max()
+    else {
+        return Ok(0);
+    };
+    let cutoff = (Utc::now() - Duration::days(i64::from(longest))).date_naive();
+    let mut tx = db::bypass_tx(pool).await?;
+    let dropped = repos::audit::drop_partitions_before(&mut *tx, cutoff, &vouched).await?;
+    tx.commit().await?;
+    Ok(dropped)
 }
 
 /// Make sure the monthly partitions for the coming months exist, in every

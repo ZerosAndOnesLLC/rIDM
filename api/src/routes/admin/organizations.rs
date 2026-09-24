@@ -25,14 +25,15 @@ use uuid::Uuid;
 use crate::error::{AppError, AppResult};
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
 use crate::models::{
-    Invitation, NewInvitation, NewOrganization, NewOrganizationDomain, Organization,
+    Invitation, Member, NewInvitation, NewOrganization, NewOrganizationDomain, Organization,
     OrganizationDomain, OrganizationDomainUpdate, OrganizationFilter, OrganizationStatus,
-    OrganizationUpdate, Principal, RoleAssignment, User,
+    OrganizationUpdate, Principal, RoleHolder,
 };
+use crate::routes::admin::groups::MembersQuery;
 use crate::services::admin_access::{self, Grant};
 use crate::services::{invitations, organizations, roles, users};
 use crate::state::AppState;
-use crate::util::cursor::{Cursor, Page, page_size};
+use crate::util::cursor::{Cursor, Page, PageParams, page_size};
 
 pub fn organizations_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -108,7 +109,7 @@ async fn create(
 struct OrganizationDetail {
     #[serde(flatten)]
     organization: Organization,
-    member_count: usize,
+    member_count: i64,
     domains: Vec<OrganizationDomain>,
 }
 
@@ -121,7 +122,7 @@ async fn get_one(
 ) -> AppResult<Json<OrganizationDetail>> {
     admin.require_org(tenant.id, org, P_READ)?;
     let organization = organizations::get(&state, tenant.id, org).await?;
-    let member_count = organizations::members(&state, tenant.id, org).await?.len();
+    let member_count = organizations::member_count(&state, tenant.id, org).await?;
     Ok(Json(OrganizationDetail {
         organization,
         member_count,
@@ -162,15 +163,26 @@ async fn delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations/{org}/members", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path)), responses((status = 200, body = Vec<User>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations/{org}/members", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path), MembersQuery), responses((status = 200, body = Page<Member>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn members(
     State(state): State<AppState>,
     admin: AdminCtx,
     AdminTenantPath(tenant): AdminTenantPath,
     Path(OrgPath { org }): Path<OrgPath>,
-) -> AppResult<Json<Vec<User>>> {
+    Query(q): Query<MembersQuery>,
+) -> AppResult<Json<Page<Member>>> {
     admin.require_org(tenant.id, org, P_READ)?;
-    Ok(Json(organizations::members(&state, tenant.id, org).await?))
+    Ok(Json(
+        organizations::members(
+            &state,
+            tenant.id,
+            org,
+            q.search.as_deref(),
+            q.cursor.as_deref(),
+            q.limit,
+        )
+        .await?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -217,16 +229,18 @@ async fn remove_member(
 
 /// Grants scoped to this organization: they apply to sessions acting in it and
 /// nowhere else. `user_id` or `group_id` names the principal.
-#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations/{org}/roles", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path)), responses((status = 200, body = Vec<RoleAssignment>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations/{org}/roles", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path), PageParams), responses((status = 200, body = Page<RoleHolder>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn role_grants(
     State(state): State<AppState>,
     admin: AdminCtx,
     AdminTenantPath(tenant): AdminTenantPath,
     Path(OrgPath { org }): Path<OrgPath>,
-) -> AppResult<Json<Vec<RoleAssignment>>> {
+    Query(page): Query<PageParams>,
+) -> AppResult<Json<Page<RoleHolder>>> {
     admin.require_org(tenant.id, org, P_READ)?;
     Ok(Json(
-        organizations::role_grants(&state, tenant.id, org).await?,
+        organizations::role_grants(&state, tenant.id, org, page.cursor.as_deref(), page.limit)
+            .await?,
     ))
 }
 

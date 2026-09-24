@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useI18n } from "@/i18n/provider";
 import { AttributeField } from "@/components/console/users/attributes";
 import { Field, SaveIndicator, SelectInput, TextInput } from "@/components/console/form";
@@ -57,6 +57,12 @@ function ProfileForm({ profile }: { profile: AccountProfile }) {
   const { t } = useI18n();
   const qc = useQueryClient();
   const [draft, setDraft] = useState<Draft>(() => draftOf(profile));
+  // What is stored, in the shape patches take: the user-editable attributes
+  // and the locale.
+  const baseline = useMemo(() => {
+    const stored = draftOf(profile);
+    return { attributes: editable(profile, stored.attributes), locale: stored.locale };
+  }, [profile]);
 
   const save = useAutoSave(async (patch: ProfilePatch) => {
     const { error } = await client.PATCH("/t/{slug}/account/profile", { params: { path: { slug } }, body: patch });
@@ -67,7 +73,7 @@ function ProfileForm({ profile }: { profile: AccountProfile }) {
       void qc.invalidateQueries({ queryKey: ["account", "profile", slug] });
       throw new Error(first ? `${first.field.replace(/^attributes\./, "")} ${first.message}` : (p.detail ?? t("account.error_generic")));
     }
-  });
+  }, { baseline });
 
   const setAttribute = (name: string, value: unknown) => {
     const attributes = { ...draft.attributes, [name]: value };

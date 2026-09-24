@@ -130,7 +130,7 @@ function ScopeView({ tenant, id }: { tenant: string; id: string }) {
     },
     [client, qc, tenant, id],
   );
-  const { queue, status, error } = useAutoSave(save);
+  const { queue, status, error } = useAutoSave(save, { baseline: query.data });
   const update = (patch: Partial<Scope>) => {
     setDraft((d) => (d ? { ...d, ...patch } : d));
     if (editable) queue(patch);

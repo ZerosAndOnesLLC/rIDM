@@ -165,8 +165,12 @@ pub async fn revoke(
     id: Uuid,
 ) -> AppResult<bool> {
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    let ok = repos::personal_access_tokens::revoke(&mut *tx, tenant_id, user_id, id).await?;
+    let revoked = repos::personal_access_tokens::revoke(&mut *tx, tenant_id, user_id, id).await?;
     tx.commit().await?;
+    let ok = revoked.is_some();
+    if let Some(h) = revoked {
+        forget(state, &[h]).await?;
+    }
     if ok {
         state.events.publish(Event::new(
             Some(tenant_id),
@@ -186,10 +190,48 @@ pub async fn revoke_all_for_user(
     user_id: Uuid,
 ) -> AppResult<u64> {
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    let n =
+    let hashes =
         repos::personal_access_tokens::revoke_all_for_user(&mut *tx, tenant_id, user_id).await?;
     tx.commit().await?;
-    Ok(n)
+    forget(state, &hashes).await?;
+    Ok(hashes.len() as u64)
+}
+
+/// How long a token's record is served from the cache; a revocation evicts
+/// it everywhere at once.
+const RECORD_TTL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Evict tokens' records after they were revoked.
+async fn forget(state: &AppState, hashes: &[Vec<u8>]) -> AppResult<()> {
+    let evicted: Vec<String> = hashes.iter().map(|h| keys::pat_by_hash(h)).collect();
+    for chunk in evicted.chunks(500) {
+        state.cache.invalidate(chunk).await?;
+    }
+    Ok(())
+}
+
+/// The record behind a token hash, cached: the token names no tenant, so a
+/// miss asks every database (home first).
+async fn record_by_hash(
+    state: &AppState,
+    h: &[u8],
+) -> AppResult<Option<std::sync::Arc<PersonalAccessToken>>> {
+    let db = state.db.clone();
+    let hash = h.to_vec();
+    state
+        .cache
+        .get_or_load(&keys::pat_by_hash(h), RECORD_TTL, || async move {
+            for database in db.all() {
+                let mut tx = db::bypass_tx(&database.primary).await?;
+                let rec = repos::personal_access_tokens::find_by_hash(&mut *tx, &hash).await?;
+                tx.commit().await?;
+                if rec.is_some() {
+                    return Ok(rec);
+                }
+            }
+            Ok(None)
+        })
+        .await
 }
 
 /// A token presented as a bearer, resolved to its record and user. `None`
@@ -207,17 +249,10 @@ pub async fn authenticate(state: &AppState, token: &str) -> AppResult<Option<Aut
         return Ok(None);
     }
     let h = hash(token);
-    // The token names no tenant, so every database is asked (home first).
-    let mut rec = None;
-    for database in state.db.all() {
-        let mut tx = db::bypass_tx(&database.primary).await?;
-        rec = repos::personal_access_tokens::find_by_hash(&mut *tx, &h).await?;
-        tx.commit().await?;
-        if rec.is_some() {
-            break;
-        }
-    }
-    let Some(rec) = rec else { return Ok(None) };
+    let Some(rec) = record_by_hash(state, &h).await? else {
+        return Ok(None);
+    };
+    let rec = (*rec).clone();
     if !rec.is_usable(Utc::now()) {
         return Ok(None);
     }

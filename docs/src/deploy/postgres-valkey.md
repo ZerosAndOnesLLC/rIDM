@@ -10,11 +10,19 @@ protect them from anyone else who can connect.
 | Service | Supported | Tested |
 |---------|-----------|--------|
 | Postgres | 16 or later | 18.6 (CI, compose) |
-| Valkey | Valkey 9; Redis-compatible servers with `GETDEL` (Redis 6.2+) should work but are not tested | 9.1.2 (CI, compose) |
+| Valkey | Valkey 9; Redis-compatible servers with `GETDEL` and `EXPIRE … NX/GT` (Redis 7.0+) should work but are not tested | 9.1.2 (CI, compose) |
 
-The first migration runs `CREATE EXTENSION IF NOT EXISTS pgcrypto`. `pgcrypto` is a
-trusted extension, so the migrator role can create it without being a superuser, but a
-managed Postgres service has to offer it.
+The migrations create three extensions: `pgcrypto`, and `pg_trgm` with `btree_gin` (the
+indexes behind the organization, client and tenant searches). All three are trusted
+extensions, so the migrator role can create them without being a superuser, but a
+managed Postgres service has to offer them.
+
+Migrations run while the previous release keeps serving. An index on an existing table
+is built with `CREATE INDEX CONCURRENTLY`, which does not block writes; should one of
+those migrations fail part way (a lost connection, a deadlock with a long transaction),
+Postgres leaves an `INVALID` index behind that the retry skips. Drop it
+(`DROP INDEX CONCURRENTLY <name>`, the name is in the failed migration) and run
+`ridm-api migrate` again.
 
 ## Two roles and row level security
 
@@ -123,7 +131,8 @@ pool of the same size to the replica.
 | `DB_POOL_MAX` | 20 | Upper bound per pool; must be at least `DB_POOL_MIN` |
 | `REDIS_POOL_MAX` | 32 | Valkey connections per node |
 
-Fixed behaviour: a request waits at most 5 seconds for a Postgres connection, idle
+A request waits at most `DB_ACQUIRE_TIMEOUT_MS` (2 seconds by default) for a Postgres
+connection and then fails with `503`. Fixed behaviour: idle
 connections close after 10 minutes, every connection is recycled after 30 minutes, and
 statements slower than 250 ms are logged as warnings. Connections identify themselves
 as `application_name` `ridm-api` (primary) and `ridm-api-read` (replica), which is how

@@ -249,6 +249,8 @@ async fn a_dead_letter_raises_an_event_and_can_be_bulk_redelivered() {
     .await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["requeued"], 1);
+    // Sent in the background, like any new delivery.
+    common::settle(&app.state).await;
     let (_, after, _) = get_json(&app, &format!("{base}/deliveries"), Some(&t)).await;
     assert_eq!(after[0]["status"], "delivered", "{after}");
     let (status, body, _) = call(

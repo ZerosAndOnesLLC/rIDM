@@ -170,3 +170,29 @@ pub async fn delete<'e>(
         .await?;
     Ok(res.rows_affected() > 0)
 }
+
+/// What the key housekeeping job needs to know of one tenant's keys.
+#[derive(Debug, sqlx::FromRow)]
+pub struct KeyHousekeeping {
+    pub tenant_id: Uuid,
+    /// A retiring key has reached its expiry (it is due to be revoked).
+    pub retiring_expired: bool,
+    /// When the oldest active key started signing.
+    pub oldest_active: Option<DateTime<Utc>>,
+}
+
+/// [`KeyHousekeeping`] of every tenant with an active or retiring key in
+/// this database, in one read.
+pub async fn housekeeping<'e>(
+    exec: impl PgExecutor<'e>,
+) -> Result<Vec<KeyHousekeeping>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT tenant_id, \
+                COALESCE(bool_or(status = 'retiring' AND expires_at <= now()), false) \
+                    AS retiring_expired, \
+                min(not_before) FILTER (WHERE status = 'active') AS oldest_active \
+         FROM signing_keys WHERE status IN ('active', 'retiring') GROUP BY tenant_id",
+    )
+    .fetch_all(exec)
+    .await
+}

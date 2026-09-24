@@ -131,6 +131,7 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     let bind_addr = state.config.bind_addr;
     let tls = state.config.tls.clone();
     let mtls = state.config.mtls.clone();
+    let draining = state.clone();
     let app = build_router(state);
 
     let handle: Handle<SocketAddr> = Handle::new();
@@ -176,8 +177,40 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
                 .await?;
         }
     }
+    drain_background(&draining, std::time::Duration::from_secs(15)).await;
     tracing::info!("shutdown complete");
     Ok(())
+}
+
+/// After the last request: give the event consumers (audit writer, webhook
+/// dispatcher) time to empty their queues and the deliveries requests
+/// started (messages, webhooks) time to finish, so a restart does not cut
+/// them off. Whatever is still queued in memory after `limit` is lost;
+/// deliveries already written to the database are sent by the delivery
+/// jobs of the nodes still running.
+async fn drain_background(state: &AppState, limit: std::time::Duration) {
+    let queued = || -> usize { state.events.durable_stats().iter().map(|q| q.depth).sum() };
+    let drained = tokio::time::timeout(limit, async {
+        // A consumer marks itself busy with a batch as it takes it, and a
+        // batch may start deliveries: done when both are empty at once.
+        loop {
+            while queued() > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            state.background.idle().await;
+            if queued() == 0 && state.background.in_flight() == 0 {
+                break;
+            }
+        }
+    })
+    .await;
+    if drained.is_err() {
+        tracing::warn!(
+            events_queued = queued(),
+            deliveries_in_flight = state.background.in_flight(),
+            "shutdown: background work did not finish in time"
+        );
+    }
 }
 
 /// Refuse to start when the master keys do not decrypt the tenants' signing

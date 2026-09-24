@@ -263,8 +263,11 @@ or pick a file, run the dry run, then import.
 - `Content-Type: application/json` or `text/csv`; anything else is refused.
 - At most 10 000 rows and 32 MiB per request.
 - `?dry_run=true` validates every row, and checks usernames and emails against existing
-  users (not against each other), without writing anything.
-- Rows are independent: a bad row is reported and skipped, good rows are created.
+  users, without writing anything.
+- A username or email that an earlier row of the same import already uses fails the
+  later row ("already used by row N"), with or without `dry_run`.
+- Rows are independent: a bad row is reported and skipped, good rows are created (a
+  few at a time; the report keeps the rows' order).
 - A row that grants a role or group carrying admin permissions the importing
   administrator does not hold fails with "cannot grant permissions you do not hold",
   in a dry run too. The same rule protects role assignment in the admin API.

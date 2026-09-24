@@ -140,6 +140,8 @@ pub struct NewSession<'a> {
     pub acr: Option<String>,
     pub ip: Option<String>,
     pub user_agent: Option<String>,
+    /// The trusted device the browser presented, bound from the start.
+    pub device_id: Option<Uuid>,
     pub policy: &'a SessionPolicy,
 }
 
@@ -174,7 +176,7 @@ pub async fn create(
         acr: req.acr,
         ip: req.ip,
         user_agent: req.user_agent,
-        device_id: None,
+        device_id: req.device_id,
         org_id: None,
         impersonator: None,
         created_at: now,
@@ -280,12 +282,9 @@ async fn track(state: &AppState, session: &SsoSession) -> AppResult<()> {
     let key = keys::user_sessions(session.tenant_id, session.user_id);
     let ttl = (session.expires_at - Utc::now()).num_seconds().max(60);
     let mut conn = state.redis.get().await?;
-    let _: () = conn.sadd(&key, session.id.to_string()).await?;
-    // Never shorten the set's life below a member's remaining lifetime.
-    let current: i64 = conn.ttl(&key).await?;
-    if current < ttl {
-        let _: () = conn.expire(&key, ttl).await?;
-    }
+    // The set lives at least as long as its longest session.
+    crate::cache::commands::add_to_set_for_at_least(&mut conn, &key, &session.id.to_string(), ttl)
+        .await?;
     Ok(())
 }
 
@@ -327,14 +326,29 @@ pub async fn get(
     }
     // Slide the idle window at most once a minute to keep writes cheap.
     if (now - session.last_seen_at).num_seconds() >= 60 {
+        let before = session.last_seen_at;
         session.last_seen_at = now;
         session.idle_expires_at = (now
             + chrono::Duration::seconds(policy.idle_timeout_secs as i64))
         .min(session.expires_at);
         store(state, &session).await?;
-        mirror_touch(state, &session).await?;
+        // The database copy (listings, statistics, cleanup) follows less
+        // often: once per mirror interval of activity.
+        let every = mirror_interval(policy);
+        if before.timestamp().div_euclid(every) != now.timestamp().div_euclid(every) {
+            mirror_touch(state, &session).await?;
+        }
     }
     Ok(Some(session))
+}
+
+/// How often, at most, an active session's sliding window is written to
+/// its database copy: a quarter of the idle timeout, at most 15 minutes and
+/// at least the one-minute slide. The copy's idle expiry therefore trails
+/// the real one by less than this, so a listing never shows an active
+/// session as ended (and one left idle drops out of it that much early).
+fn mirror_interval(policy: &SessionPolicy) -> i64 {
+    (policy.idle_timeout_secs as i64 / 4).clamp(60, 15 * 60)
 }
 
 /// Session for the current request, from the cookie.
@@ -414,15 +428,19 @@ pub async fn bind_device(
 /// module use.
 pub async fn revoke(state: &AppState, tenant_id: Uuid, session_id: Uuid) -> AppResult<bool> {
     let mut conn = state.redis.get().await?;
-    let raw: Option<String> = conn.get(keys::sso_session(tenant_id, session_id)).await?;
-    let removed: i64 = conn.del(keys::sso_session(tenant_id, session_id)).await?;
+    // Read and removed at once: of two concurrent revocations only one sees
+    // the session, so it is announced and untracked once.
+    let raw: Option<String> = conn
+        .get_del(keys::sso_session(tenant_id, session_id))
+        .await?;
+    let live = raw.is_some();
     drop(conn);
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     repos::sessions::mark_revoked(&mut *tx, tenant_id, session_id).await?;
     tx.commit().await?;
     let ended = raw.and_then(|raw| serde_json::from_str::<SsoSession>(&raw).ok());
     let owner = ended.as_ref().map(|s| s.user_id);
-    if let Some(s) = ended.as_ref().filter(|_| removed > 0) {
+    if let Some(s) = ended.as_ref() {
         crate::services::impersonation::announce_end(state, s);
     }
     if let Some(user_id) = owner {
@@ -438,7 +456,7 @@ pub async fn revoke(state: &AppState, tenant_id: Uuid, session_id: Uuid) -> AppR
     }
     let actor = owner.map_or(Actor::System, |id| Actor::User { id });
     refresh_tokens::revoke_for_session(state, tenant_id, actor, session_id).await?;
-    Ok(removed > 0)
+    Ok(live)
 }
 
 /// Live sessions of a user, oldest first. Prunes ids whose session expired.
@@ -510,6 +528,21 @@ pub async fn clients_of(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_mirror_interval_is_a_quarter_of_the_idle_timeout_within_bounds() {
+        let with = |idle| SessionPolicy {
+            idle_timeout_secs: idle,
+            ..SessionPolicy::default()
+        };
+        assert_eq!(mirror_interval(&with(1800)), 450);
+        assert_eq!(mirror_interval(&with(120)), 60, "never below the slide");
+        assert_eq!(
+            mirror_interval(&with(86_400)),
+            900,
+            "never above 15 minutes"
+        );
+    }
 
     #[test]
     fn secure_cookies_meet_the_host_prefix_rules() {

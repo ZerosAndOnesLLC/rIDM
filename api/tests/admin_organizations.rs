@@ -184,7 +184,7 @@ async fn membership_sets_the_primary_organization_once() {
     let (status, members, _) =
         get_json(&app, &format!("{base}/{first_id}/members"), Some(&manager)).await;
     assert_eq!(status, 200);
-    assert_eq!(members.as_array().unwrap().len(), 1);
+    assert_eq!(members["items"].as_array().unwrap().len(), 1);
 
     // Adding twice is idempotent, removing twice is not an error.
     let (status, _, _) = call(
@@ -266,9 +266,11 @@ async fn an_org_scoped_role_applies_only_in_its_organization() {
 
     let (status, grants, _) = get_json(&app, &format!("{base}/{org_id}/roles"), Some(&owner)).await;
     assert_eq!(status, 200);
-    let grants = grants.as_array().unwrap();
+    let grants = grants["items"].as_array().unwrap();
     assert_eq!(grants.len(), 1, "{grants:?}");
     assert_eq!(grants[0]["org_id"], org_id);
+    assert_eq!(grants[0]["user_id"], alice.to_string());
+    assert!(grants[0]["username"].is_string(), "{grants:?}");
 
     // The grant is invisible outside the organization and visible inside it.
     let org_uuid: Uuid = org_id.parse().unwrap();
@@ -492,12 +494,18 @@ async fn auto_join_needs_a_verified_domain_and_a_verified_address() {
         None
     );
 
-    // Verify it the way a passing DNS lookup would.
+    // Verify it the way a passing DNS lookup would (and, as the service does
+    // after one, evict the tenant's cached auto-join domains).
     let mut tx = ridm_api::db::tenant_tx(&app.state.db, tid).await.unwrap();
     ridm_api::repos::organizations::mark_domain_verified(&mut *tx, tid, org.id, domain.id)
         .await
         .unwrap();
     tx.commit().await.unwrap();
+    app.state
+        .cache
+        .invalidate(&[ridm_api::cache::keys::org_auto_join_domains(tid)])
+        .await
+        .unwrap();
 
     assert_eq!(
         organizations::ensure_auto_join(&app.state, tid, &user)
@@ -867,7 +875,7 @@ async fn an_org_admin_runs_its_own_organization_and_no_other() {
     let (status, members, _) =
         get_json(&app, &format!("{base}/{acme_id}/members"), Some(&org_admin)).await;
     assert_eq!(status, 200);
-    assert_eq!(members.as_array().unwrap().len(), 2, "{members}");
+    assert_eq!(members["items"].as_array().unwrap().len(), 2, "{members}");
     let (status, _, _) = call(
         &app,
         Method::DELETE,

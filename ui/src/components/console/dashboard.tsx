@@ -1,14 +1,19 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import { useState } from "react";
-import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { SelectInput } from "@/components/console/form";
 import { Card } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
 import { formatNumber } from "@/i18n";
 import { useConsole } from "@/lib/console/session";
 import { ErrorLine } from "./access/common";
+
+// Recharts is the console's largest dependency: the charts load in their own
+// bundle, after the page, and only where the dashboard is shown.
+const SignInsChart = dynamic(() => import("./dashboard-charts").then((m) => m.SignInsChart), { ssr: false, loading: () => <Spinner label="Loading chart…" /> });
+const ClientsChart = dynamic(() => import("./dashboard-charts").then((m) => m.ClientsChart), { ssr: false, loading: () => <Spinner label="Loading chart…" /> });
 
 /**
  * Tenant dashboard: sign-ins and failures per day, live sessions, users,
@@ -56,17 +61,7 @@ export function Dashboard({ tenant }: { tenant: string }) {
 
       <Card title="Sign-ins per day">
         <div className="h-64" role="img" aria-label={`Sign-ins and failed sign-ins per day over ${days} days: ${s.logins_total} sign-ins, ${s.failed_total} failed`}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
-              <CartesianGrid stroke="var(--line)" vertical={false} />
-              <XAxis dataKey="label" tick={{ fill: "var(--muted)", fontSize: 12 }} tickLine={false} axisLine={{ stroke: "var(--line)" }} minTickGap={24} />
-              <YAxis allowDecimals={false} tick={{ fill: "var(--muted)", fontSize: 12 }} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={{ background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", fontSize: 13 }} labelStyle={{ color: "var(--muted)" }} cursor={{ stroke: "var(--line)" }} />
-              <Legend wrapperStyle={{ fontSize: 13, color: "var(--muted)" }} iconType="plainline" />
-              <Line type="monotone" dataKey="Sign-ins" stroke="var(--series-1)" strokeWidth={2} dot={false} activeDot={{ r: 5, stroke: "var(--paper)", strokeWidth: 2 }} isAnimationActive={false} />
-              <Line type="monotone" dataKey="Failed" stroke="var(--series-2)" strokeWidth={2} dot={false} activeDot={{ r: 5, stroke: "var(--paper)", strokeWidth: 2 }} isAnimationActive={false} />
-            </LineChart>
-          </ResponsiveContainer>
+          <SignInsChart series={series} />
         </div>
         <details className="mt-2 text-[0.8125rem] text-muted">
           <summary className="cursor-pointer">Table view</summary>
@@ -97,15 +92,7 @@ export function Dashboard({ tenant }: { tenant: string }) {
             <p className="text-[0.875rem] text-muted">No authorizations in this window.</p>
           ) : (
             <div className="h-56" role="img" aria-label={`Authorizations per client: ${top.map((c) => `${c.name} ${c.Authorizations}`).join(", ")}`}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={top} layout="vertical" margin={{ top: 4, right: 40, bottom: 0, left: 8 }} barCategoryGap={6}>
-                  <CartesianGrid stroke="var(--line)" horizontal={false} />
-                  <XAxis type="number" allowDecimals={false} tick={{ fill: "var(--muted)", fontSize: 12 }} tickLine={false} axisLine={false} />
-                  <YAxis type="category" dataKey="name" width={120} tick={{ fill: "var(--ink)", fontSize: 12 }} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", fontSize: 13 }} cursor={{ fill: "var(--ground)" }} />
-                  <Bar dataKey="Authorizations" fill="var(--series-1)" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false} label={{ position: "right", fill: "var(--muted)", fontSize: 12 }} />
-                </BarChart>
-              </ResponsiveContainer>
+              <ClientsChart top={top} />
             </div>
           )}
         </Card>

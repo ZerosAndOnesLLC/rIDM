@@ -50,7 +50,7 @@ Almost everything is tenant-scoped under `/admin/tenants/{slug}/...`. The except
 
 ## Authentication
 
-Every admin operation takes a token in the `Authorization` header only (never a query or form parameter):
+Every admin operation takes a token in the `Authorization` header only (never a query or form parameter), with one exception, the download tickets below:
 
 - **An access token** whose `aud` includes `urn:ridm:admin`: a JWT (`typ: at+jwt`), or an opaque `at_...` token of a client registered with `access_token_format: opaque`. The token endpoint grants that audience only to clients that list it in `allowed_audiences` explicitly; it is never implied, even for clients whose audiences are otherwise unrestricted. The subject must be an active user, or the service-account user of a machine client. When the token was issued in a browser session, the session must still be alive, so signing out ends admin access before the token expires. A DPoP-bound token must be presented as `Authorization: DPoP` with a valid proof.
 - **A personal access token** (`rpat_...`) minted by the user in the account console, carrying admin permissions as its scopes. Its reach is the intersection of those scopes and what the user still holds.
@@ -60,6 +60,14 @@ The token may come from any tenant. A token issued by `master` is **global**: it
 Permissions are resolved from the user's effective roles on every request (cached, and evicted whenever a role, group or grant changes), so revoking a role takes effect at once regardless of the `permissions` claim in the token. See [Administrator access](../admin/access.md).
 
 A token that names an organization (the `org_id` claim, put there by the sign-in) also carries the roles granted inside it. Those count only on the routes of that organization, under `/admin/tenants/{slug}/organizations/{org}/...`; everywhere else the caller is judged by their tenant-wide grants alone. See [Organization administrators](../admin/access.md#organization-administrators).
+
+### Download tickets
+
+The exports (`GET /admin/tenants/{slug}/export`, `.../users/export`, `.../audit/export` and `/admin/audit/export`) can be larger than a browser should hold in memory, and a download made with `fetch` (the only way to send the header) must hold it. `POST /admin/download-tickets` with `{"path": "<export path and query>"}` answers `201` with `{"url", "expires_in": 60}`: the export's URL with a `download_ticket` parameter that authenticates exactly one `GET` of exactly that path and query, within 60 seconds, as the caller. The browser's download manager then fetches it and streams it to disk. The console downloads every export this way.
+
+- Only the export routes take a ticket; anything else, a different query, a second use or a method other than `GET` is `401`, and a ticket presented anywhere is spent.
+- The caller must hold what the export requires (`403` otherwise, when asking); redeeming runs the whole authentication again with the caller's token, so a session signed out or a role revoked meanwhile ends it.
+- Tickets are 256 random bits, kept in Valkey only by their hash, and the answer carrying one is `no-store`. A DPoP-bound token's ticket is redeemed without a proof (a navigation cannot make one); the request for the ticket was checked for it.
 
 ### Permissions
 

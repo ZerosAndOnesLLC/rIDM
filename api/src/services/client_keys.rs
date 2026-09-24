@@ -52,7 +52,7 @@ pub async fn jwks(state: &AppState, client: &Client, refresh: bool) -> AppResult
                 .unwrap_or_default());
         }
     }
-    let doc = fetch(uri).await?;
+    let doc = fetch(&state.outbound, uri).await?;
     let _: () = conn.set_ex(&key, doc.to_string(), JWKS_CACHE_SECS).await?;
     Ok(doc["keys"].as_array().cloned().unwrap_or_default())
 }
@@ -65,7 +65,7 @@ pub async fn forget(state: &AppState, client: &Client) -> AppResult<()> {
     Ok(())
 }
 
-async fn fetch(uri: &str) -> AppResult<Value> {
+async fn fetch(http: &reqwest::Client, uri: &str) -> AppResult<Value> {
     let parsed =
         url::Url::parse(uri).map_err(|_| AppError::BadRequest("invalid jwks_uri".into()))?;
     if parsed.scheme() != "https" {
@@ -75,12 +75,9 @@ async fn fetch(uri: &str) -> AppResult<Value> {
     // URL: public addresses only (SSRF).
     crate::util::outbound::check_url(uri)
         .map_err(|e| AppError::BadRequest(format!("jwks_uri: {e}")))?;
-    let client = crate::util::outbound::client_builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-    let res = client
+    let res = http
         .get(uri)
+        .timeout(Duration::from_secs(5))
         .header("accept", "application/json")
         .send()
         .await

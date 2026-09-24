@@ -31,7 +31,7 @@ test("a forced password change is required at login, then only the new password 
   await finishAuthorization(page);
 
   // The user is notified about the change.
-  const notice = await mailpit.waitFor(u.email);
+  const notice = await mailpit.waitFor(u.email, 15_000, "password was changed");
   expect(notice.subject).toContain("password was changed");
 
   // The old password no longer works; the new one does.

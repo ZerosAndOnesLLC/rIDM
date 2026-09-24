@@ -35,7 +35,7 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::models::{
-    Group, NewGroup, NewUser, ProfileSchema, Tenant, User, UserFilter, UserStatus, UserUpdate,
+    Group, NewGroup, NewUser, ProfileSchema, Tenant, User, UserStatus, UserUpdate,
 };
 use crate::services::admin_access::{self, Grant};
 use crate::services::{groups, profile_schema, users};
@@ -51,6 +51,8 @@ pub const CONTENT_TYPE: &str = "application/scim+json";
 pub const MAX_PAGE: i64 = 200;
 /// Users a non-indexed filter may look at.
 pub const SCAN_LIMIT: i64 = 2000;
+/// How long an unfiltered user list's `totalResults` is reused.
+const USER_TOTAL_TTL: std::time::Duration = std::time::Duration::from_secs(30);
 
 const ATTR_GIVEN: &str = "given_name";
 const ATTR_FAMILY: &str = "family_name";
@@ -230,14 +232,20 @@ pub fn user_to_scim(base: &str, u: &User, member_of: &[Group]) -> Value {
     doc
 }
 
-pub fn group_to_scim(base: &str, g: &Group, members: &[User]) -> Value {
+/// `members: None` leaves the attribute out (`excludedAttributes=members`).
+pub fn group_to_scim(base: &str, g: &Group, members: Option<&[(Uuid, String)]>) -> Value {
     let mut doc = json!({
         "schemas": [GROUP_SCHEMA],
         "id": g.id,
         "displayName": g.name,
-        "members": members.iter().map(|u| json!({ "value": u.id, "display": u.username, "$ref": format!("{base}/Users/{}", u.id) })).collect::<Vec<_>>(),
         "meta": meta("Group", base, g.id, g.created_at, g.updated_at),
     });
+    if let Some(members) = members {
+        doc["members"] = members
+            .iter()
+            .map(|(id, username)| json!({ "value": id, "display": username, "$ref": format!("{base}/Users/{id}") }))
+            .collect();
+    }
     if let Some(x) = g.attributes.get("externalId").and_then(Value::as_str) {
         doc["externalId"] = json!(x);
     }
@@ -765,9 +773,18 @@ impl PageQuery {
     }
 }
 
-fn page_of(all: Vec<Value>, total: i64, q: &PageQuery) -> ListResponse {
+/// The part of `all` the request's `startIndex` and `count` select.
+fn window<T>(all: Vec<T>, q: &PageQuery) -> Vec<T> {
     let skip = usize::try_from(q.start_index - 1).unwrap_or(0);
-    let resources: Vec<Value> = all.into_iter().skip(skip).take(q.count as usize).collect();
+    all.into_iter().skip(skip).take(q.count as usize).collect()
+}
+
+fn page_of(all: Vec<Value>, total: i64, q: &PageQuery) -> ListResponse {
+    listed(window(all, q), total, q)
+}
+
+/// A list response of resources already cut to the requested window.
+fn listed(resources: Vec<Value>, total: i64, q: &PageQuery) -> ListResponse {
     ListResponse {
         schemas: [LIST_SCHEMA],
         total_results: total,
@@ -777,32 +794,56 @@ fn page_of(all: Vec<Value>, total: i64, q: &PageQuery) -> ListResponse {
     }
 }
 
-/// Users of the tenant up to `limit`, in creation order.
-async fn scan_users(
+/// Live users `offset` rows into creation order, at most `limit`.
+async fn users_window(
     state: &AppState,
     tenant_id: Uuid,
+    offset: i64,
     limit: i64,
-) -> ScimResult<(Vec<User>, bool)> {
-    let mut out = vec![];
-    let mut cursor: Option<String> = None;
-    let filter = UserFilter::default();
-    loop {
-        let page = users::list(state, tenant_id, &filter, cursor.as_deref(), Some(200)).await?;
-        out.extend(page.items);
-        if out.len() as i64 >= limit {
-            out.truncate(limit as usize);
-            return Ok((out, page.next_cursor.is_some()));
-        }
-        match page.next_cursor {
-            Some(c) => cursor = Some(c),
-            None => return Ok((out, false)),
-        }
-    }
+) -> ScimResult<Vec<User>> {
+    let mut tx = crate::db::tenant_tx(&state.db, tenant_id).await?;
+    let rows = crate::repos::users::window(&mut *tx, tenant_id, offset, limit).await?;
+    tx.commit().await?;
+    Ok(rows)
+}
+
+/// How many live users the tenant has, cached for a few seconds.
+async fn user_total(state: &AppState, tenant_id: Uuid) -> ScimResult<i64> {
+    let db = state.db.clone();
+    let total = state
+        .cache
+        .get_or_load(
+            &crate::cache::keys::tenant_user_total(tenant_id),
+            USER_TOTAL_TTL,
+            || async move {
+                let mut tx = crate::db::read_tx(&db, tenant_id).await?;
+                let n = crate::repos::users::count(&mut *tx, tenant_id).await?;
+                tx.commit().await?;
+                Ok(Some(n))
+            },
+        )
+        .await?;
+    Ok(total.map_or(0, |n| *n))
 }
 
 async fn with_groups(state: &AppState, base: &str, tenant_id: Uuid, u: &User) -> ScimResult<Value> {
     let member_of = groups::groups_of_user(state, tenant_id, u.id, false).await?;
     Ok(user_to_scim(base, u, &member_of))
+}
+
+/// SCIM documents for a page of users, their groups read in one query.
+async fn with_groups_all(
+    state: &AppState,
+    base: &str,
+    tenant_id: Uuid,
+    users: &[User],
+) -> ScimResult<Vec<Value>> {
+    let ids: Vec<Uuid> = users.iter().map(|u| u.id).collect();
+    let mut groups_of = groups::direct_groups_of_users(state, tenant_id, &ids).await?;
+    Ok(users
+        .iter()
+        .map(|u| user_to_scim(base, u, &groups_of.remove(&u.id).unwrap_or_default()))
+        .collect())
 }
 
 pub async fn list_users(
@@ -842,14 +883,18 @@ pub async fn list_users(
         let total = docs.len() as i64;
         return Ok(page_of(docs, total, &q));
     }
-    let wanted = q.start_index - 1 + q.count;
-    let limit = if filter.is_some() {
-        SCAN_LIMIT
-    } else {
-        wanted.max(1)
+    let Some(filter) = filter else {
+        // Only the requested window is read (startIndex is capped at
+        // SCAN_LIMIT, so the offset stays small).
+        let (total, rows) = tokio::try_join!(
+            user_total(state, tenant.id),
+            users_window(state, tenant.id, q.start_index - 1, q.count),
+        )?;
+        let docs = with_groups_all(state, base, tenant.id, &rows).await?;
+        return Ok(listed(docs, total, &q));
     };
-    let (rows, more) = scan_users(state, tenant.id, limit).await?;
-    if filter.is_some() && more {
+    let rows = users_window(state, tenant.id, 0, SCAN_LIMIT + 1).await?;
+    if rows.len() as i64 > SCAN_LIMIT {
         return Err(ScimError::bad(
             "tooMany",
             format!(
@@ -857,26 +902,12 @@ pub async fn list_users(
             ),
         ));
     }
-    let total = if filter.is_some() {
-        0 // set below
-    } else {
-        let mut tx = crate::db::tenant_tx(&state.db, tenant.id).await?;
-        let n = crate::repos::users::count(&mut *tx, tenant.id).await?;
-        tx.commit().await?;
-        n
-    };
-    let mut docs = Vec::with_capacity(rows.len());
-    for u in &rows {
-        let doc = with_groups(state, base, tenant.id, u).await?;
-        if filter.as_ref().is_none_or(|f| matches(f, &doc)) {
-            docs.push(doc);
-        }
-    }
-    let total = if filter.is_some() {
-        docs.len() as i64
-    } else {
-        total
-    };
+    let docs: Vec<Value> = with_groups_all(state, base, tenant.id, &rows)
+        .await?
+        .into_iter()
+        .filter(|doc| matches(&filter, doc))
+        .collect();
+    let total = docs.len() as i64;
     Ok(page_of(docs, total, &q))
 }
 
@@ -1005,22 +1036,55 @@ pub async fn delete_user(
 
 // --- groups ------------------------------------------------------------------
 
-async fn group_doc(state: &AppState, base: &str, tenant_id: Uuid, g: &Group) -> ScimResult<Value> {
-    let members = groups::members(state, tenant_id, g.id).await?;
-    Ok(group_to_scim(base, g, &members))
+/// A group's SCIM document; `members: false` leaves them out.
+async fn group_doc(
+    state: &AppState,
+    base: &str,
+    tenant_id: Uuid,
+    g: &Group,
+    members: bool,
+) -> ScimResult<Value> {
+    if !members {
+        return Ok(group_to_scim(base, g, None));
+    }
+    let refs = groups::member_refs(state, tenant_id, g.id).await?;
+    Ok(group_to_scim(base, g, Some(&refs)))
 }
 
+/// Whether evaluating `f` reads a group's `members`.
+fn reads_members(f: &Filter) -> bool {
+    match f {
+        Filter::Cmp { attr, .. } | Filter::Present(attr) => strip_schema(attr)
+            .get(..7)
+            .is_some_and(|head| head.eq_ignore_ascii_case("members")),
+        Filter::And(a, b) | Filter::Or(a, b) => reads_members(a) || reads_members(b),
+        Filter::Not(a) => reads_members(a),
+    }
+}
+
+/// Whether `excludedAttributes` (RFC 7644 §3.9) names `members`.
+pub fn excludes_members(excluded: Option<&str>) -> bool {
+    excluded.is_some_and(|list| {
+        list.split(',')
+            .any(|a| strip_schema(a.trim()).eq_ignore_ascii_case("members"))
+    })
+}
+
+/// Groups, their members loaded only for the requested window (and for
+/// every candidate only when the filter itself reads members).
 pub async fn list_groups(
     state: &AppState,
     tenant: &Tenant,
     base: &str,
     q: PageQuery,
+    exclude_members: bool,
 ) -> ScimResult<ListResponse> {
     let filter = q.filter.as_deref().map(parse_filter).transpose()?;
     let all = groups::list(state, tenant.id).await?;
-    let mut docs = vec![];
+    let filter_reads_members = filter.as_ref().is_some_and(reads_members);
+    let mut hits = vec![];
     for g in &all {
-        // Cheap pre-check on the name before loading members.
+        // Cheap pre-check on the name before building anything.
         if let Some(f) = &filter
             && let Filter::Cmp { attr, op, value } = f
             && attr.eq_ignore_ascii_case("displayName")
@@ -1029,13 +1093,31 @@ pub async fn list_groups(
         {
             continue;
         }
-        let doc = group_doc(state, base, tenant.id, g).await?;
-        if filter.as_ref().is_none_or(|f| matches(f, &doc)) {
-            docs.push(doc);
+        match &filter {
+            None => hits.push((g, None)),
+            Some(f) => {
+                let doc = group_doc(state, base, tenant.id, g, filter_reads_members).await?;
+                if matches(f, &doc) {
+                    hits.push((g, Some(doc)));
+                }
+            }
         }
     }
-    let total = docs.len() as i64;
-    Ok(page_of(docs, total, &q))
+    let total = hits.len() as i64;
+    let mut docs = vec![];
+    for (g, doc) in window(hits, &q) {
+        let doc = match doc {
+            Some(mut doc) if filter_reads_members => {
+                if exclude_members && let Some(o) = doc.as_object_mut() {
+                    o.remove("members");
+                }
+                doc
+            }
+            _ => group_doc(state, base, tenant.id, g, !exclude_members).await?,
+        };
+        docs.push(doc);
+    }
+    Ok(listed(docs, total, &q))
 }
 
 pub async fn get_group(
@@ -1043,9 +1125,10 @@ pub async fn get_group(
     tenant: &Tenant,
     base: &str,
     id: Uuid,
+    exclude_members: bool,
 ) -> ScimResult<Value> {
     let g = groups::get(state, tenant.id, id).await?;
-    group_doc(state, base, tenant.id, &g).await
+    group_doc(state, base, tenant.id, &g, !exclude_members).await
 }
 
 /// `displayName`, `externalId` and the member ids of a group document.
@@ -1076,10 +1159,10 @@ fn group_from_scim(doc: &Value) -> ScimResult<(String, Option<String>, Vec<Uuid>
 }
 
 async fn member_ids(state: &AppState, tenant_id: Uuid, group_id: Uuid) -> ScimResult<Vec<Uuid>> {
-    Ok(groups::members(state, tenant_id, group_id)
+    Ok(groups::member_refs(state, tenant_id, group_id)
         .await?
-        .iter()
-        .map(|u| u.id)
+        .into_iter()
+        .map(|(id, _)| id)
         .collect())
 }
 
@@ -1167,7 +1250,7 @@ pub async fn create_group(
         }
         return Err(e);
     }
-    group_doc(state, base, tenant.id, &g).await
+    group_doc(state, base, tenant.id, &g, true).await
 }
 
 pub async fn replace_group(
@@ -1206,7 +1289,7 @@ pub async fn replace_group(
     )
     .await?;
     set_members(state, tenant.id, &actor, &g, &members).await?;
-    group_doc(state, base, tenant.id, &g).await
+    group_doc(state, base, tenant.id, &g, true).await
 }
 
 pub async fn delete_group(

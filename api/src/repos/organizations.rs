@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::models::{
     NewOrganization, NewOrganizationDomain, Organization, OrganizationDomain,
-    OrganizationDomainUpdate, OrganizationFilter, OrganizationUpdate, User,
+    OrganizationDomainUpdate, OrganizationFilter, OrganizationUpdate,
 };
 use crate::repos::users::escape_like;
 
@@ -13,10 +13,6 @@ const COLUMNS: &str = "id, tenant_id, slug, display_name, description, status, a
     created_at, updated_at";
 const DOMAIN_COLUMNS: &str = "id, tenant_id, org_id, domain, verification, verified_at, \
     auto_join, created_at, updated_at";
-const USER_COLUMNS: &str = "u.id, u.tenant_id, u.org_id, u.username, u.email, u.email_verified, u.phone, \
-    u.phone_verified, u.password_hash, u.password_algo, u.must_change_password, u.password_expires_at, \
-    u.password_changed_at, u.status, u.attributes, u.locale, u.external_id, u.last_login_at, u.failed_attempts, \
-    u.locked_until, u.deleted_at, u.terms_accepted_at, u.created_at, u.updated_at";
 
 pub async fn find_by_id<'e>(
     exec: impl PgExecutor<'e>,
@@ -173,6 +169,27 @@ pub async fn add_member<'e>(
     Ok(res.rows_affected() > 0)
 }
 
+/// Clear the primary organization of up to `limit` of the users whose
+/// primary organization is `org_id`; the ones cleared.
+pub async fn clear_primary_org_batch<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    org_id: Uuid,
+    limit: i64,
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        "UPDATE users SET org_id = NULL \
+          WHERE tenant_id = $1 AND id IN ( \
+                SELECT id FROM users WHERE tenant_id = $1 AND org_id = $2 LIMIT $3) \
+          RETURNING id",
+    )
+    .bind(tenant_id)
+    .bind(org_id)
+    .bind(limit)
+    .fetch_all(exec)
+    .await
+}
+
 /// Users whose primary organization is `org_id`.
 pub async fn users_with_primary_org<'e>(
     exec: impl PgExecutor<'e>,
@@ -218,26 +235,6 @@ pub async fn is_member<'e>(
     .bind(user_id)
     .fetch_one(exec)
     .await
-}
-
-/// Members of an organization (not soft-deleted), ordered by username.
-pub async fn members<'e>(
-    exec: impl PgExecutor<'e>,
-    tenant_id: Uuid,
-    org_id: Uuid,
-) -> Result<Vec<User>, sqlx::Error> {
-    let mut qb = QueryBuilder::new("SELECT ");
-    qb.push(USER_COLUMNS)
-        .push(
-            " FROM organization_members om \
-               JOIN users u ON u.tenant_id = om.tenant_id AND u.id = om.user_id \
-              WHERE om.tenant_id = ",
-        )
-        .push_bind(tenant_id)
-        .push(" AND om.org_id = ")
-        .push_bind(org_id)
-        .push(" AND u.deleted_at IS NULL ORDER BY u.username");
-    qb.build_query_as::<User>().fetch_all(exec).await
 }
 
 /// The organizations a user belongs to, ordered by name. The login flow asks
@@ -383,6 +380,24 @@ pub async fn delete_domain<'e>(
     .execute(exec)
     .await?;
     Ok(res.rows_affected() > 0)
+}
+
+/// Every domain at which a verified address joins an organization: verified,
+/// set to auto-join, of an active organization (the conditions of
+/// [`auto_join_org_for_domain`]).
+pub async fn auto_join_domains<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT d.domain FROM organization_domains d \
+           JOIN organizations o ON o.tenant_id = d.tenant_id AND o.id = d.org_id \
+         WHERE d.tenant_id = $1 AND d.auto_join \
+           AND d.verified_at IS NOT NULL AND o.status = 'active'",
+    )
+    .bind(tenant_id)
+    .fetch_all(exec)
+    .await
 }
 
 /// The organization a verified auto-join domain points at, if any. One row at

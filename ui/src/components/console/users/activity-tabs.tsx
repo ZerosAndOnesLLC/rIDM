@@ -15,14 +15,7 @@ export function ConsentsTab({ tenant, id, editable }: { tenant: string; id: stri
     queryFn: async () => {
       const { data, error } = await api.GET("/admin/tenants/{slug}/users/{user}/consents", { params: { path: { slug: tenant, user: id } } });
       if (error) throw new Error(error.detail ?? error.title);
-      const names: Record<string, string> = {};
-      await Promise.all(
-        data.map(async (c) => {
-          const r = await api.GET("/admin/tenants/{slug}/clients/{client}", { params: { path: { slug: tenant, client: c.client_id } } });
-          if (r.data) names[c.client_id] = `${r.data.name} (${r.data.client_id})`;
-        }),
-      );
-      return { consents: data, names };
+      return data;
     },
   });
   const revoke = useMutation({
@@ -40,14 +33,14 @@ export function ConsentsTab({ tenant, id, editable }: { tenant: string; id: stri
         <p role="alert" className="text-[0.875rem] text-danger">
           {consents.error.message}
         </p>
-      ) : consents.data.consents.length === 0 ? (
+      ) : consents.data.length === 0 ? (
         <p className="text-[0.875rem] text-muted">No consents recorded.</p>
       ) : (
         <ul className="divide-y divide-line">
-          {consents.data.consents.map((c) => (
+          {consents.data.map((c) => (
             <li key={c.client_id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
               <span>
-                <span className="font-medium text-ink">{consents.data.names[c.client_id] ?? c.client_id}</span>
+                <span className="font-medium text-ink">{c.client_name} ({c.client})</span>
                 <span className="block text-[0.8125rem] text-muted">
                   {c.scopes.join(" ")} · granted {formatDate("en", c.granted_at)}
                   {c.revoked_at ? ` · revoked ${formatDate("en", c.revoked_at)}` : ""}

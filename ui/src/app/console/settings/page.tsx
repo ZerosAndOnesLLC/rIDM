@@ -76,7 +76,7 @@ export default function SettingsPage() {
     },
     [client, qc, slug],
   );
-  const { queue, status, error } = useAutoSave<TenantPatch>(save);
+  const { queue, status, error } = useAutoSave<TenantPatch>(save, { baseline: query.data });
 
   const editable = can("ridm:tenants:write");
   const editor = useMemo<SettingsEditor | null>(

@@ -110,27 +110,45 @@ pub async fn create_as(
 }
 
 /// How long a node keeps a user row it read. Every write evicts it on every
-/// node ([`forget`]); the TTL only bounds a read that raced a write.
-const USER_L1_TTL: Duration = Duration::from_secs(5);
+/// node ([`forget`]), and a read that raced a write is never cached (the
+/// cache's eviction tickets), so the TTL only bounds a node that missed an
+/// eviction while its invalidation listener reconnected (which clears the
+/// cache anyway).
+const USER_L1_TTL: Duration = Duration::from_secs(60);
 
 /// A user by id, read on every authenticated request. Cached per node only
 /// (L1): the row carries the password hash, which never goes to Valkey.
 pub async fn get(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<User> {
+    Ok((*get_shared(state, tenant_id, id).await?).clone())
+}
+
+/// [`get`] without the copy, for the hot paths that only read the row.
+pub async fn get_shared(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<Arc<User>> {
     let key = cache_keys::user(tenant_id, id);
-    if let Some(user) = state.cache.l1().get::<User>(&key) {
-        return Ok((*user).clone());
+    let l1 = state.cache.l1();
+    if let Some(user) = l1.get::<User>(&key) {
+        return Ok(user);
     }
+    let ticket = l1.ticket(&key);
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let user = repos::users::find_by_id(&mut *tx, tenant_id, id).await?;
     tx.commit().await?;
-    let user = user
-        .filter(|u| u.deleted_at.is_none())
-        .ok_or(AppError::NotFound("user"))?;
-    state
-        .cache
-        .l1()
-        .insert(key, Arc::new(user.clone()), USER_L1_TTL);
+    let user = Arc::new(
+        user.filter(|u| u.deleted_at.is_none())
+            .ok_or(AppError::NotFound("user"))?,
+    );
+    l1.insert_fresh(key, user.clone(), USER_L1_TTL, ticket);
     Ok(user)
+}
+
+/// Put a row just written (and read back in the same transaction) in this
+/// node's cache, after [`forget`] evicted the old one everywhere: the next
+/// read on this node needs no database round trip.
+pub fn remember(state: &AppState, user: User) {
+    let key = cache_keys::user(user.tenant_id, user.id);
+    let l1 = state.cache.l1();
+    let ticket = l1.ticket(&key);
+    l1.insert_fresh(key, Arc::new(user), USER_L1_TTL, ticket);
 }
 
 /// Evict users from every node's cache after their rows changed. Called
@@ -247,7 +265,9 @@ pub async fn update_as(
                 new_email: user.email.clone(),
             },
         ));
-        let tenant = crate::services::tenants::get(state, tenant_id).await?;
+        let tenant = crate::services::tenants::get_cached(state, tenant_id)
+            .await?
+            .ok_or(AppError::NotFound("tenant"))?;
         crate::services::notifications::email_changed(
             state,
             &tenant,
@@ -259,7 +279,9 @@ pub async fn update_as(
     // Disabled by any path (admin API, SCIM, import): signed out everywhere
     // at once, and the relying parties are told.
     if user.status == UserStatus::Disabled && before.status != UserStatus::Disabled {
-        let tenant = crate::services::tenants::get(state, tenant_id).await?;
+        let tenant = crate::services::tenants::get_cached(state, tenant_id)
+            .await?
+            .ok_or(AppError::NotFound("tenant"))?;
         crate::services::logout::end_sessions_for_user(state, &tenant, id, None).await?;
     }
     Ok(user)
@@ -274,10 +296,7 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
         return Err(AppError::NotFound("user"));
     }
     forget(state, tenant_id, &[id]).await;
-    state
-        .cache
-        .invalidate(&[crate::cache::keys::roles_version(tenant_id)])
-        .await?;
+    crate::services::roles::bump_user_access(state, tenant_id, &[id]).await?;
     state.events.publish(Event::new(
         Some(tenant_id),
         actor,
@@ -285,7 +304,9 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
     ));
     // Deleted by any path (admin API, SCIM, self-service): signed out
     // everywhere, and the relying parties are told.
-    let tenant = crate::services::tenants::get(state, tenant_id).await?;
+    let tenant = crate::services::tenants::get_cached(state, tenant_id)
+        .await?
+        .ok_or(AppError::NotFound("tenant"))?;
     crate::services::logout::end_sessions_for_user(state, &tenant, id, None).await?;
     Ok(())
 }

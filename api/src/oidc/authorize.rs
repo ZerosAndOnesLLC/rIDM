@@ -119,7 +119,25 @@ async fn authorize_get(
     headers: HeaderMap,
     RawQuery(raw): RawQuery,
 ) -> Response {
-    let params = RawParams::parse(raw.as_deref().unwrap_or_default());
+    let mut params = RawParams::parse(raw.as_deref().unwrap_or_default());
+    // The browser coming back for a form it posted cross-site (see `park`).
+    if let Some(id) = super::park::parked_id(&params.0) {
+        let form = match id {
+            Some(id) => super::park::unpark(&state, tenant.id(), "authorize", id).await,
+            None => Ok(None),
+        };
+        params = match form {
+            Ok(Some(form)) => RawParams::parse(&form),
+            Ok(None) => {
+                return error_page(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_request",
+                    "This sign-in request has expired or was already used; start again from the application.",
+                );
+            }
+            Err(e) => return e.into_response(),
+        };
+    }
     let origin = geoip::Origin::of_request(&state, &headers, Some(peer));
     handle(&state, &tenant, &headers, params, origin).await
 }
@@ -127,7 +145,6 @@ async fn authorize_get(
 async fn authorize_post(
     State(state): State<AppState>,
     tenant: TenantCtx,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     body: String,
 ) -> Response {
@@ -142,9 +159,12 @@ async fn authorize_post(
             "POST requires application/x-www-form-urlencoded",
         );
     }
-    let params = RawParams::parse(&body);
-    let origin = geoip::Origin::of_request(&state, &headers, Some(peer));
-    handle(&state, &tenant, &headers, params, origin).await
+    // A form another site posted arrives without the session cookie (it is
+    // `SameSite=Lax`): park it and come back as a GET, which carries it.
+    match super::park::park(&state, tenant.id(), "authorize", &body).await {
+        Ok(res) => res,
+        Err(e) => e.into_response(),
+    }
 }
 
 /// How an error must be delivered.
@@ -577,10 +597,9 @@ pub async fn validate(
                 format!("invalid resource `{r}`"),
             )));
         }
-        let mut tx = crate::db::tenant_tx(&state.db, tenant.id()).await?;
         let known =
-            crate::repos::resource_servers::find_by_identifier(&mut *tx, tenant.id(), r).await?;
-        tx.commit().await?;
+            crate::services::resource_servers::find_by_identifier_cached(state, tenant.id(), r)
+                .await?;
         if known.is_none() {
             return Err(Failure::Redirect(OAuthError::new(
                 OAuthErrorCode::InvalidTarget,

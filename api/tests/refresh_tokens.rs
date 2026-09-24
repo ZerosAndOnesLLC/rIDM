@@ -395,17 +395,7 @@ async fn revocation_by_token_user_session_and_purge() {
             .is_empty()
     );
 
-    // Purge removes dead rows older than the retention window.
-    assert_eq!(
-        refresh_tokens::purge(&app.state, tid, Duration::days(1))
-            .await
-            .unwrap(),
-        0
-    );
-    let purged = refresh_tokens::purge(&app.state, tid, Duration::seconds(-1))
-        .await
-        .unwrap();
-    assert!(purged >= 5, "purged {purged}");
+    // Dead rows are removed by the hourly cleanup job (`tests/jobs.rs`).
 }
 
 #[tokio::test]

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useConsole } from "./session";
 
 /** `value`, settled for `ms` (search boxes that hit the API). */
@@ -45,7 +45,9 @@ export function useResourceServers(tenant: string | null) {
 }
 
 /** Every client of the tenant by id → name, for labels and pickers. Pages
- * through the whole list (no silent cut-off), cached a minute. */
+ * through the whole list (no silent cut-off) at the API's largest page, one
+ * page after another (each cursor comes from the page before), cached a
+ * minute. */
 export function useClientNames(tenant: string) {
   const { client } = useConsole();
   return useQuery({
@@ -55,7 +57,7 @@ export function useClientNames(tenant: string) {
       const names: Record<string, string> = {};
       let cursor: string | undefined;
       do {
-        const { data, error } = await client.GET("/admin/tenants/{slug}/clients", { params: { path: { slug: tenant }, query: { limit: 200, cursor } } });
+        const { data, error } = await client.GET("/admin/tenants/{slug}/clients", { params: { path: { slug: tenant }, query: { limit: 500, cursor } } });
         if (error) throw new Error(error.detail ?? error.title);
         for (const c of data.items) names[c.id] = c.name;
         cursor = data.next_cursor ?? undefined;
@@ -63,4 +65,22 @@ export function useClientNames(tenant: string) {
       return names;
     },
   });
+}
+
+/**
+ * Stable React keys for an editable list whose rows have no id of their own
+ * (an index key would hand one row's input state to the next when a row is
+ * removed). Rows added at the end get new keys; call `removeKey(i)` together
+ * with removing row `i`.
+ */
+export function useRowKeys(count: number): { keys: number[]; removeKey: (i: number) => void } {
+  const [state, setState] = useState(() => ({ keys: Array.from({ length: count }, (_, i) => i), next: count }));
+  let keys = state.keys;
+  if (keys.length !== count) {
+    const added = Math.max(0, count - keys.length);
+    keys = added ? [...keys, ...Array.from({ length: added }, (_, i) => state.next + i)] : keys.slice(0, count);
+    setState({ keys, next: state.next + added });
+  }
+  const removeKey = useCallback((i: number) => setState((s) => ({ ...s, keys: s.keys.filter((_, j) => j !== i) })), []);
+  return { keys, removeKey };
 }

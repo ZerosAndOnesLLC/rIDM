@@ -60,7 +60,7 @@ async fn start_inner(
     alias: &str,
     q: StartQuery,
 ) -> AppResult<Response> {
-    let idp = identity_providers::get(state, tenant.id(), alias).await?;
+    let idp = identity_providers::get_cached(state, tenant.id(), alias).await?;
     if !idp.enabled {
         return Err(AppError::NotFound("identity provider"));
     }
@@ -203,7 +203,7 @@ async fn finish(
     peer: std::net::SocketAddr,
     headers: HeaderMap,
 ) -> Response {
-    let idp = match identity_providers::get(&state, tenant.id(), &alias).await {
+    let idp = match identity_providers::get_cached(&state, tenant.id(), &alias).await {
         Ok(i) => i,
         Err(e) => return e.into_response(),
     };

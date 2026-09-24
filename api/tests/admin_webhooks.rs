@@ -138,6 +138,7 @@ async fn admin_runs_the_webhook_lifecycle_with_signed_deliveries() {
     assert_eq!(ping["last_status"], 200);
     assert_eq!(ping["response_snippet"], "thanks");
     {
+        common::settle(&app.state).await;
         let got = inbox.lock().unwrap();
         let (headers, body) = got.hits.last().expect("ping received");
         assert_eq!(headers["x-ridm-event"], "webhook.test");
@@ -190,6 +191,7 @@ async fn admin_runs_the_webhook_lifecycle_with_signed_deliveries() {
         .unwrap()
         .unwrap();
     {
+        common::settle(&app.state).await;
         let got = inbox.lock().unwrap();
         let (headers, body) = got.hits.last().unwrap();
         assert_eq!(headers["x-ridm-event"], "user.created");
@@ -228,6 +230,7 @@ async fn admin_runs_the_webhook_lifecycle_with_signed_deliveries() {
     )
     .await;
     {
+        common::settle(&app.state).await;
         let got = inbox.lock().unwrap();
         let (headers, body) = got.hits.last().unwrap();
         assert!(verify_signature(&secret2, headers, body));

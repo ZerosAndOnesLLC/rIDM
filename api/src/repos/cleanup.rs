@@ -1,5 +1,11 @@
 //! Cross-tenant housekeeping deletes (run in a bypass transaction by the
 //! `cleanup` job). Every statement is a constant; the cutoff is the only bind.
+//!
+//! Each condition is written exactly as the tenant-free `*_purge_idx` index of
+//! its table (migrations `…_purge_idx`), so a batch reads only stale rows
+//! instead of scanning the table: `LEAST` ignores NULLs, which makes
+//! `LEAST(a, b) < $1` the same as `a < $1 OR b < $1` over nullable ends, as
+//! one indexable expression.
 
 use chrono::{DateTime, Utc};
 use sqlx::PgExecutor;
@@ -26,12 +32,12 @@ pub enum Keep {
 pub const TARGETS: &[Target] = &[
     Target {
         table: "sso_sessions",
-        stale: "expires_at < $1 OR (revoked_at IS NOT NULL AND revoked_at < $1)",
+        stale: "LEAST(expires_at, idle_expires_at, revoked_at) < $1",
         keep: Keep::Sessions,
     },
     Target {
         table: "refresh_tokens",
-        stale: "expires_at < $1 OR (revoked_at IS NOT NULL AND revoked_at < $1) OR (consumed_at IS NOT NULL AND consumed_at < $1)",
+        stale: "LEAST(expires_at, revoked_at, consumed_at) < $1",
         keep: Keep::Retention,
     },
     Target {
@@ -61,22 +67,22 @@ pub const TARGETS: &[Target] = &[
     },
     Target {
         table: "invitations",
-        stale: "expires_at < $1 OR (accepted_at IS NOT NULL AND accepted_at < $1) OR (revoked_at IS NOT NULL AND revoked_at < $1)",
+        stale: "LEAST(expires_at, accepted_at, revoked_at) < $1",
         keep: Keep::Retention,
     },
     Target {
         table: "trusted_devices",
-        stale: "expires_at < $1 OR (revoked_at IS NOT NULL AND revoked_at < $1)",
+        stale: "LEAST(expires_at, revoked_at) < $1",
         keep: Keep::Retention,
     },
     Target {
         table: "personal_access_tokens",
-        stale: "(expires_at IS NOT NULL AND expires_at < $1) OR (revoked_at IS NOT NULL AND revoked_at < $1)",
+        stale: "LEAST(expires_at, revoked_at) < $1",
         keep: Keep::Retention,
     },
     Target {
         table: "scim_tokens",
-        stale: "(expires_at IS NOT NULL AND expires_at < $1) OR (revoked_at IS NOT NULL AND revoked_at < $1)",
+        stale: "LEAST(expires_at, revoked_at) < $1",
         keep: Keep::Retention,
     },
 ];

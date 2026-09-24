@@ -193,6 +193,7 @@ async fn console_login_yields_admin_tokens() {
             acr: None,
             ip: None,
             user_agent: None,
+            device_id: None,
             policy: &tenant.settings.session,
         },
     )

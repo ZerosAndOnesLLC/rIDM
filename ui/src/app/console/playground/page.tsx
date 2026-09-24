@@ -3,73 +3,33 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RotateCw, UserRound } from "lucide-react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { CheckList } from "@/components/console/clients/pickers";
 import { Field, SelectInput, TextInput } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
 import { tenantBase } from "@/lib/api";
 import { clientHref, usesSecret, type ClientView } from "@/lib/console/clients";
-import { PlaygroundError, decodeJwt, pending, pkceChallenge, randomToken, redirectUri, result as stored, tokenRequest, userinfoRequest, type PlaygroundResult } from "@/lib/console/playground";
+import { CALLBACK_TYPE, PlaygroundError, decodeJwt, isCallback, pkceChallenge, randomToken, redirectUri, tokenRequest, userinfoRequest, type PlaygroundCallback, type PlaygroundPending, type PlaygroundResult } from "@/lib/console/playground";
 import { useConsole } from "@/lib/console/session";
 import { useConsoleTenant } from "@/lib/console/tenant";
-import { navigate } from "@/lib/params";
 
 /**
  * Run a client's flow end to end from the console: authorization code with
- * PKCE through the tenant's real login page (the console itself is the
- * redirect target), or client credentials for machine clients; then look at
- * the tokens, call userinfo and refresh.
+ * PKCE through the tenant's real login page, in a popup whose redirect target
+ * is this page, or client credentials for machine clients; then look at the
+ * tokens, call userinfo and refresh. A run lives in this tab's memory only.
  */
 export default function PlaygroundPage() {
   const sp = useSearchParams();
-  const router = useRouter();
-  const tenantParam = useConsoleTenant();
-  const code = sp.get("code");
-  const state = sp.get("state");
-  const oauthError = sp.get("error");
-  const returning = Boolean(code || oauthError);
-  // Coming back from /authorize the URL carries no tenant: the pending record has it.
-  const [pend] = useState(() => (returning && typeof window !== "undefined" ? pending.load() : null));
-  const tenant = tenantParam && !returning ? tenantParam : (pend?.tenant ?? tenantParam);
-  const id = sp.get("client") ?? pend?.id ?? null;
-
-  const [res, setRes] = useState<PlaygroundResult | null>(() => (typeof window === "undefined" ? null : stored.load()));
+  const tenant = useConsoleTenant();
+  const id = sp.get("client");
+  const [res, setRes] = useState<PlaygroundResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const exchanged = useRef(false);
 
-  useEffect(() => {
-    if (!returning || exchanged.current) return;
-    exchanged.current = true;
-    const p = pend;
-    pending.clear();
-    const finish = (r: PlaygroundResult | null, err: string | null) => {
-      if (r) {
-        stored.save(r);
-        setRes(r);
-      }
-      setError(err);
-      if (p) router.replace(`/console/playground/?tenant=${encodeURIComponent(p.tenant)}&client=${encodeURIComponent(p.id)}`);
-    };
-    if (oauthError) {
-      finish(null, `${oauthError}: ${sp.get("error_description") ?? "the authorization request was refused."}`);
-      return;
-    }
-    if (!p || p.state !== state) {
-      finish(null, "This response does not belong to a run started in this tab.");
-      return;
-    }
-    tokenRequest(p.tenant, p.client_id, p.auth, p.secret, {
-      grant_type: "authorization_code",
-      code: code!,
-      redirect_uri: redirectUri(),
-      code_verifier: p.verifier,
-    })
-      .then((tokens) => finish({ tenant: p.tenant, id: p.id, client_id: p.client_id, auth: p.auth, secret: p.secret, tokens, at: Date.now() }, null))
-      .catch((e: unknown) => finish(null, e instanceof Error ? e.message : String(e)));
-  }, [returning, oauthError, code, state, sp, router, pend]);
-
+  // The sign-in popup lands here with the authorization response.
+  if (sp.get("code") || sp.get("error")) return <Callback />;
   if (!tenant || !id) {
     return (
       <>
@@ -81,9 +41,75 @@ export default function PlaygroundPage() {
   return <Playground tenant={tenant} id={id} res={res && res.id === id ? res : null} setRes={setRes} error={error} setError={setError} />;
 }
 
+const noSubscription = () => () => {};
+
+/** In the popup: hand the response to the console tab that opened it, and close. */
+function Callback() {
+  const sp = useSearchParams();
+  // Read on the client only (the static render assumes an opener).
+  const orphan = useSyncExternalStore(
+    noSubscription,
+    () => window.opener === null,
+    () => false,
+  );
+  useEffect(() => {
+    const opener = window.opener as Window | null;
+    if (!opener) return;
+    const message: PlaygroundCallback = {
+      type: CALLBACK_TYPE,
+      code: sp.get("code"),
+      state: sp.get("state"),
+      error: sp.get("error"),
+      error_description: sp.get("error_description"),
+    };
+    opener.postMessage(message, window.location.origin);
+    window.close();
+  }, [sp]);
+  if (!orphan) return <Spinner label="Returning to the playground…" />;
+  return (
+    <>
+      <PageHeader title="Playground" />
+      <p className="text-[0.9rem] text-muted">This sign-in has no playground to return to. Start the run again from the client&apos;s playground.</p>
+    </>
+  );
+}
+
 function Playground({ tenant, id, res, setRes, error, setError }: { tenant: string; id: string; res: PlaygroundResult | null; setRes: (r: PlaygroundResult | null) => void; error: string | null; setError: (e: string | null) => void }) {
   const { client: api, can } = useConsole();
   const qc = useQueryClient();
+  // The run waiting for its popup: in memory, never stored.
+  const running = useRef<{ run: PlaygroundPending; popup: Window } | null>(null);
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      const current = running.current;
+      // Only this origin, only the popup this tab opened.
+      if (e.origin !== window.location.origin || !isCallback(e.data) || !current || e.source !== current.popup) return;
+      running.current = null;
+      const { run } = current;
+      const reply = e.data;
+      if (reply.error) {
+        setError(`${reply.error}: ${reply.error_description ?? "the authorization request was refused."}`);
+        return;
+      }
+      if (!reply.code || reply.state !== run.state) {
+        setError("This response does not belong to the run started here.");
+        return;
+      }
+      tokenRequest(run.tenant, run.client_id, run.auth, run.secret, {
+        grant_type: "authorization_code",
+        code: reply.code,
+        redirect_uri: redirectUri(),
+        code_verifier: run.verifier,
+      })
+        .then((tokens) => {
+          setRes({ tenant: run.tenant, id: run.id, client_id: run.client_id, auth: run.auth, secret: run.secret, tokens, at: Date.now() });
+          setError(null);
+        })
+        .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [setRes, setError]);
   const query = useQuery({
     queryKey: ["client", tenant, id],
     queryFn: async () => {
@@ -120,8 +146,11 @@ function Playground({ tenant, id, res, setRes, error, setError }: { tenant: stri
           c={c}
           canEdit={can("ridm:clients:write")}
           onRegistered={(updated) => qc.setQueryData(["client", tenant, id], updated)}
+          onStart={(run, popup) => {
+            running.current = { run, popup };
+            setError(null);
+          }}
           onResult={(r) => {
-            stored.save(r);
             setRes(r);
             setError(null);
           }}
@@ -133,14 +162,14 @@ function Playground({ tenant, id, res, setRes, error, setError }: { tenant: stri
               {error}
             </p>
           )}
-          {res ? <Results res={res} onUpdate={(r) => { stored.save(r); setRes(r); }} onError={setError} /> : <p className="text-[0.9rem] text-muted">No tokens yet. Start a run on the left.</p>}
+          {res ? <Results res={res} onUpdate={setRes} onError={setError} /> : <p className="text-[0.9rem] text-muted">No tokens yet. Start a run on the left.</p>}
         </div>
       </div>
     </>
   );
 }
 
-function Runner({ tenant, c, canEdit, onRegistered, onResult, onError }: { tenant: string; c: ClientView; canEdit: boolean; onRegistered: (c: ClientView) => void; onResult: (r: PlaygroundResult) => void; onError: (e: string) => void }) {
+function Runner({ tenant, c, canEdit, onRegistered, onStart, onResult, onError }: { tenant: string; c: ClientView; canEdit: boolean; onRegistered: (c: ClientView) => void; onStart: (run: PlaygroundPending, popup: Window) => void; onResult: (r: PlaygroundResult) => void; onError: (e: string) => void }) {
   const { client: api } = useConsole();
   const interactive = c.allowed_grants.includes("authorization_code");
   const machine = c.allowed_grants.includes("client_credentials");
@@ -166,8 +195,23 @@ function Runner({ tenant, c, canEdit, onRegistered, onResult, onError }: { tenan
       onError("Paste the client secret to run a confidential client.");
       return;
     }
+    // Opened now, while the click still counts as the user's: a popup opened
+    // after an await is blocked.
+    const popup = window.open("about:blank", "ridm-playground", "popup,width=520,height=720");
+    if (!popup) {
+      onError("The sign-in opens in a popup: allow pop-ups for the console and try again.");
+      return;
+    }
     const verifier = randomToken(48);
-    const p = {
+    let challenge: string;
+    try {
+      challenge = await pkceChallenge(verifier);
+    } catch (e) {
+      popup.close();
+      onError(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    const p: PlaygroundPending = {
       tenant,
       id: c.id,
       client_id: c.client_id,
@@ -179,7 +223,7 @@ function Runner({ tenant, c, canEdit, onRegistered, onResult, onError }: { tenan
       scope: scopes.join(" "),
       resource: resource || null,
     };
-    pending.save(p);
+    onStart(p, popup);
     const q = new URLSearchParams({
       response_type: "code",
       client_id: c.client_id,
@@ -187,12 +231,12 @@ function Runner({ tenant, c, canEdit, onRegistered, onResult, onError }: { tenan
       scope: p.scope,
       state: p.state,
       nonce: p.nonce,
-      code_challenge: await pkceChallenge(verifier),
+      code_challenge: challenge,
       code_challenge_method: "S256",
     });
     if (resource) q.set("resource", resource);
     if (prompt) q.set("prompt", prompt);
-    navigate(`${tenantBase(tenant)}/authorize?${q}`);
+    popup.location.href = `${tenantBase(tenant)}/authorize?${q}`;
   };
 
   const credentials = useMutation({
@@ -253,7 +297,7 @@ function Runner({ tenant, c, canEdit, onRegistered, onResult, onError }: { tenan
           </Field>
         )}
         {needsSecret && (
-          <Field label="Client secret" hint="Kept in this tab only until the run completes.">
+          <Field label="Client secret" hint="Kept in this tab's memory for the run; never stored.">
             {(fid, by) => <TextInput id={fid} aria-describedby={by} type="password" autoComplete="off" value={secret} onChange={(e) => setSecret(e.target.value)} />}
           </Field>
         )}

@@ -37,31 +37,40 @@ pub async fn chain_head<'e>(
     .await
 }
 
-#[allow(clippy::too_many_arguments)]
-pub async fn insert<'e>(exec: impl PgExecutor<'e>, row: &AuditEvent) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "INSERT INTO audit_events (id, tenant_id, chain_id, seq, occurred_at, recorded_at, name, \
-         actor_type, actor_id, subject_id, ip, user_agent, payload, prev_hash, hash, impersonator_id) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
-    )
-    .bind(row.id)
-    .bind(row.tenant_id)
-    .bind(chain_id(row.tenant_id))
-    .bind(row.seq)
-    .bind(row.occurred_at)
-    .bind(row.recorded_at)
-    .bind(&row.name)
-    .bind(&row.actor_type)
-    .bind(row.actor_id)
-    .bind(row.subject_id)
-    .bind(&row.ip)
-    .bind(&row.user_agent)
-    .bind(&row.payload)
-    .bind(&row.prev_hash)
-    .bind(&row.hash)
-    .bind(row.impersonator_id)
-    .execute(exec)
-    .await?;
+/// Rows per statement: 16 binds a row stays well under Postgres' 65,535.
+const INSERT_CHUNK: usize = 1_000;
+
+/// Insert `rows` with as few statements as their number allows (one per
+/// [`INSERT_CHUNK`]); the writer passes one chain's batch at a time.
+pub async fn insert_many(
+    conn: &mut sqlx::PgConnection,
+    rows: &[AuditEvent],
+) -> Result<(), sqlx::Error> {
+    for chunk in rows.chunks(INSERT_CHUNK) {
+        let mut qb = QueryBuilder::new(
+            "INSERT INTO audit_events (id, tenant_id, chain_id, seq, occurred_at, recorded_at, name, \
+             actor_type, actor_id, subject_id, ip, user_agent, payload, prev_hash, hash, impersonator_id) ",
+        );
+        qb.push_values(chunk, |mut b, row| {
+            b.push_bind(row.id)
+                .push_bind(row.tenant_id)
+                .push_bind(chain_id(row.tenant_id))
+                .push_bind(row.seq)
+                .push_bind(row.occurred_at)
+                .push_bind(row.recorded_at)
+                .push_bind(&row.name)
+                .push_bind(&row.actor_type)
+                .push_bind(row.actor_id)
+                .push_bind(row.subject_id)
+                .push_bind(&row.ip)
+                .push_bind(&row.user_agent)
+                .push_bind(&row.payload)
+                .push_bind(&row.prev_hash)
+                .push_bind(&row.hash)
+                .push_bind(row.impersonator_id);
+        });
+        qb.build().execute(&mut *conn).await?;
+    }
     Ok(())
 }
 
@@ -175,6 +184,19 @@ pub async fn expired_head<'e>(
         .await
 }
 
+/// When the chain's first remaining row was written (`None`: it has none).
+pub async fn first_row_at<'e>(
+    exec: impl PgExecutor<'e>,
+    chain: Uuid,
+) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT occurred_at FROM audit_events WHERE chain_id = $1 ORDER BY seq LIMIT 1",
+    )
+    .bind(chain)
+    .fetch_optional(exec)
+    .await
+}
+
 /// Delete up to `batch` rows of a chain at or below `up_to_seq`.
 pub async fn purge_prefix<'e>(
     exec: impl PgExecutor<'e>,
@@ -201,6 +223,20 @@ pub async fn ensure_partitions<'e>(
 ) -> Result<i32, sqlx::Error> {
     sqlx::query_scalar("SELECT audit_ensure_partitions($1)")
         .bind(months_ahead)
+        .fetch_one(exec)
+        .await
+}
+
+/// Drop the monthly partitions that ended by `cutoff` and hold only chains in
+/// `chains` (see the `audit_drop_partitions_before` migration).
+pub async fn drop_partitions_before<'e>(
+    exec: impl PgExecutor<'e>,
+    cutoff: chrono::NaiveDate,
+    chains: &[Uuid],
+) -> Result<i32, sqlx::Error> {
+    sqlx::query_scalar("SELECT audit_drop_partitions_before($1, $2)")
+        .bind(cutoff)
+        .bind(chains)
         .fetch_one(exec)
         .await
 }

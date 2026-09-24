@@ -10,7 +10,7 @@ test("password recovery by emailed link, then login with the new password", asyn
   await page.getByRole("button", { name: "Send reset link" }).click();
   await expect(page.getByRole("status")).toContainText("reset link");
 
-  const mail = await mailpit.waitFor(s.email);
+  const mail = await mailpit.waitFor(s.email, 15_000, "Reset your password");
   const link = mail.links.find((l) => l.includes("/recover/") && l.includes("token="));
   expect(link, mail.text).toBeTruthy();
   await page.goto(link!);

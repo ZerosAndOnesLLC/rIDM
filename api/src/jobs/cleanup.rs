@@ -24,9 +24,11 @@ const SESSION_DAYS: u32 = 7;
 /// Rows deleted per table.
 pub type Report = BTreeMap<&'static str, u64>;
 
+/// How long the lock is held without renewal; every batch renews it.
+const LOCK_TTL: Duration = Duration::from_secs(600);
+
 pub async fn run_once(state: &AppState) -> AppResult<Option<Report>> {
-    let Some(lock) = leader::try_acquire(&state.redis, JOB_NAME, Duration::from_secs(600)).await?
-    else {
+    let Some(lock) = leader::try_acquire(&state.redis, JOB_NAME, LOCK_TTL).await? else {
         return Ok(None);
     };
     let retention = state.config.retention_days;
@@ -46,6 +48,12 @@ pub async fn run_once(state: &AppState) -> AppResult<Option<Report>> {
                 total += n;
                 if n < cleanup::BATCH as u64 {
                     break;
+                }
+                // Another node would start the same deletes if the lock
+                // lapsed under a long pass; losing it ends this one.
+                if !lock.extend(LOCK_TTL).await? {
+                    tracing::warn!(table = target.table, "cleanup lost its lock; stopping");
+                    return Ok(Some(report));
                 }
             }
         }

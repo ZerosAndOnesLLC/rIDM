@@ -47,6 +47,7 @@ async fn fixture() -> Fx {
             acr: None,
             ip: None,
             user_agent: None,
+            device_id: None,
             policy: &tenant.settings.session,
         },
     )
@@ -469,6 +470,36 @@ async fn rp_initiated_logout_with_hint_and_backchannel_notification() {
         .await
         .unwrap();
     assert_eq!(res.status(), 400);
+    // Posted (cross-site, so without the session cookie), the same request
+    // is parked and taken up by a GET that carries the cookie, once.
+    let res = fx
+        .app
+        .http
+        .post(fx.app.tenant_url("/end_session"))
+        .form(&[
+            ("id_token_hint", id_token),
+            ("post_logout_redirect_uri", "https://evil.example/"),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 303);
+    let back = res.headers()["location"].to_str().unwrap().to_string();
+    assert!(back.starts_with("?parked="), "{back}");
+    let resume = format!("{}{back}", fx.app.tenant_url("/end_session"));
+    for taken in [false, true] {
+        let res = fx
+            .app
+            .http
+            .get(&resume)
+            .header("Cookie", &fx.cookie)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 400);
+        let body = res.text().await.unwrap();
+        assert_eq!(body.contains("already used"), taken, "{body}");
+    }
 
     let res = fx
         .app

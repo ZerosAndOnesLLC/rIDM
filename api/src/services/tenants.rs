@@ -151,7 +151,7 @@ pub fn normalize_custom_domain(state: &AppState, raw: Option<&str>) -> AppResult
             "custom_domain must be a hostname such as login.example.com".into(),
         ));
     }
-    if state.config.primary_hosts().contains(&host) {
+    if state.config.is_primary_host(&host) {
         return Err(AppError::BadRequest(
             "custom_domain may not be the deployment's own host".into(),
         ));

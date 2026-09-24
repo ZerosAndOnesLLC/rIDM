@@ -4,15 +4,16 @@
 
 use std::collections::BTreeMap;
 
-use handlebars::Handlebars;
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::cache::keys as cache_keys;
 use crate::db;
 use crate::error::{AppError, AppResult};
-use crate::models::MessageChannel;
+use crate::models::{MessageChannel, MessageTemplate};
 use crate::repos;
 use crate::state::AppState;
+use crate::util::templating::{self, Escape};
 
 /// A renderable template.
 #[derive(Debug, Clone, PartialEq)]
@@ -108,9 +109,11 @@ fn builtin(channel: MessageChannel, event: &str) -> Option<Template> {
         (MessageChannel::Sms, "backchannel_request") => sms(
             "{{tenant.display_name}}: {{client_name}} asks to sign you in{{#if binding_message}} (code {{binding_message}}){{/if}}. Approve or deny: {{link}}",
         ),
-        (MessageChannel::Sms, "otp") => {
-            sms("{{tenant.display_name}} code: {{code}} (expires in {{expires_minutes}} min)")
-        }
+        // The last line is the WebOTP format (`@host #code`): Chrome on
+        // Android offers to fill the code in on the page served from that host.
+        (MessageChannel::Sms, "otp") => sms(
+            "{{tenant.display_name}} code: {{code}} (expires in {{expires_minutes}} min)\n\n@{{tenant.host}} #{{code}}",
+        ),
         (MessageChannel::Sms, "magic_link") => sms("Sign in to {{tenant.display_name}}: {{link}}"),
         (MessageChannel::Sms, "new_device") => sms(
             "{{tenant.display_name}}: new sign-in from {{user_agent}} ({{ip}}). Not you? Change your password.",
@@ -139,6 +142,40 @@ fn locale_chain(locale: &str, tenant_default: &str) -> Vec<String> {
     chain
 }
 
+/// How long a node keeps a tenant's overrides (every change evicts them).
+const TEMPLATES_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// A tenant's template overrides, cached: every message asks, and most
+/// tenants have few or none.
+async fn overrides(
+    state: &AppState,
+    tenant_id: Uuid,
+) -> AppResult<std::sync::Arc<Vec<MessageTemplate>>> {
+    let db = state.db.clone();
+    Ok(state
+        .cache
+        .get_or_load(
+            &cache_keys::message_templates(tenant_id),
+            TEMPLATES_TTL,
+            || async move {
+                let mut tx = db::tenant_tx(&db, tenant_id).await?;
+                let rows = repos::messages::list_templates(&mut *tx, tenant_id).await?;
+                tx.commit().await?;
+                Ok(Some(rows))
+            },
+        )
+        .await?
+        .unwrap_or_default())
+}
+
+/// Evict a tenant's cached overrides after one changed.
+pub async fn forget_templates(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
+    state
+        .cache
+        .invalidate(&[cache_keys::message_templates(tenant_id)])
+        .await
+}
+
 /// Resolve the template for an event, honouring tenant overrides.
 pub async fn resolve(
     state: &AppState,
@@ -148,20 +185,19 @@ pub async fn resolve(
     event: &str,
     locale: &str,
 ) -> AppResult<Template> {
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let overrides = overrides(state, tenant_id).await?;
     for candidate in locale_chain(locale, tenant_default_locale) {
-        if let Some(t) =
-            repos::messages::find_template(&mut *tx, tenant_id, channel, event, &candidate).await?
+        if let Some(t) = overrides
+            .iter()
+            .find(|t| t.channel == channel && t.event == event && t.locale == candidate)
         {
-            tx.commit().await?;
             return Ok(Template {
-                subject: t.subject,
-                body_text: t.body_text,
-                body_html: t.body_html,
+                subject: t.subject.clone(),
+                body_text: t.body_text.clone(),
+                body_html: t.body_html.clone(),
             });
         }
     }
-    tx.commit().await?;
     builtin(channel, event).ok_or_else(|| {
         AppError::BadRequest(format!("no template for {} `{event}`", channel.as_str()))
     })
@@ -169,23 +205,20 @@ pub async fn resolve(
 
 /// Render with Handlebars (HTML-escaping applies to the HTML body only).
 pub fn render(template: &Template, vars: &Value) -> AppResult<Rendered> {
-    let mut hb = Handlebars::new();
-    hb.set_strict_mode(false);
-    let render_text = |src: &str| -> AppResult<String> {
-        let mut h = Handlebars::new();
-        h.register_escape_fn(handlebars::no_escape);
-        h.render_template(src, vars)
+    let render = |src: &str, escape: Escape| -> AppResult<String> {
+        templating::render(src, vars, escape)
             .map_err(|e| AppError::BadRequest(format!("template error: {e}")))
     };
-    let subject = template.subject.as_deref().map(render_text).transpose()?;
-    let body_text = render_text(&template.body_text)?;
+    let subject = template
+        .subject
+        .as_deref()
+        .map(|s| render(s, Escape::None))
+        .transpose()?;
+    let body_text = render(&template.body_text, Escape::None)?;
     let body_html = template
         .body_html
         .as_deref()
-        .map(|src| {
-            hb.render_template(src, vars)
-                .map_err(|e| AppError::BadRequest(format!("template error: {e}")))
-        })
+        .map(|s| render(s, Escape::Html))
         .transpose()?;
     Ok(Rendered {
         subject,

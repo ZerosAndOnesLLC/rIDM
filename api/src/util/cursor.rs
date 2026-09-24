@@ -41,6 +41,15 @@ pub fn page_size(requested: Option<u32>) -> i64 {
     )
 }
 
+/// `?cursor=&limit=` for a list with nothing else to filter on.
+#[derive(Debug, Clone, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+#[serde(default)]
+pub struct PageParams {
+    pub cursor: Option<String>,
+    pub limit: Option<u32>,
+}
+
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct Page<T> {
     pub items: Vec<T>,

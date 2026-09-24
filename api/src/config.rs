@@ -144,6 +144,10 @@ pub struct Config {
     /// Days the hourly cleanup keeps spent rows (expired tokens and sessions,
     /// login attempts, sent messages, finished webhook deliveries, ...).
     pub retention_days: u32,
+    /// Events each durable consumer (the audit writer, the webhook
+    /// dispatcher) may have queued before new ones are dropped
+    /// (`EVENT_QUEUE_CAPACITY`); `/readyz` fails well before that.
+    pub event_queue_capacity: usize,
     /// OTLP/HTTP collector base URL for trace export (`OTEL_EXPORTER_OTLP_ENDPOINT`).
     pub otlp_endpoint: Option<Url>,
     /// `service.name` on exported traces (`OTEL_SERVICE_NAME`, default `ridm`).
@@ -162,6 +166,10 @@ pub struct Config {
     pub mtls: MtlsConfig,
     pub db_pool_min: u32,
     pub db_pool_max: u32,
+    /// How long a request waits for a pooled connection before failing
+    /// (`DB_ACQUIRE_TIMEOUT_MS`): an overloaded pool should fail fast, not
+    /// queue requests for seconds.
+    pub db_acquire_timeout_ms: u64,
     /// Valkey connections per node (`REDIS_POOL_MAX`, default 32).
     pub redis_pool_max: u32,
     /// Apply pending migrations at startup.
@@ -417,6 +425,13 @@ impl Config {
         .map_err(|(name, reason)| ConfigError::Invalid { name, reason })?;
         let hsts_max_age = u64::from(parse_u32("HSTS_MAX_AGE", 63_072_000)?);
         let retention_days = parse_u32("RETENTION_DAYS", 30)?;
+        let event_queue_capacity = parse_u32("EVENT_QUEUE_CAPACITY", 100_000)?;
+        if event_queue_capacity < 1_000 {
+            return Err(ConfigError::Invalid {
+                name: "EVENT_QUEUE_CAPACITY",
+                reason: "must be at least 1000".into(),
+            });
+        }
         let otlp_endpoint = optional("OTEL_EXPORTER_OTLP_ENDPOINT")
             .map(|v| {
                 parse("OTEL_EXPORTER_OTLP_ENDPOINT", v, |v| {
@@ -473,6 +488,13 @@ impl Config {
         let db_pool_min = parse_u32("DB_POOL_MIN", 2)?;
         let redis_pool_max = parse_u32("REDIS_POOL_MAX", 32)?.max(1);
         let db_pool_max = parse_u32("DB_POOL_MAX", 20)?;
+        let db_acquire_timeout_ms = u64::from(parse_u32("DB_ACQUIRE_TIMEOUT_MS", 2_000)?);
+        if db_acquire_timeout_ms == 0 {
+            return Err(ConfigError::Invalid {
+                name: "DB_ACQUIRE_TIMEOUT_MS",
+                reason: "must be at least 1".into(),
+            });
+        }
         if db_pool_min > db_pool_max {
             return Err(ConfigError::Invalid {
                 name: "DB_POOL_MIN",
@@ -583,6 +605,7 @@ impl Config {
             security_txt,
             hsts_max_age,
             retention_days,
+            event_queue_capacity: event_queue_capacity as usize,
             otlp_endpoint,
             otel_service_name,
             metrics_token,
@@ -594,6 +617,7 @@ impl Config {
             mtls,
             db_pool_min,
             db_pool_max,
+            db_acquire_timeout_ms,
             redis_pool_max,
             migrate_on_start,
             argon2,
@@ -623,26 +647,29 @@ impl Config {
         v
     }
 
-    /// Hosts (`host[:port]`, lower-case) the API and the UI are reached on;
-    /// a tenant's custom domain may not be one of them.
-    pub fn primary_hosts(&self) -> Vec<String> {
-        let mut v: Vec<String> = [
+    /// Whether `host` (`host[:port]`, as a request names it) is one the API
+    /// or the UI is reached on; a tenant's custom domain may not be one of
+    /// them. Asked on every request, so it compares in place.
+    pub fn is_primary_host(&self, host: &str) -> bool {
+        let (name, port) = match host.rsplit_once(':') {
+            Some((name, port)) if port.parse::<u16>().is_ok() => (name, Some(port)),
+            _ => (host, None),
+        };
+        [
             Some(&self.public_url),
             Some(&self.ui_url),
             self.mtls.public_url.as_ref(),
         ]
         .into_iter()
         .flatten()
-        .filter_map(|u| {
-            let host = u.host_str()?.to_ascii_lowercase();
-            Some(match u.port() {
-                Some(p) => format!("{host}:{p}"),
-                None => host,
-            })
+        .any(|u| {
+            u.host_str().is_some_and(|h| h.eq_ignore_ascii_case(name))
+                && match (u.port(), port) {
+                    (Some(p), Some(q)) => q.parse::<u16>() == Ok(p),
+                    (None, None) => true,
+                    _ => false,
+                }
         })
-        .collect();
-        v.dedup();
-        v
     }
 
     /// Issuer URL for a tenant: `{PUBLIC_URL}/t/{slug}` (no trailing slash).

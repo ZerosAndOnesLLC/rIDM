@@ -146,11 +146,7 @@ fn check_signature(
     received: &Received,
     doc: &roxmltree::Document,
 ) -> Result<bool, SamlError> {
-    let certs: Vec<Certificate> = sp
-        .signing_certificates
-        .iter()
-        .filter_map(|c| Certificate::parse(c).ok())
-        .collect();
+    let certs = Certificate::parse_registered(&sp.signing_certificates);
     let enveloped = dsig::signature_of(doc.root_element())?.is_some();
     let signed = match (&received.signature, enveloped) {
         (Some(_), true) => {
@@ -791,20 +787,38 @@ async fn record_participant(
     p: &Participant,
 ) -> AppResult<()> {
     let ttl = (session.expires_at - Utc::now()).num_seconds().max(60);
-    let mut conn = state.redis.get().await?;
     let key = participants_key(session.tenant_id, session.id);
-    let _: () = conn
-        .hset(&key, p.client_id.to_string(), serde_json::to_string(p)?)
-        .await?;
-    let _: () = conn.expire(&key, ttl).await?;
-    let _: () = conn
-        .set_ex(
-            index_key(session.tenant_id, &p.session_index),
-            session.id.to_string(),
-            ttl as u64,
-        )
-        .await?;
-    Ok(())
+    let entry = serde_json::to_string(p)?;
+    // The participant list (field and lifetime set together) and the
+    // session-index entry are separate keys, written at once on separate
+    // connections: they need not share a slot.
+    let (listed, indexed) = tokio::join!(
+        async {
+            let mut conn = state.redis.get().await?;
+            let _: () = redis::pipe()
+                .atomic()
+                .hset(&key, p.client_id.to_string(), entry)
+                .ignore()
+                .expire(&key, ttl)
+                .ignore()
+                .query_async(&mut conn)
+                .await?;
+            Ok::<_, AppError>(())
+        },
+        async {
+            let mut conn = state.redis.get().await?;
+            let _: () = conn
+                .set_ex(
+                    index_key(session.tenant_id, &p.session_index),
+                    session.id.to_string(),
+                    ttl as u64,
+                )
+                .await?;
+            Ok::<_, AppError>(())
+        },
+    );
+    listed?;
+    indexed
 }
 
 /// The SAML SPs that took part in a session.
@@ -858,13 +872,20 @@ async fn attributes(
     granted: &[String],
     org_id: Option<Uuid>,
 ) -> AppResult<Vec<protocol::Attribute>> {
-    let role_list = roles::effective_roles(state, tenant.id, user.id, org_id).await?;
-    let group_list = groups::groups_of_user(state, tenant.id, user.id, true).await?;
-    let defs = scopes::list(state, tenant.id).await?;
+    // Independent lookups (mostly cache hits): one round of them.
+    // Boxed: joined inline, their state would make one future too large for
+    // a debug build's stack.
+    let (role_list, group_list, defs, schema, mappers) = tokio::try_join!(
+        Box::pin(roles::effective_roles(state, tenant.id, user.id, org_id)),
+        Box::pin(groups::groups_of_user(state, tenant.id, user.id, true)),
+        Box::pin(scopes::list(state, tenant.id)),
+        Box::pin(profile_schema::get(state, tenant.id)),
+        Box::pin(crate::oidc::token::effective_mappers_for(
+            state, tenant.id, client
+        )),
+    )?;
     let mut claims: Map<String, Value> = scope_claims(user, granted, &defs);
-    let schema = profile_schema::get(state, tenant.id).await?;
     profile_claims(user, &schema, Exposure::IdToken, &mut claims);
-    let mappers = crate::oidc::token::effective_mappers_for(state, tenant.id, client).await?;
     let ctx = ClaimContext {
         tenant,
         user: Some(user),
@@ -979,10 +1000,11 @@ pub async fn respond(
         )
         .await);
     }
-    let sp = saml_sps::find_by_client(state, tenant.id(), client.id)
-        .await?
-        .ok_or(AppError::NotFound("SAML service provider"))?;
-    let user = users::get(state, tenant.id(), session.user_id).await?;
+    let (sp, user) = tokio::try_join!(
+        Box::pin(saml_sps::find_by_client(state, tenant.id(), client.id)),
+        Box::pin(users::get(state, tenant.id(), session.user_id)),
+    )?;
+    let sp = sp.ok_or(AppError::NotFound("SAML service provider"))?;
 
     let (name_id, spnq) = match ctx.name_id_format {
         NameIdFormat::Persistent => {
@@ -1050,7 +1072,7 @@ pub async fn respond(
             .encryption_certificate
             .as_deref()
             .ok_or_else(|| AppError::Internal("encryption certificate missing".into()))
-            .and_then(|c| Certificate::parse(c).map_err(internal))?;
+            .and_then(|c| Certificate::parse_cached(c).map_err(internal))?;
         let encrypted = xmlenc::encrypt(
             &assertion.to_string(),
             &cert,

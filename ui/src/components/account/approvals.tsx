@@ -28,7 +28,8 @@ export function Approvals() {
       if (error) throw error;
       return data;
     },
-    // A new request should show up while the page is open.
+    // A new request should show up while the page is open (a sign-in on
+    // another device is waiting on it); a hidden tab does not poll.
     refetchInterval: 10_000,
   });
   const answer = useMutation({

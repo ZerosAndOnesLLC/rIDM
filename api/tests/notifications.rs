@@ -103,6 +103,7 @@ async fn fixture(notifications: NotificationPolicy) -> Fx {
     )
     .await
     .unwrap();
+    common::settle(&app.state).await;
     assert!(email.sent().is_empty(), "initial password must not notify");
     clients::create(
         &app.state,
@@ -184,13 +185,16 @@ async fn login(fx: &Fx, user_agent: &str) {
 async fn new_device_notice_only_for_returning_users_on_unseen_browsers() {
     let fx = fixture(NotificationPolicy::default()).await;
     login(&fx, "Browser/A").await;
+    common::settle(&fx.app.state).await;
     assert!(
         fx.email.sent().is_empty(),
         "first ever login is not a new device"
     );
     login(&fx, "Browser/A").await;
+    common::settle(&fx.app.state).await;
     assert!(fx.email.sent().is_empty(), "same browser again");
     login(&fx, "Browser/B").await;
+    common::settle(&fx.app.state).await;
     let sent = fx.email.sent();
     assert_eq!(sent.len(), 1, "unseen browser notifies");
     let mail = &sent[0];
@@ -199,6 +203,7 @@ async fn new_device_notice_only_for_returning_users_on_unseen_browsers() {
     assert!(mail.text.contains("Browser/B"), "{}", mail.text);
     assert!(mail.text.contains("127.0.0.1"), "{}", mail.text);
     login(&fx, "Browser/B").await;
+    common::settle(&fx.app.state).await;
     assert_eq!(fx.email.sent().len(), 1, "now known");
 
     // Users without email but with a verified phone get a text instead.
@@ -216,9 +221,12 @@ async fn new_device_notice_only_for_returning_users_on_unseen_browsers() {
     )
     .await
     .unwrap();
+    common::settle(&fx.app.state).await;
     fx.email.clear();
     login(&fx, "Browser/C").await;
+    common::settle(&fx.app.state).await;
     assert!(fx.email.sent().is_empty());
+    common::settle(&fx.app.state).await;
     let texts = fx.sms.sent();
     assert_eq!(texts.len(), 1);
     assert!(texts[0].body.contains("Browser/C"), "{}", texts[0].body);
@@ -232,6 +240,7 @@ async fn password_and_email_changes_notify_and_policy_can_silence_them() {
     recovery::request_password_reset(&fx.app.state, &fx.tenant, "alice", &[])
         .await
         .unwrap();
+    common::settle(&fx.app.state).await;
     let link = fx.email.last().unwrap().text;
     let token = link
         .split("token=")
@@ -241,6 +250,7 @@ async fn password_and_email_changes_notify_and_policy_can_silence_them() {
         .next()
         .unwrap()
         .to_string();
+    common::settle(&fx.app.state).await;
     fx.email.clear();
     recovery::complete_password_reset(
         &fx.app.state,
@@ -250,6 +260,7 @@ async fn password_and_email_changes_notify_and_policy_can_silence_them() {
     )
     .await
     .unwrap();
+    common::settle(&fx.app.state).await;
     let sent = fx.email.sent();
     assert_eq!(sent.len(), 1);
     assert!(
@@ -260,6 +271,7 @@ async fn password_and_email_changes_notify_and_policy_can_silence_them() {
     assert!(sent[0].text.contains("UTC"), "{}", sent[0].text);
 
     // Email change: the old address is told where it moved.
+    common::settle(&fx.app.state).await;
     fx.email.clear();
     users::update(
         &fx.app.state,
@@ -273,11 +285,13 @@ async fn password_and_email_changes_notify_and_policy_can_silence_them() {
     )
     .await
     .unwrap();
+    common::settle(&fx.app.state).await;
     let sent = fx.email.sent();
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].to[0].email, "alice@example.com");
     assert!(sent[0].text.contains("new@example.com"), "{}", sent[0].text);
     // Unchanged email: nothing.
+    common::settle(&fx.app.state).await;
     fx.email.clear();
     users::update(
         &fx.app.state,
@@ -291,10 +305,12 @@ async fn password_and_email_changes_notify_and_policy_can_silence_them() {
     )
     .await
     .unwrap();
+    common::settle(&fx.app.state).await;
     assert!(fx.email.sent().is_empty(), "normalized same address");
 
     // MFA change hook (Phase 7 calls it).
     notifications::mfa_changed(&fx.app.state, fx.tenant.id, fx.user_id, "TOTP enrolled").await;
+    common::settle(&fx.app.state).await;
     let sent = fx.email.sent();
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].to[0].email, "new@example.com");
@@ -326,5 +342,6 @@ async fn password_and_email_changes_notify_and_policy_can_silence_them() {
     .await
     .unwrap();
     notifications::mfa_changed(&quiet.app.state, quiet.tenant.id, quiet.user_id, "x").await;
+    common::settle(&quiet.app.state).await;
     assert!(quiet.email.sent().is_empty());
 }

@@ -199,12 +199,44 @@ async fn rotation_job_runs_on_one_node_at_a_time() {
     .expect("lock free");
     assert!(key_rotation::run_once(&app.state).await.unwrap().is_none());
     lock.release().await.unwrap();
-    // Lock released: this node processes tenants (at least ours + master).
+
+    // Lock released: this node visits the tenants whose keys are due. Ours
+    // has an active key past the rotation interval (90 days by default);
+    // another tenant's fresh key is left alone.
+    let tid = app.tenant.id;
+    let defaults = KeyPolicy::default();
+    let old = keys::ensure_active(&app.state, tid, &defaults)
+        .await
+        .unwrap();
+    let other = common::create_tenant(&app.state.db).await;
+    let fresh = keys::ensure_active(&app.state, other.id, &defaults)
+        .await
+        .unwrap();
+    let mut tx = ridm_api::db::tenant_tx(&app.state.db, tid).await.unwrap();
+    sqlx::query("UPDATE signing_keys SET not_before = now() - interval '91 days' WHERE id = $1")
+        .bind(old.id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
     let processed = key_rotation::run_once(&app.state)
         .await
         .unwrap()
         .expect("ran");
-    assert!(processed >= 2, "processed {processed}");
+    assert!(processed >= 1, "processed {processed}");
+    assert_eq!(
+        keys::get(&app.state, tid, old.id).await.unwrap().status,
+        KeyStatus::Retiring,
+        "the due key was rotated"
+    );
+    assert_eq!(
+        keys::get(&app.state, other.id, fresh.id)
+            .await
+            .unwrap()
+            .status,
+        KeyStatus::Active,
+        "a key that is not due stays"
+    );
     // Releasing a lock we no longer own must not delete someone else's.
     let a = leader::try_acquire(&app.state.redis, "t", Duration::from_millis(200))
         .await

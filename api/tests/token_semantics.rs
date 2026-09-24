@@ -156,6 +156,7 @@ async fn session(fx: &Fx) -> (Uuid, String) {
             acr: None,
             ip: None,
             user_agent: None,
+            device_id: None,
             policy: &tenant.settings.session,
         },
     )

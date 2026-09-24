@@ -27,8 +27,8 @@ use crate::middleware::client_ip;
 use crate::middleware::security_headers::no_store;
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
 use crate::models::{
-    Consent, Credential, Group, LinkedIdentity, NewUser, PersonalAccessToken, Principal, Role,
-    TrustedDevice, User, UserFilter, UserStatus, UserUpdate,
+    ConsentWithClient, Credential, Group, LinkedIdentity, NewUser, PersonalAccessToken, Principal,
+    Role, TrustedDevice, User, UserFilter, UserStatus, UserUpdate,
 };
 use crate::routes::admin::AuditFilterQuery;
 use crate::services::admin_access::{self, Grant};
@@ -814,13 +814,13 @@ async fn leave_group(
 
 // --- consents ---------------------------------------------------------------
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/users/{user}/consents", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), responses((status = 200, body = Vec<Consent>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/users/{user}/consents", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ("user" = Uuid, Path)), responses((status = 200, body = Vec<ConsentWithClient>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn user_consents(
     State(state): State<AppState>,
     admin: AdminCtx,
     AdminTenantPath(tenant): AdminTenantPath,
     Path(UserPath { user }): Path<UserPath>,
-) -> AppResult<Json<Vec<Consent>>> {
+) -> AppResult<Json<Vec<ConsentWithClient>>> {
     admin.require(tenant.id, P_READ)?;
     load(&state, tenant.id, user).await?;
     Ok(Json(

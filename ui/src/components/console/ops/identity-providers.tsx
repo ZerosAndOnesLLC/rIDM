@@ -389,7 +389,7 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
     },
     [client, qc, tenant, id],
   );
-  const { queue, status, error } = useAutoSave(save);
+  const { queue, status, error } = useAutoSave(save, { baseline: query.data });
   const update = (patch: IdentityProviderPatch) => {
     setDraft((d) => (d ? ({ ...d, ...patch } as IdentityProvider) : d));
     if (editable) queue(patch);

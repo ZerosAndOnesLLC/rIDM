@@ -6,6 +6,7 @@
 
 use std::any::Any;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use moka::Expiry;
@@ -41,6 +42,25 @@ impl Expiry<String, Entry> for PerEntryTtl {
 
 pub struct L1Cache {
     entries: Cache<String, Entry>,
+    /// When each key was last evicted (a generation, not a time), kept a
+    /// while after the eviction; see [`L1Cache::ticket`].
+    evicted: Cache<String, u64>,
+    /// Generation of the last eviction of any key, or of a `clear`.
+    generation: AtomicU64,
+    /// Generation of the last `clear`.
+    cleared: AtomicU64,
+}
+
+/// How long an eviction is remembered: longer than any load a ticket covers.
+const EVICTION_MEMORY: Duration = Duration::from_secs(120);
+
+/// What a loader saw before it read the source: [`L1Cache::insert_fresh`]
+/// refuses its value if the key was evicted (or the cache cleared) since, as
+/// the value may predate the write behind the eviction.
+#[derive(Debug, Clone, Copy)]
+pub struct Ticket {
+    evicted: Option<u64>,
+    cleared: u64,
 }
 
 impl Default for L1Cache {
@@ -56,7 +76,49 @@ impl L1Cache {
                 .max_capacity(max_entries)
                 .expire_after(PerEntryTtl)
                 .build(),
+            evicted: Cache::builder()
+                .max_capacity(max_entries)
+                .time_to_live(EVICTION_MEMORY)
+                .build(),
+            generation: AtomicU64::new(0),
+            cleared: AtomicU64::new(0),
         }
+    }
+
+    /// Take before reading the source of a value to be cached with
+    /// [`L1Cache::insert_fresh`].
+    pub fn ticket(&self, key: &str) -> Ticket {
+        Ticket {
+            evicted: self.evicted.get(key),
+            cleared: self.cleared.load(Ordering::Acquire),
+        }
+    }
+
+    /// Insert `value` read after `ticket` was taken, unless the key was
+    /// evicted or the cache cleared in between: a write (and the eviction
+    /// that follows it) that raced the read would otherwise be undone for as
+    /// long as the entry lives. `false`: not inserted.
+    pub fn insert_fresh<T: Send + Sync + 'static>(
+        &self,
+        key: String,
+        value: Arc<T>,
+        ttl: Duration,
+        ticket: Ticket,
+    ) -> bool {
+        if self.evicted.get(&key) != ticket.evicted
+            || self.cleared.load(Ordering::Acquire) != ticket.cleared
+        {
+            return false;
+        }
+        self.insert(key.clone(), value, ttl);
+        // An eviction between the check and the insert: undo the insert.
+        if self.evicted.get(&key) != ticket.evicted
+            || self.cleared.load(Ordering::Acquire) != ticket.cleared
+        {
+            self.entries.invalidate(&key);
+            return false;
+        }
+        true
     }
 
     pub fn get<T: Send + Sync + 'static>(&self, key: &str) -> Option<Arc<T>> {
@@ -72,10 +134,14 @@ impl L1Cache {
     }
 
     pub fn remove(&self, key: &str) {
+        let generation = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
+        self.evicted.insert(key.to_string(), generation);
         self.entries.invalidate(key);
     }
 
     pub fn clear(&self) {
+        let generation = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
+        self.cleared.store(generation, Ordering::Release);
         self.entries.invalidate_all();
     }
 
@@ -107,6 +173,28 @@ mod tests {
         assert!(c.get::<u32>("s").is_none(), "expires after its own ttl");
         c.remove("k");
         assert!(c.get::<u32>("k").is_none());
+    }
+
+    #[test]
+    fn a_value_read_before_an_eviction_is_not_cached() {
+        let c = L1Cache::default();
+        let ticket = c.ticket("u");
+        // A write elsewhere evicts the key while this loader reads the old row.
+        c.remove("u");
+        assert!(!c.insert_fresh("u".into(), Arc::new(1u32), Duration::from_secs(60), ticket));
+        assert!(c.get::<u32>("u").is_none());
+        // A load that starts after the eviction caches.
+        let ticket = c.ticket("u");
+        assert!(c.insert_fresh("u".into(), Arc::new(2u32), Duration::from_secs(60), ticket));
+        assert_eq!(c.get::<u32>("u").as_deref(), Some(&2));
+        // A clear (the invalidation listener reconnecting) spoils every ticket.
+        let ticket = c.ticket("v");
+        c.clear();
+        assert!(!c.insert_fresh("v".into(), Arc::new(3u32), Duration::from_secs(60), ticket));
+        // Evicting another key does not.
+        let ticket = c.ticket("w");
+        c.remove("x");
+        assert!(c.insert_fresh("w".into(), Arc::new(4u32), Duration::from_secs(60), ticket));
     }
 
     #[test]

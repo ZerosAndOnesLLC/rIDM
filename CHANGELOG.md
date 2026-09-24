@@ -267,6 +267,11 @@ release renames that heading to the version and date.
   migrations, master-key rotation and the lookups of SCIM tokens and personal
   access tokens run over every database; a node starts while a region is down.
 
+- `POST /admin/download-tickets`: a single-use URL (60 s) for one export
+  `GET`, so a browser downloads the exports (tenant configuration, users,
+  audit) with its own download manager, streamed to disk, instead of
+  holding them in memory. The console downloads every export this way.
+
 ### Changed
 
 - `ridm-api migrate` applies migrations to every configured database, the home
@@ -285,6 +290,17 @@ release renames that heading to the version and date.
   `AUDIT_SINK_SECRET` is set. `syslog+tls://` (RFC 5425) and
   `AUDIT_SINK_CA_FILE` are new. `ridm_audit_sink_dropped_total` is gone;
   watch `ridm_audit_sink_lag_rows` instead.
+- Admin API lists that returned every row now page like the others
+  (`{items, next_cursor}`, `?cursor= &limit=`): a group's and an
+  organization's members (in the order they joined, each with `joined_at`,
+  and `?search=` on username or email), a role's holders and an
+  organization's role grants (each with the user's `username`). A user's
+  consents carry the client's name and public `client_id`. Group and
+  organization details count members instead of loading them. SCIM
+  `/Groups` honours `excludedAttributes=members`.
+- Export file names: the users export is `{slug}-users.json` / `.csv` (was
+  `users.json`) and the tenant configuration `{slug}.ridm.json` (was
+  `tenant-{slug}.json`), the names the console already saved them under.
 
 ### Fixed
 

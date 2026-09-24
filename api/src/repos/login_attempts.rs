@@ -25,6 +25,28 @@ pub async fn record<'e>(
     Ok(())
 }
 
+/// Failed attempts from `ip` since each of two instants, counted in one read
+/// (the lockout's IP throttle and the risk policy's velocity signal look at
+/// the same rows over their own windows).
+pub async fn failures_from_ip_since<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    ip: &str,
+    since: [DateTime<Utc>; 2],
+) -> Result<(i64, i64), sqlx::Error> {
+    sqlx::query_as(
+        "SELECT count(*) FILTER (WHERE created_at >= $3), count(*) FILTER (WHERE created_at >= $4) \
+         FROM login_attempts WHERE tenant_id = $1 AND ip = $2 AND success = false \
+         AND created_at >= LEAST($3, $4)",
+    )
+    .bind(tenant_id)
+    .bind(ip)
+    .bind(since[0])
+    .bind(since[1])
+    .fetch_one(exec)
+    .await
+}
+
 /// Failed attempts from `ip` since `since`.
 pub async fn failures_from_ip<'e>(
     exec: impl PgExecutor<'e>,
@@ -40,19 +62,4 @@ pub async fn failures_from_ip<'e>(
     .bind(since)
     .fetch_one(exec)
     .await
-}
-
-pub async fn purge<'e>(
-    exec: impl PgExecutor<'e>,
-    tenant_id: Uuid,
-    older_than: DateTime<Utc>,
-) -> Result<u64, sqlx::Error> {
-    Ok(
-        sqlx::query("DELETE FROM login_attempts WHERE tenant_id = $1 AND created_at < $2")
-            .bind(tenant_id)
-            .bind(older_than)
-            .execute(exec)
-            .await?
-            .rows_affected(),
-    )
 }

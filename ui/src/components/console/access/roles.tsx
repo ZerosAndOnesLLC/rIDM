@@ -1,10 +1,10 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Field, SaveIndicator, Section, SelectInput, TextInput } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
@@ -22,10 +22,11 @@ export function RolesPage({ tenant, selected }: { tenant: string; selected: stri
   const clients = useClientNames(tenant);
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState("");
-  const names = clients.data ?? {};
-  const list = (roles.data ?? [])
-    .filter((r) => !filter || r.name.toLowerCase().includes(filter.toLowerCase()))
-    .sort((a, b) => (a.client_id ?? "").localeCompare(b.client_id ?? "") || a.name.localeCompare(b.name));
+  const names = useMemo(() => clients.data ?? {}, [clients.data]);
+  const list = useMemo(() => {
+    const needle = filter.toLowerCase();
+    return (roles.data ?? []).filter((r) => !needle || r.name.toLowerCase().includes(needle)).sort((a, b) => (a.client_id ?? "").localeCompare(b.client_id ?? "") || a.name.localeCompare(b.name));
+  }, [roles.data, filter]);
   return (
     <>
       <PageHeader
@@ -153,7 +154,7 @@ function RoleDetailView({ tenant, id, clientNames }: { tenant: string; id: strin
     },
     [client, qc, tenant, id],
   );
-  const { queue, status, error } = useAutoSave(save);
+  const { queue, status, error } = useAutoSave(save, { baseline: query.data });
   const update = (patch: Partial<Role>) => {
     setDraft((d) => (d ? { ...d, ...patch } : d));
     if (editable) queue(patch);
@@ -263,12 +264,14 @@ function RolePermissions({ tenant, id, permissions, editable, onChanged }: { ten
     staleTime: 60_000,
     enabled: editable && Boolean(servers.data),
     queryFn: async () => {
-      const out: { id: string; label: string }[] = [];
-      for (const rs of servers.data ?? []) {
-        const { data } = await client.GET("/admin/tenants/{slug}/resource-servers/{rs}/permissions", { params: { path: { slug: tenant, rs: rs.id } } });
-        for (const p of data ?? []) out.push({ id: p.id, label: `${rs.name}: ${p.name}` });
-      }
-      return out.sort((a, b) => a.label.localeCompare(b.label));
+      // One request per resource server, all at once.
+      const lists = await Promise.all(
+        (servers.data ?? []).map(async (rs) => {
+          const { data } = await client.GET("/admin/tenants/{slug}/resource-servers/{rs}/permissions", { params: { path: { slug: tenant, rs: rs.id } } });
+          return (data ?? []).map((p) => ({ id: p.id, label: `${rs.name}: ${p.name}` }));
+        }),
+      );
+      return lists.flat().sort((a, b) => a.label.localeCompare(b.label));
     },
   });
   const change = useMutation({
@@ -335,24 +338,19 @@ function RolePermissions({ tenant, id, permissions, editable, onChanged }: { ten
 function Holders({ tenant, id }: { tenant: string; id: string }) {
   const { client } = useConsole();
   const { groups } = useRolesAndGroups(tenant);
-  const holders = useQuery({
+  const holders = useInfiniteQuery({
     queryKey: ["role", tenant, id, "holders"],
-    queryFn: async () => {
-      const { data, error } = await client.GET("/admin/tenants/{slug}/roles/{role}/holders", { params: { path: { slug: tenant, role: id } } });
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }) => {
+      const { data, error } = await client.GET("/admin/tenants/{slug}/roles/{role}/holders", {
+        params: { path: { slug: tenant, role: id }, query: pageParam ? { cursor: pageParam } : {} },
+      });
       if (error) throw new Error(error.detail ?? error.title);
-      const users: Record<string, string> = {};
-      await Promise.all(
-        data
-          .filter((a) => a.user_id)
-          .slice(0, 50)
-          .map(async (a) => {
-            const r = await client.GET("/admin/tenants/{slug}/users/{user}", { params: { path: { slug: tenant, user: a.user_id! } } });
-            if (r.data) users[a.user_id!] = r.data.username;
-          }),
-      );
-      return { assignments: data, users };
+      return data;
     },
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
   });
+  const assignments = holders.data?.pages.flatMap((p) => p.items) ?? [];
   const groupName = (gid: string) => groups.data?.find((g) => g.id === gid)?.name ?? gid;
   return (
     <Card title="Held by">
@@ -360,14 +358,14 @@ function Holders({ tenant, id }: { tenant: string; id: string }) {
         <Spinner label="Loading…" />
       ) : holders.isError ? (
         <ErrorLine error={holders.error} />
-      ) : holders.data.assignments.length === 0 ? (
+      ) : assignments.length === 0 ? (
         <p className="text-[0.875rem] text-muted">Nobody holds this role directly.</p>
       ) : (
         <ul className="flex flex-wrap gap-1.5">
-          {holders.data.assignments.map((a) =>
+          {assignments.map((a) =>
             a.user_id ? (
               <Link key={a.id} href={userHref(tenant, a.user_id, "roles")} className="inline-flex items-center rounded-full bg-ground px-2 py-0.5 text-[0.8125rem] text-ink hover:underline underline-offset-4">
-                {holders.data.users[a.user_id] ?? a.user_id}
+                {a.username ?? a.user_id}
               </Link>
             ) : (
               <Link key={a.id} href={href("groups", tenant, { group: a.group_id! })} className="inline-flex items-center rounded-full bg-[color-mix(in_oklab,var(--accent)_14%,transparent)] px-2 py-0.5 text-[0.8125rem] text-link hover:underline underline-offset-4">
@@ -376,6 +374,13 @@ function Holders({ tenant, id }: { tenant: string; id: string }) {
             ),
           )}
         </ul>
+      )}
+      {holders.hasNextPage && (
+        <div className="mt-2 text-center">
+          <Button onClick={() => void holders.fetchNextPage()} disabled={holders.isFetchingNextPage}>
+            {holders.isFetchingNextPage ? "Loading…" : "Load more"}
+          </Button>
+        </div>
       )}
     </Card>
   );

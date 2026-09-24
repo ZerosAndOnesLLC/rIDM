@@ -4,6 +4,8 @@ import type { Schemas } from "@api/client";
 
 export type Group = Schemas["Group"];
 export type GroupDetail = Schemas["GroupDetail"];
+export type Member = Schemas["Member"];
+export type RoleHolder = Schemas["RoleHolder"];
 export type Role = Schemas["Role"];
 export type RoleDetail = Schemas["RoleDetail"];
 export type Permission = Schemas["Permission"];

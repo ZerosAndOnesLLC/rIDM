@@ -441,7 +441,13 @@ daily `audit_retention` job removes each chain's expired *prefix*: every row up 
 newest one older than the cutoff, in batches of 5,000. Removing a prefix rather than
 scattered rows keeps what remains verifiable; the oldest retained row's `prev_hash`
 then points at a row that no longer exists, which verification accepts. The same job
-creates the monthly partitions of the audit table two months ahead.
+creates the monthly partitions of the audit table two months ahead, and drops a whole
+month's partition, instead of deleting its rows, once the month ended before the longest
+retention of the tenants in that database and every chain with rows in it belongs to a
+tenant with a retention (a tenant keeping everything, one being moved between regions,
+or a deleted tenant's trail keeps its months). The job remembers when each chain's
+oldest remaining row was written and only visits the chains whose oldest row is past
+their retention.
 
 The setting is in the console under Settings → Keys, discovery & audit, or:
 
@@ -485,10 +491,13 @@ that keeps growing means the receiver is refusing rows or can't keep up.
 ## Caveats
 
 - Events travel on an in-process bus, and the audit writer and the webhook dispatcher
-  record them after the action has committed. Each has its own queue, so a burst
-  delays events rather than skipping them (watch `ridm_audit_queue_depth` and
-  `ridm_webhook_dispatch_queue_depth`), but a node that stops before its queues drain
-  loses what was still waiting.
+  record them after the action has committed. Each has its own bounded queue, so a
+  burst delays events rather than skipping them (watch `ridm_audit_queue_depth` and
+  `ridm_webhook_dispatch_queue_depth`); a node whose queue passes 80% of
+  `EVENT_QUEUE_CAPACITY` reports itself not ready until it catches up, and only an
+  event published into a full queue is dropped (`ridm_event_queue_dropped_total`). A
+  node that is stopped gives its queues 15 seconds to drain and loses what was still
+  waiting after that.
 - An event is dispatched only on the node where it happened; webhooks and audit rows
   are not duplicated across nodes.
 - Webhook payloads contain identifiers, email addresses (in `invitation.created`,

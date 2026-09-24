@@ -91,7 +91,9 @@ the user typing anything.
 
 - The session lives in Valkey, where every node can read it on the hot path,
   and is mirrored to Postgres so that it can be listed, ended from the
-  consoles, and audited.
+  consoles, and audited. Activity slides the idle window in Valkey at most
+  once a minute and in Postgres at most once per quarter of the idle timeout
+  (15 minutes at most), so a listing's "last seen" can trail by that much.
 - The browser holds only a reference, in an HttpOnly, `SameSite=Lax` cookie
   with `Path=/`, named per tenant: `__Host-ridm_session_{slug}` (for example
   `__Host-ridm_session_acme`), or `ridm_session_{slug}` when
@@ -187,7 +189,13 @@ rIDM supports all three OpenID Connect logout mechanisms:
   [Outbound requests](tenants.md#outbound-requests)).
 - **Front-channel logout.** Clients registered with a
   `frontchannel_logout_uri` are loaded in the logout page, for applications that
-  can only clear their state in the browser.
+  can only clear their state in the browser. It only works where the browser
+  still sends the application's cookies to a frame embedded in another site:
+  Safari (Intelligent Tracking Prevention), Firefox (Total Cookie Protection),
+  private windows in every browser and Android WebView do not, so the frame
+  loads without the application's session and the user stays signed in there.
+  Nothing on the identity provider's side can change that; register a
+  back-channel logout URI instead wherever the application can receive one.
 
 Signing out ends the SSO session and revokes its refresh tokens. Access tokens
 already issued remain valid until they expire, as with any JWT; rIDM's account

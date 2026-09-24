@@ -351,3 +351,60 @@ async fn an_import_sets_attributes_nobody_edits_interactively() {
         .unwrap();
     assert_eq!(res.status(), 400);
 }
+
+#[tokio::test]
+async fn a_repeated_username_or_email_fails_the_later_row_whatever_the_timing() {
+    let app = TestApp::spawn().await;
+    let tid = app.tenant.id;
+    let base = format!("/admin/tenants/{}/users", app.tenant.slug);
+    let t = admin_token(&app, tid, USER_MANAGER_ROLE).await;
+    let mut rows: Vec<serde_json::Value> = (0..12)
+        .map(|i| json!({"username": format!("user{i}"), "email": format!("user{i}@example.com")}))
+        .collect();
+    rows.push(json!({"username": "User3"}));
+    rows.push(json!({"username": "other", "email": "USER5@example.com"}));
+    rows.push(json!({"username": "bad name"}));
+    rows.push(json!({"username": "bad name2", "email": "user7@example.com"}));
+    let body = serde_json::Value::Array(rows).to_string();
+
+    for dry_run in [true, false] {
+        let url = if dry_run {
+            format!("{base}/import?dry_run=true")
+        } else {
+            format!("{base}/import")
+        };
+        let (status, report) = post_raw(&app, &url, &t, "application/json", body.clone()).await;
+        assert_eq!(status, 200, "{report}");
+        assert_eq!(report["created"], 12, "{report}");
+        let errors: Vec<(u64, String)> = report["errors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| {
+                (
+                    e["row"].as_u64().unwrap(),
+                    e["error"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect();
+        assert_eq!(errors.len(), 4, "{report}");
+        assert_eq!(
+            errors[0],
+            (13, "username or email already used by row 4".into())
+        );
+        assert_eq!(
+            errors[1],
+            (14, "username or email already used by row 6".into())
+        );
+        // Invalid rows fail on their own errors, not as duplicates.
+        assert_eq!(errors[2].0, 15);
+        assert_eq!(errors[3].0, 16);
+        assert_ne!(errors[3].1, "username or email already used by row 8");
+    }
+    assert!(
+        users::find_by_identifier(&app.state, tid, "user11")
+            .await
+            .unwrap()
+            .is_some()
+    );
+}

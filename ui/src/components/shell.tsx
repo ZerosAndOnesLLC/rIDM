@@ -111,7 +111,7 @@ function Frame({
               <select
                 value={i18n.locale}
                 onChange={(e) => setLocale(e.target.value)}
-                className="rounded-md border border-line bg-paper px-2 py-1 text-[0.8125rem] text-ink"
+                className="rounded-md border border-line bg-paper px-2 py-1 text-[1rem] text-ink sm:text-[0.8125rem]"
               >
                 {choices.map((c) => (
                   <option key={c} value={c}>

@@ -284,7 +284,7 @@ function AttributeInput({
           value={String(value ?? "")}
           onChange={(e) => onChange(e.target.value)}
           required={def.required}
-          className="min-h-11 rounded-[var(--radius)] border border-line bg-paper px-3 text-[0.9375rem] font-normal text-ink"
+          className="min-h-11 rounded-[var(--radius)] border border-line bg-paper px-3 text-[1rem] font-normal text-ink sm:text-[0.9375rem]"
         >
           <option value="">—</option>
           {def.validation.values.map((v) => (

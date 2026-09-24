@@ -116,7 +116,10 @@ async fn change_password(
             logout::end_sessions_for_user(&state, &ctx.tenant, ctx.user.id, ctx.session_id).await?;
     }
     let user = crate::services::users::get(&state, ctx.tenant.id, ctx.user.id).await?;
-    let refreshed = AccountCtx { user, ..ctx };
+    let refreshed = AccountCtx {
+        user: user.into(),
+        ..ctx
+    };
     Ok(Json(PasswordChanged {
         signed_out,
         password: status(&refreshed),

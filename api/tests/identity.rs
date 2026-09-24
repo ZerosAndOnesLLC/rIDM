@@ -426,17 +426,21 @@ async fn nested_groups_membership_and_cycle_prevention() {
     expected.sort();
     assert_eq!(effective, expected, "membership is inherited by ancestors");
 
-    let members = groups::members(&app.state, tid, db_team.id).await.unwrap();
+    let members = groups::members(&app.state, tid, db_team.id, None, None, None)
+        .await
+        .unwrap()
+        .items;
     assert_eq!(members.len(), 1);
-    assert_eq!(members[0].id, alice.id);
+    assert_eq!(members[0].user.id, alice.id);
 
     groups::remove_member(&app.state, tid, Actor::System, db_team.id, alice.id)
         .await
         .unwrap();
     assert!(
-        groups::members(&app.state, tid, db_team.id)
+        groups::members(&app.state, tid, db_team.id, None, None, None)
             .await
             .unwrap()
+            .items
             .is_empty()
     );
 

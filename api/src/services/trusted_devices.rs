@@ -16,6 +16,9 @@ use crate::repos;
 use crate::services::sessions;
 use crate::state::AppState;
 
+/// How often a device in use has its `last_seen_at` written.
+const TOUCH_EVERY: Duration = Duration::minutes(15);
+
 fn hash(secret: &str) -> Vec<u8> {
     Sha256::digest(secret.as_bytes()).to_vec()
 }
@@ -126,7 +129,11 @@ pub async fn verify_secret(
     let device = repos::trusted_devices::find_by_hash(&mut *tx, tenant.id, &hash(secret))
         .await?
         .filter(|d| d.user_id == user_id && d.is_live(Utc::now()));
-    if let Some(d) = &device {
+    // `last_seen_at` is shown to the user, not decided on: writing it once in
+    // a while is enough, and spares a write on nearly every sign-in.
+    if let Some(d) = &device
+        && (Utc::now() - d.last_seen_at > TOUCH_EVERY || (ip.is_some() && ip != d.ip.as_deref()))
+    {
         repos::trusted_devices::touch(&mut *tx, tenant.id, d.id, ip).await?;
     }
     tx.commit().await?;

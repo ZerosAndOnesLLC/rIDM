@@ -85,6 +85,12 @@ pub fn verification_keys(tenant_id: Uuid, version: &str) -> String {
     format!("{PREFIX}:t:{tenant_id}:verify_keys:{version}")
 }
 
+/// The key signing a tenant's tokens for one algorithm, under the keys
+/// version (L1 only: it carries the encrypted private half).
+pub fn active_signing_key(tenant_id: Uuid, alg: &str, version: &str) -> String {
+    format!("{PREFIX}:t:{tenant_id}:active_key:{alg}:{version}")
+}
+
 /// A user row (L1 only: it carries the password hash).
 pub fn user(tenant_id: Uuid, user_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:user:{user_id}")
@@ -314,6 +320,12 @@ pub fn identity_providers(tenant_id: Uuid) -> String {
 }
 
 /// The ids of a tenant's enabled LDAP directories, for the password step.
+/// Every identity provider of a tenant with its details, for the sign-in
+/// paths (L1 only: the rows carry encrypted secrets).
+pub fn identity_providers_full(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:idps:full")
+}
+
 pub fn ldap_directories(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:idps:ldap")
 }
@@ -352,6 +364,12 @@ pub fn device_guesses(tenant_id: Uuid, ip: &str) -> String {
 }
 
 /// Claimed while a personal access token's `last_used_at` is fresh enough.
+/// A personal access token's record by the hash of the token (the token
+/// names no tenant, so this is deployment-wide; evicted on revocation).
+pub fn pat_by_hash(token_hash: &[u8]) -> String {
+    format!("{PREFIX}:pat:{}", hex::encode(token_hash))
+}
+
 pub fn pat_touched(tenant_id: Uuid, token_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:pat:{token_id}:touched")
 }
@@ -382,6 +400,12 @@ pub fn ip_rules(tenant_id: Uuid) -> String {
 /// The tenant's certificate authorities for `tls_client_auth` clients.
 pub fn mtls_trust_anchors(tenant_id: Uuid) -> String {
     format!("{PREFIX}:t:{tenant_id}:mtls_trust_anchors")
+}
+
+/// The client-certificate verifier built from a tenant's trust anchors (L1
+/// only; evicted with the anchors).
+pub fn mtls_verifier(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:mtls_verifier")
 }
 
 /// A resource server by identifier (the token endpoint's audience lookup).
@@ -416,4 +440,55 @@ pub fn user_organizations(tenant_id: Uuid, version: &str, user_id: Uuid) -> Stri
 /// Tenant document keyed by its custom domain (the request host).
 pub fn tenant_by_host(host: &str) -> String {
     format!("{PREFIX}:tenant:host:{host}")
+}
+
+/// A tenant's message template overrides (evicted by every change to one).
+pub fn message_templates(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:message_templates")
+}
+
+/// Version token of one user's memberships and direct grants: moved by a
+/// change to what that user alone holds, where the tenant's roles version
+/// would orphan every user's cached access.
+pub fn user_access_version(tenant_id: Uuid, user_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:user:{user_id}:access_version")
+}
+
+/// One organization (evicted by every change to it).
+pub fn organization(tenant_id: Uuid, org_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:org:{org_id}")
+}
+
+/// The e-mail domains at which a verified address joins an organization on
+/// sign-in (evicted by every change to an organization or a domain).
+pub fn org_auto_join_domains(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:org_auto_join")
+}
+
+/// A tenant's dashboard statistics over `days` (cached a minute).
+pub fn tenant_stats(tenant_id: Uuid, days: u32) -> String {
+    format!("{PREFIX}:t:{tenant_id}:stats:{days}")
+}
+
+/// A tenant's user counts for the dashboard (cached ten minutes).
+pub fn tenant_user_counts(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:stats:users")
+}
+
+/// How many live users a tenant has, for SCIM's `totalResults` (cached
+/// briefly: a provisioning client pages through while it writes).
+pub fn tenant_user_total(tenant_id: Uuid) -> String {
+    format!("{PREFIX}:t:{tenant_id}:users:total")
+}
+
+/// A Kerberos provider's parsed keytab, as of the provider's `updated_at`
+/// (any change to the provider, its keytab included, names a new entry).
+pub fn kerberos_keytab(tenant_id: Uuid, idp_id: Uuid, updated_at_micros: i64) -> String {
+    format!("{PREFIX}:t:{tenant_id}:krb:keytab:{idp_id}:{updated_at_micros}")
+}
+
+/// A download ticket, by its hash (deployment-wide: it is redeemed before
+/// the tenant is known).
+pub fn download_ticket(ticket_hash: &str) -> String {
+    format!("{PREFIX}:dlt:{ticket_hash}")
 }

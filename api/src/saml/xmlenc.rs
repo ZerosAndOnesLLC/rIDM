@@ -10,6 +10,7 @@ use aws_lc_rs::aead::{self, Aad, LessSafeKey, Nonce, UnboundKey};
 use aws_lc_rs::cipher::{
     AES_128, AES_256, DecryptingKey, DecryptionContext, PaddedBlockEncryptingKey, UnboundCipherKey,
 };
+use aws_lc_rs::encoding::AsDer as _;
 use aws_lc_rs::iv::FixedLength;
 use aws_lc_rs::rsa::{
     OAEP_SHA1_MGF1SHA1, OAEP_SHA256_MGF1SHA256, OaepAlgorithm, OaepPrivateDecryptingKey,
@@ -19,6 +20,8 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use roxmltree::Node;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest as _, Sha256};
+use std::sync::{Arc, LazyLock};
 
 use super::cert::Certificate;
 use super::error::{SamlError, SamlResult};
@@ -214,6 +217,57 @@ fn cipher_value(node: Node) -> SamlResult<Vec<u8>> {
     base64_content(&text_of(required(data, ns::XENC, "CipherValue")?))
 }
 
+/// A private key as [`decrypt`] uses it, with its public half.
+struct Parsed {
+    key: OaepPrivateDecryptingKey,
+    /// `SubjectPublicKeyInfo` DER, to match the certificate a message names.
+    spki: Vec<u8>,
+}
+
+/// Private keys parsed once per node, found again by a hash of their DER:
+/// parsing PKCS#8 (and aws-lc's checks of the key) costs about as much as the
+/// RSA operation itself, and every encrypted assertion used to pay it for
+/// every key tried.
+static PARSED: LazyLock<moka::sync::Cache<[u8; 32], Arc<Parsed>>> =
+    LazyLock::new(|| moka::sync::Cache::new(1024));
+
+fn parsed(private_pkcs8: &[u8]) -> SamlResult<Arc<Parsed>> {
+    let id: [u8; 32] = Sha256::digest(private_pkcs8).into();
+    if let Some(p) = PARSED.get(&id) {
+        return Ok(p);
+    }
+    let failed = || crypto("decryption failed");
+    let private = PrivateDecryptingKey::from_pkcs8(private_pkcs8).map_err(|_| failed())?;
+    let spki = private
+        .public_key()
+        .as_der()
+        .map_err(|_| failed())?
+        .as_ref()
+        .to_vec();
+    let key = OaepPrivateDecryptingKey::new(private).map_err(|_| failed())?;
+    let p = Arc::new(Parsed { key, spki });
+    PARSED.insert(id, p.clone());
+    Ok(p)
+}
+
+/// Whether the content key of an `xenc:EncryptedData` was wrapped to
+/// `private_pkcs8`'s certificate, going by the certificate its
+/// `EncryptedKey` names; `None` when it names none (every key must then be
+/// tried).
+pub fn addressed_to(encrypted_data: Node, private_pkcs8: &[u8]) -> Option<bool> {
+    let named = child(encrypted_data, ns::DSIG, "KeyInfo")
+        .ok()??
+        .children()
+        .find(|n| n.has_tag_name((ns::XENC, "EncryptedKey")))?;
+    let cert = child(named, ns::DSIG, "KeyInfo")
+        .ok()??
+        .descendants()
+        .find(|n| n.has_tag_name((ns::DSIG, "X509Certificate")))?;
+    let cert = Certificate::parse(&text_of(cert)).ok()?;
+    let spki = cert.rsa_spki()?;
+    Some(parsed(private_pkcs8).ok()?.spki == spki)
+}
+
 /// Decrypt an `xenc:EncryptedData` with the RSA private key (PKCS#8 DER)
 /// its content key was wrapped for. Every failure after parsing reads the
 /// same, so a CBC padding error tells an attacker nothing.
@@ -248,10 +302,8 @@ pub fn decrypt(encrypted_data: Node, private_pkcs8: &[u8]) -> SamlResult<String>
     let content = cipher_value(encrypted_data)?;
 
     let failed = || crypto("decryption failed");
-    let private = OaepPrivateDecryptingKey::new(
-        PrivateDecryptingKey::from_pkcs8(private_pkcs8).map_err(|_| failed())?,
-    )
-    .map_err(|_| failed())?;
+    let parsed = parsed(private_pkcs8)?;
+    let private = &parsed.key;
     let mut key = vec![0u8; private.min_output_size()];
     let key = private
         .decrypt(transport.oaep(), &wrapped, &mut key, None)

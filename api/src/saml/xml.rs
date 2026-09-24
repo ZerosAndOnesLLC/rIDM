@@ -30,14 +30,29 @@ pub fn parse(text: &str) -> SamlResult<Document<'_>> {
     };
     let doc = Document::parse_with_options(text, opts)
         .map_err(|e| SamlError::malformed(format!("not well-formed XML ({e})")))?;
-    if doc
-        .descendants()
-        .filter(Node::is_element)
-        .any(|n| n.ancestors().count() > MAX_DEPTH)
-    {
+    if too_deep(&doc) {
         return Err(SamlError::malformed("elements nested too deeply"));
     }
     Ok(doc)
+}
+
+/// Whether an element sits more than [`MAX_DEPTH`] nodes deep (counting it
+/// and the document node). One walk that carries the depth down, rather
+/// than counting every element's ancestors: the input is untrusted, and
+/// that would be nodes × depth.
+fn too_deep(doc: &Document<'_>) -> bool {
+    let mut stack = vec![(doc.root(), 1usize)];
+    while let Some((node, depth)) = stack.pop() {
+        if node.is_element() && depth > MAX_DEPTH {
+            return true;
+        }
+        stack.extend(
+            node.children()
+                .filter(Node::is_element)
+                .map(|c| (c, depth + 1)),
+        );
+    }
+    false
 }
 
 /// The prefix an element was written with (`None`: unprefixed). `roxmltree`
@@ -296,6 +311,11 @@ mod tests {
     fn size_and_depth_are_bounded() {
         let big = format!("<r>{}</r>", "a".repeat(MAX_DOCUMENT_BYTES));
         assert!(parse(&big).is_err());
+        // The limit counts the document node: 63 nested elements pass, 64
+        // do not.
+        let nested = |n: usize| format!("{}{}", "<a>".repeat(n), "</a>".repeat(n));
+        assert!(parse(&nested(MAX_DEPTH - 1)).is_ok());
+        assert!(parse(&nested(MAX_DEPTH)).is_err());
         let deep = format!("{}{}", "<a>".repeat(100), "</a>".repeat(100));
         assert!(parse(&deep).is_err());
         let fine = format!("{}{}", "<a>".repeat(20), "</a>".repeat(20));

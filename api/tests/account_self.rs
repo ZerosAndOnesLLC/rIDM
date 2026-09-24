@@ -144,6 +144,7 @@ async fn fixture_with(settings: TenantSettings) -> Fx {
     )
     .await
     .unwrap();
+    common::settle(&app.state).await;
     email.clear();
     Fx {
         app,
@@ -174,6 +175,7 @@ async fn token(fx: &Fx, user_id: Uuid, age_secs: i64) -> (String, Uuid) {
             acr: None,
             ip: Some("203.0.113.9".into()),
             user_agent: Some("Test/1.0".into()),
+            device_id: None,
             policy: &fx.tenant.settings.session,
         },
     )
@@ -425,6 +427,7 @@ async fn changing_the_password_checks_the_current_one_and_can_sign_out_elsewhere
     .await
     .unwrap();
     assert!(matches!(outcome, VerifyOutcome::Valid { .. }));
+    common::settle(&fx.app.state).await;
     let notices = fx.email.sent_to("alice@example.com");
     assert!(
         notices
@@ -507,6 +510,7 @@ async fn an_email_change_is_proven_by_a_code_and_the_old_address_is_told() {
     .await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["destination"], "a•••@example.com");
+    common::settle(&fx.app.state).await;
     let sent = fx.email.sent_to("alice.new@example.com");
     assert_eq!(sent.len(), 1, "one code to the new address");
     let code = six_digits(&sent[0].text);
@@ -521,6 +525,7 @@ async fn an_email_change_is_proven_by_a_code_and_the_old_address_is_told() {
     )
     .await;
     assert_eq!(status, 200);
+    common::settle(&fx.app.state).await;
     assert_eq!(fx.email.sent_to("alice.new@example.com").len(), 1);
 
     let (status, body, _) =
@@ -557,6 +562,7 @@ async fn an_email_change_is_proven_by_a_code_and_the_old_address_is_told() {
         .unwrap();
     assert_eq!(user.email.as_deref(), Some("alice.new@example.com"));
     assert!(user.email_verified);
+    common::settle(&fx.app.state).await;
     let old_address = fx.email.sent_to("alice@example.com");
     assert!(
         old_address
@@ -623,6 +629,7 @@ async fn a_phone_change_is_proven_by_a_text_and_the_number_can_be_removed() {
     .await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["destination"], "•••••••••01");
+    common::settle(&fx.app.state).await;
     let texts = fx.sms.sent_to("+15550100001");
     assert_eq!(texts.len(), 1);
     let code = six_digits(&texts[0].body);

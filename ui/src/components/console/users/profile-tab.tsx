@@ -62,7 +62,8 @@ export function ProfileTab({ tenant, u, editable }: { tenant: string; u: Detail;
     },
     [api, qc, tenant, u.id],
   );
-  const { queue, status, error } = useAutoSave<Partial<Draft>>(save);
+  const baseline = useMemo(() => draftOf(u), [u]);
+  const { queue, status, error } = useAutoSave<Partial<Draft>>(save, { baseline });
   const update = useCallback(
     (patch: Partial<Draft>) => {
       setDraft((d) => ({ ...d, ...patch }));

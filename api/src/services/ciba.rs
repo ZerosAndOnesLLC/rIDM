@@ -357,22 +357,20 @@ async fn ping(state: &AppState, rec: &CibaRecord) {
         tracing::warn!(client = %client.client_id, error = %e, "CIBA ping refused");
         return;
     }
-    let http = match outbound::client_builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-    {
-        Ok(h) => h,
-        Err(e) => {
-            tracing::warn!(error = %e, "CIBA ping: no HTTP client");
-            return;
-        }
-    };
+    let http = &state.outbound;
     let body = serde_json::json!({ "auth_req_id": auth_req_id });
     for (attempt, wait) in [0u64, 1, 4].into_iter().enumerate() {
         if wait > 0 {
             tokio::time::sleep(Duration::from_secs(wait)).await;
         }
-        match http.post(&uri).bearer_auth(token).json(&body).send().await {
+        match http
+            .post(&uri)
+            .timeout(Duration::from_secs(5))
+            .bearer_auth(token)
+            .json(&body)
+            .send()
+            .await
+        {
             Ok(res) if res.status().is_success() => {
                 tracing::info!(client = %client.client_id, "CIBA ping delivered");
                 return;

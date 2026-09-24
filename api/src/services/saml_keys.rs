@@ -249,7 +249,7 @@ pub async fn to_redirect(
 pub async fn signer(state: &AppState, tenant: &Tenant) -> AppResult<Arc<Signer>> {
     let id = ensure_active(state, tenant).await?;
     let cache_key = cache_keys::saml_key_material(id);
-    if let Some(s) = state.cache.l1().get::<Signer>(&cache_key) {
+    if let Some(s) = state.cache.material().get::<Signer>(&cache_key) {
         return Ok(s);
     }
     let mut tx = db::tenant_tx(&state.db, tenant.id).await?;
@@ -271,7 +271,7 @@ pub async fn signer(state: &AppState, tenant: &Tenant) -> AppResult<Arc<Signer>>
     );
     state
         .cache
-        .l1()
+        .material()
         .insert(cache_key, signer.clone(), SIGNER_L1_TTL);
     Ok(signer)
 }
@@ -287,7 +287,7 @@ pub async fn decryption_keys(
     ensure_active(state, tenant).await?;
     let mut views = list(state, tenant.id).await?;
     views.sort_by_key(|k| k.status != SamlKeyStatus::Active);
-    let l1 = state.cache.l1();
+    let l1 = state.cache.material();
     let cache_key = |id: Uuid| format!("{}:pkcs8", cache_keys::saml_key_material(id));
     let mut out = Vec::with_capacity(views.len());
     let mut rows: Option<Vec<SamlSigningKey>> = None;

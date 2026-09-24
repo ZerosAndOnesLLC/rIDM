@@ -4,8 +4,11 @@ import { Check, Loader2, Plus, X } from "lucide-react";
 import { useId, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import type { SaveStatus } from "@/lib/console/autosave";
 
+// Under 16px, iOS Safari zooms the page into a field when it takes focus and
+// leaves it zoomed; on phones every control is 16px, whatever size a caller
+// asks for (`!`), and the compact size from `sm` up.
 const control =
-  "min-h-10 w-full rounded-[var(--radius)] border border-line bg-paper px-3 text-[0.9rem] text-ink placeholder:text-muted/70 hover:border-muted/60 disabled:opacity-60";
+  "min-h-10 w-full rounded-[var(--radius)] border border-line bg-paper px-3 text-[0.9rem] text-ink placeholder:text-muted/70 hover:border-muted/60 disabled:opacity-60 max-sm:text-[1rem]!";
 
 /** A titled group of fields on the settings page. */
 export function Section({ id, title, description, children }: { id: string; title: string; description?: ReactNode; children: ReactNode }) {

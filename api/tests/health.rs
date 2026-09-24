@@ -21,6 +21,10 @@ async fn readyz_checks_database_and_cache() {
     let body: serde_json::Value = res.json().await.unwrap();
     assert_eq!(body["checks"]["database"], "ok");
     assert_eq!(body["checks"]["cache"], "ok");
+    assert_eq!(
+        body["checks"]["events"], "ok",
+        "no event queue is saturated"
+    );
 }
 
 /// A deployment answers for its own security, so there is no document until

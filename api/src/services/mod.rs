@@ -21,6 +21,7 @@ pub mod credential_secrets;
 pub mod dcr;
 pub mod denylist;
 pub mod device_codes;
+pub mod download_tickets;
 pub mod features;
 pub mod flows;
 pub mod geoip;

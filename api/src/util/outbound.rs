@@ -227,6 +227,20 @@ pub fn client_builder() -> reqwest::ClientBuilder {
         .no_proxy()
 }
 
+/// The pooled client, with [`client_builder`]'s policy, for every request to
+/// someone else's URL (`AppState::outbound`): connections and TLS sessions
+/// to the same upstream are reused instead of set up per request. One per
+/// application state, not per process: a pooled connection belongs to the
+/// runtime it was opened on, and one process may run several (tests do). It
+/// sets no overall timeout; every caller sets its own on the request
+/// (`RequestBuilder::timeout`).
+pub fn pooled() -> reqwest::Client {
+    client_builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .build()
+        .expect("reqwest client")
+}
+
 /// A request error with its causes: reqwest's own message names the URL
 /// only, the reason (a refused resolution, a TLS failure) is in the chain.
 pub fn describe(err: &reqwest::Error) -> String {

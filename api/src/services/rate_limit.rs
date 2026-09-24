@@ -2,9 +2,9 @@
 //!
 //! Every limit is a fixed window counted in Valkey, so all nodes share one
 //! view. One request touches up to four buckets (deployment-wide address,
-//! tenant address, tenant client, tenant total); a single Lua round trip
-//! increments them all and reports each count with the time left in its
-//! window. A request that exceeds any bucket is refused with `429`,
+//! tenant address, tenant client, tenant total); one Lua round trip per
+//! Valkey they live on (one, without regional Valkeys) increments them all
+//! and reports each count with the time left in its window. A request that exceeds any bucket is refused with `429`,
 //! `Retry-After` and the `RateLimit-*` headers of the tightest bucket.
 //!
 //! Valkey being unreachable fails open with a warning: the limiter protects
@@ -95,6 +95,28 @@ return {n, ttl}
     )
 });
 
+/// [`HIT`] over several keys at once: `KEYS[i]` with window `ARGV[i]`,
+/// answering `{n1, ttl1, n2, ttl2, …}`.
+static HIT_MANY: LazyLock<redis::Script> = LazyLock::new(|| {
+    redis::Script::new(
+        r#"
+local out = {}
+for i, key in ipairs(KEYS) do
+  local n = redis.call('INCR', key)
+  if n == 1 then redis.call('PEXPIRE', key, ARGV[i]) end
+  local ttl = redis.call('PTTL', key)
+  if ttl < 0 then
+    redis.call('PEXPIRE', key, ARGV[i])
+    ttl = tonumber(ARGV[i])
+  end
+  out[#out + 1] = n
+  out[#out + 1] = ttl
+end
+return out
+"#,
+    )
+});
+
 struct Want {
     key: String,
     limit: u32,
@@ -109,7 +131,8 @@ pub async fn hit(
     category: Category,
     ip: Option<&str>,
 ) -> Decision {
-    run(state, buckets(state, tenant, category, ip)).await
+    let region = tenant.and_then(|t| t.data_region.as_deref());
+    run(state, region, buckets(state, tenant, category, ip)).await
 }
 
 /// Count a request against one client's bucket (`token_per_client`); the
@@ -121,6 +144,7 @@ pub async fn hit_client(state: &AppState, tenant: &Tenant, client: Uuid) -> Deci
     }
     run(
         state,
+        tenant.data_region.as_deref(),
         vec![Want {
             key: keys::tenant_rate_limit(tenant.id, &format!("client:{client}")),
             limit: policy.token_per_client,
@@ -130,11 +154,11 @@ pub async fn hit_client(state: &AppState, tenant: &Tenant, client: Uuid) -> Deci
     .await
 }
 
-async fn run(state: &AppState, wants: Vec<Want>) -> Decision {
+async fn run(state: &AppState, region: Option<&str>, wants: Vec<Want>) -> Decision {
     if wants.is_empty() {
         return Decision::UNLIMITED;
     }
-    match count(state, &wants).await {
+    match count(state, region, &wants).await {
         Ok(counts) => decide(&wants, &counts),
         Err(err) => {
             tracing::warn!(error = %err, "rate limiter unavailable; allowing request");
@@ -196,7 +220,60 @@ fn buckets(
     wants
 }
 
-async fn count(state: &AppState, wants: &[Want]) -> AppResult<Vec<(u64, u64)>> {
+/// Count every bucket, one script call per Valkey the buckets live on: the
+/// deployment-wide ones on the home Valkey, a tenant's on its region's (the
+/// same one without regional Valkeys). A cluster may keep a request's keys on
+/// different nodes, so there each bucket is its own call.
+async fn count(
+    state: &AppState,
+    region: Option<&str>,
+    wants: &[Want],
+) -> AppResult<Vec<(u64, u64)>> {
+    if matches!(
+        state.redis.topology(),
+        crate::cache::Topology::Cluster { .. }
+    ) {
+        return count_each(state, wants).await;
+    }
+    let is_tenant = |w: &Want| crate::cache::key_tenant(w.key.as_bytes()).is_some();
+    let groups: Vec<Vec<usize>> = if state.redis.same_backend(None, region) {
+        vec![(0..wants.len()).collect()]
+    } else {
+        let (tenant, global): (Vec<usize>, Vec<usize>) =
+            (0..wants.len()).partition(|&i| is_tenant(&wants[i]));
+        [global, tenant]
+            .into_iter()
+            .filter(|g| !g.is_empty())
+            .collect()
+    };
+    let mut out = vec![(0, 0); wants.len()];
+    let mut conn = state.redis.get().await?;
+    for group in groups {
+        let mut call = HIT_MANY.prepare_invoke();
+        for &i in &group {
+            call.key(&wants[i].key).arg(wants[i].window_ms);
+        }
+        let flat: Vec<i64> = call
+            .invoke_async(&mut conn)
+            .await
+            .map_err(|e| AppError::Cache(e.to_string()))?;
+        for (slot, &i) in group.iter().enumerate() {
+            out[i] = pair_of(flat.get(slot * 2).copied(), flat.get(slot * 2 + 1).copied());
+        }
+    }
+    Ok(out)
+}
+
+/// A count and the milliseconds left in its window, as the scripts return them.
+fn pair_of(n: Option<i64>, ttl: Option<i64>) -> (u64, u64) {
+    (
+        n.map(|n| u64::try_from(n).unwrap_or(u64::MAX)).unwrap_or(0),
+        ttl.unwrap_or(0).max(0) as u64,
+    )
+}
+
+/// One call per bucket (a cluster's keys may be on different nodes).
+async fn count_each(state: &AppState, wants: &[Want]) -> AppResult<Vec<(u64, u64)>> {
     let mut conn = state.redis.get().await?;
     let mut out = Vec::with_capacity(wants.len());
     for w in wants {
@@ -206,13 +283,7 @@ async fn count(state: &AppState, wants: &[Want]) -> AppResult<Vec<(u64, u64)>> {
             .invoke_async(&mut conn)
             .await
             .map_err(|e| AppError::Cache(e.to_string()))?;
-        let n = pair
-            .first()
-            .copied()
-            .map(|n| u64::try_from(n).unwrap_or(u64::MAX))
-            .unwrap_or(0);
-        let ttl = pair.get(1).copied().unwrap_or(0).max(0) as u64;
-        out.push((n, ttl));
+        out.push(pair_of(pair.first().copied(), pair.get(1).copied()));
     }
     Ok(out)
 }

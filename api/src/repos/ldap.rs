@@ -226,6 +226,24 @@ pub async fn group_links<'e>(
     .await
 }
 
+/// The links of these directory groups (by external id).
+pub async fn group_links_by_external_id<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    idp_id: Uuid,
+    external_ids: &[String],
+) -> Result<Vec<GroupLink>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT external_id, group_id, external_dn FROM ldap_group_links \
+         WHERE tenant_id = $1 AND idp_id = $2 AND external_id = ANY($3)",
+    )
+    .bind(tenant_id)
+    .bind(idp_id)
+    .bind(external_ids)
+    .fetch_all(exec)
+    .await
+}
+
 pub async fn insert_group_link<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,

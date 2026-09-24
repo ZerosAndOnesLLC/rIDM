@@ -228,6 +228,49 @@ async fn concurrent_misses_load_once() {
 }
 
 #[tokio::test]
+async fn a_failed_load_fails_its_waiters_once_and_the_next_caller_retries() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let app = TestApp::spawn().await;
+    let cache = app.state.cache.clone();
+    let key = format!("ridm:test:{}", Uuid::new_v4());
+    let loads = Arc::new(AtomicUsize::new(0));
+    let tasks: Vec<_> = (0..20)
+        .map(|_| {
+            let (cache, key, loads) = (cache.clone(), key.clone(), loads.clone());
+            tokio::spawn(async move {
+                cache
+                    .get_or_load::<String, _, _>(&key, Duration::from_secs(60), || async move {
+                        loads.fetch_add(1, Ordering::SeqCst);
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        Err(ridm_api::error::AppError::Unavailable("source down".into()))
+                    })
+                    .await
+            })
+        })
+        .collect();
+    for t in tasks {
+        let err = t.await.unwrap().unwrap_err();
+        assert!(matches!(err, ridm_api::error::AppError::Unavailable(ref d) if d == "source down"));
+    }
+    assert_eq!(
+        loads.load(Ordering::SeqCst),
+        1,
+        "the waiters shared the failure"
+    );
+
+    // A caller that arrives after the failure loads again.
+    let value = cache
+        .get_or_load(&key, Duration::from_secs(60), || async {
+            Ok(Some("back".to_string()))
+        })
+        .await
+        .unwrap();
+    assert_eq!(value.as_deref(), Some(&"back".to_string()));
+}
+
+#[tokio::test]
 async fn rls_transactions_isolate_tenants() {
     let app = TestApp::spawn().await;
     let other = create_tenant(&app.state.db).await;

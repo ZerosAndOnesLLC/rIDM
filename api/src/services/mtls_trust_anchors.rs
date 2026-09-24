@@ -55,6 +55,32 @@ pub async fn cached(state: &AppState, tenant_id: Uuid) -> AppResult<Arc<Vec<Anch
     ))
 }
 
+/// The verifier for `tls_client_auth` certificates, built from the tenant's
+/// anchors once per node and kept until they change; `None` when the tenant
+/// trusts no CA.
+pub async fn verifier(
+    state: &AppState,
+    tenant_id: Uuid,
+) -> AppResult<Option<Arc<mtls::ChainVerifier>>> {
+    let key = keys::mtls_verifier(tenant_id);
+    let material = state.cache.material();
+    if let Some(v) = material.get::<Option<Arc<mtls::ChainVerifier>>>(&key) {
+        return Ok((*v).clone());
+    }
+    let ticket = material.ticket(&key);
+    let anchors = cached(state, tenant_id).await?;
+    let verifier = if anchors.is_empty() {
+        None
+    } else {
+        let ders: Vec<&[u8]> = anchors.iter().map(|a| a.der.as_slice()).collect();
+        Some(Arc::new(
+            mtls::ChainVerifier::new(&ders).map_err(AppError::Internal)?,
+        ))
+    };
+    material.insert_fresh(key, Arc::new(verifier.clone()), ANCHORS_TTL, ticket);
+    Ok(verifier)
+}
+
 pub async fn list(state: &AppState, tenant_id: Uuid) -> AppResult<Vec<MtlsTrustAnchor>> {
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let rows = repos::mtls_trust_anchors::list(&mut *tx, tenant_id).await?;
@@ -121,7 +147,10 @@ pub async fn create(
     tx.commit().await?;
     state
         .cache
-        .invalidate(&[keys::mtls_trust_anchors(tenant_id)])
+        .invalidate(&[
+            keys::mtls_trust_anchors(tenant_id),
+            keys::mtls_verifier(tenant_id),
+        ])
         .await?;
     state.events.publish(Event::new(
         Some(tenant_id),
@@ -143,7 +172,10 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
     }
     state
         .cache
-        .invalidate(&[keys::mtls_trust_anchors(tenant_id)])
+        .invalidate(&[
+            keys::mtls_trust_anchors(tenant_id),
+            keys::mtls_verifier(tenant_id),
+        ])
         .await?;
     state.events.publish(Event::new(
         Some(tenant_id),

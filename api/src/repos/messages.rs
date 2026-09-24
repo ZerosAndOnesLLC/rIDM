@@ -129,24 +129,27 @@ pub async fn count_queued<'e>(exec: impl PgExecutor<'e>) -> Result<i64, sqlx::Er
     .await
 }
 
-/// Tenants with a message due right now (bypass transaction; the job visits only these).
+/// Tenants with a message due right now (bypass transaction; the job visits
+/// only these). Reads the live-rows index.
 pub async fn tenants_with_due<'e>(exec: impl PgExecutor<'e>) -> Result<Vec<Uuid>, sqlx::Error> {
     sqlx::query_scalar(
         "SELECT DISTINCT tenant_id FROM outbound_messages \
-         WHERE status IN ('queued', 'sending') AND next_attempt_at <= now()",
+         WHERE status = 'queued' AND next_attempt_at <= now()",
     )
     .fetch_all(exec)
     .await
 }
 
-/// Claim due messages for delivery (marks them `sending`).
+/// Claim due messages for delivery (marks them `sending`). A claim stamps
+/// `next_attempt_at`, so a row is only taken for stuck once it has been
+/// `sending` for a while, however long it waited to be claimed.
 pub async fn claim_due<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
     limit: i64,
 ) -> Result<Vec<OutboundMessage>, sqlx::Error> {
     let mut qb = QueryBuilder::new(
-        "UPDATE outbound_messages SET status = 'sending' WHERE id IN ( \
+        "UPDATE outbound_messages SET status = 'sending', next_attempt_at = now() WHERE id IN ( \
             SELECT id FROM outbound_messages WHERE tenant_id = ",
     );
     qb.push_bind(tenant_id)
@@ -159,16 +162,35 @@ pub async fn claim_due<'e>(
     qb.build_query_as::<OutboundMessage>().fetch_all(exec).await
 }
 
-/// Messages stuck in `sending` (crashed worker) older than `stale_before` go back to queued.
-pub async fn requeue_stale<'e>(
+/// Claim one message, if it is waiting to be sent and due.
+pub async fn claim_one<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
+    id: Uuid,
+) -> Result<Option<OutboundMessage>, sqlx::Error> {
+    let mut qb = QueryBuilder::new(
+        "UPDATE outbound_messages SET status = 'sending', next_attempt_at = now() WHERE tenant_id = ",
+    );
+    qb.push_bind(tenant_id)
+        .push(" AND id = ")
+        .push_bind(id)
+        .push(" AND status = 'queued' AND next_attempt_at <= now() RETURNING ")
+        .push(MESSAGE_COLUMNS);
+    qb.build_query_as::<OutboundMessage>()
+        .fetch_optional(exec)
+        .await
+}
+
+/// Messages stuck in `sending` (a node crashed or stopped mid-send) go back
+/// to the queue, across tenants (bypass transaction; the delivery job runs
+/// it before looking for due work). Reads the live-rows index.
+pub async fn requeue_stale_all<'e>(
+    exec: impl PgExecutor<'e>,
     stale_before: DateTime<Utc>,
 ) -> Result<u64, sqlx::Error> {
     Ok(sqlx::query(
-        "UPDATE outbound_messages SET status = 'queued' WHERE tenant_id = $1 AND status = 'sending' AND next_attempt_at < $2",
+        "UPDATE outbound_messages SET status = 'queued' WHERE status = 'sending' AND next_attempt_at < $1",
     )
-    .bind(tenant_id)
     .bind(stale_before)
     .execute(exec)
     .await?
@@ -244,17 +266,4 @@ pub async fn list_recent<'e>(
     }
     qb.push(" ORDER BY created_at DESC LIMIT ").push_bind(limit);
     qb.build_query_as::<OutboundMessage>().fetch_all(exec).await
-}
-
-pub async fn purge_sent<'e>(
-    exec: impl PgExecutor<'e>,
-    tenant_id: Uuid,
-    older_than: DateTime<Utc>,
-) -> Result<u64, sqlx::Error> {
-    Ok(sqlx::query("DELETE FROM outbound_messages WHERE tenant_id = $1 AND status IN ('sent', 'dead') AND created_at < $2")
-        .bind(tenant_id)
-        .bind(older_than)
-        .execute(exec)
-        .await?
-        .rows_affected())
 }

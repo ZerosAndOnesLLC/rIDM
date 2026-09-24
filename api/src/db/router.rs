@@ -21,8 +21,14 @@ use uuid::Uuid;
 use crate::config::HOME_REGION;
 use crate::models::MASTER_TENANT_ID;
 
-/// How long a node trusts a tenant's cached placement.
-pub const PLACEMENT_TTL: Duration = Duration::from_secs(5);
+/// How long a node trusts a tenant's cached placement. Every move waits
+/// longer than this before it copies anything (see `relocation`), so the
+/// TTL trades the registry reads of a regional deployment (one per tenant
+/// per node per TTL) against how long a move waits.
+pub const PLACEMENT_TTL: Duration = Duration::from_secs(15);
+
+/// Placements kept before stale ones are swept out.
+const PLACEMENTS_KEPT: usize = 100_000;
 
 /// One database a tenant can live in: its primary and the pool read-only
 /// listings use (a replica, or the primary again).
@@ -83,6 +89,9 @@ struct Inner {
     /// Home first, then the regions in `DATA_REGIONS` order.
     databases: Vec<Database>,
     placements: RwLock<HashMap<Uuid, Placement>>,
+    /// One registry read per tenant at a time: concurrent requests for a
+    /// tenant whose placement expired wait for it.
+    loading: std::sync::Mutex<HashMap<Uuid, Arc<tokio::sync::Mutex<()>>>>,
 }
 
 impl From<PgPool> for Db {
@@ -111,6 +120,7 @@ impl Db {
             inner: Arc::new(Inner {
                 databases,
                 placements: RwLock::new(HashMap::new()),
+                loading: Default::default(),
             }),
         }
     }
@@ -145,15 +155,10 @@ impl Db {
         if !self.is_regional() || tenant_id == MASTER_TENANT_ID {
             return Ok(&self.inner.databases[0]);
         }
-        let cached = self
-            .inner
-            .placements
-            .read()
-            .ok()
-            .and_then(|m| m.get(&tenant_id).copied());
+        let cached = self.cached(tenant_id);
         let placement = match cached.filter(|p| p.fetched.elapsed() < PLACEMENT_TTL) {
             Some(p) => p,
-            None => match self.fetch(tenant_id).await? {
+            None => match self.fetch_once(tenant_id).await? {
                 Some(p) => p,
                 // Gone from the registry: a tenant this node knew was just
                 // deleted, and what is still recorded for it (its audit
@@ -170,6 +175,40 @@ impl Db {
             return Err(Unroutable::Relocating.into());
         }
         Ok(&self.inner.databases[placement.index])
+    }
+
+    fn cached(&self, tenant_id: Uuid) -> Option<Placement> {
+        self.inner
+            .placements
+            .read()
+            .ok()
+            .and_then(|m| m.get(&tenant_id).copied())
+    }
+
+    /// [`Db::fetch`], once per tenant at a time: a request that waited for
+    /// another's read takes what it stored.
+    async fn fetch_once(&self, tenant_id: Uuid) -> Result<Option<Placement>, sqlx::Error> {
+        let gate = {
+            let mut loading = self.inner.loading.lock().unwrap_or_else(|e| e.into_inner());
+            loading.entry(tenant_id).or_default().clone()
+        };
+        let held = gate.lock().await;
+        let result = match self
+            .cached(tenant_id)
+            .filter(|p| p.fetched.elapsed() < PLACEMENT_TTL)
+        {
+            Some(p) => Ok(Some(p)),
+            None => self.fetch(tenant_id).await,
+        };
+        drop(held);
+        let mut loading = self.inner.loading.lock().unwrap_or_else(|e| e.into_inner());
+        if loading
+            .get(&tenant_id)
+            .is_some_and(|g| Arc::ptr_eq(g, &gate) && Arc::strong_count(g) == 2)
+        {
+            loading.remove(&tenant_id);
+        }
+        result
     }
 
     async fn fetch(&self, tenant_id: Uuid) -> Result<Option<Placement>, sqlx::Error> {
@@ -193,6 +232,11 @@ impl Db {
             fetched: Instant::now(),
         };
         if let Ok(mut map) = self.inner.placements.write() {
+            // Tenants not seen for a long while go, so the map follows the
+            // active tenants rather than every tenant ever served.
+            if map.len() >= PLACEMENTS_KEPT {
+                map.retain(|_, p| p.fetched.elapsed() < PLACEMENT_TTL * 10);
+            }
             map.insert(tenant_id, placement);
         }
         Ok(Some(placement))

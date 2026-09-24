@@ -131,22 +131,22 @@ async fn fixture() -> Fx {
     )
     .await
     .unwrap();
-    let mut tx = ridm_api::db::tenant_tx(&app.state.db, tid).await.unwrap();
     for event in ["magic_link", "password_reset"] {
-        ridm_api::repos::messages::upsert_template(
-            &mut *tx,
+        ridm_api::services::messaging::put_template(
+            &app.state,
             tid,
             MessageChannel::Email,
             event,
             "de",
-            Some("DE {{tenant.display_name}}"),
-            "Link: {{link}}",
-            None,
+            ridm_api::services::messaging::TemplateBody {
+                subject: Some("DE {{tenant.display_name}}".into()),
+                body_text: "Link: {{link}}".into(),
+                body_html: None,
+            },
         )
         .await
         .unwrap();
     }
-    tx.commit().await.unwrap();
     Fx { app, email, tenant }
 }
 
@@ -263,6 +263,7 @@ async fn emails_follow_the_negotiated_locale() {
     )
     .await;
     assert_eq!(res.status(), 202, "{}", res.text().await.unwrap());
+    common::settle(&fx.app.state).await;
     let mail = fx.email.last().unwrap();
     assert_eq!(mail.to[0].email, "bob@example.com");
     assert!(mail.subject.starts_with("DE "), "{}", mail.subject);
@@ -277,16 +278,19 @@ async fn emails_follow_the_negotiated_locale() {
         json!({"csrf": csrf, "identifier": "bob@example.com"}),
     )
     .await;
+    common::settle(&fx.app.state).await;
     assert!(!fx.email.last().unwrap().subject.starts_with("DE "));
 
     // Password reset: page locale → user locale → tenant default.
     recovery::request_password_reset(&fx.app.state, &fx.tenant, "bob@example.com", &["de".into()])
         .await
         .unwrap();
+    common::settle(&fx.app.state).await;
     assert!(fx.email.last().unwrap().subject.starts_with("DE "));
     recovery::request_password_reset(&fx.app.state, &fx.tenant, "alice@example.com", &[])
         .await
         .unwrap();
+    common::settle(&fx.app.state).await;
     assert!(
         fx.email.last().unwrap().subject.starts_with("DE "),
         "user locale"
@@ -294,6 +298,7 @@ async fn emails_follow_the_negotiated_locale() {
     recovery::request_password_reset(&fx.app.state, &fx.tenant, "bob@example.com", &["fr".into()])
         .await
         .unwrap();
+    common::settle(&fx.app.state).await;
     assert!(
         !fx.email.last().unwrap().subject.starts_with("DE "),
         "tenant default"

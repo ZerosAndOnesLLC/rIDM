@@ -107,8 +107,9 @@ ridm-api move-tenant acme --region home        # back to the home database
 The move is **offline**: the tenant answers `503` while it runs, and everything else
 keeps working. It:
 
-1. marks the tenant as moving in the registry and waits (`--drain-seconds`, 15 by
-   default and at least 6) until no node still serves it from the old database;
+1. marks the tenant as moving in the registry and waits (`--drain-seconds`, 20 by
+   default and at least 16: nodes trust a placement they read for 15 seconds) until no
+   node still serves it from the old database;
 2. copies every tenant-scoped table in foreign-key order, inside one transaction on
    the target, from one consistent snapshot of the source, and checks the row count of
    every table;

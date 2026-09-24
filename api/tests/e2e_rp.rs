@@ -61,6 +61,7 @@ async fn relying_party_journey() {
             acr: None,
             ip: None,
             user_agent: None,
+            device_id: None,
             policy: &tenant.settings.session,
         },
     )

@@ -1,12 +1,10 @@
-// State of a playground run, kept in this tab across the authorization
-// redirect. A pasted client secret lives here only until the code is
-// exchanged, then it is dropped.
+// A playground run. The sign-in happens in a popup, so the console tab keeps
+// the run (a pasted client secret included) in memory and nothing is ever
+// written to storage; the popup hands the authorization response back with
+// postMessage and closes.
 
 import { tenantBase } from "@/lib/api";
 import type { AuthMethod } from "./clients";
-
-const PENDING_KEY = "ridm.playground.pending";
-const RESULT_KEY = "ridm.playground.result";
 
 export interface PlaygroundPending {
   tenant: string;
@@ -59,42 +57,28 @@ export function randomToken(bytes = 32): string {
 }
 
 export async function pkceChallenge(verifier: string): Promise<string> {
+  // Browsers only offer Web Crypto on https and localhost.
+  if (!globalThis.crypto?.subtle) {
+    throw new PlaygroundError("insecure_context", "PKCE needs a secure connection: open the console over https (or on localhost).");
+  }
   return base64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
 }
 
-function read<T>(key: string): T | null {
-  try {
-    const raw = sessionStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : null;
-  } catch {
-    return null;
-  }
-}
-function write(key: string, value: unknown) {
-  try {
-    sessionStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // ignore
-  }
-}
-function drop(key: string) {
-  try {
-    sessionStorage.removeItem(key);
-  } catch {
-    // ignore
-  }
+/** The message type the sign-in popup posts back to the console tab. */
+export const CALLBACK_TYPE = "ridm-playground-callback";
+
+/** What the popup found on the redirect URI. */
+export interface PlaygroundCallback {
+  type: typeof CALLBACK_TYPE;
+  code: string | null;
+  state: string | null;
+  error: string | null;
+  error_description: string | null;
 }
 
-export const pending = {
-  load: () => read<PlaygroundPending>(PENDING_KEY),
-  save: (p: PlaygroundPending) => write(PENDING_KEY, p),
-  clear: () => drop(PENDING_KEY),
-};
-export const result = {
-  load: () => read<PlaygroundResult>(RESULT_KEY),
-  save: (r: PlaygroundResult) => write(RESULT_KEY, r),
-  clear: () => drop(RESULT_KEY),
-};
+export function isCallback(data: unknown): data is PlaygroundCallback {
+  return typeof data === "object" && data !== null && (data as { type?: unknown }).type === CALLBACK_TYPE;
+}
 
 export class PlaygroundError extends Error {
   readonly code: string;

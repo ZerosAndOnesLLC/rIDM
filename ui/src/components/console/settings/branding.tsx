@@ -4,6 +4,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { ColorInput, Field, Section, TextArea, TextInput } from "@/components/console/form";
 import { Button, IconButton } from "@/components/console/ui";
+import { useRowKeys } from "@/lib/console/hooks";
 import { isHttpUrl } from "@/lib/console/settings";
 import { useSettingsEditor } from "./context";
 
@@ -27,6 +28,7 @@ export interface PreviewMessage {
 export function BrandingSection() {
   const { draft, editable, update } = useSettingsEditor();
   const b = draft.settings.branding;
+  const links = useRowKeys(b.links.length);
   const urlError = (v: string | null) => (v && !isHttpUrl(v) ? "Enter an http(s) URL." : null);
   const setLink = (i: number, patch: { label?: string; url?: string }) =>
     update({ branding: { links: b.links.map((l, j) => (j === i ? { ...l, ...patch } : l)) } });
@@ -53,11 +55,17 @@ export function BrandingSection() {
           <h3 className="text-[0.8125rem] font-medium text-ink">Footer links</h3>
           <div className="mt-2 flex flex-col gap-2">
             {b.links.map((l, i) => (
-              <div key={i} className="flex flex-wrap items-center gap-2">
+              <div key={links.keys[i]} className="flex flex-wrap items-center gap-2">
                 <TextInput aria-label={`Link ${i + 1} label`} value={l.label} disabled={!editable} onChange={(e) => setLink(i, { label: e.target.value })} placeholder="Label" className="max-w-[12rem]" />
                 <TextInput aria-label={`Link ${i + 1} URL`} type="url" value={l.url} disabled={!editable} onChange={(e) => setLink(i, { url: e.target.value })} placeholder="https://" className="min-w-[12rem] flex-1" />
                 {editable && (
-                  <IconButton label={`Remove link ${i + 1}`} onClick={() => update({ branding: { links: b.links.filter((_, j) => j !== i) } })}>
+                  <IconButton
+                    label={`Remove link ${i + 1}`}
+                    onClick={() => {
+                      links.removeKey(i);
+                      update({ branding: { links: b.links.filter((_, j) => j !== i) } });
+                    }}
+                  >
                     <Trash2 className="size-4" aria-hidden />
                   </IconButton>
                 )}

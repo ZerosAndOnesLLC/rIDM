@@ -209,12 +209,14 @@ async fn find_user(fx: &Fx, identifier: &str) -> Option<User> {
 async fn group_members(fx: &Fx, name: &str) -> Option<Vec<String>> {
     let all = groups::list(&fx.app.state, fx.app.tenant.id).await.unwrap();
     let g = all.iter().find(|g| g.name == name)?;
-    let mut names: Vec<String> = groups::members(&fx.app.state, fx.app.tenant.id, g.id)
-        .await
-        .unwrap()
-        .into_iter()
-        .map(|u| u.username)
-        .collect();
+    let mut names: Vec<String> =
+        groups::members(&fx.app.state, fx.app.tenant.id, g.id, None, None, None)
+            .await
+            .unwrap()
+            .items
+            .into_iter()
+            .map(|m| m.user.username)
+            .collect();
     names.sort();
     Some(names)
 }
@@ -407,9 +409,10 @@ async fn sync_imports_updates_disables_and_enables_users_and_owns_its_groups() {
         vec!["dave"]
     );
     assert!(
-        groups::members(&fx.app.state, fx.app.tenant.id, own.id)
+        groups::members(&fx.app.state, fx.app.tenant.id, own.id, None, None, None)
             .await
             .unwrap()
+            .items
             .is_empty(),
         "the administrator's group is left alone"
     );

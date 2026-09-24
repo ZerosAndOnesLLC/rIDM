@@ -203,7 +203,7 @@ async fn send_backchannel(
     // A client registration (possibly a dynamic one) chose this URL: public
     // addresses only (SSRF).
     outbound::check_url(&uri).map_err(AppError::Unavailable)?;
-    let tc = tokens::TokenClient::from_client(client, tenant, vec![]);
+    let tc = tokens::TokenClient::from_client(client, tenant, Default::default());
     let key = signing_keys::ensure_active(state, tenant.id, &tenant.settings.keys).await?;
     let mut claims: Map<String, serde_json::Value> = Map::new();
     let issuer = match &tenant.settings.custom_domain {
@@ -223,12 +223,10 @@ async fn send_backchannel(
     );
     let logout_token = tokens::sign(state, &key, "logout+jwt", &claims).await?;
 
-    let http = outbound::client_builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-    let res = http
+    let res = state
+        .outbound
         .post(&uri)
+        .timeout(Duration::from_secs(5))
         .form(&[("logout_token", logout_token)])
         .send()
         .await

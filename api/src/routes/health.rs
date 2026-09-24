@@ -42,6 +42,13 @@ async fn metrics(State(state): State<AppState>, headers: HeaderMap) -> Response 
                 .into_response();
         }
     }
+    // Read at scrape time, so a consumer that is stuck is still visible.
+    for q in state.events.durable_stats() {
+        metrics::gauge!("ridm_event_queue_depth", "subscriber" => q.name).set(q.depth as f64);
+        metrics::gauge!("ridm_event_queue_capacity", "subscriber" => q.name).set(q.capacity as f64);
+        metrics::counter!("ridm_event_queue_dropped_total", "subscriber" => q.name)
+            .absolute(q.dropped);
+    }
     let body = telemetry::prometheus().render();
     (
         [(
@@ -69,6 +76,11 @@ struct Readiness {
 struct Checks {
     database: &'static str,
     cache: &'static str,
+    /// `saturated` when an event consumer (the audit writer, the webhook
+    /// dispatcher) has fallen so far behind that its queue is past
+    /// [`EVENT_QUEUE_HIGH_WATER`] percent: the node stops taking traffic
+    /// while it catches up, instead of dropping events once the queue fills.
+    events: &'static str,
     /// Each data region's database and Valkey. Reported, but not part of
     /// readiness: a region's outage is its tenants' outage, and taking every
     /// node out of the load balancer for it would take all tenants down.
@@ -100,7 +112,12 @@ async fn healthz() -> Json<Health> {
     })
 }
 
-/// Process can serve traffic: the home database and cache both answer.
+/// Percent of a durable event queue's capacity past which the node reports
+/// itself not ready.
+pub const EVENT_QUEUE_HIGH_WATER: usize = 80;
+
+/// Process can serve traffic: the home database and cache both answer, and
+/// no event consumer is about to overflow its queue.
 async fn readyz(State(state): State<AppState>) -> Response {
     let caches = state.redis.all();
     let home_cache = &caches[0].1;
@@ -122,12 +139,32 @@ async fn readyz(State(state): State<AppState>) -> Response {
             },
         );
     }
-    let ready = database == "ok" && cache == "ok";
+    let saturated: Vec<_> = state
+        .events
+        .durable_stats()
+        .into_iter()
+        .filter(|q| q.above(EVENT_QUEUE_HIGH_WATER))
+        .collect();
+    for q in &saturated {
+        tracing::warn!(
+            subscriber = q.name,
+            depth = q.depth,
+            capacity = q.capacity,
+            "readiness: event queue saturated"
+        );
+    }
+    let events = if saturated.is_empty() {
+        "ok"
+    } else {
+        "saturated"
+    };
+    let ready = database == "ok" && cache == "ok" && events == "ok";
     let body = Readiness {
         status: if ready { "ok" } else { "degraded" },
         checks: Checks {
             database,
             cache,
+            events,
             regions,
         },
     };

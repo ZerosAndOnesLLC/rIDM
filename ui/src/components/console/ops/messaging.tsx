@@ -499,7 +499,8 @@ function LogTab({ tenant }: { tenant: string }) {
   const [status, setStatus] = useState<LogEntry["status"] | "">("");
   const log = useQuery({
     queryKey: ["messaging", tenant, "log", status],
-    refetchInterval: 10_000,
+    // Quick while something is still on its way, slow once it all settled.
+    refetchInterval: (q) => (q.state.data?.some((m) => m.status === "queued" || m.status === "sending") ? 10_000 : 60_000),
     queryFn: async () => {
       const { data, error } = await client.GET("/admin/tenants/{slug}/messaging/log", { params: { path: { slug: tenant }, query: { status: status || undefined, limit: 100 } } });
       if (error) throw new Error(error.detail ?? error.title);

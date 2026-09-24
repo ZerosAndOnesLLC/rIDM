@@ -49,6 +49,10 @@ pub struct Inputs<'a> {
     /// in from before. The caller decides this, because only it knows about
     /// the device cookie; a user's very first sign-in is not "new".
     pub new_device: bool,
+    /// Failed attempts from `ip` within the velocity window, when the caller
+    /// has counted them already (the password step counts them together with
+    /// its own IP throttle); `None` counts them here.
+    pub ip_failures: Option<i64>,
 }
 
 /// Score a sign-in. An assessment is always returned, even for a policy that
@@ -72,8 +76,28 @@ pub async fn evaluate(
     if inputs.new_device {
         signals.push(RiskSignal::NewDevice);
     }
-    if let Some(location) = inputs.location {
-        let history = history(state, tenant.id, user_id).await?;
+    // The location history and the failure count are independent reads.
+    let (history, failures) = tokio::try_join!(
+        Box::pin(async {
+            match inputs.location {
+                Some(_) => history(state, tenant.id, user_id).await.map(Some),
+                None => Ok(None),
+            }
+        }),
+        Box::pin(async {
+            match (inputs.ip, inputs.ip_failures) {
+                _ if policy.velocity_max_failures == 0 => Ok(None),
+                (Some(_), Some(n)) => Ok(Some(n)),
+                (Some(ip), None) => {
+                    recent_failures(state, tenant.id, ip, policy.velocity_window_minutes)
+                        .await
+                        .map(Some)
+                }
+                (None, _) => Ok(None),
+            }
+        }),
+    )?;
+    if let (Some(location), Some(history)) = (inputs.location, history) {
         // With no history there is nothing to be new to.
         if !history.is_empty() {
             if !history.iter().any(|l| l.country == location.country) {
@@ -84,11 +108,7 @@ pub async fn evaluate(
             }
         }
     }
-    if let Some(ip) = inputs.ip
-        && policy.velocity_max_failures > 0
-        && recent_failures(state, tenant.id, ip, policy.velocity_window_minutes).await?
-            >= i64::from(policy.velocity_max_failures)
-    {
+    if failures.is_some_and(|n| n >= i64::from(policy.velocity_max_failures)) {
         signals.push(RiskSignal::Velocity);
     }
 
@@ -158,13 +178,18 @@ async fn history(
     Ok(rows)
 }
 
+/// Start of the velocity window.
+pub fn velocity_since(window_minutes: u32) -> chrono::DateTime<Utc> {
+    Utc::now() - chrono::Duration::minutes(i64::from(window_minutes.max(1)))
+}
+
 async fn recent_failures(
     state: &AppState,
     tenant_id: Uuid,
     ip: &str,
     window_minutes: u32,
 ) -> AppResult<i64> {
-    let since = Utc::now() - chrono::Duration::minutes(i64::from(window_minutes.max(1)));
+    let since = velocity_since(window_minutes);
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let n = repos::login_attempts::failures_from_ip(&mut *tx, tenant_id, ip, since).await?;
     tx.commit().await?;

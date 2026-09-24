@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::db;
 use crate::error::AppResult;
-use crate::models::Consent;
+use crate::models::{Consent, ConsentWithClient};
 use crate::repos;
 use crate::state::AppState;
 
@@ -77,7 +77,7 @@ pub async fn list_for_user(
     state: &AppState,
     tenant_id: Uuid,
     user_id: Uuid,
-) -> AppResult<Vec<Consent>> {
+) -> AppResult<Vec<ConsentWithClient>> {
     let mut tx = db::read_tx(&state.db, tenant_id).await?;
     let rows = repos::consents::list_for_user(&mut *tx, tenant_id, user_id).await?;
     tx.commit().await?;

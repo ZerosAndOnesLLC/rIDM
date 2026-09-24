@@ -45,6 +45,27 @@ impl SenderFactory for MockFactory {
     }
 }
 
+/// The message as stored once its background delivery is over.
+async fn delivered(
+    state: &AppState,
+    tenant_id: Uuid,
+    msg: ridm_api::models::OutboundMessage,
+) -> ridm_api::models::OutboundMessage {
+    assert_eq!(
+        msg.status,
+        MessageStatus::Queued,
+        "send only queues: {msg:?}"
+    );
+    common::settle(state).await;
+    let mut tx = ridm_api::db::tenant_tx(&state.db, tenant_id).await.unwrap();
+    let row = ridm_api::repos::messages::find(&mut *tx, tenant_id, msg.id)
+        .await
+        .unwrap()
+        .expect("the message");
+    tx.commit().await.unwrap();
+    row
+}
+
 fn with_mocks(
     app: &TestApp,
     email_enabled: bool,
@@ -79,8 +100,10 @@ async fn renders_with_locale_fallback_and_tenant_overrides_and_delivers() {
     )
     .await
     .unwrap();
+    let msg = delivered(&state, tenant.id, msg).await;
     assert_eq!(msg.status, MessageStatus::Sent, "{msg:?}");
     assert_eq!(msg.attempts, 1);
+    common::settle(&state).await;
     let sent = email.last().unwrap();
     assert_eq!(sent.to[0].email, "alice@example.com");
     assert!(sent.subject.contains("123456"));
@@ -93,20 +116,20 @@ async fn renders_with_locale_fallback_and_tenant_overrides_and_delivers() {
     );
 
     // A German override for the tenant is picked up for de-CH via the language fallback.
-    let mut tx = ridm_api::db::tenant_tx(&state.db, tenant.id).await.unwrap();
-    ridm_api::repos::messages::upsert_template(
-        &mut *tx,
+    ridm_api::services::messaging::put_template(
+        &state,
         tenant.id,
         MessageChannel::Email,
         "otp",
         "de",
-        Some("Ihr Code: {{code}}"),
-        "Ihr Code lautet {{code}}.",
-        None,
+        ridm_api::services::messaging::TemplateBody {
+            subject: Some("Ihr Code: {{code}}".into()),
+            body_text: "Ihr Code lautet {{code}}.".into(),
+            body_html: None,
+        },
     )
     .await
     .unwrap();
-    tx.commit().await.unwrap();
     let msg = messaging::send(
         &state,
         &tenant,
@@ -121,6 +144,7 @@ async fn renders_with_locale_fallback_and_tenant_overrides_and_delivers() {
     .await
     .unwrap();
     assert_eq!(msg.subject.as_deref(), Some("Ihr Code: 654321"));
+    common::settle(&state).await;
     assert!(
         email.last().unwrap().html.is_none(),
         "override without html sends text only"
@@ -155,6 +179,7 @@ async fn renders_with_locale_fallback_and_tenant_overrides_and_delivers() {
     )
     .await
     .unwrap();
+    let msg = delivered(&state, tenant.id, msg).await;
     assert_eq!(msg.status, MessageStatus::Sent);
     assert!(sms.last().unwrap().body.contains(&tenant.display_name));
     assert!(
@@ -185,6 +210,7 @@ async fn retries_with_backoff_then_dead_letters_and_can_be_redelivered() {
         channel: MessageChannel::Email, event: "password_reset", recipient: "alice@example.com", locale: None,
         vars: json!({"user": {"username": "alice"}, "link": "https://x/reset", "expires_minutes": 15}),
     }).await.unwrap();
+    let msg = delivered(&state, tenant.id, msg).await;
     assert_eq!(msg.status, MessageStatus::Queued);
     assert_eq!(msg.attempts, 1);
     assert!(msg.last_error.as_deref().unwrap().contains("mock failure"));
@@ -241,6 +267,7 @@ async fn retries_with_backoff_then_dead_letters_and_can_be_redelivered() {
     )
     .await
     .unwrap();
+    common::settle(&state).await;
     for _ in 0..10 {
         make_due(msg.id).await;
         messaging::deliver_due(&state, tenant.id, 10).await.unwrap();
@@ -249,6 +276,7 @@ async fn retries_with_backoff_then_dead_letters_and_can_be_redelivered() {
         .await
         .unwrap();
     assert!(dead.iter().any(|m| m.id == msg.id), "{dead:?}");
+    common::settle(&state).await;
     email.fail_next(0);
     messaging::redeliver(&state, tenant.id, msg.id)
         .await
@@ -273,6 +301,7 @@ async fn retries_with_backoff_then_dead_letters_and_can_be_redelivered() {
     )
     .await
     .unwrap();
+    let msg = delivered(&no_email, tenant.id, msg).await;
     assert_eq!(
         msg.status,
         MessageStatus::Dead,

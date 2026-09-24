@@ -2,26 +2,36 @@
 //! day, live sessions, users and second-factor adoption, and the clients
 //! users authorized most. Everything is derived from what is already
 //! recorded (login attempts, sessions, credentials, audit events).
+//!
+//! Each figure is an aggregate over one of the tenant's largest tables, so
+//! the dashboard is cached: the whole answer for a minute (the page polls
+//! once a minute), the user counts, which scan every user, for ten.
 
 use chrono::{DateTime, Duration, NaiveDate, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use uuid::Uuid;
 
+use crate::cache::keys;
 use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
 pub const MAX_DAYS: u32 = 365;
 
-#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
+/// How long a dashboard answer is served from the cache.
+const STATS_TTL: std::time::Duration = std::time::Duration::from_secs(60);
+/// How long the user counts are: they move slowly and cost a scan of users.
+const USER_COUNTS_TTL: std::time::Duration = std::time::Duration::from_secs(600);
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct DayStats {
     pub date: NaiveDate,
     pub logins: i64,
     pub failed: i64,
 }
 
-#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct UserStats {
     /// Users that are not soft-deleted.
     pub total: i64,
@@ -30,7 +40,7 @@ pub struct UserStats {
     pub mfa_enrolled: i64,
 }
 
-#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ClientStats {
     pub id: Uuid,
     pub client_id: String,
@@ -39,7 +49,7 @@ pub struct ClientStats {
     pub authorizations: i64,
 }
 
-#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct TenantStats {
     pub window_days: u32,
     pub from: DateTime<Utc>,
@@ -59,6 +69,20 @@ pub async fn tenant_stats(state: &AppState, tenant_id: Uuid, days: u32) -> AppRe
             "days must be between 1 and {MAX_DAYS}"
         )));
     }
+    let loader_state = state.clone();
+    let stats = state
+        .cache
+        .get_or_load(
+            &keys::tenant_stats(tenant_id, days),
+            STATS_TTL,
+            || async move { compute(&loader_state, tenant_id, days).await.map(Some) },
+        )
+        .await?
+        .ok_or_else(|| AppError::Internal("statistics were not computed".into()))?;
+    Ok((*stats).clone())
+}
+
+async fn compute(state: &AppState, tenant_id: Uuid, days: u32) -> AppResult<TenantStats> {
     let to = Utc::now();
     let first_day = (to - Duration::days(i64::from(days) - 1)).date_naive();
     let from = first_day.and_hms_opt(0, 0, 0).expect("midnight").and_utc();
@@ -92,6 +116,7 @@ pub async fn tenant_stats(state: &AppState, tenant_id: Uuid, days: u32) -> AppRe
     let logins_total = days_out.iter().map(|d| d.logins).sum();
     let failed_total = days_out.iter().map(|d| d.failed).sum();
 
+    // Live sessions through the partial index of unrevoked ones.
     let active_sessions: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM sso_sessions \
          WHERE tenant_id = $1 AND revoked_at IS NULL AND expires_at > now() AND idle_expires_at > now()",
@@ -99,23 +124,6 @@ pub async fn tenant_stats(state: &AppState, tenant_id: Uuid, days: u32) -> AppRe
     .bind(tenant_id)
     .fetch_one(&mut *tx)
     .await?;
-
-    let users_row = sqlx::query(
-        "SELECT count(*) FILTER (WHERE deleted_at IS NULL) AS total, \
-                count(*) FILTER (WHERE deleted_at IS NULL AND status = 'active') AS active, \
-                (SELECT count(DISTINCT c.user_id) FROM credentials c \
-                   JOIN users u ON u.tenant_id = c.tenant_id AND u.id = c.user_id \
-                   WHERE c.tenant_id = $1 AND u.deleted_at IS NULL AND c.type IN ('totp', 'webauthn', 'email_otp', 'sms_otp')) AS mfa_enrolled \
-         FROM users WHERE tenant_id = $1",
-    )
-    .bind(tenant_id)
-    .fetch_one(&mut *tx)
-    .await?;
-    let users = UserStats {
-        total: users_row.get("total"),
-        active: users_row.get("active"),
-        mfa_enrolled: users_row.get("mfa_enrolled"),
-    };
 
     let top = sqlx::query(
         "SELECT c.id, c.client_id, c.name, count(*) AS authorizations \
@@ -138,6 +146,7 @@ pub async fn tenant_stats(state: &AppState, tenant_id: Uuid, days: u32) -> AppRe
         })
         .collect();
     tx.commit().await?;
+    let users = (*user_counts(state, tenant_id).await?).clone();
 
     Ok(TenantStats {
         window_days: days,
@@ -150,4 +159,38 @@ pub async fn tenant_stats(state: &AppState, tenant_id: Uuid, days: u32) -> AppRe
         users,
         top_clients,
     })
+}
+
+/// The user counts, cached on their own for longer.
+async fn user_counts(state: &AppState, tenant_id: Uuid) -> AppResult<std::sync::Arc<UserStats>> {
+    let db = state.db.clone();
+    state
+        .cache
+        .get_or_load(
+            &keys::tenant_user_counts(tenant_id),
+            USER_COUNTS_TTL,
+            || async move {
+                let mut tx = db::read_tx(&db, tenant_id).await?;
+                let row = sqlx::query(
+                    "SELECT count(*) FILTER (WHERE deleted_at IS NULL) AS total, \
+                            count(*) FILTER (WHERE deleted_at IS NULL AND status = 'active') AS active, \
+                            (SELECT count(DISTINCT c.user_id) FROM credentials c \
+                               JOIN users u ON u.tenant_id = c.tenant_id AND u.id = c.user_id \
+                               WHERE c.tenant_id = $1 AND u.deleted_at IS NULL \
+                                 AND c.type IN ('totp', 'webauthn', 'email_otp', 'sms_otp')) AS mfa_enrolled \
+                     FROM users WHERE tenant_id = $1",
+                )
+                .bind(tenant_id)
+                .fetch_one(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                Ok(Some(UserStats {
+                    total: row.get("total"),
+                    active: row.get("active"),
+                    mfa_enrolled: row.get("mfa_enrolled"),
+                }))
+            },
+        )
+        .await?
+        .ok_or_else(|| AppError::Internal("user counts were not computed".into()))
 }

@@ -29,7 +29,7 @@ export function ConfigPage({ tenant }: { tenant: string }) {
   const [plan, setPlan] = useState<Report | null>(null);
   const [revealed, setRevealed] = useState<Revealed | null>(null);
 
-  const exp = useMutation({ mutationFn: () => downloadWithToken(`/admin/tenants/${encodeURIComponent(tenant)}/export`, `${tenant}.ridm.json`) });
+  const exp = useMutation({ mutationFn: () => downloadWithToken(`/admin/tenants/${encodeURIComponent(tenant)}/export`) });
   const load = useMutation({
     mutationFn: async () => {
       const { data, error } = await client.GET("/admin/tenants/{slug}/export", { params: { path: { slug: tenant } } });

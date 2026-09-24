@@ -233,10 +233,11 @@ pub fn apply_mappers(
                     "groups": ctx.groups.iter().map(|g| g.name.clone()).collect::<Vec<_>>(),
                     "scopes": ctx.scopes,
                 });
-                let mut hb = handlebars::Handlebars::new();
-                hb.set_strict_mode(false);
-                hb.register_escape_fn(handlebars::no_escape);
-                match hb.render_template(template, &data) {
+                match crate::util::templating::render(
+                    template,
+                    &data,
+                    crate::util::templating::Escape::None,
+                ) {
                     Ok(rendered) if !rendered.is_empty() => {
                         claims.insert(claim.clone(), json!(rendered));
                     }

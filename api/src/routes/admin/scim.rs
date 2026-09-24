@@ -48,7 +48,10 @@ async fn create(
 ) -> AppResult<Response> {
     admin.require(tenant.id, P_WRITE)?;
     let created = scim_tokens::create(&state, tenant.id, admin.actor(), body).await?;
-    Ok((StatusCode::CREATED, Json(created)).into_response())
+    // The token is shown once: never cached, never compressed.
+    Ok(crate::middleware::security_headers::no_store(
+        (StatusCode::CREATED, Json(created)).into_response(),
+    ))
 }
 
 #[utoipa::path(delete, path = "/admin/tenants/{slug}/scim/tokens/{token}", tag = "scim", params(("slug" = String, Path, description = "Tenant slug"), ("token" = Uuid, Path)), responses((status = 204, description = "Revoked"), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]

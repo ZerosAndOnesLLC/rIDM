@@ -124,6 +124,7 @@ async fn cleanup_removes_spent_rows_past_retention_and_keeps_the_rest() {
                 acr: None,
                 ip: None,
                 user_agent: None,
+                device_id: None,
                 policy: &tenant.settings.session,
             },
         )
@@ -172,15 +173,17 @@ async fn cleanup_removes_spent_rows_past_retention_and_keeps_the_rest() {
     .unwrap();
     {
         let mut tx = db::tenant_tx(&app.state.db, tid).await.unwrap();
-        ridm_api::repos::webhooks::enqueue(
-            &mut *tx,
+        ridm_api::repos::webhooks::enqueue_many(
+            &mut tx,
             tid,
-            Uuid::now_v7(),
-            hook.webhook.id,
-            Uuid::now_v7(),
-            "user.deleted",
-            &serde_json::json!({}),
-            1,
+            &[ridm_api::repos::webhooks::NewDelivery {
+                id: Uuid::now_v7(),
+                webhook_id: hook.webhook.id,
+                event_id: Uuid::now_v7(),
+                event_name: "user.deleted",
+                payload: serde_json::json!({}),
+                max_attempts: 1,
+            }],
         )
         .await
         .unwrap();
@@ -242,6 +245,29 @@ async fn cleanup_removes_spent_rows_past_retention_and_keeps_the_rest() {
         report.contains_key("refresh_tokens") && report.contains_key("login_attempts"),
         "{report:?}"
     );
+    // Any end counts: a refresh token spent long ago and a session idle for
+    // over a week go although neither has reached its absolute expiry.
+    {
+        let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
+        sqlx::query(
+            "UPDATE refresh_tokens SET consumed_at = now() - interval '40 days' WHERE tenant_id = $1",
+        )
+        .bind(tid)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE sso_sessions SET idle_expires_at = now() - interval '8 days' WHERE tenant_id = $1",
+        )
+        .bind(tid)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+    }
+    cleanup_now(&app).await;
+    assert_eq!(count(&app, "refresh_tokens", tid).await, 0);
+    assert_eq!(count(&app, "sso_sessions", tid).await, 0);
     // A delivered one from long ago goes.
     {
         let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();

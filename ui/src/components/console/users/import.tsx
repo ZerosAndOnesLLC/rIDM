@@ -117,7 +117,7 @@ export function ExportUsers({ tenant, open, onOpenChange }: { tenant: string; op
   const [format, setFormat] = useState<"json" | "csv">("json");
   const download = useMutation({
     mutationFn: async () => {
-      await downloadWithToken(`/admin/tenants/${encodeURIComponent(tenant)}/users/export?format=${format}`, `${tenant}-users.${format}`);
+      await downloadWithToken(`/admin/tenants/${encodeURIComponent(tenant)}/users/export?format=${format}`);
     },
     onSuccess: () => onOpenChange(false),
   });

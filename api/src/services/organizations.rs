@@ -6,6 +6,8 @@
 //! `auto_join` makes users with a verified address at that domain members as
 //! they sign in.
 
+use std::sync::Arc;
+
 use hickory_resolver::Resolver;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use uuid::Uuid;
@@ -14,17 +16,19 @@ use crate::cache::keys;
 use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    NewOrganization, NewOrganizationDomain, Organization, OrganizationDomain,
+    Member, NewOrganization, NewOrganizationDomain, Organization, OrganizationDomain,
     OrganizationDomainUpdate, OrganizationFilter, OrganizationUpdate, Principal, User,
 };
 use crate::repos;
-use crate::services::roles::{bump_roles_version, roles_version};
+use crate::services::roles::bump_roles_version;
 use crate::state::AppState;
-use crate::util::cursor::{Cursor, Page};
+use crate::util::cursor::{Cursor, Page, page_size};
 
 /// Memberships are versioned by the roles version (org-scoped grants hang off
 /// the same graph); the TTL only bounds a missed bump.
 const ORGS_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+/// Users whose primary organization a delete clears per transaction.
+const PRIMARY_ORG_BATCH: i64 = 1000;
 
 /// The DNS label a domain's proof is published under: a TXT record at
 /// `_ridm-challenge.<domain>` whose value is the domain's `verification`.
@@ -115,11 +119,64 @@ pub async fn create(
     Ok(org)
 }
 
+/// One organization, cached (feature flags read it for every token issued in
+/// an organization); every change evicts it.
 pub async fn get(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<Organization> {
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    let org = repos::organizations::find_by_id(&mut *tx, tenant_id, id).await?;
-    tx.commit().await?;
-    org.ok_or(AppError::NotFound("organization"))
+    let db = state.db.clone();
+    let org = state
+        .cache
+        .get_or_load(
+            &keys::organization(tenant_id, id),
+            ORGS_TTL,
+            || async move {
+                let mut tx = db::tenant_tx(&db, tenant_id).await?;
+                let org = repos::organizations::find_by_id(&mut *tx, tenant_id, id).await?;
+                tx.commit().await?;
+                Ok(org)
+            },
+        )
+        .await?;
+    org.map(|o| (*o).clone())
+        .ok_or(AppError::NotFound("organization"))
+}
+
+/// Evict an organization and what is derived from it after a change.
+async fn forget(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<()> {
+    state
+        .cache
+        .invalidate(&[
+            keys::organization(tenant_id, id),
+            keys::org_auto_join_domains(tenant_id),
+        ])
+        .await
+}
+
+/// Evict the tenant's auto-join domains after a domain changed.
+async fn forget_domains(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
+    state
+        .cache
+        .invalidate(&[keys::org_auto_join_domains(tenant_id)])
+        .await
+}
+
+/// The domains at which a verified address joins an organization, cached:
+/// every sign-in asks, and most tenants have none.
+async fn auto_join_domains(state: &AppState, tenant_id: Uuid) -> AppResult<Arc<Vec<String>>> {
+    let db = state.db.clone();
+    Ok(state
+        .cache
+        .get_or_load(
+            &keys::org_auto_join_domains(tenant_id),
+            ORGS_TTL,
+            || async move {
+                let mut tx = db::tenant_tx(&db, tenant_id).await?;
+                let domains = repos::organizations::auto_join_domains(&mut *tx, tenant_id).await?;
+                tx.commit().await?;
+                Ok(Some(domains))
+            },
+        )
+        .await?
+        .unwrap_or_default())
 }
 
 pub async fn get_by_slug(state: &AppState, tenant_id: Uuid, slug: &str) -> AppResult<Organization> {
@@ -174,6 +231,7 @@ pub async fn update(
         .map_err(|e| conflict(e, "an organization with this slug already exists"))?
         .ok_or(AppError::NotFound("organization"))?;
     tx.commit().await?;
+    forget(state, tenant_id, id).await?;
     state.events.publish(Event::new(
         Some(tenant_id),
         actor,
@@ -186,14 +244,33 @@ pub async fn update(
 /// grants go with it; members keep their accounts, and a member whose primary
 /// organization this was is left without one.
 pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -> AppResult<()> {
+    // Users whose primary organization this is lose it first, a batch per
+    // short transaction, each batch evicted as it goes: one statement over
+    // all of them would lock every row (and list every id) at once.
+    loop {
+        let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+        let cleared = repos::organizations::clear_primary_org_batch(
+            &mut *tx,
+            tenant_id,
+            id,
+            PRIMARY_ORG_BATCH,
+        )
+        .await?;
+        tx.commit().await?;
+        if cleared.is_empty() {
+            break;
+        }
+        crate::services::users::forget(state, tenant_id, &cleared).await;
+    }
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    // Their `org_id` is cleared by the foreign key: evict their rows.
+    // Anyone who joined meanwhile is cleared by the foreign key: evict them.
     let primary_of = repos::organizations::users_with_primary_org(&mut *tx, tenant_id, id).await?;
     let deleted = repos::organizations::delete(&mut *tx, tenant_id, id).await?;
     tx.commit().await?;
     if !deleted {
         return Err(AppError::NotFound("organization"));
     }
+    forget(state, tenant_id, id).await?;
     crate::services::users::forget(state, tenant_id, &primary_of).await;
     bump_roles_version(state, tenant_id).await?;
     state.events.publish(Event::new(
@@ -206,17 +283,45 @@ pub async fn delete(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -
 
 // Membership ---------------------------------------------------------------
 
-pub async fn members(state: &AppState, tenant_id: Uuid, org_id: Uuid) -> AppResult<Vec<User>> {
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+/// One page of the direct members (not soft-deleted), in the order they
+/// joined; `search` keeps those whose username or email starts with it.
+pub async fn members(
+    state: &AppState,
+    tenant_id: Uuid,
+    org_id: Uuid,
+    search: Option<&str>,
+    cursor: Option<&str>,
+    limit: Option<u32>,
+) -> AppResult<Page<Member>> {
+    let after = cursor.map(Cursor::decode).transpose()?;
+    let limit = page_size(limit);
+    let of = repos::memberships::Of::Organization(org_id);
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     if repos::organizations::find_by_id(&mut *tx, tenant_id, org_id)
         .await?
         .is_none()
     {
         return Err(AppError::NotFound("organization"));
     }
-    let rows = repos::organizations::members(&mut *tx, tenant_id, org_id).await?;
+    let rows = repos::memberships::page(&mut *tx, tenant_id, of, search, after, limit).await?;
     tx.commit().await?;
-    Ok(rows)
+    Ok(Page::from_rows(rows, limit, |m| Cursor {
+        created_at: m.joined_at,
+        id: m.user.id,
+    }))
+}
+
+/// How many direct members (not soft-deleted) there are.
+pub async fn member_count(state: &AppState, tenant_id: Uuid, org_id: Uuid) -> AppResult<i64> {
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
+    let n = repos::memberships::count(
+        &mut *tx,
+        tenant_id,
+        repos::memberships::Of::Organization(org_id),
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(n)
 }
 
 pub async fn add_member(
@@ -248,7 +353,7 @@ pub async fn add_member(
     tx.commit().await?;
     if added {
         crate::services::users::forget(state, tenant_id, &[user_id]).await;
-        bump_roles_version(state, tenant_id).await?;
+        crate::services::roles::bump_user_access(state, tenant_id, &[user_id]).await?;
         state.events.publish(Event::new(
             Some(tenant_id),
             actor,
@@ -269,7 +374,7 @@ pub async fn remove_member(
     let removed = repos::organizations::remove_member(&mut *tx, tenant_id, org_id, user_id).await?;
     tx.commit().await?;
     if removed {
-        bump_roles_version(state, tenant_id).await?;
+        crate::services::roles::bump_user_access(state, tenant_id, &[user_id]).await?;
         state.events.publish(Event::new(
             Some(tenant_id),
             actor,
@@ -286,7 +391,7 @@ pub async fn of_user(
     tenant_id: Uuid,
     user_id: Uuid,
 ) -> AppResult<Vec<Organization>> {
-    let version = roles_version(state, tenant_id).await?;
+    let version = crate::services::roles::access_version(state, tenant_id, user_id).await?;
     let key = keys::user_organizations(tenant_id, &version, user_id);
     let db = state.db.clone();
     let loaded = state
@@ -362,7 +467,7 @@ pub async fn assign_role(
         .map_err(AppError::from_db)?;
     tx.commit().await?;
     if added {
-        bump_roles_version(state, tenant_id).await?;
+        crate::services::roles::bump_for(state, tenant_id, principal).await?;
         let (user_id, group_id) = match principal {
             Principal::User { id } => (Some(id), None),
             Principal::Group { id } => (None, Some(id)),
@@ -393,7 +498,7 @@ pub async fn unassign_role(
         repos::roles::unassign(&mut *tx, tenant_id, role_id, principal, Some(org_id)).await?;
     tx.commit().await?;
     if removed {
-        bump_roles_version(state, tenant_id).await?;
+        crate::services::roles::bump_for(state, tenant_id, principal).await?;
         let (user_id, group_id) = match principal {
             Principal::User { id } => (Some(id), None),
             Principal::Group { id } => (None, Some(id)),
@@ -412,21 +517,33 @@ pub async fn unassign_role(
 }
 
 /// Role grants scoped to this organization.
+/// One page of the role grants scoped to an organization, in grant order.
 pub async fn role_grants(
     state: &AppState,
     tenant_id: Uuid,
     org_id: Uuid,
-) -> AppResult<Vec<crate::models::RoleAssignment>> {
-    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    cursor: Option<&str>,
+    limit: Option<u32>,
+) -> AppResult<Page<crate::models::RoleHolder>> {
+    let after = cursor.map(Cursor::decode).transpose()?;
+    let limit = page_size(limit);
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
     if repos::organizations::find_by_id(&mut *tx, tenant_id, org_id)
         .await?
         .is_none()
     {
         return Err(AppError::NotFound("organization"));
     }
-    let rows = repos::roles::assignments_of_org(&mut *tx, tenant_id, org_id).await?;
+    let rows = repos::roles::holders(
+        &mut *tx,
+        tenant_id,
+        repos::roles::HoldersOf::Organization(org_id),
+        after,
+        limit,
+    )
+    .await?;
     tx.commit().await?;
-    Ok(rows)
+    Ok(crate::services::roles::holders_page(rows, limit))
 }
 
 // Domains ------------------------------------------------------------------
@@ -480,6 +597,7 @@ pub async fn add_domain(
         )
     })?;
     tx.commit().await?;
+    forget_domains(state, tenant_id).await?;
     state.events.publish(Event::new(
         Some(tenant_id),
         actor,
@@ -503,6 +621,7 @@ pub async fn update_domain(
         .await?
         .ok_or(AppError::NotFound("organization domain"))?;
     tx.commit().await?;
+    forget_domains(state, tenant_id).await?;
     Ok(domain)
 }
 
@@ -536,6 +655,7 @@ pub async fn verify_domain(
         .await?
         .ok_or(AppError::NotFound("organization domain"))?;
     tx.commit().await?;
+    forget_domains(state, tenant_id).await?;
     state.events.publish(Event::new(
         Some(tenant_id),
         actor,
@@ -599,6 +719,7 @@ pub async fn delete_domain(
     if !deleted {
         return Err(AppError::NotFound("organization domain"));
     }
+    forget_domains(state, tenant_id).await?;
     state.events.publish(Event::new(
         Some(tenant_id),
         actor,
@@ -631,6 +752,10 @@ pub async fn ensure_auto_join(
     else {
         return Ok(None);
     };
+    // Nearly every sign-in stops here: no auto-join domain matches.
+    if !auto_join_domains(state, tenant_id).await?.contains(&domain) {
+        return Ok(None);
+    }
 
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let Some(org_id) =
@@ -647,7 +772,7 @@ pub async fn ensure_auto_join(
     tx.commit().await?;
     if added {
         crate::services::users::forget(state, tenant_id, &[user.id]).await;
-        bump_roles_version(state, tenant_id).await?;
+        crate::services::roles::bump_user_access(state, tenant_id, &[user.id]).await?;
         state.events.publish(Event::new(
             Some(tenant_id),
             Actor::System,

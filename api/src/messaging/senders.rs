@@ -6,6 +6,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use lettre::AsyncTransport as _;
 use lettre::message::{Mailbox, MultiPart, SinglePart, header};
+use lettre::transport::smtp::PoolConfig;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::transport::smtp::client::{Tls, TlsParameters};
 use lettre::{AsyncSmtpTransport, Tokio1Executor};
@@ -16,6 +17,11 @@ use crate::error::AppResult;
 use crate::models::{EmailProviderConfig, ProviderKind, SmsProviderConfig, SmtpConfig};
 use crate::services::provider_settings;
 use crate::state::AppState;
+
+/// Connections one SMTP sender keeps open to its server.
+const SMTP_POOL_SIZE: u32 = 8;
+/// Every HTTP email or SMS request carries this timeout.
+const HTTP_SEND_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Chooses senders for a tenant (its own settings, then deployment defaults).
 #[async_trait]
@@ -29,7 +35,43 @@ pub trait SenderFactory: Send + Sync {
     -> AppResult<Option<Arc<dyn SmsSender>>>;
 }
 
-pub struct DefaultSenderFactory;
+/// Builds senders from each tenant's settings (else the deployment's SMTP
+/// defaults) and keeps them, so an SMTP sender's connection pool outlives
+/// one message. A sender is keyed by a fingerprint of the configuration it
+/// was built from: a changed configuration gets a new sender, and the old
+/// one ages out unused.
+pub struct DefaultSenderFactory {
+    email: moka::sync::Cache<(Uuid, u64), Arc<dyn EmailSender>>,
+    sms: moka::sync::Cache<(Uuid, u64), Arc<dyn SmsSender>>,
+}
+
+/// How long an unused sender (and its pooled connections) is kept.
+const SENDER_IDLE: Duration = Duration::from_secs(600);
+/// Senders kept per kind; one per tenant with its own configuration.
+const SENDERS_KEPT: u64 = 10_000;
+
+impl Default for DefaultSenderFactory {
+    fn default() -> Self {
+        Self {
+            email: moka::sync::Cache::builder()
+                .max_capacity(SENDERS_KEPT)
+                .time_to_idle(SENDER_IDLE)
+                .build(),
+            sms: moka::sync::Cache::builder()
+                .max_capacity(SENDERS_KEPT)
+                .time_to_idle(SENDER_IDLE)
+                .build(),
+        }
+    }
+}
+
+/// A stable fingerprint of a configuration (it never leaves the process).
+fn fingerprint(cfg: &impl serde::Serialize) -> u64 {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    serde_json::to_vec(cfg).unwrap_or_default().hash(&mut h);
+    h.finish()
+}
 
 #[async_trait]
 impl SenderFactory for DefaultSenderFactory {
@@ -42,28 +84,47 @@ impl SenderFactory for DefaultSenderFactory {
             provider_settings::get::<EmailProviderConfig>(state, tenant_id, ProviderKind::Smtp)
                 .await?
         {
-            return Ok(Some(match &*cfg {
+            let key = (tenant_id, fingerprint(&*cfg));
+            if let Some(sender) = self.email.get(&key) {
+                return Ok(Some(sender));
+            }
+            let sender: Arc<dyn EmailSender> = match &*cfg {
                 EmailProviderConfig::Smtp(smtp) => Arc::new(SmtpEmailSender::for_tenant(smtp)?),
                 EmailProviderConfig::Http {
                     url,
                     auth_header,
                     from,
-                } => Arc::new(HttpEmailSender::new(url, auth_header.clone(), from)),
-            }));
+                } => Arc::new(HttpEmailSender::new(
+                    url,
+                    auth_header.clone(),
+                    from,
+                    state.outbound.clone(),
+                )),
+            };
+            self.email.insert(key, sender.clone());
+            return Ok(Some(sender));
         }
-        Ok(state.config.smtp.as_ref().map(|d| {
-            Arc::new(
-                SmtpEmailSender::new(&SmtpConfig {
-                    host: d.host.clone(),
-                    port: d.port,
-                    username: d.username.clone(),
-                    password: d.password.as_ref().map(|p| p.expose().to_string()),
-                    from: d.from.clone(),
-                    security: d.security.clone(),
-                })
-                .expect("smtp defaults validated at startup"),
-            ) as Arc<dyn EmailSender>
-        }))
+        let Some(defaults) = state.config.smtp.as_ref() else {
+            return Ok(None);
+        };
+        // The deployment's own server: one sender (one pool) for every tenant.
+        let key = (Uuid::nil(), 0);
+        if let Some(sender) = self.email.get(&key) {
+            return Ok(Some(sender));
+        }
+        let sender: Arc<dyn EmailSender> = Arc::new(
+            SmtpEmailSender::new(&SmtpConfig {
+                host: defaults.host.clone(),
+                port: defaults.port,
+                username: defaults.username.clone(),
+                password: defaults.password.as_ref().map(|p| p.expose().to_string()),
+                from: defaults.from.clone(),
+                security: defaults.security.clone(),
+            })
+            .map_err(|e| crate::error::AppError::Internal(format!("smtp defaults: {e}")))?,
+        );
+        self.email.insert(key, sender.clone());
+        Ok(Some(sender))
     }
 
     async fn sms(
@@ -71,11 +132,20 @@ impl SenderFactory for DefaultSenderFactory {
         state: &AppState,
         tenant_id: Uuid,
     ) -> AppResult<Option<Arc<dyn SmsSender>>> {
-        Ok(
+        let Some(cfg) =
             provider_settings::get::<SmsProviderConfig>(state, tenant_id, ProviderKind::Sms)
                 .await?
-                .map(|cfg| Arc::new(WebhookSmsSender::new(&cfg)) as Arc<dyn SmsSender>),
-        )
+        else {
+            return Ok(None);
+        };
+        let key = (tenant_id, fingerprint(&*cfg));
+        if let Some(sender) = self.sms.get(&key) {
+            return Ok(Some(sender));
+        }
+        let sender: Arc<dyn SmsSender> =
+            Arc::new(WebhookSmsSender::new(&cfg, state.outbound.clone()));
+        self.sms.insert(key, sender.clone());
+        Ok(Some(sender))
     }
 }
 
@@ -90,6 +160,11 @@ pub struct SmtpEmailSender {
     /// resolved under the outbound policy before every connection
     /// ([`crate::util::outbound::resolve_public`]).
     public_only: bool,
+    /// The transport (and its connection pool) last used, with the address
+    /// it connects to. A tenant's host is resolved again for every message;
+    /// while it resolves to the same address, the pooled connections are
+    /// reused, and a new address gets a new transport.
+    pooled: std::sync::Mutex<Option<(String, AsyncSmtpTransport<Tokio1Executor>)>>,
 }
 
 impl SmtpEmailSender {
@@ -117,12 +192,29 @@ impl SmtpEmailSender {
             cfg: cfg.clone(),
             from,
             public_only,
+            pooled: std::sync::Mutex::new(None),
         };
         // Validates the TLS parameters up front.
         sender
             .transport(&cfg.host)
             .map_err(|e| crate::error::AppError::BadRequest(format!("smtp: {e}")))?;
         Ok(sender)
+    }
+
+    /// The pooled transport to `address`, built on first use.
+    fn transport_to(
+        &self,
+        address: &str,
+    ) -> Result<AsyncSmtpTransport<Tokio1Executor>, lettre::transport::smtp::Error> {
+        let mut slot = self.pooled.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((pooled_address, transport)) = slot.as_ref()
+            && pooled_address == address
+        {
+            return Ok(transport.clone());
+        }
+        let transport = self.transport(address)?;
+        *slot = Some((address.to_string(), transport.clone()));
+        Ok(transport)
     }
 
     /// A transport that connects to `address` (the configured host, or the
@@ -141,7 +233,12 @@ impl SmtpEmailSender {
         let mut builder = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(address)
             .port(cfg.port)
             .tls(tls)
-            .timeout(Some(Duration::from_secs(15)));
+            .timeout(Some(Duration::from_secs(15)))
+            .pool_config(
+                PoolConfig::new()
+                    .max_size(SMTP_POOL_SIZE)
+                    .idle_timeout(Duration::from_secs(60)),
+            );
         if let (Some(u), Some(p)) = (&cfg.username, &cfg.password) {
             builder = builder.credentials(Credentials::new(u.clone(), p.clone()));
         }
@@ -201,7 +298,7 @@ impl EmailSender for SmtpEmailSender {
             self.cfg.host.clone()
         };
         let transport = self
-            .transport(&address)
+            .transport_to(&address)
             .map_err(|e| ProviderError::Rejected(format!("smtp: {e}")))?;
         transport.send(email).await.map(|_| ()).map_err(|e| {
             if e.is_permanent() {
@@ -225,16 +322,12 @@ pub struct HttpEmailSender {
 }
 
 impl HttpEmailSender {
-    pub fn new(url: &str, auth_header: Option<String>, from: &str) -> Self {
+    pub fn new(url: &str, auth_header: Option<String>, from: &str, http: reqwest::Client) -> Self {
         Self {
             url: url.to_string(),
             auth_header,
             from: from.to_string(),
-            // A tenant chose this URL: public addresses only (SSRF).
-            http: crate::util::outbound::client_builder()
-                .timeout(Duration::from_secs(15))
-                .build()
-                .expect("reqwest"),
+            http,
         }
     }
 }
@@ -256,7 +349,13 @@ impl EmailSender for HttpEmailSender {
             "headers": message.headers,
         });
         crate::util::outbound::check_url(&self.url).map_err(ProviderError::Rejected)?;
-        let mut req = self.http.post(&self.url).json(&body);
+        // A tenant chose this URL: the shared outbound client reaches public
+        // addresses only (SSRF).
+        let mut req = self
+            .http
+            .post(&self.url)
+            .timeout(HTTP_SEND_TIMEOUT)
+            .json(&body);
         if let Some(h) = &self.auth_header {
             req = req.header("authorization", h);
         }
@@ -283,16 +382,12 @@ pub struct WebhookSmsSender {
 }
 
 impl WebhookSmsSender {
-    pub fn new(cfg: &SmsProviderConfig) -> Self {
+    pub fn new(cfg: &SmsProviderConfig, http: reqwest::Client) -> Self {
         Self {
             url: cfg.url.clone(),
             auth_header: cfg.auth_header.clone(),
             from: cfg.from.clone(),
-            // A tenant chose this URL: public addresses only (SSRF).
-            http: crate::util::outbound::client_builder()
-                .timeout(Duration::from_secs(15))
-                .build()
-                .expect("reqwest"),
+            http,
         }
     }
 }
@@ -306,7 +401,13 @@ impl SmsSender for WebhookSmsSender {
     async fn send(&self, message: &SmsMessage) -> Result<(), ProviderError> {
         let body = serde_json::json!({"to": message.to, "body": message.body, "from": self.from});
         crate::util::outbound::check_url(&self.url).map_err(ProviderError::Rejected)?;
-        let mut req = self.http.post(&self.url).json(&body);
+        // A tenant chose this URL: the shared outbound client reaches public
+        // addresses only (SSRF).
+        let mut req = self
+            .http
+            .post(&self.url)
+            .timeout(HTTP_SEND_TIMEOUT)
+            .json(&body);
         if let Some(h) = &self.auth_header {
             req = req.header("authorization", h);
         }

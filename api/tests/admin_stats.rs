@@ -16,7 +16,6 @@ use ridm_api::services::admin_access::{ADMIN_ROLE, VIEWER_ROLE};
 use ridm_api::services::sessions::{self, NewSession};
 use ridm_api::services::{clients, tenants};
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
-use serde_json::Value;
 
 #[tokio::test]
 async fn stats_reflect_attempts_sessions_and_authorizations() {
@@ -47,6 +46,7 @@ async fn stats_reflect_attempts_sessions_and_authorizations() {
             acr: None,
             ip: None,
             user_agent: None,
+            device_id: None,
             policy: &tenant.settings.session,
         },
     )
@@ -79,24 +79,37 @@ async fn stats_reflect_attempts_sessions_and_authorizations() {
         ));
     }
 
-    // The audit writer records asynchronously; wait for the authorizations.
-    let mut body = Value::Null;
-    for _ in 0..100 {
-        let (status, b, _) = call(
-            &app,
-            Method::GET,
-            &format!("/admin/tenants/{slug}/stats?days=7"),
-            Some(&t),
-            None,
+    // The audit writer records asynchronously: wait for both authorizations
+    // to be written, then ask once (the dashboard is cached for a minute, so
+    // an answer taken before they land would be the one served).
+    for i in 0.. {
+        let mut tx = db::bypass_tx(app.state.db.home()).await.unwrap();
+        let n: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND name = 'authorization.granted'",
         )
-        .await;
-        assert_eq!(status, StatusCode::OK, "{b}");
-        body = b;
-        if body["top_clients"][0]["authorizations"] == 2 {
+        .bind(tid)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        if n == 2 {
             break;
         }
+        assert!(
+            i < 200,
+            "the audit writer did not record the authorizations"
+        );
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
+    let (status, body, _) = call(
+        &app,
+        Method::GET,
+        &format!("/admin/tenants/{slug}/stats?days=7"),
+        Some(&t),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["window_days"], 7);
     assert_eq!(body["days"].as_array().unwrap().len(), 7);
     assert_eq!(body["logins_total"], 2, "{body}");

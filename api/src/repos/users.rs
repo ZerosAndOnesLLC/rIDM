@@ -78,6 +78,41 @@ pub async fn find_by_identifier<'e>(
     qb.build_query_as::<User>().fetch_optional(exec).await
 }
 
+/// Which of `ids` are live, active users.
+pub async fn active_among<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    ids: &[Uuid],
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT id FROM users WHERE tenant_id = $1 AND id = ANY($2) \
+         AND status = 'active' AND deleted_at IS NULL",
+    )
+    .bind(tenant_id)
+    .bind(ids)
+    .fetch_all(exec)
+    .await
+}
+
+/// Which of `identifiers` live users have as a username or an email.
+pub async fn taken_identifiers<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    identifiers: &[String],
+) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT username FROM users \
+          WHERE tenant_id = $1 AND deleted_at IS NULL AND username = ANY($2) \
+         UNION \
+         SELECT email FROM users \
+          WHERE tenant_id = $1 AND deleted_at IS NULL AND email = ANY($2)",
+    )
+    .bind(tenant_id)
+    .bind(identifiers)
+    .fetch_all(exec)
+    .await
+}
+
 pub async fn insert<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
@@ -199,20 +234,50 @@ pub async fn soft_delete<'e>(
     Ok(res.rows_affected() > 0)
 }
 
-/// Remove soft-deleted rows older than `before`; attached rows cascade.
-pub async fn purge_deleted<'e>(
+/// Up to `limit` soft-deleted users deleted before `before`, in id order
+/// after `after` (a keyset cursor, so a row that cannot be purged is passed
+/// over rather than fetched again).
+pub async fn deleted_before<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
     before: DateTime<Utc>,
+    after: Option<Uuid>,
+    limit: i64,
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("SELECT id FROM users WHERE tenant_id = ");
+    qb.push_bind(tenant_id)
+        .push(" AND deleted_at IS NOT NULL AND deleted_at < ")
+        .push_bind(before);
+    if let Some(after) = after {
+        qb.push(" AND id > ").push_bind(after);
+    }
+    qb.push(" ORDER BY id LIMIT ").push_bind(limit);
+    qb.build_query_scalar().fetch_all(exec).await
+}
+
+/// Remove these soft-deleted users for good; attached rows cascade.
+pub async fn purge_ids<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    ids: &[Uuid],
 ) -> Result<u64, sqlx::Error> {
     let res = sqlx::query(
-        "DELETE FROM users WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND deleted_at < $2",
+        "DELETE FROM users WHERE tenant_id = $1 AND id = ANY($2) AND deleted_at IS NOT NULL",
     )
     .bind(tenant_id)
-    .bind(before)
+    .bind(ids)
     .execute(exec)
     .await?;
     Ok(res.rows_affected())
+}
+
+/// Tenants with at least one soft-deleted user, across tenants (bypass
+/// transaction): the daily purge visits only these. Reads the partial
+/// `users_tenant_deleted_idx`, which holds deleted users only.
+pub async fn tenants_with_deleted<'e>(exec: impl PgExecutor<'e>) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar("SELECT DISTINCT tenant_id FROM users WHERE deleted_at IS NOT NULL")
+        .fetch_all(exec)
+        .await
 }
 
 pub async fn hard_delete<'e>(
@@ -254,20 +319,40 @@ pub async fn set_password<'e>(
     Ok(res.rows_affected() > 0)
 }
 
+/// A live user's stored password hash, locking the row for the transaction;
+/// `None` when the user is gone (`Some(None)`: no password).
+pub async fn password_hash_for_update<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    id: Uuid,
+) -> Result<Option<Option<String>>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT password_hash FROM users WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL \
+         FOR UPDATE",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .fetch_optional(exec)
+    .await
+}
+
+/// Record a successful sign-in; returns the row as it now is, so the caller
+/// can cache it rather than read it again.
 pub async fn record_login_success<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
     id: Uuid,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(
+) -> Result<Option<User>, sqlx::Error> {
+    let mut qb = QueryBuilder::new(
         "UPDATE users SET last_login_at = now(), failed_attempts = 0, locked_until = NULL \
-         WHERE tenant_id = $1 AND id = $2",
-    )
-    .bind(tenant_id)
-    .bind(id)
-    .execute(exec)
-    .await?;
-    Ok(())
+         WHERE tenant_id = ",
+    );
+    qb.push_bind(tenant_id)
+        .push(" AND id = ")
+        .push_bind(id)
+        .push(" RETURNING ")
+        .push(COLUMNS);
+    qb.build_query_as::<User>().fetch_optional(exec).await
 }
 
 /// Increment the failure counter and lock when `lock_after` is reached.
@@ -308,6 +393,25 @@ pub async fn unlock<'e>(
     .execute(exec)
     .await?;
     Ok(res.rows_affected() > 0)
+}
+
+/// Live users `offset` rows into creation order, at most `limit` of them:
+/// SCIM's `startIndex` paging, whose offset is capped (`scim::SCAN_LIMIT`).
+pub async fn window<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    offset: i64,
+    limit: i64,
+) -> Result<Vec<User>, sqlx::Error> {
+    let mut qb = QueryBuilder::new("SELECT ");
+    qb.push(COLUMNS)
+        .push(" FROM users WHERE tenant_id = ")
+        .push_bind(tenant_id)
+        .push(" AND deleted_at IS NULL ORDER BY created_at, id OFFSET ")
+        .push_bind(offset)
+        .push(" LIMIT ")
+        .push_bind(limit);
+    qb.build_query_as::<User>().fetch_all(exec).await
 }
 
 /// Keyset-paginated list; fetches `limit + 1` rows.

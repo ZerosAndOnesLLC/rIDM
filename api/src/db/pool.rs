@@ -75,7 +75,7 @@ async fn connect_url(
     let pool = PgPoolOptions::new()
         .min_connections(config.db_pool_min)
         .max_connections(config.db_pool_max)
-        .acquire_timeout(Duration::from_secs(5))
+        .acquire_timeout(Duration::from_millis(config.db_acquire_timeout_ms))
         .idle_timeout(Duration::from_secs(600))
         .max_lifetime(Duration::from_secs(1800));
     if lazy {

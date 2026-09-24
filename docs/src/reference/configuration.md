@@ -37,7 +37,8 @@ Conventions used below:
 |----------|------|---------|---------|
 | `DATABASE_READ_URL` | Postgres URL | unset | A read replica for listings and statistics, run in read-only transactions. Anything that feeds a decision stays on the primary. Unset, the primary serves both. |
 | `DB_POOL_MIN` | integer | `2` | Minimum Postgres connections per node. Must not exceed `DB_POOL_MAX`. |
-| `DB_POOL_MAX` | integer | `20` | Maximum Postgres connections per node. Roughly twice the database server's CPU count divided by the number of API nodes. |
+| `DB_POOL_MAX` | integer | `20` | Maximum Postgres connections per node. Roughly twice the database server's CPU count divided by the number of API nodes; every node's pools together must stay under the server's `max_connections`. |
+| `DB_ACQUIRE_TIMEOUT_MS` | integer ≥ 1 | `2000` | How long a request waits for a free pooled connection before failing with `503`. An overloaded pool fails fast instead of queueing requests for seconds; raise `DB_POOL_MAX` (or add nodes) if it happens under normal load. |
 | `REDIS_POOL_MAX` | integer | `32` | Valkey connections per node (at least 1). |
 | `DATA_REGIONS` | region list | unset | Regional databases tenants can be placed in, comma-separated names (1-32 lowercase letters, digits or hyphens, starting with a letter; `home` is the `DATABASE_URL` database). Each region `<name>` needs `DATABASE_URL_<NAME>` (upper case, `-` as `_`: `eu-west` → `DATABASE_URL_EU_WEST`) and may set `DATABASE_READ_URL_<NAME>` and `REDIS_URL_<NAME>`; all three also have a `*_FILE` form. Every node must list the same regions. See [Data residency](../deploy/data-residency.md). |
 
@@ -137,7 +138,8 @@ See [Observability](../deploy/observability.md) for the metric names and the aud
 
 | Variable | Type | Default | Meaning |
 |----------|------|---------|---------|
-| `RETENTION_DAYS` | integer ≥ 1 | `30` | Days the hourly `cleanup` job keeps spent rows: expired, revoked or consumed refresh tokens, ended sessions (at most a week), login attempts, sent or dead messages, delivered or dead webhook deliveries, expired or used invitations, expired or revoked trusted devices, personal access tokens and provisioning tokens. |
+| `RETENTION_DAYS` | integer ≥ 1 | `30` | Days the hourly `cleanup` job keeps spent rows: expired, revoked or consumed refresh tokens, ended sessions (expired, idle past their idle timeout, or revoked; at most a week), login attempts, sent or dead messages, delivered or dead webhook deliveries, expired or used invitations, expired or revoked trusted devices, personal access tokens and provisioning tokens. |
+| `EVENT_QUEUE_CAPACITY` | integer ≥ 1000 | `100000` | Events each in-process consumer (the audit writer, the webhook dispatcher) may have waiting on a node. `/readyz` reports `events: saturated` once a queue is 80% full, so a load balancer stops sending the node traffic while it catches up; an event published into a full queue is dropped, logged and counted (`ridm_event_queue_dropped_total`). Each queued event holds roughly a kilobyte. |
 
 Audit retention is per tenant (`settings.audit.retention_days`), not governed by this variable.
 

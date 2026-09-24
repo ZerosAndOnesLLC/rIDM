@@ -149,10 +149,17 @@ async fn repo_reads_from_another_tenant_are_empty() {
             .is_empty()
     );
     assert!(
-        repos::groups::members(&mut *c, f.a, f.group)
-            .await
-            .unwrap()
-            .is_empty()
+        repos::memberships::page(
+            &mut *c,
+            f.a,
+            repos::memberships::Of::Group(f.group),
+            None,
+            None,
+            50
+        )
+        .await
+        .unwrap()
+        .is_empty()
     );
     assert!(
         repos::groups::direct_groups_of_user(&mut *c, f.a, f.user)
@@ -336,9 +343,10 @@ async fn repo_writes_from_another_tenant_affect_nothing() {
         "r"
     );
     assert_eq!(
-        groups::members(&f.app.state, f.a, f.group)
+        groups::members(&f.app.state, f.a, f.group, None, None, None)
             .await
             .unwrap()
+            .items
             .len(),
         1
     );
@@ -362,7 +370,9 @@ async fn service_layer_returns_not_found_across_tenants() {
     nf(users::unlock(s, f.b, Actor::System, f.user).await);
     nf(groups::get(s, f.b, f.group).await.map(drop));
     nf(groups::delete(s, f.b, Actor::System, f.group).await);
-    nf(groups::members(s, f.b, f.group).await.map(drop));
+    nf(groups::members(s, f.b, f.group, None, None, None)
+        .await
+        .map(drop));
     nf(groups::add_member(s, f.b, Actor::System, f.group, f.user).await);
     nf(roles::get(s, f.b, f.role).await.map(drop));
     nf(roles::delete(s, f.b, Actor::System, f.role).await);

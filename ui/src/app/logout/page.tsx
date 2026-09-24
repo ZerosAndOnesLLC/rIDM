@@ -74,6 +74,7 @@ function LogoutPage() {
         <>
           <Title>{t("logout.title")}</Title>
           <Alert tone="ok">{t("logout.done")}</Alert>
+          <p className="text-[0.875rem] text-muted">{t("logout.done_apps")}</p>
         </>
       ) : cancelled ? (
         <>

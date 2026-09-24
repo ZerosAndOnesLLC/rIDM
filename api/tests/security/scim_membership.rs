@@ -54,10 +54,9 @@ async fn group(app: &TestApp, name: &str, parent_id: Option<Uuid>) -> Uuid {
 }
 
 async fn member_count(app: &TestApp, group_id: Uuid) -> usize {
-    groups::members(&app.state, app.tenant.id, group_id)
+    groups::member_count(&app.state, app.tenant.id, group_id)
         .await
-        .unwrap()
-        .len()
+        .unwrap() as usize
 }
 
 #[tokio::test]

@@ -5,7 +5,8 @@
 //! delivery carries `X-RIDM-Signature: t=<unix>,v1=<hex HMAC-SHA256(secret,
 //! "<t>.<body>")>`; a dead letter raises `webhook.delivery_dead`.
 
-use std::sync::LazyLock;
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration as StdDuration;
 
 use futures::StreamExt as _;
@@ -41,16 +42,6 @@ const CONCURRENCY: usize = 8;
 const PROMPT_BATCH: i64 = 50;
 /// Lock that keeps one prompt pass per tenant in flight at a time.
 const PROMPT_LOCK_SECS: u64 = 15;
-
-/// One connection pool for every delivery. Names resolve to public
-/// addresses only, checked at connect time (see [`outbound`]).
-static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
-    outbound::client_builder()
-        .timeout(REQUEST_TIMEOUT)
-        .user_agent("rIDM-Webhooks/1")
-        .build()
-        .expect("reqwest client")
-});
 
 fn aad(tenant_id: Uuid, id: Uuid) -> Vec<u8> {
     format!("webhooks:{tenant_id}:{id}").into_bytes()
@@ -201,8 +192,9 @@ pub async fn list(state: &AppState, tenant_id: Uuid) -> AppResult<Vec<Webhook>> 
     Ok(rows)
 }
 
-/// Enabled webhooks of a tenant, cached briefly for the dispatcher.
-async fn enabled_cached(state: &AppState, tenant_id: Uuid) -> AppResult<Vec<Webhook>> {
+/// Enabled webhooks of a tenant, cached briefly for the dispatcher and the
+/// delivery pass (every write evicts it).
+async fn enabled_cached(state: &AppState, tenant_id: Uuid) -> AppResult<Arc<Vec<Webhook>>> {
     let db = state.db.clone();
     let rows = state
         .cache
@@ -219,7 +211,7 @@ async fn enabled_cached(state: &AppState, tenant_id: Uuid) -> AppResult<Vec<Webh
             },
         )
         .await?;
-    Ok(rows.map(|r| r.as_ref().clone()).unwrap_or_default())
+    Ok(rows.unwrap_or_default())
 }
 
 pub async fn get(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<Webhook> {
@@ -388,51 +380,59 @@ pub async fn rotate_secret(
 // --- dispatch ----------------------------------------------------------------
 
 /// Queue a delivery of `event` to every enabled webhook of its tenant that
-/// wants it. Global events (no tenant) are not delivered.
+/// wants it, and send them now. Global events (no tenant) are not delivered.
 pub async fn dispatch(state: &AppState, event: &Event) -> AppResult<usize> {
     let Some(tenant_id) = event.tenant_id else {
         return Ok(0);
     };
-    let name = event.name();
-    // A dead letter's own event never becomes a delivery: a failing endpoint
-    // would otherwise breed one new delivery per death, forever.
-    if name == "webhook.delivery_dead" {
+    dispatch_many(state, tenant_id, &[event]).await
+}
+
+/// [`dispatch`] for several events of one tenant: one transaction and one
+/// insert for all their deliveries, then one prompt pass.
+async fn dispatch_many(state: &AppState, tenant_id: Uuid, events: &[&Event]) -> AppResult<usize> {
+    let hooks = enabled_cached(state, tenant_id).await?;
+    if hooks.is_empty() {
         return Ok(0);
     }
-    // Deliveries of our own configuration changes would loop on themselves only
-    // in the sense of noise; they are still events and are delivered.
-    let targets: Vec<Webhook> = enabled_cached(state, tenant_id)
-        .await?
-        .into_iter()
-        .filter(|w| w.wants(name))
-        .collect();
-    if targets.is_empty() {
+    let mut rows = vec![];
+    for event in events {
+        let name = event.name();
+        // A dead letter's own event never becomes a delivery: a failing
+        // endpoint would otherwise breed one new delivery per death, forever.
+        if name == "webhook.delivery_dead" {
+            continue;
+        }
+        let targets: Vec<&Webhook> = hooks.iter().filter(|w| w.wants(name)).collect();
+        if targets.is_empty() {
+            continue;
+        }
+        let payload = serde_json::to_value(event)?;
+        for w in targets {
+            rows.push(repos::webhooks::NewDelivery {
+                id: Uuid::now_v7(),
+                webhook_id: w.id,
+                event_id: event.id,
+                event_name: name,
+                payload: payload.clone(),
+                max_attempts: w.max_attempts,
+            });
+        }
+    }
+    if rows.is_empty() {
         return Ok(0);
     }
-    let payload = serde_json::to_value(event)?;
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    for w in &targets {
-        repos::webhooks::enqueue(
-            &mut *tx,
-            tenant_id,
-            Uuid::now_v7(),
-            w.id,
-            event.id,
-            name,
-            &payload,
-            w.max_attempts,
-        )
-        .await?;
-    }
+    repos::webhooks::enqueue_many(&mut tx, tenant_id, &rows).await?;
     tx.commit().await?;
     // Send now rather than at the job's next tick; retries stay with the job.
     let prompt = state.clone();
-    tokio::spawn(async move {
+    state.background.spawn(async move {
         if let Err(err) = deliver_promptly(&prompt, tenant_id).await {
             tracing::warn!(%tenant_id, error = %err, "prompt webhook delivery failed");
         }
     });
-    Ok(targets.len())
+    Ok(rows.len())
 }
 
 /// One prompt delivery pass per tenant at a time (a short Valkey lock);
@@ -453,30 +453,62 @@ async fn deliver_promptly(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
     }
     // Rows the current pass may have committed after this one's claim are
     // few; drain until a pass finds nothing so none waits for the job.
-    loop {
-        let (delivered, failed) = deliver_due(state, tenant_id, PROMPT_BATCH).await?;
-        if delivered + failed == 0 {
-            break;
+    let drained = async {
+        loop {
+            let (delivered, failed) = deliver_due(state, tenant_id, PROMPT_BATCH).await?;
+            if delivered + failed == 0 {
+                return Ok::<(), AppError>(());
+            }
         }
     }
+    .await;
+    // Released however the pass ended, so the next event's pass need not
+    // wait out the lock.
     if let Err(e) = conn.del::<_, ()>(&key).await {
         // The lock expires on its own after PROMPT_LOCK_SECS.
         tracing::warn!(error = %e, "webhooks: could not release the prompt-delivery lock");
     }
-    Ok(())
+    drained
 }
 
-/// Subscribe to the event bus and queue deliveries; the delivery job sends
-/// them. The subscription is durable, so a burst delays deliveries rather
-/// than skipping them.
+/// Events the dispatcher takes off its queue at a time.
+const DISPATCH_BATCH: usize = 256;
+/// Tenants whose deliveries are queued at the same time within a batch.
+const DISPATCH_CONCURRENCY: usize = 8;
+
+/// Subscribe to the event bus and queue deliveries, sending them at once;
+/// the delivery job retries what fails. The subscription is durable, so a
+/// burst delays deliveries rather than skipping them. Whatever has queued up
+/// is taken together and queued with one insert per tenant, several tenants
+/// at a time.
 pub fn spawn_dispatcher(state: AppState) -> tokio::task::JoinHandle<()> {
-    let mut rx = state.events.subscribe_durable();
+    let mut rx = state.events.subscribe_durable("webhooks");
     tokio::spawn(async move {
-        while let Some(envelope) = rx.recv().await {
+        let mut batch = Vec::with_capacity(DISPATCH_BATCH);
+        while rx.recv_many(&mut batch, DISPATCH_BATCH).await > 0 {
+            let _busy = state.background.busy();
             metrics::gauge!("ridm_webhook_dispatch_queue_depth").set(rx.len() as f64);
-            if let Err(err) = dispatch(&state, &envelope.event).await {
-                tracing::error!(event = envelope.event.name(), error = %err, "webhook dispatch failed");
+            let mut tenants: Vec<(Uuid, Vec<Arc<Event>>)> = vec![];
+            for envelope in batch.drain(..) {
+                let Some(tenant_id) = envelope.event.tenant_id else {
+                    continue;
+                };
+                match tenants.iter_mut().find(|(t, _)| *t == tenant_id) {
+                    Some((_, list)) => list.push(envelope.event),
+                    None => tenants.push((tenant_id, vec![envelope.event])),
+                }
             }
+            futures::stream::iter(tenants)
+                .for_each_concurrent(DISPATCH_CONCURRENCY, |(tenant_id, list)| {
+                    let state = &state;
+                    async move {
+                        let refs: Vec<&Event> = list.iter().map(|e| &**e).collect();
+                        if let Err(err) = dispatch_many(state, tenant_id, &refs).await {
+                            tracing::error!(%tenant_id, events = list.len(), error = %err, "webhook dispatch failed");
+                        }
+                    }
+                })
+                .await;
         }
     })
 }
@@ -515,8 +547,12 @@ pub struct Attempt {
     pub retryable: bool,
 }
 
-async fn attempt(state: &AppState, w: &Webhook, delivery: &WebhookDelivery) -> AppResult<Attempt> {
-    let secret = decrypt_secret(state, w).await?;
+async fn attempt(
+    http: &reqwest::Client,
+    w: &Webhook,
+    secret: &str,
+    delivery: &WebhookDelivery,
+) -> AppResult<Attempt> {
     let body = serde_json::to_vec(&serde_json::json!({
         "delivery_id": delivery.id,
         "attempt": delivery.attempts + 1,
@@ -533,14 +569,18 @@ async fn attempt(state: &AppState, w: &Webhook, delivery: &WebhookDelivery) -> A
         });
     }
     let ts = Utc::now().timestamp();
-    let mut req = HTTP
+    // The shared outbound client: one connection pool for every delivery,
+    // names resolving to public addresses only (see [`outbound`]).
+    let mut req = http
         .post(&w.url)
+        .timeout(REQUEST_TIMEOUT)
+        .header("user-agent", "rIDM-Webhooks/1")
         .header("content-type", "application/json")
         .header("x-ridm-event", &delivery.event_name)
         .header("x-ridm-timestamp", ts.to_string())
         .header("x-ridm-delivery", delivery.id.to_string())
         .header("x-ridm-webhook", w.id.to_string())
-        .header("x-ridm-signature", sign(&secret, ts, &body));
+        .header("x-ridm-signature", sign(secret, ts, &body));
     if let Some(h) = w.headers.as_object() {
         for (k, v) in h {
             if let Some(s) = v.as_str() {
@@ -582,19 +622,55 @@ async fn attempt(state: &AppState, w: &Webhook, delivery: &WebhookDelivery) -> A
     })
 }
 
+/// What one delivery pass sends with: each webhook the claimed rows point
+/// at, with its secret decrypted once for the pass (`None`: disabled).
+type Targets = HashMap<Uuid, Option<(Webhook, Zeroizing<String>)>>;
+
+/// The webhooks `claimed` goes to, read in the claim's transaction (the
+/// cached list carries no secrets), each secret decrypted once. A webhook
+/// deleted under the queue is absent (its deliveries went with it).
+async fn targets_of(
+    state: &AppState,
+    tx: &mut sqlx::PgConnection,
+    tenant_id: Uuid,
+    claimed: &[WebhookDelivery],
+) -> AppResult<Targets> {
+    let mut ids: Vec<Uuid> = claimed.iter().map(|d| d.webhook_id).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    let mut targets = Targets::new();
+    for w in repos::webhooks::find_many(&mut *tx, tenant_id, &ids).await? {
+        let id = w.id;
+        let target = if w.enabled {
+            let secret = decrypt_secret(state, &w).await?;
+            Some((w, secret))
+        } else {
+            None
+        };
+        targets.insert(id, target);
+    }
+    Ok(targets)
+}
+
 /// Deliver due deliveries of one tenant, several at a time. Returns
 /// (delivered, failed); a failure that is dead raises `webhook.delivery_dead`.
+/// Rows a crashed node left in `sending` are the delivery job's to requeue.
 pub async fn deliver_due(
     state: &AppState,
     tenant_id: Uuid,
     limit: i64,
 ) -> AppResult<(usize, usize)> {
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    repos::webhooks::requeue_stale(&mut *tx, tenant_id, Utc::now() - Duration::minutes(10)).await?;
     let claimed = repos::webhooks::claim_due(&mut *tx, tenant_id, limit).await?;
+    if claimed.is_empty() {
+        tx.commit().await?;
+        return Ok((0, 0));
+    }
+    let targets = targets_of(state, &mut tx, tenant_id, &claimed).await?;
     tx.commit().await?;
+    let targets = &targets;
     let outcomes: Vec<AppResult<bool>> = futures::stream::iter(claimed)
-        .map(|d| deliver_one(state, tenant_id, d))
+        .map(|d| deliver_one(state, tenant_id, targets, d))
         .buffer_unordered(CONCURRENCY)
         .collect()
         .await;
@@ -610,18 +686,22 @@ pub async fn deliver_due(
 }
 
 /// One claimed delivery: attempt, record, dead-letter. `Ok(true)` when delivered.
-async fn deliver_one(state: &AppState, tenant_id: Uuid, d: WebhookDelivery) -> AppResult<bool> {
-    let webhook = get(state, tenant_id, d.webhook_id).await;
-    let outcome = match &webhook {
-        Ok(w) if w.enabled => attempt(state, w, &d).await?,
-        Ok(_) => Attempt {
+async fn deliver_one(
+    state: &AppState,
+    tenant_id: Uuid,
+    targets: &Targets,
+    d: WebhookDelivery,
+) -> AppResult<bool> {
+    let outcome = match targets.get(&d.webhook_id) {
+        Some(Some((w, secret))) => attempt(&state.outbound, w, secret, &d).await?,
+        Some(None) => Attempt {
             status: None,
             snippet: None,
             error: Some("webhook is disabled".into()),
             retryable: false,
         },
-        // The webhook vanished under the queue (cascade takes the rows too).
-        Err(_) => return Ok(false),
+        // Deleted under the queue: the cascade took its rows too.
+        None => return Ok(false),
     };
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let result = match outcome.error {
@@ -683,9 +763,31 @@ pub async fn redeliver_dead(state: &AppState, tenant_id: Uuid, webhook_id: Uuid)
     let n = repos::webhooks::requeue_dead(&mut *tx, tenant_id, webhook_id).await?;
     tx.commit().await?;
     if n > 0 {
-        deliver_due(state, tenant_id, i64::try_from(n).unwrap_or(i64::MAX)).await?;
+        // Possibly many: sent in the background, like any new delivery.
+        let prompt = state.clone();
+        state.background.spawn(async move {
+            if let Err(err) = deliver_promptly(&prompt, tenant_id).await {
+                tracing::warn!(%tenant_id, error = %err, "redelivery of dead deliveries failed");
+            }
+        });
     }
     Ok(n)
+}
+
+/// Send one queued delivery now and wait for the attempt (the console's
+/// test and redeliver buttons show its outcome). Nothing else of the
+/// tenant's queue is sent along with it.
+async fn deliver_now(state: &AppState, tenant_id: Uuid, id: Uuid) -> AppResult<()> {
+    let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
+    let Some(d) = repos::webhooks::claim_one(&mut *tx, tenant_id, id).await? else {
+        // Taken by a delivery pass in the meantime.
+        tx.commit().await?;
+        return Ok(());
+    };
+    let targets = targets_of(state, &mut tx, tenant_id, std::slice::from_ref(&d)).await?;
+    tx.commit().await?;
+    deliver_one(state, tenant_id, &targets, d).await?;
+    Ok(())
 }
 
 pub async fn list_deliveries(
@@ -737,7 +839,7 @@ pub async fn redeliver(
             "only delivered, failed or dead deliveries can be redelivered".into(),
         ));
     }
-    deliver_due(state, tenant_id, 50).await?;
+    deliver_now(state, tenant_id, id).await?;
     get_delivery(state, tenant_id, webhook_id, id).await
 }
 
@@ -754,22 +856,24 @@ pub async fn test(
         actor,
         EventKind::WebhookTest { webhook_id: w.id },
     );
-    let payload = serde_json::to_value(&event)?;
+    let id = Uuid::now_v7();
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    let d = repos::webhooks::enqueue(
-        &mut *tx,
+    repos::webhooks::enqueue_many(
+        &mut tx,
         tenant_id,
-        Uuid::now_v7(),
-        w.id,
-        event.id,
-        event.name(),
-        &payload,
-        1,
+        &[repos::webhooks::NewDelivery {
+            id,
+            webhook_id: w.id,
+            event_id: event.id,
+            event_name: event.name(),
+            payload: serde_json::to_value(&event)?,
+            max_attempts: 1,
+        }],
     )
     .await?;
     tx.commit().await?;
-    deliver_due(state, tenant_id, 50).await?;
-    get_delivery(state, tenant_id, webhook_id, d.id).await
+    deliver_now(state, tenant_id, id).await?;
+    get_delivery(state, tenant_id, webhook_id, id).await
 }
 
 #[cfg(test)]

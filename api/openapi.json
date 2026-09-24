@@ -354,6 +354,82 @@
         ]
       }
     },
+    "/admin/download-tickets": {
+      "post": {
+        "tags": [
+          "downloads"
+        ],
+        "summary": "A single-use URL for one of the exports, so a browser can download it\nwith its own download manager (streamed to disk) instead of holding it in\nmemory. The caller must hold what the export itself requires.",
+        "operationId": "downloads_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewDownloadTicket"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/admin/master-key": {
       "get": {
         "tags": [
@@ -3753,6 +3829,33 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Only members whose username or email starts with this.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -3761,10 +3864,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/User"
-                  }
+                  "$ref": "#/components/schemas/Page_Member"
                 }
               }
             }
@@ -9899,6 +9999,33 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Only members whose username or email starts with this.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -9907,10 +10034,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/User"
-                  }
+                  "$ref": "#/components/schemas/Page_Member"
                 }
               }
             }
@@ -10353,6 +10477,24 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -10361,10 +10503,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/RoleAssignment"
-                  }
+                  "$ref": "#/components/schemas/Page_RoleHolder"
                 }
               }
             }
@@ -11976,6 +12115,24 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -11984,10 +12141,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/RoleAssignment"
-                  }
+                  "$ref": "#/components/schemas/Page_RoleHolder"
                 }
               }
             }
@@ -14631,7 +14785,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/Consent"
+                    "$ref": "#/components/schemas/ConsentWithClient"
                   }
                 }
               }
@@ -21832,6 +21986,49 @@
           }
         }
       },
+      "ConsentWithClient": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Consent"
+          },
+          {
+            "type": "object",
+            "required": [
+              "client_name",
+              "client"
+            ],
+            "properties": {
+              "client": {
+                "type": "string",
+                "description": "The client's public `client_id`."
+              },
+              "client_name": {
+                "type": "string",
+                "description": "The client's display name."
+              },
+              "logo_uri": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "policy_uri": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tos_uri": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "A consent with what listings show of its client."
+      },
       "ConsentedApp": {
         "type": "object",
         "description": "An application the user granted scopes to.",
@@ -22218,6 +22415,24 @@
             },
             "description": "`acct:user@<domain>` resources with one of these domains resolve to\nthis tenant's issuer.",
             "default": []
+          }
+        }
+      },
+      "DownloadTicket": {
+        "type": "object",
+        "required": [
+          "url",
+          "expires_in"
+        ],
+        "properties": {
+          "expires_in": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "url": {
+            "type": "string",
+            "description": "The export's URL with the ticket: one `GET` of it, without an\n`Authorization` header, within `expires_in` seconds."
           }
         }
       },
@@ -22643,7 +22858,7 @@
             "properties": {
               "member_count": {
                 "type": "integer",
-                "minimum": 0
+                "format": "int64"
               },
               "roles": {
                 "type": "array",
@@ -25003,6 +25218,26 @@
           }
         }
       },
+      "Member": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/User"
+          },
+          {
+            "type": "object",
+            "required": [
+              "joined_at"
+            ],
+            "properties": {
+              "joined_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        ],
+        "description": "A direct member of a group or organization: the user, and when they\njoined (the order member lists are paged in)."
+      },
       "MessageChannel": {
         "type": "string",
         "enum": [
@@ -25648,6 +25883,19 @@
               "null"
             ],
             "default": null
+          }
+        },
+        "additionalProperties": false
+      },
+      "NewDownloadTicket": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The export to download, as its path and query, e.g.\n`/admin/tenants/acme/users/export?format=csv`."
           }
         },
         "additionalProperties": false
@@ -26412,7 +26660,7 @@
               },
               "member_count": {
                 "type": "integer",
-                "minimum": 0
+                "format": "int64"
               }
             }
           }
@@ -26774,6 +27022,43 @@
           }
         }
       },
+      "Page_Member": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/User"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "joined_at"
+                  ],
+                  "properties": {
+                    "joined_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              ],
+              "description": "A direct member of a group or organization: the user, and when they\njoined (the order member lists are paged in)."
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "Page_Organization": {
         "type": "object",
         "required": [
@@ -26829,6 +27114,42 @@
                   "format": "date-time"
                 }
               }
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "Page_RoleHolder": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/RoleAssignment"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "username": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              ],
+              "description": "A role assignment as the holder listings show it: with the user's\nusername when the principal is a user."
             }
           },
           "next_cursor": {
@@ -28430,6 +28751,25 @@
           }
         },
         "additionalProperties": false
+      },
+      "RoleHolder": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RoleAssignment"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "username": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "A role assignment as the holder listings show it: with the user's\nusername when the principal is a user."
       },
       "RoleUpdate": {
         "type": "object",

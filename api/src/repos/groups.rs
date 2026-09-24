@@ -3,14 +3,10 @@
 use sqlx::{PgExecutor, QueryBuilder};
 use uuid::Uuid;
 
-use crate::models::{Group, GroupUpdate, NewGroup, User};
+use crate::models::{Group, GroupUpdate, NewGroup};
 
 const COLUMNS: &str =
     "id, tenant_id, parent_id, name, description, attributes, created_at, updated_at";
-const USER_COLUMNS: &str = "u.id, u.tenant_id, u.org_id, u.username, u.email, u.email_verified, u.phone, \
-    u.phone_verified, u.password_hash, u.password_algo, u.must_change_password, u.password_expires_at, \
-    u.password_changed_at, u.status, u.attributes, u.locale, u.external_id, u.last_login_at, u.failed_attempts, \
-    u.locked_until, u.deleted_at, u.terms_accepted_at, u.created_at, u.updated_at";
 
 pub async fn find_by_id<'e>(
     exec: impl PgExecutor<'e>,
@@ -160,21 +156,41 @@ pub async fn remove_member<'e>(
     Ok(res.rows_affected() > 0)
 }
 
-/// Direct members of a group (not soft-deleted), ordered by username.
-pub async fn members<'e>(
+/// Add these users to a group; the ones that were not members yet.
+pub async fn add_members<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
     group_id: Uuid,
-) -> Result<Vec<User>, sqlx::Error> {
-    let mut qb = QueryBuilder::new("SELECT ");
-    qb.push(USER_COLUMNS)
-        .push(" FROM group_members gm JOIN users u ON u.tenant_id = gm.tenant_id AND u.id = gm.user_id \
-                WHERE gm.tenant_id = ")
-        .push_bind(tenant_id)
-        .push(" AND gm.group_id = ")
-        .push_bind(group_id)
-        .push(" AND u.deleted_at IS NULL ORDER BY u.username");
-    qb.build_query_as::<User>().fetch_all(exec).await
+    user_ids: &[Uuid],
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        "INSERT INTO group_members (tenant_id, group_id, user_id) \
+         SELECT $1, $2, u FROM unnest($3::uuid[]) AS u \
+         ON CONFLICT DO NOTHING RETURNING user_id",
+    )
+    .bind(tenant_id)
+    .bind(group_id)
+    .bind(user_ids)
+    .fetch_all(exec)
+    .await
+}
+
+/// Remove these users from a group; the ones that were members.
+pub async fn remove_members<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    user_ids: &[Uuid],
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        "DELETE FROM group_members WHERE tenant_id = $1 AND group_id = $2 AND user_id = ANY($3) \
+         RETURNING user_id",
+    )
+    .bind(tenant_id)
+    .bind(group_id)
+    .bind(user_ids)
+    .fetch_all(exec)
+    .await
 }
 
 /// Groups a user belongs to directly.
@@ -218,4 +234,17 @@ pub async fn effective_groups_of_user<'e>(
     .bind(user_id)
     .fetch_all(exec)
     .await
+}
+
+/// The names of these groups (those that exist).
+pub async fn names_of<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    ids: &[Uuid],
+) -> Result<Vec<(Uuid, String)>, sqlx::Error> {
+    sqlx::query_as("SELECT id, name FROM groups WHERE tenant_id = $1 AND id = ANY($2)")
+        .bind(tenant_id)
+        .bind(ids)
+        .fetch_all(exec)
+        .await
 }

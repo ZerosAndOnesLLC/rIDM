@@ -27,7 +27,8 @@ export function OrganizationDomains({
   const [domain, setDomain] = useState("");
   const done = async () => {
     setDomain("");
-    await qc.invalidateQueries({ queryKey: ["organization", tenant, id] });
+    // The domains come with the organization; nothing else changed.
+    await qc.invalidateQueries({ queryKey: ["organization", tenant, id], exact: true });
     onChanged();
   };
   const add = useMutation({

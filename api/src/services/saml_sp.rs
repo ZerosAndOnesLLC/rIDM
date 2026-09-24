@@ -91,10 +91,7 @@ fn settings(idp: &IdentityProvider) -> AppResult<&SamlUpstream> {
 }
 
 fn certificates(s: &SamlUpstream) -> Vec<Certificate> {
-    s.signing_certificates
-        .iter()
-        .filter_map(|c| Certificate::parse(c).ok())
-        .collect()
+    Certificate::parse_registered(&s.signing_certificates)
 }
 
 fn key(tenant_id: Uuid, what: &str, id: &str) -> String {
@@ -467,21 +464,34 @@ pub async fn acs(
     let ep = endpoints(state, &tenant.tenant, &idp.alias);
     let certs = certificates(s);
     let keys = saml_keys::decryption_keys(state, &tenant.tenant).await?;
-    let key_refs: Vec<&[u8]> = keys.iter().map(|k| k.as_slice()).collect();
-    let checked = sp::validate_response(
-        &received.xml,
-        &Expected {
-            idp_entity_id: &s.entity_id,
-            sp_entity_id: &ep.entity_id,
-            acs_url: &ep.acs_url,
-            in_response_to: request_id.as_deref(),
-            certificates: &certs,
-            decryption_keys: &key_refs,
-            want_assertions_signed: s.want_assertions_signed,
-            require_encrypted: s.require_encrypted_assertions,
-            now: Utc::now(),
-        },
-    );
+    // Parsing up to 256 KB of XML, canonicalizing it, checking signatures and
+    // RSA-decrypting the content key take milliseconds of CPU: off the async
+    // workers, like the other RSA work.
+    let xml = received.xml.clone();
+    let idp_entity_id = s.entity_id.clone();
+    let (want_signed, require_encrypted) =
+        (s.want_assertions_signed, s.require_encrypted_assertions);
+    let expected_request = request_id.clone();
+    let (sp_entity_id, acs_url) = (ep.entity_id.clone(), ep.acs_url.clone());
+    let checked = tokio::task::spawn_blocking(move || {
+        let key_refs: Vec<&[u8]> = keys.iter().map(|k| k.as_slice()).collect();
+        sp::validate_response(
+            &xml,
+            &Expected {
+                idp_entity_id: &idp_entity_id,
+                sp_entity_id: &sp_entity_id,
+                acs_url: &acs_url,
+                in_response_to: expected_request.as_deref(),
+                certificates: &certs,
+                decryption_keys: &key_refs,
+                want_assertions_signed: want_signed,
+                require_encrypted,
+                now: Utc::now(),
+            },
+        )
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("SAML response check: {e}")))?;
     let asserted = match checked {
         Ok(a) => a,
         Err(ResponseError::Status {
@@ -751,22 +761,35 @@ async fn record_upstream(
 ) -> AppResult<()> {
     let ttl = (session.expires_at - Utc::now()).num_seconds().max(60);
     let index = by_name_id_key(session.tenant_id, up.idp_id, &up.name_id);
-    let mut conn = state.redis.get().await?;
-    let _: () = conn
-        .set_ex(
-            upstream_key(session.tenant_id, session.id),
-            serde_json::to_string(up)?,
-            ttl as u64,
-        )
-        .await?;
-    let _: () = conn.sadd(&index, session.id.to_string()).await?;
-    // The set lives as long as its longest session; ended ones in it are
-    // skipped when read.
-    let current: i64 = conn.ttl(&index).await?;
-    if current < ttl {
-        let _: () = conn.expire(&index, ttl).await?;
-    }
-    Ok(())
+    let value = serde_json::to_string(up)?;
+    // Two keys, written at once (on separate connections: they need not
+    // share a slot). The set lives as long as its longest session; ended
+    // ones in it are skipped when read.
+    let (session_entry, indexed) = tokio::join!(
+        async {
+            let mut conn = state.redis.get().await?;
+            let _: () = conn
+                .set_ex(
+                    upstream_key(session.tenant_id, session.id),
+                    value,
+                    ttl as u64,
+                )
+                .await?;
+            Ok::<_, AppError>(())
+        },
+        async {
+            let mut conn = state.redis.get().await?;
+            crate::cache::commands::add_to_set_for_at_least(
+                &mut conn,
+                &index,
+                &session.id.to_string(),
+                ttl,
+            )
+            .await
+        },
+    );
+    session_entry?;
+    indexed
 }
 
 /// The upstream SAML session behind a rIDM session, if it was brokered.
@@ -841,7 +864,7 @@ pub async fn logout_upstream(
     let Some(up) = upstream else {
         return Ok(target);
     };
-    let idp = match identity_providers::get(state, tenant.id, &up.idp_id.to_string()).await {
+    let idp = match identity_providers::get_cached(state, tenant.id, &up.idp_id.to_string()).await {
         Ok(i) => i,
         Err(AppError::NotFound(_)) => return Ok(target),
         Err(e) => return Err(e),
@@ -1234,7 +1257,7 @@ pub async fn refresh_metadata(
         ));
     };
     let read = async {
-        let text = identity_providers::get_text("SAML metadata", &url).await?;
+        let text = identity_providers::get_text(&state.outbound, "SAML metadata", &url).await?;
         let m =
             metadata::parse_idp_metadata(&text).map_err(|e| AppError::BadRequest(e.to_string()))?;
         if m.entity_id != s.entity_id {
@@ -1262,6 +1285,7 @@ pub async fn refresh_metadata(
             )
             .await?;
             tx.commit().await?;
+            identity_providers::invalidate(state, tenant_id).await?;
             count("failed");
             return Err(e);
         }
@@ -1304,6 +1328,7 @@ pub async fn refresh_metadata(
     )
     .await?;
     tx.commit().await?;
+    identity_providers::invalidate(state, tenant_id).await?;
     count(if changed { "changed" } else { "unchanged" });
     if changed {
         state.events.publish(Event::new(

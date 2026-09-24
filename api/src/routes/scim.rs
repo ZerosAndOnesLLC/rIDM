@@ -130,6 +130,14 @@ struct ListParams {
     #[serde(rename = "startIndex")]
     start_index: Option<i64>,
     count: Option<i64>,
+    #[serde(rename = "excludedAttributes")]
+    excluded_attributes: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct GetParams {
+    #[serde(rename = "excludedAttributes")]
+    excluded_attributes: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -306,7 +314,9 @@ async fn list_groups(
     respond(
         async {
             let q = PageQuery::new(p.filter, p.start_index, p.count)?;
-            let page = scim::list_groups(&state, &ctx.tenant, &ctx.base(&state), q).await?;
+            let exclude = scim::excludes_members(p.excluded_attributes.as_deref());
+            let page =
+                scim::list_groups(&state, &ctx.tenant, &ctx.base(&state), q, exclude).await?;
             Ok(scim_json(StatusCode::OK, &page))
         }
         .await,
@@ -330,6 +340,7 @@ async fn get_group(
     State(state): State<AppState>,
     ctx: ScimCtx,
     Path(IdPath { id }): Path<IdPath>,
+    Query(p): Query<GetParams>,
 ) -> Response {
     respond(
         async {
@@ -338,6 +349,7 @@ async fn get_group(
                 &ctx.tenant,
                 &ctx.base(&state),
                 id,
+                scim::excludes_members(p.excluded_attributes.as_deref()),
             )
             .await?))
         }
@@ -378,7 +390,7 @@ async fn patch_group(
         async {
             let ops = scim::parse_patch(&body_json(&body)?)?;
             let base = ctx.base(&state);
-            let current = scim::get_group(&state, &ctx.tenant, &base, id).await?;
+            let current = scim::get_group(&state, &ctx.tenant, &base, id, false).await?;
             let patched = scim::apply_patch(&current, &ops)?;
             Ok(ok(scim::replace_group(
                 &state,

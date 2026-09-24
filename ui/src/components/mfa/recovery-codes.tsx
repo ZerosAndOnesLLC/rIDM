@@ -40,6 +40,7 @@ export function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () =
           {t("mfa.codes_download")}
         </a>
       </div>
+      <p className="text-[0.8125rem] text-muted">{t("mfa.codes_download_hint")}</p>
       <Button type="button" onClick={onDone}>
         {t("mfa.codes_saved")}
       </Button>

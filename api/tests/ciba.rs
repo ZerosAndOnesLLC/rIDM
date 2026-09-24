@@ -186,6 +186,7 @@ async fn account_token_in(fx: &Fx, user_id: Uuid, with_session: bool) -> String 
             acr: None,
             ip: None,
             user_agent: None,
+            device_id: None,
             policy: &fx.tenant.settings.session,
         },
     )
@@ -372,6 +373,7 @@ async fn poll_mode_from_request_to_tokens() {
     assert_eq!(ack["interval"], 5);
 
     // The user is told, with a link to the request (never the auth_req_id).
+    common::settle(&fx.app.state).await;
     let mail = fx.email.sent_to("alice@example.com");
     assert_eq!(mail.len(), 1);
     assert!(
@@ -664,6 +666,7 @@ async fn requests_are_validated() {
     let (_, body) =
         bc_authorize(&fx, &fx.poll, &[("scope", "openid"), ("login_hint", "bob")]).await;
     assert_eq!(body["error"], "unknown_user_id");
+    common::settle(&fx.app.state).await;
     assert!(fx.email.sent().is_empty(), "no request, no notice");
 }
 
@@ -796,6 +799,7 @@ async fn an_id_token_hint_names_the_user_it_was_issued_for() {
     )
     .await;
     assert_eq!(status, 200, "{body}");
+    common::settle(&fx.app.state).await;
     assert_eq!(fx.email.sent_to("alice@example.com").len(), 1);
     let theirs = hint_for("someone-else").await;
     let (_, body) = bc_authorize(

@@ -72,10 +72,35 @@ impl Modify for BearerAuth {
 
 /// Every admin router, with the OpenAPI document collected alongside.
 pub fn admin_router() -> OpenApiRouter<AppState> {
+    // A user's own data is never for a shared cache, and several answers
+    // carry secrets (a new TOTP secret, recovery codes, a personal access
+    // token): every account API answer is `no-store` (which also keeps them
+    // out of response compression, see `compressed_json`).
+    let account = OpenApiRouter::new()
+        .merge(account::me_router())
+        .merge(account::mfa_router())
+        .merge(account::devices_router())
+        .merge(account::profile_router())
+        .merge(account::password_router())
+        .merge(account::contact_router())
+        .merge(account::sessions_router())
+        .merge(account::account_organizations_router())
+        .merge(account::apps_router())
+        .merge(account::approvals_router())
+        .merge(account::data_router())
+        .merge(account::identities_router())
+        .merge(account::tokens_router())
+        .layer(axum::middleware::map_response(
+            |mut res: axum::response::Response| async move {
+                crate::middleware::security_headers::set_no_store(res.headers_mut());
+                res
+            },
+        ));
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .merge(admin::auth_router())
         .merge(admin::tenants_router())
         .merge(admin::tenant_config_router())
+        .merge(admin::downloads_router())
         .merge(admin::clients_router())
         .merge(admin::users_router())
         .merge(admin::groups_router())
@@ -96,19 +121,7 @@ pub fn admin_router() -> OpenApiRouter<AppState> {
         .merge(admin::ip_rules_router())
         .merge(admin::mtls_router())
         .merge(admin::identity_providers_router())
-        .merge(account::me_router())
-        .merge(account::mfa_router())
-        .merge(account::devices_router())
-        .merge(account::profile_router())
-        .merge(account::password_router())
-        .merge(account::contact_router())
-        .merge(account::sessions_router())
-        .merge(account::account_organizations_router())
-        .merge(account::apps_router())
-        .merge(account::approvals_router())
-        .merge(account::data_router())
-        .merge(account::identities_router())
-        .merge(account::tokens_router())
+        .merge(account)
 }
 
 /// The admin API document as served and committed.

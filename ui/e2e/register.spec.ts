@@ -16,7 +16,7 @@ test("registration with email verification signs the new user in", async ({ page
   await expect(page.getByRole("status")).toContainText(email);
   await expectAccessible(page);
 
-  const mail = await mailpit.waitFor(email);
+  const mail = await mailpit.waitFor(email, 15_000, "Verify your email");
   const link = mail.links.find((l) => l.includes("/verify/"));
   expect(link, mail.text).toBeTruthy();
   await page.goto(link!);

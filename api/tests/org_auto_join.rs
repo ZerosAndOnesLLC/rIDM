@@ -58,6 +58,12 @@ async fn domain(
             .await
             .unwrap();
         tx.commit().await.unwrap();
+        // As the service does after a verification.
+        app.state
+            .cache
+            .invalidate(&[ridm_api::cache::keys::org_auto_join_domains(tenant_id)])
+            .await
+            .unwrap();
     }
     d.id
 }

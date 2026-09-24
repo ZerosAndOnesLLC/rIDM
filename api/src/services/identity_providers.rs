@@ -194,16 +194,18 @@ pub fn validate_endpoint(field: &str, raw: &str) -> AppResult<String> {
     Ok(u.to_string().trim_end_matches('/').to_string())
 }
 
-/// A client for one upstream request. Upstream endpoints are a tenant
-/// admin's (or a discovery document's) choice: an IP-literal `url` must be
-/// public, and names resolve to public addresses only (SSRF).
-fn client_for(what: &str, url: &str) -> AppResult<reqwest::Client> {
+/// The outbound client (`AppState::outbound`), for one upstream request.
+/// Upstream endpoints are a tenant admin's (or a discovery document's)
+/// choice: an IP-literal `url` must be public, and names resolve to public
+/// addresses only (SSRF). Every request carries [`HTTP_TIMEOUT`].
+fn client_for<'c>(
+    http: &'c reqwest::Client,
+    what: &str,
+    url: &str,
+) -> AppResult<&'c reqwest::Client> {
     crate::util::outbound::check_url(url)
         .map_err(|e| AppError::Unavailable(format!("{what}: {e}")))?;
-    crate::util::outbound::client_builder()
-        .timeout(HTTP_TIMEOUT)
-        .build()
-        .map_err(|e| AppError::Internal(e.to_string()))
+    Ok(http)
 }
 
 async fn read_json(what: &str, res: reqwest::Response) -> AppResult<Value> {
@@ -238,9 +240,15 @@ async fn read_json(what: &str, res: reqwest::Response) -> AppResult<Value> {
 }
 
 /// `GET` a JSON document (a discovery document, JWK set or userinfo).
-pub async fn get_json(what: &str, url: &str, bearer: Option<&str>) -> AppResult<Value> {
-    let mut req = client_for(what, url)?
+pub async fn get_json(
+    http: &reqwest::Client,
+    what: &str,
+    url: &str,
+    bearer: Option<&str>,
+) -> AppResult<Value> {
+    let mut req = client_for(http, what, url)?
         .get(url)
+        .timeout(HTTP_TIMEOUT)
         .header("accept", "application/json")
         .header("user-agent", "rIDM");
     if let Some(t) = bearer {
@@ -253,9 +261,10 @@ pub async fn get_json(what: &str, url: &str, bearer: Option<&str>) -> AppResult<
 }
 
 /// `GET` a text document (an IdP's SAML metadata), size-capped.
-pub async fn get_text(what: &str, url: &str) -> AppResult<String> {
-    let res = client_for(what, url)?
+pub async fn get_text(http: &reqwest::Client, what: &str, url: &str) -> AppResult<String> {
+    let res = client_for(http, what, url)?
         .get(url)
+        .timeout(HTTP_TIMEOUT)
         .header(
             "accept",
             "application/samlmetadata+xml, application/xml, text/xml",
@@ -289,13 +298,15 @@ pub async fn get_text(what: &str, url: &str) -> AppResult<String> {
 
 /// `POST` a form (the token request) and read the JSON answer.
 pub async fn post_form(
+    http: &reqwest::Client,
     what: &str,
     url: &str,
     form: &[(&str, &str)],
     basic: Option<(&str, &str)>,
 ) -> AppResult<Value> {
-    let mut req = client_for(what, url)?
+    let mut req = client_for(http, what, url)?
         .post(url)
+        .timeout(HTTP_TIMEOUT)
         .header("accept", "application/json")
         .header("user-agent", "rIDM")
         .form(form);
@@ -327,10 +338,10 @@ pub struct Discovery {
 /// Fetch `{issuer}/.well-known/openid-configuration`. The document's
 /// `issuer` must match, except for Microsoft's multi-tenant `common`
 /// issuer, which the document reports with a placeholder.
-pub async fn discover(issuer: &str) -> AppResult<Discovery> {
+pub async fn discover(http: &reqwest::Client, issuer: &str) -> AppResult<Discovery> {
     let issuer = validate_endpoint("issuer", issuer)?;
     let url = format!("{issuer}/.well-known/openid-configuration");
-    let doc = get_json("discovery", &url, None).await?;
+    let doc = get_json(http, "discovery", &url, None).await?;
     let found = doc["issuer"]
         .as_str()
         .unwrap_or_default()
@@ -501,7 +512,7 @@ fn validate_mappers(m: &IdpMappers) -> AppResult<()> {
 
 /// Complete and check a provider's fields, discovering the endpoints of an
 /// OIDC provider from its issuer when they were not given.
-async fn finish(mut r: Resolved, has_secret: bool) -> AppResult<Resolved> {
+async fn finish(http: &reqwest::Client, mut r: Resolved, has_secret: bool) -> AppResult<Resolved> {
     r.alias = validate_alias(&r.alias)?;
     if r.display_name.trim().is_empty() || r.display_name.len() > 100 {
         return Err(AppError::Validation(vec![FieldError {
@@ -564,7 +575,7 @@ async fn finish(mut r: Resolved, has_secret: bool) -> AppResult<Resolved> {
                         message: "is required unless every endpoint is given".into(),
                     }]));
                 };
-                let d = discover(issuer).await?;
+                let d = discover(http, issuer).await?;
                 r.authorization_endpoint
                     .get_or_insert(d.authorization_endpoint);
                 r.token_endpoint.get_or_insert(d.token_endpoint);
@@ -1199,15 +1210,52 @@ fn from_existing(idp: &IdentityProvider) -> Resolved {
     }
 }
 
-async fn invalidate(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
+/// Evict everything cached about a tenant's identity providers, after any
+/// write to one (configuration, a metadata refresh).
+pub(crate) async fn invalidate(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
     state
         .cache
         .invalidate(&[
             keys::identity_providers(tenant_id),
+            keys::identity_providers_full(tenant_id),
             keys::ldap_directories(tenant_id),
             keys::kerberos_realms(tenant_id),
         ])
         .await
+}
+
+/// How long a node keeps a tenant's providers (every write evicts them).
+const FULL_L1_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// [`get`] for the sign-in paths (brokering, LDAP, Kerberos, SAML), which
+/// ask on every request: served from the tenant's providers as this node
+/// last read them. Administration and jobs read the row itself with [`get`].
+pub async fn get_cached(
+    state: &AppState,
+    tenant_id: Uuid,
+    key: &str,
+) -> AppResult<IdentityProvider> {
+    let cache_key = keys::identity_providers_full(tenant_id);
+    let l1 = state.cache.l1();
+    let all = match l1.get::<Vec<IdentityProvider>>(&cache_key) {
+        Some(all) => all,
+        None => {
+            let ticket = l1.ticket(&cache_key);
+            let all = Arc::new(list(state, tenant_id).await?);
+            l1.insert_fresh(cache_key, all.clone(), FULL_L1_TTL, ticket);
+            all
+        }
+    };
+    let found = match Uuid::parse_str(key) {
+        Ok(id) => all.iter().find(|i| i.id == id),
+        Err(_) => {
+            let alias = key.to_lowercase();
+            all.iter().find(|i| i.alias == alias)
+        }
+    };
+    found
+        .cloned()
+        .ok_or(AppError::NotFound("identity provider"))
 }
 
 pub async fn list(state: &AppState, tenant_id: Uuid) -> AppResult<Vec<IdentityProvider>> {
@@ -1381,7 +1429,7 @@ pub async fn create(
     };
     let mut r = from_new(input)?;
     r.keytab_entries = keytab_entries.clone().unwrap_or_default();
-    let r = finish(r, secret.is_some()).await?;
+    let r = finish(&state.outbound, r, secret.is_some()).await?;
     check_unsolicited_target(state, tenant_id, r.saml.as_ref()).await?;
     check_ldap_secret(r.ldap.as_ref(), secret.is_some())?;
     let id = Uuid::now_v7();
@@ -1613,7 +1661,7 @@ pub async fn update(
         Some(s) => s.is_some(),
         None => existing.client_secret_set,
     };
-    let r = finish(r, has_secret).await?;
+    let r = finish(&state.outbound, r, has_secret).await?;
     check_unsolicited_target(state, tenant_id, r.saml.as_ref()).await?;
     check_ldap_secret(r.ldap.as_ref(), has_secret)?;
     let enc = match &secret {
@@ -1828,7 +1876,7 @@ pub async fn jwks(
                 .unwrap_or_default());
         }
     }
-    let doc = get_json("jwks", uri, None).await?;
+    let doc = get_json(&state.outbound, "jwks", uri, None).await?;
     let _: () = conn.set_ex(&key, doc.to_string(), JWKS_CACHE_SECS).await?;
     Ok(doc["keys"].as_array().cloned().unwrap_or_default())
 }

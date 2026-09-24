@@ -54,7 +54,7 @@ export function OrganizationDetailView({ tenant, id }: { tenant: string; id: str
         keepalive,
       });
       if (error) {
-        await qc.invalidateQueries({ queryKey: ["organization", tenant, id] });
+        await qc.invalidateQueries({ queryKey: ["organization", tenant, id], exact: true });
         setResetCount((n) => n + 1);
         throw new Error(error.detail ?? error.title);
       }
@@ -65,7 +65,7 @@ export function OrganizationDetailView({ tenant, id }: { tenant: string; id: str
     },
     [client, qc, tenant, id],
   );
-  const { queue, status, error } = useAutoSave(save);
+  const { queue, status, error } = useAutoSave(save, { baseline: query.data });
   const update = (patch: Partial<OrganizationDetail>) => {
     setDraft((d) => (d ? { ...d, ...patch } : d));
     if (editable) queue(patch);

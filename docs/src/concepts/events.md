@@ -61,14 +61,27 @@ endpoint. Two subscribers run on every node:
 - the **webhook dispatcher**, which turns every event that a tenant's webhooks
   subscribe to into queued deliveries.
 
-Both subscribers have their own queue and skip nothing: a burst or a slow
-database delays them rather than dropping events, and the audit writer appends
-what has queued up in one transaction per chain, so it catches up quickly.
-Their depths are the `ridm_audit_queue_depth` and
-`ridm_webhook_dispatch_queue_depth` gauges. Events still live in memory until
-written: a node that stops before its queue drains loses what was left, and an
-event that fails to append is logged. Treat the audit log as a faithful record
-rather than a transactional ledger, and watch those gauges.
+Both subscribers have their own queue: a burst or a slow database delays them
+rather than dropping events. The audit writer takes what has queued up and
+appends each chain's share in one transaction with one insert, several chains
+at a time; the dispatcher queues each tenant's deliveries with one insert, and
+sends them at once in the background. A chain that cannot be written for now
+(a tenant being moved between regions, a region's database down) is set aside,
+in order, and retried every five seconds.
+
+Each queue is bounded (`EVENT_QUEUE_CAPACITY`, 100,000 events by default), so
+a consumer that stops keeping up cannot take the node's memory with it. Once a
+queue is 80% full, `/readyz` reports the node not ready (`events: saturated`),
+so the load balancer sends it no new work while it catches up; only an event
+published into a full queue is dropped, and that is logged and counted
+(`ridm_event_queue_dropped_total`). The depths are the `ridm_event_queue_depth`
+gauges (and `ridm_audit_queue_depth`, `ridm_webhook_dispatch_queue_depth`).
+
+Events still live in memory until written. A node that is stopped gives its
+queues, and the deliveries it started, up to 15 seconds to drain after its last
+request; what is left after that is lost, and an event that fails to append is
+logged. Treat the audit log as a faithful record rather than a transactional
+ledger, and watch those gauges.
 
 Two other things that the event names might suggest are not driven by the bus:
 

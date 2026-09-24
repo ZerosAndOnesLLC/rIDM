@@ -27,7 +27,7 @@ ridm-core = { path = "crates/ridm-core", version = "0.1.0" }
 axum = { version = "=0.8.9", features = ["macros"] }
 axum-server = { version = "=0.8.0", features = ["tls-rustls"] }
 tower = "=0.5.3"
-tower-http = { version = "=0.7.1", features = ["cors", "trace", "compression-gzip", "set-header", "fs"] }
+tower-http = { version = "=0.7.1", features = ["cors", "trace", "compression-gzip", "compression-br", "set-header", "fs"] }
 tower_governor = "=0.8.0"
 http = "=1.5.0"
 tokio = { version = "=1.53.1", features = ["full"] }
@@ -84,7 +84,7 @@ flate2 = "=1.1.10"
 
 # Outbound
 reqwest = { version = "=0.13.5", default-features = false, features = ["json", "rustls", "form"] }
-lettre = { version = "=0.11.23", default-features = false, features = ["tokio1", "tokio1-rustls", "aws-lc-rs", "rustls-platform-verifier", "smtp-transport", "builder"] }
+lettre = { version = "=0.11.23", default-features = false, features = ["tokio1", "tokio1-rustls", "aws-lc-rs", "rustls-platform-verifier", "smtp-transport", "builder", "pool"] }
 handlebars = "=6.4.4"
 # DNS, for organization domain verification (TXT lookups only).
 hickory-resolver = { version = "=0.26.3", default-features = false, features = ["tokio", "system-config"] }

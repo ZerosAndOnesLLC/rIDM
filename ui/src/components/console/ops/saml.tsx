@@ -4,12 +4,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, KeyRound, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useState, type ChangeEvent } from "react";
+import { useCallback, useMemo, useState, type ChangeEvent } from "react";
 import { Field, NumberInput, SaveIndicator, Section, SelectInput, TagsInput, TextArea, TextInput, Toggle } from "@/components/console/form";
 import { Badge, Button, Card, IconButton, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
 import { formatDate } from "@/i18n";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
+import { useRowKeys } from "@/lib/console/hooks";
 import { href, type SamlAttribute, type SamlIdp, type SamlKey, type SamlSp, type SamlSpInput } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
 import { CreateDialog, DeleteButton, ErrorLine, Split } from "../access/common";
@@ -324,12 +325,13 @@ function CreateSp({ tenant, open, onOpenChange }: { tenant: string; open: boolea
 
 function AttributeRows({ value, disabled, onChange }: { value: SamlAttribute[]; disabled: boolean; onChange: (v: SamlAttribute[]) => void }) {
   const set = (i: number, patch: Partial<SamlAttribute>) => onChange(value.map((a, j) => (j === i ? { ...a, ...patch } : a)));
+  const rows = useRowKeys(value.length);
   return (
     <div className="sm:col-span-2 flex flex-col gap-2">
       <span className="text-[0.8125rem] font-medium text-ink">Attributes</span>
       <p className="text-[0.8125rem] text-muted">With no rows, every claim the allowed scopes release goes out under its own name. With rows, only these, under the names the service provider expects. `roles` and `groups` are available too.</p>
       {value.map((a, i) => (
-        <div key={i} className="grid gap-2 rounded-[var(--radius)] border border-line p-2 sm:grid-cols-[1fr_1.5fr_8rem_auto]">
+        <div key={rows.keys[i]} className="grid gap-2 rounded-[var(--radius)] border border-line p-2 sm:grid-cols-[1fr_1.5fr_8rem_auto]">
           <TextInput aria-label={`Claim ${i + 1}`} value={a.claim} disabled={disabled} spellCheck={false} placeholder="email" onChange={(e) => set(i, { claim: e.target.value })} />
           <TextInput aria-label={`Attribute name ${i + 1}`} value={a.name} disabled={disabled} spellCheck={false} placeholder="urn:oid:0.9.2342.19200300.100.1.3" onChange={(e) => set(i, { name: e.target.value })} />
           <SelectInput aria-label={`Name format ${i + 1}`} value={a.name_format ?? "basic"} disabled={disabled} onChange={(e) => set(i, { name_format: e.target.value as SamlAttribute["name_format"] })}>
@@ -337,7 +339,14 @@ function AttributeRows({ value, disabled, onChange }: { value: SamlAttribute[]; 
             <option value="uri">uri</option>
             <option value="unspecified">unspecified</option>
           </SelectInput>
-          <IconButton label={`Remove attribute ${i + 1}`} disabled={disabled} onClick={() => onChange(value.filter((_, j) => j !== i))}>
+          <IconButton
+            label={`Remove attribute ${i + 1}`}
+            disabled={disabled}
+            onClick={() => {
+              rows.removeKey(i);
+              onChange(value.filter((_, j) => j !== i));
+            }}
+          >
             <Trash2 className="size-4" aria-hidden />
           </IconButton>
         </div>
@@ -441,7 +450,8 @@ function SpView({ tenant, id }: { tenant: string; id: string }) {
     },
     [client, qc, tenant, id],
   );
-  const { queue, status, error } = useAutoSave(save);
+  const baseline = useMemo(() => (query.data ? toInput(query.data) : undefined), [query.data]);
+  const { queue, status, error } = useAutoSave(save, { baseline });
   const update = (patch: Partial<SamlSpInput>) => {
     setDraft((d) => (d ? { ...d, ...patch } : d));
     if (!editable) return;

@@ -13,10 +13,11 @@ use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
-use crate::models::{NewRole, Permission, Role, RoleAssignment, RoleUpdate};
+use crate::models::{NewRole, Permission, Role, RoleHolder, RoleUpdate};
 use crate::services::admin_access::{self, Grant};
 use crate::services::{resource_servers, roles};
 use crate::state::AppState;
+use crate::util::cursor::{Page, PageParams};
 
 pub fn roles_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -244,14 +245,17 @@ async fn revoke_permission(
 }
 
 /// Users and groups the role is assigned to directly.
-#[utoipa::path(get, path = "/admin/tenants/{slug}/roles/{role}/holders", tag = "roles", params(("slug" = String, Path, description = "Tenant slug"), ("role" = Uuid, Path)), responses((status = 200, body = Vec<RoleAssignment>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/roles/{role}/holders", tag = "roles", params(("slug" = String, Path, description = "Tenant slug"), ("role" = Uuid, Path), PageParams), responses((status = 200, body = Page<RoleHolder>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn holders(
     State(state): State<AppState>,
     admin: AdminCtx,
     AdminTenantPath(tenant): AdminTenantPath,
     Path(RolePath { role }): Path<RolePath>,
-) -> AppResult<Json<Vec<RoleAssignment>>> {
+    Query(page): Query<PageParams>,
+) -> AppResult<Json<Page<RoleHolder>>> {
     admin.require(tenant.id, P_READ)?;
     roles::get(&state, tenant.id, role).await?;
-    Ok(Json(roles::holders_of(&state, tenant.id, role).await?))
+    Ok(Json(
+        roles::holders_of(&state, tenant.id, role, page.cursor.as_deref(), page.limit).await?,
+    ))
 }

@@ -241,7 +241,7 @@ function MapperView({ tenant, id, clientNames }: { tenant: string; id: string; c
     },
     [client, qc, tenant, id],
   );
-  const { queue, status, error } = useAutoSave(save);
+  const { queue, status, error } = useAutoSave(save, { baseline: query.data });
   const del = useMutation({
     mutationFn: async () => {
       const { error } = await client.DELETE("/admin/tenants/{slug}/claim-mappers/{mapper}", { params: { path: { slug: tenant, mapper: id } } });

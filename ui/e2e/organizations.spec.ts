@@ -41,7 +41,7 @@ function join(org: string, user: string) {
     `INSERT INTO organization_members (tenant_id, org_id, user_id) VALUES ('${tid}', '${org}', '${user}')
      ON CONFLICT DO NOTHING`,
   );
-  // Memberships are cached under the tenant's roles version.
+  // Memberships are cached under the user's access version.
   clearRolesVersion(tid);
 }
 

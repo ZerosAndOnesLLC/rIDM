@@ -341,6 +341,7 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
         security_txt: None,
         hsts_max_age: 63_072_000,
         retention_days: 30,
+        event_queue_capacity: 100_000,
         otlp_endpoint: None,
         otel_service_name: "ridm-test".into(),
         metrics_token: None,
@@ -352,6 +353,7 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
         mtls: Default::default(),
         db_pool_min: 1,
         db_pool_max: 8,
+        db_acquire_timeout_ms: 5_000,
         redis_pool_max: 16,
         migrate_on_start: false,
         // Cheap parameters keep the test suite fast; production uses Config defaults.
@@ -462,6 +464,19 @@ impl TestApp {
     pub fn tenant_url(&self, path: &str) -> String {
         format!("{}/t/{}{}", self.base_url, self.tenant.slug, path)
     }
+}
+
+/// Wait for the work requests left running in the background (messages
+/// being sent, webhook deliveries) to finish, so a test can look at what was
+/// sent, or at what was not.
+pub async fn settle(state: &AppState) {
+    assert!(
+        state
+            .background
+            .idle_within(std::time::Duration::from_secs(30))
+            .await,
+        "background deliveries still running after 30 s"
+    );
 }
 
 /// Insert a fresh tenant with a unique slug.

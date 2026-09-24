@@ -115,7 +115,10 @@ async fn user_manager_runs_the_group_lifecycle_within_reach() {
     )
     .await;
     assert_eq!(status, 200, "{members}");
-    assert_eq!(members[0]["id"], alice.to_string());
+    assert_eq!(members["items"][0]["id"], alice.to_string());
+    assert!(members["items"][0]["joined_at"].is_string());
+    let (_, detail, _) = get_json(&app, &format!("{base}/{helpdesk_id}"), Some(&manager)).await;
+    assert_eq!(detail["member_count"], 1);
     let (status, _, _) = call(
         &app,
         Method::PUT,
@@ -268,4 +271,77 @@ async fn groups_are_confined_to_the_admins_tenant() {
     )
     .await;
     assert_eq!(status, 200);
+}
+
+#[tokio::test]
+async fn members_come_a_page_at_a_time_in_join_order_and_filter_by_prefix() {
+    let app = TestApp::spawn().await;
+    let tid = app.tenant.id;
+    let base = format!("/admin/tenants/{}/groups", app.tenant.slug);
+    let admin = admin_token(&app, tid, ADMIN_ROLE).await;
+    let (status, g, _) = call(
+        &app,
+        Method::POST,
+        &base,
+        Some(&admin),
+        Some(&json!({"name": "crowd"})),
+    )
+    .await;
+    assert_eq!(status, 201, "{g}");
+    let gid = g["id"].as_str().unwrap().to_string();
+    let mut joined = vec![];
+    for _ in 0..5 {
+        let u = user_with_role(&app, tid, None).await;
+        let (status, _, _) = call(
+            &app,
+            Method::PUT,
+            &format!("{base}/{gid}/members/{u}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, 204);
+        joined.push(u.to_string());
+    }
+
+    let mut seen = vec![];
+    let mut cursor: Option<String> = None;
+    loop {
+        let url = match &cursor {
+            Some(c) => format!("{base}/{gid}/members?limit=2&cursor={c}"),
+            None => format!("{base}/{gid}/members?limit=2"),
+        };
+        let (status, page, _) = get_json(&app, &url, Some(&admin)).await;
+        assert_eq!(status, 200, "{page}");
+        let items = page["items"].as_array().unwrap();
+        assert!(items.len() <= 2);
+        seen.extend(items.iter().map(|m| m["id"].as_str().unwrap().to_string()));
+        match page["next_cursor"].as_str() {
+            Some(c) => cursor = Some(c.to_string()),
+            None => break,
+        }
+    }
+    assert_eq!(seen, joined, "every member once, in the order they joined");
+    let (_, detail, _) = get_json(&app, &format!("{base}/{gid}"), Some(&admin)).await;
+    assert_eq!(detail["member_count"], 5);
+
+    // `search` is a prefix of the username or email.
+    let (_, one, _) = get_json(&app, &format!("{base}/{gid}/members"), Some(&admin)).await;
+    let username = one["items"][2]["username"].as_str().unwrap().to_string();
+    let (_, found, _) = get_json(
+        &app,
+        &format!("{base}/{gid}/members?search={}", &username[..10]),
+        Some(&admin),
+    )
+    .await;
+    let found = found["items"].as_array().unwrap();
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0]["username"], username);
+    let (_, none, _) = get_json(
+        &app,
+        &format!("{base}/{gid}/members?search=zz-nobody"),
+        Some(&admin),
+    )
+    .await;
+    assert!(none["items"].as_array().unwrap().is_empty());
 }

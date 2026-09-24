@@ -52,6 +52,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/download-tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A single-use URL for one of the exports, so a browser can download it
+         *     with its own download manager (streamed to disk) instead of holding it in
+         *     memory. The caller must hold what the export itself requires.
+         */
+        post: operations["downloads_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/master-key": {
         parameters: {
             query?: never;
@@ -3486,6 +3507,16 @@ export interface components {
             /** Format: uuid */
             user_id: string;
         };
+        /** @description A consent with what listings show of its client. */
+        ConsentWithClient: components["schemas"]["Consent"] & {
+            /** @description The client's public `client_id`. */
+            client: string;
+            /** @description The client's display name. */
+            client_name: string;
+            logo_uri?: string | null;
+            policy_uri?: string | null;
+            tos_uri?: string | null;
+        };
         /** @description An application the user granted scopes to. */
         ConsentedApp: {
             /** @description The client's public `client_id`. */
@@ -3626,6 +3657,15 @@ export interface components {
              */
             email_domains: string[];
         };
+        DownloadTicket: {
+            /** Format: int64 */
+            expires_in: number;
+            /**
+             * @description The export's URL with the ticket: one `GET` of it, without an
+             *     `Authorization` header, within `expires_in` seconds.
+             */
+            url: string;
+        };
         /**
          * @description Who may set the attribute.
          * @enum {string}
@@ -3760,6 +3800,7 @@ export interface components {
             updated_at: string;
         };
         GroupDetail: components["schemas"]["Group"] & {
+            /** Format: int64 */
             member_count: number;
             /** @description Roles assigned to this group itself (ancestors' roles are inherited at runtime). */
             roles: components["schemas"]["Role"][];
@@ -4748,6 +4789,14 @@ export interface components {
             id: string;
             slug: string;
         };
+        /**
+         * @description A direct member of a group or organization: the user, and when they
+         *     joined (the order member lists are paged in).
+         */
+        Member: components["schemas"]["User"] & {
+            /** Format: date-time */
+            joined_at: string;
+        };
         /** @enum {string} */
         MessageChannel: "email" | "sms";
         /** @enum {string} */
@@ -4969,6 +5018,13 @@ export interface components {
             token_endpoint_auth_method: null | components["schemas"]["TokenEndpointAuthMethod"];
             /** @default null */
             tos_uri: string | null;
+        };
+        NewDownloadTicket: {
+            /**
+             * @description The export to download, as its path and query, e.g.
+             *     `/admin/tenants/acme/users/export?format=csv`.
+             */
+            path: string;
         };
         NewEmail: {
             email: string;
@@ -5273,6 +5329,7 @@ export interface components {
         };
         OrganizationDetail: components["schemas"]["Organization"] & {
             domains: components["schemas"]["OrganizationDomain"][];
+            /** Format: int64 */
             member_count: number;
         };
         /**
@@ -5388,6 +5445,13 @@ export interface components {
             }[];
             next_cursor?: string | null;
         };
+        Page_Member: {
+            items: (components["schemas"]["User"] & {
+                /** Format: date-time */
+                joined_at: string;
+            })[];
+            next_cursor?: string | null;
+        };
         Page_Organization: {
             items: {
                 attributes: unknown;
@@ -5404,6 +5468,12 @@ export interface components {
                 /** Format: date-time */
                 updated_at: string;
             }[];
+            next_cursor?: string | null;
+        };
+        Page_RoleHolder: {
+            items: (components["schemas"]["RoleAssignment"] & {
+                username?: string | null;
+            })[];
             next_cursor?: string | null;
         };
         Page_Tenant: {
@@ -6065,6 +6135,13 @@ export interface components {
              * @default []
              */
             permissions: string[];
+        };
+        /**
+         * @description A role assignment as the holder listings show it: with the user's
+         *     username when the principal is a user.
+         */
+        RoleHolder: components["schemas"]["RoleAssignment"] & {
+            username?: string | null;
         };
         RoleUpdate: {
             /** @default null */
@@ -7387,6 +7464,65 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Verification"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid admin token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Permission missing */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    downloads_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewDownloadTicket"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadTicket"];
                 };
             };
             /** @description Bad request */
@@ -9811,7 +9947,12 @@ export interface operations {
     };
     groups_members: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Only members whose username or email starts with this. */
+                search?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 /** @description Tenant slug */
@@ -9827,7 +9968,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["User"][];
+                    "application/json": components["schemas"]["Page_Member"];
                 };
             };
             /** @description Bad request */
@@ -14046,7 +14187,12 @@ export interface operations {
     };
     organizations_members: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Only members whose username or email starts with this. */
+                search?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 /** @description Tenant slug */
@@ -14062,7 +14208,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["User"][];
+                    "application/json": components["schemas"]["Page_Member"];
                 };
             };
             /** @description Bad request */
@@ -14343,7 +14489,10 @@ export interface operations {
     };
     organizations_role_grants: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 /** @description Tenant slug */
@@ -14359,7 +14508,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RoleAssignment"][];
+                    "application/json": components["schemas"]["Page_RoleHolder"];
                 };
             };
             /** @description Bad request */
@@ -15476,7 +15625,10 @@ export interface operations {
     };
     roles_holders: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 /** @description Tenant slug */
@@ -15492,7 +15644,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RoleAssignment"][];
+                    "application/json": components["schemas"]["Page_RoleHolder"];
                 };
             };
             /** @description Bad request */
@@ -17283,7 +17435,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Consent"][];
+                    "application/json": components["schemas"]["ConsentWithClient"][];
                 };
             };
             /** @description Bad request */

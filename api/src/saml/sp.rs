@@ -253,8 +253,11 @@ pub fn validate_response(xml_text: &str, e: &Expected) -> Result<Asserted, Respo
         .ok_or_else(|| bad("a Response must carry exactly one assertion"))?;
     let data = child(container, ns::XENC, "EncryptedData")?
         .ok_or_else(|| bad("EncryptedAssertion holds no EncryptedData"))?;
-    let decrypted = e
-        .decryption_keys
+    // The key the IdP says it encrypted to first; the others after it (in
+    // the order given, active first), in case it names none or another.
+    let mut keys: Vec<&[u8]> = e.decryption_keys.to_vec();
+    keys.sort_by_key(|k| xmlenc::addressed_to(data, k) != Some(true));
+    let decrypted = keys
         .iter()
         .find_map(|k| xmlenc::decrypt(data, k).ok())
         .ok_or_else(|| {

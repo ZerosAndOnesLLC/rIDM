@@ -83,22 +83,40 @@ async fn end_session_get(
     headers: HeaderMap,
     RawQuery(raw): RawQuery,
 ) -> Response {
-    handle(
-        &state,
-        &tenant,
-        &headers,
-        RawParams::parse(raw.as_deref().unwrap_or_default()),
-    )
-    .await
+    let mut params = RawParams::parse(raw.as_deref().unwrap_or_default());
+    // The browser coming back for a form it posted cross-site (see `park`).
+    if let Some(id) = crate::oidc::park::parked_id(&params.0) {
+        let form = match id {
+            Some(id) => crate::oidc::park::unpark(&state, tenant.id(), "end_session", id).await,
+            None => Ok(None),
+        };
+        params = match form {
+            Ok(Some(form)) => RawParams::parse(&form),
+            Ok(None) => {
+                return crate::oidc::authorize::error_page(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_request",
+                    "This sign-out request has expired or was already used; sign out again from the application.",
+                );
+            }
+            Err(e) => return e.into_response(),
+        };
+    }
+    handle(&state, &tenant, &headers, params).await
 }
 
+/// A form another site posted arrives without the session cookie (it is
+/// `SameSite=Lax`), so the logout could not tell whether this browser is
+/// signed in: park it and come back as a GET, which carries it.
 async fn end_session_post(
     State(state): State<AppState>,
     tenant: TenantCtx,
-    headers: HeaderMap,
     body: String,
 ) -> Response {
-    handle(&state, &tenant, &headers, RawParams::parse(&body)).await
+    match crate::oidc::park::park(&state, tenant.id(), "end_session", &body).await {
+        Ok(res) => res,
+        Err(e) => e.into_response(),
+    }
 }
 
 async fn handle(
@@ -205,7 +223,7 @@ async fn decide(
             let c = client
                 .as_ref()
                 .ok_or_else(|| AppError::Internal("id_token_hint without its client".into()))?;
-            let tc = tokens::TokenClient::from_client(c, &tenant.tenant, vec![]);
+            let tc = tokens::TokenClient::from_client(c, &tenant.tenant, Default::default());
             crate::services::users::get(state, tenant.id(), s.user_id)
                 .await
                 .map(|u| tokens::subject_for(&tenant.tenant, &tc, &u) == *sub)

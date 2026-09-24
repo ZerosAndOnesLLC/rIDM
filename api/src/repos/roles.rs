@@ -3,7 +3,8 @@
 use sqlx::{PgExecutor, QueryBuilder};
 use uuid::Uuid;
 
-use crate::models::{NewRole, Principal, Role, RoleAssignment, RoleUpdate};
+use crate::models::{NewRole, Principal, Role, RoleAssignment, RoleHolder, RoleUpdate};
+use crate::util::cursor::Cursor;
 
 const COLUMNS: &str =
     "id, tenant_id, client_id, name, description, built_in, created_at, updated_at";
@@ -165,22 +166,6 @@ pub async fn unassign<'e>(
 }
 
 /// Direct assignments of a principal.
-/// Role grants scoped to one organization (both user and group principals).
-pub async fn assignments_of_org<'e>(
-    exec: impl PgExecutor<'e>,
-    tenant_id: Uuid,
-    org_id: Uuid,
-) -> Result<Vec<RoleAssignment>, sqlx::Error> {
-    let mut qb = QueryBuilder::new("SELECT ");
-    qb.push(ASSIGNMENT_COLUMNS)
-        .push(" FROM role_assignments WHERE tenant_id = ")
-        .push_bind(tenant_id)
-        .push(" AND org_id = ")
-        .push_bind(org_id)
-        .push(" ORDER BY created_at, id");
-    qb.build_query_as::<RoleAssignment>().fetch_all(exec).await
-}
-
 pub async fn assignments_of<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
@@ -389,18 +374,48 @@ pub async fn role_ids_of_group_lineage<'e>(
     .await
 }
 
-/// Every principal holding a role directly.
-pub async fn assignments_of_role<'e>(
+/// Whose direct holders [`holders`] lists.
+#[derive(Debug, Clone, Copy)]
+pub enum HoldersOf {
+    /// Every principal holding this role.
+    Role(Uuid),
+    /// Every grant scoped to this organization (user and group principals).
+    Organization(Uuid),
+}
+
+/// One keyset page (`limit + 1` rows) of assignments in creation order, each
+/// with its user's username.
+pub async fn holders<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
-    role_id: Uuid,
-) -> Result<Vec<RoleAssignment>, sqlx::Error> {
-    let mut qb = QueryBuilder::new("SELECT ");
-    qb.push(ASSIGNMENT_COLUMNS)
-        .push(" FROM role_assignments WHERE tenant_id = ")
-        .push_bind(tenant_id)
-        .push(" AND role_id = ")
-        .push_bind(role_id)
-        .push(" ORDER BY created_at, id");
-    qb.build_query_as::<RoleAssignment>().fetch_all(exec).await
+    of: HoldersOf,
+    after: Option<Cursor>,
+    limit: i64,
+) -> Result<Vec<RoleHolder>, sqlx::Error> {
+    let (column, id) = match of {
+        HoldersOf::Role(id) => ("role_id", id),
+        HoldersOf::Organization(id) => ("org_id", id),
+    };
+    let mut qb = QueryBuilder::new(
+        "SELECT a.id, a.tenant_id, a.role_id, a.user_id, a.group_id, a.org_id, a.created_at, \
+                u.username \
+         FROM role_assignments a \
+         LEFT JOIN users u ON u.tenant_id = a.tenant_id AND u.id = a.user_id \
+         WHERE a.tenant_id = ",
+    );
+    qb.push_bind(tenant_id)
+        .push(" AND a.")
+        .push(column)
+        .push(" = ")
+        .push_bind(id);
+    if let Some(c) = after {
+        qb.push(" AND (a.created_at, a.id) > (")
+            .push_bind(c.created_at)
+            .push(", ")
+            .push_bind(c.id)
+            .push(")");
+    }
+    qb.push(" ORDER BY a.created_at, a.id LIMIT ")
+        .push_bind(limit + 1);
+    qb.build_query_as::<RoleHolder>().fetch_all(exec).await
 }

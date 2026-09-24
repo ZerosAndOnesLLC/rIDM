@@ -2,7 +2,6 @@
 //! per-client cache keyed under a tenant-wide version token, so a change to
 //! a tenant-wide mapper reaches every client at once.
 
-use redis::AsyncCommands as _;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use serde_json::Value;
 use uuid::Uuid;
@@ -16,38 +15,26 @@ use crate::state::AppState;
 
 const MAPPERS_VERSION_TTL: u64 = 7 * 24 * 3600;
 
+/// Current version token for a tenant's claim mappers (held briefly per
+/// node, evicted everywhere by a bump).
 pub async fn mappers_version(state: &AppState, tenant_id: Uuid) -> AppResult<String> {
-    let key = keys::mappers_version(tenant_id);
-    let mut conn = state.redis.get().await?;
-    if let Some(v) = conn.get::<_, Option<String>>(&key).await? {
-        return Ok(v);
-    }
-    let fresh = Uuid::now_v7().simple().to_string();
-    let set: bool = redis::cmd("SET")
-        .arg(&key)
-        .arg(&fresh)
-        .arg("NX")
-        .arg("EX")
-        .arg(MAPPERS_VERSION_TTL)
-        .query_async(&mut conn)
-        .await?;
-    if set {
-        return Ok(fresh);
-    }
-    Ok(conn.get::<_, Option<String>>(&key).await?.unwrap_or(fresh))
+    state
+        .cache
+        .version(
+            &keys::mappers_version(tenant_id),
+            std::time::Duration::from_secs(MAPPERS_VERSION_TTL),
+        )
+        .await
 }
 
 pub async fn bump_mappers_version(state: &AppState, tenant_id: Uuid) -> AppResult<()> {
-    let key = keys::mappers_version(tenant_id);
-    let mut conn = state.redis.get().await?;
-    let _: () = conn
-        .set_ex(
-            &key,
-            Uuid::now_v7().simple().to_string(),
-            MAPPERS_VERSION_TTL,
+    state
+        .cache
+        .bump_version(
+            &keys::mappers_version(tenant_id),
+            std::time::Duration::from_secs(MAPPERS_VERSION_TTL),
         )
-        .await?;
-    Ok(())
+        .await
 }
 
 fn validate_name(s: &str) -> AppResult<String> {
