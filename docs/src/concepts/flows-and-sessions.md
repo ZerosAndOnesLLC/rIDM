@@ -91,7 +91,9 @@ the user typing anything.
 
 - The session lives in Valkey, where every node can read it on the hot path,
   and is mirrored to Postgres so that it can be listed, ended from the
-  consoles, and audited.
+  consoles, and audited. Activity slides the idle window in Valkey at most
+  once a minute and in Postgres at most once per quarter of the idle timeout
+  (15 minutes at most), so a listing's "last seen" can trail by that much.
 - The browser holds only a reference, in an HttpOnly, `SameSite=Lax` cookie
   with `Path=/`, named per tenant: `__Host-ridm_session_{slug}` (for example
   `__Host-ridm_session_acme`), or `ridm_session_{slug}` when

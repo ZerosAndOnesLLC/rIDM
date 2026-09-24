@@ -326,14 +326,29 @@ pub async fn get(
     }
     // Slide the idle window at most once a minute to keep writes cheap.
     if (now - session.last_seen_at).num_seconds() >= 60 {
+        let before = session.last_seen_at;
         session.last_seen_at = now;
         session.idle_expires_at = (now
             + chrono::Duration::seconds(policy.idle_timeout_secs as i64))
         .min(session.expires_at);
         store(state, &session).await?;
-        mirror_touch(state, &session).await?;
+        // The database copy (listings, statistics, cleanup) follows less
+        // often: once per mirror interval of activity.
+        let every = mirror_interval(policy);
+        if before.timestamp().div_euclid(every) != now.timestamp().div_euclid(every) {
+            mirror_touch(state, &session).await?;
+        }
     }
     Ok(Some(session))
+}
+
+/// How often, at most, an active session's sliding window is written to
+/// its database copy: a quarter of the idle timeout, at most 15 minutes and
+/// at least the one-minute slide. The copy's idle expiry therefore trails
+/// the real one by less than this, so a listing never shows an active
+/// session as ended (and one left idle drops out of it that much early).
+fn mirror_interval(policy: &SessionPolicy) -> i64 {
+    (policy.idle_timeout_secs as i64 / 4).clamp(60, 15 * 60)
 }
 
 /// Session for the current request, from the cookie.
@@ -513,6 +528,21 @@ pub async fn clients_of(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_mirror_interval_is_a_quarter_of_the_idle_timeout_within_bounds() {
+        let with = |idle| SessionPolicy {
+            idle_timeout_secs: idle,
+            ..SessionPolicy::default()
+        };
+        assert_eq!(mirror_interval(&with(1800)), 450);
+        assert_eq!(mirror_interval(&with(120)), 60, "never below the slide");
+        assert_eq!(
+            mirror_interval(&with(86_400)),
+            900,
+            "never above 15 minutes"
+        );
+    }
 
     #[test]
     fn secure_cookies_meet_the_host_prefix_rules() {
