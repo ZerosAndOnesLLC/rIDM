@@ -218,7 +218,8 @@ updated by Renovate (`renovate.json`).
 
 The `docs` workflow builds the GitHub Pages site (`scripts/pages/build.sh`) on every
 pull request: the website from `site/` at the root, the documentation from `docs/`
-under `/rIDM/docs/`, and a redirect stub at each documentation page's old URL. It
+under `/rIDM/docs/`, a redirect stub at each documentation page's old URL, and a
+`sitemap.xml` for search engines, each page dated by its last commit. It
 checks every link and anchor offline with lychee, plus the OpenAPI document the API
 reference loads; on `main` it deploys the site to GitHub Pages. To work on it locally:
 
