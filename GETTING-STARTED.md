@@ -4,8 +4,8 @@ From nothing to a running rIDM with an admin console, a demo tenant and three
 example applications signing in against it. Everything here is local; none of
 these credentials belongs on a machine anyone else can reach.
 
-The [README](README.md#development) covers what each piece is. This file is the
-short path to having it all on screen at once.
+[`CONTRIBUTING.md`](CONTRIBUTING.md#development-environment) covers the development setup for
+reference. This file is the short path to having it all on screen at once.
 
 ## The short way: `make`
 
@@ -152,7 +152,7 @@ export RIDM_URL=http://localhost:8090 RIDM_TOKEN=$(cat target/dev/token)
 ```
 
 Otherwise `ridm login` asks you to paste one (or runs the device grant for a client
-you registered for it; see the [README](README.md#command-line-administration-ridm)).
+you registered for it; see [the ridm command line](https://zerosandonesllc.github.io/rIDM/admin/cli.html)).
 Sign in to the account console at <http://localhost:3110/account/?tenant=master> and
 mint a personal access token under Security, or insert one directly for a user who
 already holds the permissions:

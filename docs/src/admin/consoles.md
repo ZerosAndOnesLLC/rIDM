@@ -70,11 +70,11 @@ Single keys work when no text field has focus; `?` lists them.
 | `t` | Tenant switcher (global administrators) |
 | `?` | The shortcut list |
 | `g` then `o` | Overview |
-| `g` then `u` / `g` / `r` | Users / Groups / Roles |
+| `g` then `u` / `g` / `z` / `r` | Users / Groups / Organizations / Roles |
 | `g` then `c` / `b` / `a` / `p` / `m` | Clients / SAML / Resource servers / Scopes / Claim mappers |
-| `g` then `k` / `l` / `i` | Signing keys / Audit log / IP rules |
+| `g` then `k` / `l` / `i` / `n` | Signing keys / Audit log / IP rules / Client certificates |
 | `g` then `w` / `e` / `d` / `v` | Webhooks / Messaging / Identity providers / Provisioning |
-| `g` then `t` / `s` / `x` | Tenants / Settings / Export & import |
+| `g` then `t` / `s` / `f` / `x` | Tenants / Settings / Feature flags / Export & import |
 
 The `g` sequence waits one second for its second key.
 
@@ -85,6 +85,7 @@ The `g` sequence waits one second for its second key.
 | Overview | `/console/` | any admin permission | Sign-ins, failures, live sessions, second-factor adoption and top clients over 7, 30 or 90 days (`GET /admin/tenants/{slug}/stats`, `ridm:tenants:read`) |
 | Users | `/console/users/` | `ridm:users:read` | [Users, invitations and bulk import](users.md) |
 | Groups, Roles | `/console/groups/`, `/console/roles/` | `ridm:groups:read`, `ridm:roles:read` | [Users, groups and roles](../concepts/users-groups-roles.md) |
+| Organizations | `/console/organizations/` | `ridm:orgs:read` | [Organizations](organizations.md) |
 | Clients | `/console/clients/` | `ridm:clients:read` | [Registering clients](clients.md) |
 | SAML | `/console/saml/` | `ridm:clients:read` (keys: `ridm:keys:write`) | [SAML identity provider](saml-idp.md) |
 | Playground | `/console/playground/?client=<id>` | reached from a client's detail page | Runs the client's flow for real (authorization code with PKCE, or client credentials with a pasted secret) and shows the token response, the decoded tokens and userinfo |
@@ -92,16 +93,20 @@ The `g` sequence waits one second for its second key.
 | Signing keys | `/console/keys/` | `ridm:keys:read` | [Rotating keys](key-rotation.md) |
 | Audit log | `/console/audit/` | `ridm:audit:read` | [Webhooks and the audit log](webhooks-audit.md) |
 | IP rules | `/console/ip-rules/` | `ridm:tenants:read` | [Rate limits, IP rules and CAPTCHA](security-controls.md) |
+| Client certificates | `/console/client-certificates/` | `ridm:tenants:read` | [Mutual TLS](mtls.md) |
 | Webhooks | `/console/webhooks/` | `ridm:webhooks:read` | [Webhooks and the audit log](webhooks-audit.md) |
 | Messaging | `/console/messaging/` | `ridm:messaging:read` | [Email, SMS and templates](messaging.md) |
 | Identity providers | `/console/identity-providers/` | `ridm:idps:read` | [Identity brokering](../concepts/brokering.md) |
 | Provisioning | `/console/provisioning/` | `ridm:scim:read` | [SCIM provisioning](scim.md) |
 | Tenants | `/console/tenants/` | `ridm:tenants:read` | [Tenants and tenant settings](tenants.md) |
 | Settings | `/console/settings/` | `ridm:tenants:read` | [Tenants and tenant settings](tenants.md) |
+| Feature flags | `/console/features/` | `ridm:tenants:read` | [Feature flags](feature-flags.md) |
 | Export & import | `/console/config/` | `ridm:tenants:export` | [Configuration as code](../concepts/config-as-code.md) |
 
 With only a `read` permission, a page shows its data but disables or hides the
-controls that would change it.
+controls that would change it. An [organization administrator](organizations.md#organization-administrators)
+sees that one organization's members, domains, roles and invitations and nothing of the
+tenant's own pages.
 
 ### Saving as you go
 

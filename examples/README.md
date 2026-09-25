@@ -14,7 +14,7 @@ Both clients call the same API, so you can watch one token travel: minted for
 
 ## Setting the demo tenant up
 
-You need a running rIDM (see [Development](../README.md#development)), the
+You need a running rIDM (see [Development environment](../CONTRIBUTING.md#development-environment) and [`GETTING-STARTED.md`](../GETTING-STARTED.md)), the
 `ridm` CLI, which is in this repository, and an admin token in `RIDM_TOKEN`:
 
 ```bash

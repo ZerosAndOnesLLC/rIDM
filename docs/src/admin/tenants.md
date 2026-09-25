@@ -236,10 +236,14 @@ outside `supported`, is refused. An empty `supported` list becomes `[default]`. 
 language of a page or message is negotiated from the OIDC `ui_locales` parameter, then
 the user's stored `locale`, then `default`; a tag matches exactly or by language
 (`de-CH` matches a supported `de`). Right-to-left languages (Arabic, Hebrew, Persian,
-Urdu and others) set `dir="rtl"`.
+Urdu and others) set `dir="rtl"`. The flow state carries the result as `locale`, `dir`
+(`ltr` or `rtl`) and the selectable `locales`; every email or SMS the flow sends is
+rendered in that locale, and a self-registered user is stored with it.
 
-The bundled UI ships English strings only, and falls back to English for other
-languages. Message templates can be overridden per locale; see
+The bundled UI ships English strings only (`ui/src/i18n/en.json`). An added bundle
+falls back key by key (`de-CH`, then `de`, then English), so a partial translation
+still renders; plurals follow `Intl.PluralRules`, and the stylesheets use logical
+properties so right-to-left languages mirror the layout. Message templates can be overridden per locale; see
 [Email, SMS and templates](messaging.md).
 
 ### branding

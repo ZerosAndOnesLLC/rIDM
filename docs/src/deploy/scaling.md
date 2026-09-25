@@ -54,8 +54,11 @@ under it and lets a second node start the same work.
 So however many nodes there are, each job runs on one node at a time, and adding nodes
 does not add job load. Webhooks and messages are first attempted as soon as the event
 happens, by the node that handled the request; the delivery jobs only pick up retries
-and anything left queued. A tenant's first signing key is created under a similar lock,
-so two nodes answering the tenant's first request do not both create one.
+and anything left queued. The two delivery jobs find the tenants with due work in one
+cross-tenant query and visit only those, so their cost follows the backlog rather than
+the number of tenants. A tenant's first signing key is created under a similar lock,
+so two nodes answering the tenant's first request do not both create one, and a partial
+unique index allows one active key per tenant and algorithm.
 
 Each pass's outcome is counted in `ridm_job_runs_total{job,outcome}` and stored as the
 job's last run in the Valkey hash `ridm:jobs:last_run` (no API endpoint exposes it yet;
@@ -76,8 +79,16 @@ CORS origins, organizations, identity providers, message templates, personal acc
 tokens and the dashboard's statistics go through this path, as do a user's effective
 roles and groups and the permissions a set of roles holds on a resource server. Users
 and key material (parsed signing keys, verification keys, SAML signers) are cached per
-node only, never in Valkey: user rows carry password hashes. Lifetimes are spread by a
+node only, never in Valkey: user rows carry password hashes. The user row an
+authenticated request reads is kept for up to a minute and evicted on every node by any
+write to that user; bearer tokens verify against the published keys, parsed once per
+node under the keys version. Lifetimes are spread by a
 tenth either way, so entries cached together do not all expire in the same second.
+
+The in-process cache holds at most 100,000 entries per node (the least used go first),
+and a missing key is loaded once however many requests ask for it at the same time.
+RSA JWT signing and SAML signing and verification run on the blocking thread pool, off
+the request threads.
 
 A write evicts the affected keys from its own node's cache, holds them in Valkey for
 five seconds (a loader that read the old row just before the write cannot put it back),

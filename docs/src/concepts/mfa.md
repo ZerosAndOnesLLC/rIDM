@@ -36,7 +36,10 @@ Enrolling proves the channel: an email or SMS factor is only saved once a code
 sent to it has been entered, and the address or number is then marked
 verified. Emailed and texted codes are stored hashed, bound to the flow, and
 good for ten minutes and five attempts; sends are limited to three per ten
-minutes per user.
+minutes per user. A second send within twenty seconds of the first reuses the
+pending code instead of sending another. The flow state lists the methods the
+`mfa` stage offers this user under `mfa.methods`, beside the factors already
+enrolled (`mfa.factors`).
 
 The first second factor a user enrols also issues **ten single-use recovery
 codes**, shown once. Any one of them replaces the second factor for one

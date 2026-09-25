@@ -13,6 +13,10 @@ IP rules, the audit log and the dashboard's sign-in counts. It has no redirect U
 grants or secret, so no OAuth endpoint will serve it, and the client routes refuse to
 edit its settings; the SAML routes and the console's **SAML** page do.
 
+The XML signature and encryption code is rIDM's own, with no C XML library underneath.
+CI checks its signatures and encryption against `xmlsec1` both ways, and the message parser is
+fuzzed (`api/fuzz`, target `saml_message`).
+
 ## What to give the service provider
 
 Every tenant is an IdP. Most SPs take the metadata URL, or an upload of the document:

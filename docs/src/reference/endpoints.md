@@ -72,7 +72,7 @@ The two mutual-TLS methods are offered when the deployment can receive client ce
 | `authorization_code` | PKCE `S256` only; `plain` is refused. Replaying a code revokes everything the first exchange produced. A code whose browser session was signed out before the exchange is refused (`invalid_grant`). `resource` may only pick among the resources named at `/authorize` (`invalid_target` otherwise). |
 | `refresh_token` | Rotation on every use with reuse detection (not for a FAPI 2.0 client, which keeps its refresh token). `scope` and `resource` may narrow the original grant, never widen it (`invalid_scope`, `invalid_target`, checked before the token is spent). Without `offline_access` the token ends with its browser session; each refresh extends the session's idle window. |
 | `client_credentials` | Tokens for the client itself, or for its service-account user when one exists. `openid` and `offline_access` are refused. With no `scope`, the tenant's default scopes the client may hold. |
-| `urn:ietf:params:oauth:grant-type:device_code` | Polling answers `authorization_pending`, `slow_down`, `access_denied` or `expired_token` until the user approves. |
+| `urn:ietf:params:oauth:grant-type:device_code` | RFC 8628. `/device_authorization` answers a `device_code`, a `user_code` (`XXXX-XXXX` from letters that are hard to confuse), `verification_uri` (the `/device/` page), `verification_uri_complete`, `expires_in` (600) and `interval` (5). The user's code becomes a login flow for the device's client, so sign-in, second step, profile completion, terms and consent all apply. Polling answers `authorization_pending`, `slow_down` (polled faster than the interval, which then grows by five seconds), `access_denied` or `expired_token` until the user decides, then the tokens exactly once. Wrong user codes are limited to ten per address per ten minutes; every code leaves a `device_codes` audit row. |
 | `urn:openid:params:grant-type:ciba` | `auth_req_id` from `/bc-authorize`. The same answers as the device grant while the user decides; `slow_down` applies only to a request still undecided, so a pinged client collects at once. The tokens are handed over once. |
 | `urn:ietf:params:oauth:grant-type:token-exchange` | `subject_token` (type `urn:ietf:params:oauth:token-type:access_token` or `...:jwt`; an opaque `at_...` token must be sent as `access_token`), optional `actor_token` (same rule), `audience`, `resource`, `scope`. No refresh token; the result reports `issued_token_type`. A client registered for opaque tokens may not request `...:jwt`. |
 
@@ -233,6 +233,14 @@ The self-service API for a signed-in user, under `/t/{slug}/account`. It takes a
 | GET, POST | `/t/{slug}/account/tokens` | Personal access tokens; mint one (shown once). |
 | DELETE | `/t/{slug}/account/tokens/{token_id}` | Revoke a personal access token. |
 | GET | `/t/{slug}/account/export` | Everything held about the user as one JSON document. |
+
+A few behaviours the table leaves out:
+
+- **Password change.** `PUT password` needs the current password while one is set; `sign_out_others: true` ends every other session, with back-channel logout.
+- **Contact changes.** A six-digit code goes to the new address (or number); the right code moves the account over, verified, and the previous address is told. An address another account uses is a `409`. Codes are hashed and single-use, good for ten minutes and five attempts, with three sends per ten minutes; a repeat inside twenty seconds reuses the pending code. The phone number cannot be removed while it backs an SMS second step (`400`).
+- **Linking.** The browser returns from the broker to the account console with `?linked=1` or `?link_error=<code>`.
+- **Personal access tokens.** `GET tokens` also lists the scopes a new token may carry (`account`, plus the admin permissions the user holds) and the tenant's maximum lifetime.
+- **Export and deletion.** The export holds the record, credential metadata, devices, sessions, consents, roles, groups and the audit trail, never secret material. `DELETE me` needs the username typed again as confirmation; see [deletion](../admin/users.md#editing-disabling-unlocking-and-deleting) for what follows.
 
 Request and response bodies are in the [rendered reference](admin-api/index.html).
 

@@ -90,8 +90,10 @@ sign-in pages and both consoles itself, on `PUBLIC_URL`'s origin: `/login/`,
 `/consent/`, `/console/`, `/account/` and the rest. Leave `UI_URL` unset (it defaults to
 `PUBLIC_URL`) and there is nothing else to host; the proxy sends every path to rIDM.
 API routes always win over pages, and a miss under an API prefix (`/t/`, `/admin/`,
-`/scim/`, `/.well-known/`) stays the API's `404` rather than a page. Pages are served
-with `trailingSlash` semantics (`/login` redirects to `/login/`), hashed build assets
+`/scim/`, `/.well-known/`, the probes, `/metrics`, `/docs`, `/openapi.json`) stays the
+API's `404` rather than a page; any other unknown path gets the export's `404.html`.
+Pages are served with `trailingSlash` semantics (`/login` redirects to `/login/` with a
+`308`, query kept), hashed build assets
 under `/_next/static/` are cached for a year as immutable, pages revalidate against an
 `ETag`, and text is gzip-compressed for clients that accept it. `EMBEDDED_UI=false`
 turns the pages off on a node that should serve the API alone.
