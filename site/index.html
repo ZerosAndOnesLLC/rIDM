@@ -65,7 +65,7 @@
           Source on GitHub
         </a>
       </div>
-      <p class="status">Version 0.1.0 is the first release, licensed MIT. Until 1.0 a minor version may change compatibility, and the <a href="https://github.com/ZerosAndOnesLLC/rIDM/blob/main/CHANGELOG.md">changelog</a> says how.</p>
+      <p class="status">Version 0.2.0 is the first published release, licensed MIT. Until 1.0 a minor version may change compatibility, and the <a href="https://github.com/ZerosAndOnesLLC/rIDM/blob/main/CHANGELOG.md">changelog</a> says how.</p>
     </div>
 
     <div class="term" aria-labelledby="qs-title">
@@ -366,20 +366,20 @@ docker compose up -d</code></pre>
         <p>A Deployment, Service, optional Ingress, autoscaler and disruption budget. Migrations run in a Job before every upgrade.</p>
         <pre><code>helm install ridm \
   oci://ghcr.io/zerosandonesllc/charts/ridm \
-  --version 0.1.0 -f values.yaml</code></pre>
+  --version 0.2.0 -f values.yaml</code></pre>
         <p style="margin-top:12px"><a href="docs/deploy/kubernetes.html">Kubernetes (Helm)</a></p>
       </div>
       <div>
         <h3>Container image</h3>
         <p>Multi-arch, amd64 and arm64, with an SBOM attached. Deploy by digest: tags move, a digest names one image.</p>
-        <pre><code>ghcr.io/zerosandonesllc/ridm:0.1.0</code></pre>
+        <pre><code>ghcr.io/zerosandonesllc/ridm:0.2.0</code></pre>
         <p style="margin-top:12px"><a href="docs/deploy/container.html">Container image</a></p>
       </div>
       <div>
         <h3>Static binaries</h3>
         <p><code>ridm-api</code> with the UI compiled in, and the <code>ridm</code> CLI, statically linked against musl. Any Linux, no libc or OpenSSL needed.</p>
-        <pre><code>ridm-0.1.0-linux-amd64.tar.gz
-ridm-0.1.0-linux-arm64.tar.gz</code></pre>
+        <pre><code>ridm-0.2.0-linux-amd64.tar.gz
+ridm-0.2.0-linux-arm64.tar.gz</code></pre>
         <p style="margin-top:12px"><a href="docs/deploy/releases.html">Releases</a></p>
       </div>
     </div>
@@ -389,7 +389,7 @@ ridm-0.1.0-linux-arm64.tar.gz</code></pre>
         <p>Every release is built from a <code>v*</code> tag by the release workflow and signed with Sigstore keyless signing. Verification names that workflow and GitHub's token issuer, so a check that fails means the artifact was not built there, or was changed since. <a href="docs/deploy/releases.html">Releases and verification</a>.</p>
       </div>
       <pre><code>IDENTITY='^https://github.com/ZerosAndOnesLLC/rIDM/\.github/workflows/release\.yml@refs/tags/v'
-cosign verify ghcr.io/zerosandonesllc/ridm:0.1.0 \
+cosign verify ghcr.io/zerosandonesllc/ridm:0.2.0 \
   --certificate-identity-regexp "$IDENTITY" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com</code></pre>
     </div>
