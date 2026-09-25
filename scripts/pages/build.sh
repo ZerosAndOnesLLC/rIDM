@@ -12,6 +12,7 @@ rm -rf _site
 mkdir -p _site
 cp -R site/. _site/
 cp -R docs/book _site/docs
+python3 scripts/pages/seo.py _site/docs
 
 (cd docs/book && find . -name '*.html' ! -name index.html ! -name 404.html ! -name toc.html) |
   while read -r page; do
