@@ -119,7 +119,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ridm-auth = { git = "https://github.com/ZerosAndOnesLLC/rIDM", tag = "v0.1.0" }
+ridm-auth = { git = "https://github.com/ZerosAndOnesLLC/rIDM", tag = "v0.2.0" }
 axum = "0.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
 serde_json = "1"

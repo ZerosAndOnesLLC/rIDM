@@ -65,7 +65,7 @@ ingress:
 ```
 
 ```bash
-helm install ridm oci://ghcr.io/zerosandonesllc/charts/ridm --version 0.1.0 \
+helm install ridm oci://ghcr.io/zerosandonesllc/charts/ridm --version 0.2.0 \
   -n ridm -f ridm-values.yaml --wait
 # or, from a checkout:
 helm install ridm deploy/helm/ridm -n ridm -f ridm-values.yaml --wait
