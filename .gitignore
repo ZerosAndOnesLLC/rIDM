@@ -55,3 +55,6 @@ conformance/results/
 conformance/certs/
 __pycache__/
 *.pyc
+
+# GitHub Pages build (scripts/pages/build.sh)
+/_site/

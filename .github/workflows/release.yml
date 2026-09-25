@@ -404,7 +404,7 @@ jobs:
             echo "- Helm chart: \`helm install ridm $CHART_REPO/ridm --version $VERSION\`"
             echo "- Static binaries for linux amd64 and arm64 below; verify them with \`SHA256SUMS\` and its Sigstore bundle."
             echo
-            echo "Verifying signatures: https://zerosandonesllc.github.io/rIDM/deploy/releases.html#verifying-a-release"
+            echo "Verifying signatures: https://zerosandonesllc.github.io/rIDM/docs/deploy/releases.html#verifying-a-release"
           } > notes.md
           flags=()
           [ "$PRERELEASE" = true ] && flags+=(--prerelease)
