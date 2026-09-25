@@ -176,13 +176,18 @@ The client sends a `DPoP` header on the token request: a short JWT signed with
 its key, naming the method and URL. rIDM binds every token of the response to
 that key's thumbprint: the access token carries `cnf.jkt`, `token_type` is
 `DPoP`, and a public client's refresh token is bound too, so a later refresh
-needs a proof from the same key. At a resource, the client sends a fresh proof
-with every request, including `ath`, the hash of the token.
+needs a proof from the same key (a proof from another key is refused and leaves
+the refresh token unspent). Introspection reports `cnf.jkt` and `token_type`
+`DPoP`. At a resource, the client sends a fresh proof with every request,
+including `ath`, the hash of the token.
 
 Proofs are single-use within a five-minute window, may be at most five minutes
 old and thirty seconds in the future, and must match the request's method and
-URL. `/userinfo`, the account API and the admin API refuse a bound token
-presented without a matching proof. A client registered with
+URL (the query is ignored; the tenant's custom domain and the `/t/{slug}` form
+both count). `/userinfo`, the account API and the admin API refuse a bound token
+presented as a plain bearer token, without a proof or with another key's proof,
+with a `DPoP` challenge (`WWW-Authenticate: DPoP algs=...`, see
+[Errors](../reference/errors.md)). A client registered with
 `dpop_bound_access_tokens` must always use DPoP. Server-provided DPoP nonces
 and the `dpop_jkt` authorization parameter are not implemented.
 
@@ -201,8 +206,12 @@ a user's token and needs to call a downstream service as that user.
 - Unlike every other grant, an empty `allowed_audiences` does not mean "any":
   the exchanging client may only obtain tokens for audiences it lists, because
   the token it presents may have been minted for someone else.
+- The subject token is an access token of the tenant, a JWT or an opaque `at_...`
+  token (see [HTTP endpoints](../reference/endpoints.md) for the token types). A
+  revoked, expired or foreign subject token is `invalid_grant`; an unsupported
+  token type is `invalid_request`.
 - With an `actor_token`, the result is a delegation: its `act` claim names the
-  acting party, nesting any earlier `act` on re-exchange.
+  acting party (`sub`, `client_id`), nesting any earlier `act` on re-exchange.
 - A DPoP-bound subject token can only be exchanged by a request proving the
   same key, so exchange cannot strip a binding.
 

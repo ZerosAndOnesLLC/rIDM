@@ -169,7 +169,7 @@ replica; unset, the primary serves both.
 |------|----------|
 | `redis://host:6379` or `redis://host:6379/2` | One server (the path picks the database number) |
 | `rediss://host:6380` | One server over TLS |
-| `redis+cluster://host1:7000,host2:7001` | A cluster; the listed nodes are seeds |
+| `redis+cluster://host1:7000,host2:7001` | A cluster; the listed nodes are seeds. Keys need no hash tags: writes and scripts touch one key at a time, and the one multi-key read (the `MGET` behind a user's session list) is split by slot in the cluster client |
 | `redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster` | Sentinel-managed replication; the pool follows the current master of `mymaster` |
 
 Credentials go before an `@` and apply to every listed host:

@@ -212,7 +212,10 @@ Security, or through `POST /t/{slug}/account/tokens` with an account-console tok
 - `last_used_at` is recorded at most once a minute. Administrators list and revoke a
   user's tokens with `GET /admin/tenants/{slug}/users/{user}/pats` and
   `DELETE …/pats/{token_id}`, or on the user's "Password & credentials" tab; the
-  tokens themselves are never readable again.
+  tokens themselves are never readable again. Deleting the account revokes whatever
+  tokens are left. Minting and revoking raise `personal_token.created` and
+  `personal_token.revoked`; introspection reports a live token as
+  `token_type: personal_access_token` with its subject, username, scope and expiry.
 
 A personal access token is the simplest credential for CI: put it in `RIDM_TOKEN`
 and the [`ridm` CLI](cli.md) needs no login.

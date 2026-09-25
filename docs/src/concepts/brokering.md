@@ -59,9 +59,12 @@ link on the partner's intranet.
    The callback signs in only the browser holding the binding cookie: a
    callback URL someone else obtained, opened in another browser, is refused
    with `broker_error=invalid_state` (login CSRF).
-4. rIDM redeems the code. For `oidc` providers it verifies the ID token's
+4. rIDM redeems the code, authenticating as the provider's
+   `token_endpoint_auth_method` says (`client_secret_basic`,
+   `client_secret_post`, or `none` for PKCE alone). For `oidc` providers it verifies the ID token's
    signature against the provider's JWKS (cached for an hour, refetched once
-   for an unknown `kid`), its issuer, audience, expiry and nonce. For `oauth2`
+   for an unknown `kid`), its issuer (a Microsoft provider configured with the
+   `common`, `organizations` or `consumers` issuer accepts any directory's), audience, expiry and nonce. For `oauth2`
    providers it reads the userinfo endpoint (for GitHub, the primary verified
    address comes from `/user/emails`).
 5. rIDM resolves the upstream identity to a local user (below), then the login
