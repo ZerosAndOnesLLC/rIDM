@@ -12,7 +12,7 @@ members = [
 exclude = ["api/fuzz"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/ZerosAndOnesLLC/rIDM"
@@ -21,7 +21,7 @@ rust-version = "1.98"
 # Every dependency is pinned to an exact version (see working-plan.md §2).
 # Bump deliberately; keep the table in the plan in sync.
 [workspace.dependencies]
-ridm-core = { path = "crates/ridm-core", version = "0.1.0" }
+ridm-core = { path = "crates/ridm-core", version = "0.2.0" }
 
 # HTTP
 axum = { version = "=0.8.9", features = ["macros"] }

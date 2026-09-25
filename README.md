@@ -7,7 +7,7 @@ A modern, multi-tenant Identity Management server: OpenID Connect provider, JWT 
 user/group/role management, MFA, and identity brokering, with a bundled admin console and
 end-user account console.
 
-> **Status:** v0.1.0, the first release. Until 1.0.0 a minor version may break
+> **Status:** v0.2.0, the first published release. Until 1.0.0 a minor version may break
 > compatibility; [`CHANGELOG.md`](CHANGELOG.md) says how under **Upgrade notes**. See
 > [`working-plan.md`](working-plan.md) for the roadmap and what is still to come.
 

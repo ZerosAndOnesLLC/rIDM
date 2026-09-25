@@ -13,7 +13,7 @@ code flow, and APIs accept the resulting access tokens by checking them
 against the tenant's published keys (or, for clients that ask for opaque access
 tokens, at the tenant's introspection endpoint).
 
-> **Status:** `0.1.0`, the first release. Until 1.0.0 a minor version may break
+> **Status:** `0.2.0`, the first published release. Until 1.0.0 a minor version may break
 > compatibility, and the [changelog](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/CHANGELOG.md)
 > says how. `ridm-auth` is not on crates.io yet. The [working plan](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/working-plan.md)
 > lists what is done and what is still to come.

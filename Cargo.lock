@@ -4812,7 +4812,7 @@ dependencies = [
 
 [[package]]
 name = "ridm-api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "argon2",
  "async-trait",
@@ -4902,7 +4902,7 @@ dependencies = [
 
 [[package]]
 name = "ridm-auth"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "base64 0.23.1",
@@ -4920,7 +4920,7 @@ dependencies = [
 
 [[package]]
 name = "ridm-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "chrono",
@@ -4947,7 +4947,7 @@ dependencies = [
 
 [[package]]
 name = "ridm-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4965,7 +4965,7 @@ dependencies = [
 
 [[package]]
 name = "ridm-example-axum-api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "chrono",
@@ -4981,7 +4981,7 @@ dependencies = [
 
 [[package]]
 name = "ridm-example-confidential-client"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "base64 0.23.1",

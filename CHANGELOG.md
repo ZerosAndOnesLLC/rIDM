@@ -14,6 +14,13 @@ release renames that heading to the version and date.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-24
+
+The first published release. 0.1.0 was cut but never tagged or published, so this
+release also contains everything its section of
+[`CHANGELOG.md`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/CHANGELOG.md)
+lists; the notes below are what came after it.
+
 ### Added
 
 - SAML 2.0 identity provider. Every tenant publishes IdP metadata at
@@ -328,7 +335,7 @@ release renames that heading to the version and date.
 
 ## [0.1.0] - 2026-09-19
 
-The first release.
+Cut but never tagged or published; everything here ships in 0.2.0.
 
 ### Added
 
@@ -353,5 +360,5 @@ The first release.
 - `/.well-known/security.txt` is the operator's: `SECURITY_CONTACT`,
   `SECURITY_POLICY_URL` or a whole `SECURITY_TXT_FILE`, and 404 until one is set.
 
-[Unreleased]: https://github.com/ZerosAndOnesLLC/rIDM/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.1.0
+[Unreleased]: https://github.com/ZerosAndOnesLLC/rIDM/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.2.0

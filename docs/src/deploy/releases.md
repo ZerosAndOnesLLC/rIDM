@@ -7,7 +7,7 @@ run was built by this repository's release workflow from that tag and not altere
 since. The release notes on GitHub come from
 [`CHANGELOG.md`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/CHANGELOG.md).
 
-The first release is `v0.1.0`.
+The first published release is `v0.2.0`.
 
 ## What a release publishes
 

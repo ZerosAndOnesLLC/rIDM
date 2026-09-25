@@ -8,7 +8,7 @@ two health endpoints.
 
 | Endpoint | Checks | Response |
 |----------|--------|----------|
-| `GET /healthz` | Nothing beyond the process answering HTTP | Always `200 {"status":"ok","version":"0.1.0"}` while the server runs |
+| `GET /healthz` | Nothing beyond the process answering HTTP | Always `200 {"status":"ok","version":"0.2.0"}` while the server runs |
 | `GET /readyz` | `SELECT 1` on the primary Postgres pool and `PING` to Valkey, in parallel, and the depth of the in-process event queues | `200 {"status":"ok","checks":{"database":"ok","cache":"ok","events":"ok"}}`, or `503` with `"status":"degraded"` and `"fail"` against the failed check (`"events":"saturated"` when a queue is past 80% of `EVENT_QUEUE_CAPACITY`) |
 
 Use `/healthz` for liveness and `/readyz` for readiness and load-balancer health checks.
