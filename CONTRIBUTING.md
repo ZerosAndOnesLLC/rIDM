@@ -216,15 +216,22 @@ pushed. Fuzz targets, seeds and reproducing a crash: [`api/fuzz/README.md`](api/
 load tests: [`perf/README.md`](perf/README.md). Dependencies are exact-pinned and
 updated by Renovate (`renovate.json`).
 
-The `docs` workflow builds the documentation site (`docs/build.sh`) on every pull
-request and checks every link and anchor in it offline with lychee, plus the OpenAPI
-document the API reference loads; on `main` it deploys the site to GitHub Pages. To
-work on the docs locally:
+The `docs` workflow builds the GitHub Pages site (`scripts/pages/build.sh`) on every
+pull request: the website from `site/` at the root, the documentation from `docs/`
+under `/rIDM/docs/`, and a redirect stub at each documentation page's old URL. It
+checks every link and anchor offline with lychee, plus the OpenAPI document the API
+reference loads; on `main` it deploys the site to GitHub Pages. To work on it locally:
 
 ```bash
 cargo install mdbook --version 0.5.4 --locked
 cd docs && mdbook serve --open     # live reload; the API reference page needs ./build.sh
+scripts/pages/build.sh             # the whole site in _site/
+mkdir -p /tmp/pages && ln -sfn "$PWD/_site" /tmp/pages/rIDM &&
+  python3 -m http.server -d /tmp/pages 8000   # http://localhost:8000/rIDM/
 ```
+
+`site/` is plain HTML, CSS and SVG with no build step; its links are relative, except
+in `404.html`, which GitHub Pages serves at any path.
 
 ## Pull requests
 

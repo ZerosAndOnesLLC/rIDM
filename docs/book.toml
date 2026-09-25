@@ -12,7 +12,7 @@ create-missing = false
 [output.html]
 git-repository-url = "https://github.com/ZerosAndOnesLLC/rIDM"
 edit-url-template = "https://github.com/ZerosAndOnesLLC/rIDM/edit/main/docs/{path}"
-site-url = "/rIDM/"
+site-url = "/rIDM/docs/"
 default-theme = "light"
 preferred-dark-theme = "navy"
 no-section-label = false

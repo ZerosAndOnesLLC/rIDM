@@ -152,7 +152,7 @@ export RIDM_URL=http://localhost:8090 RIDM_TOKEN=$(cat target/dev/token)
 ```
 
 Otherwise `ridm login` asks you to paste one (or runs the device grant for a client
-you registered for it; see [the ridm command line](https://zerosandonesllc.github.io/rIDM/admin/cli.html)).
+you registered for it; see [the ridm command line](https://zerosandonesllc.github.io/rIDM/docs/admin/cli.html)).
 Sign in to the account console at <http://localhost:3110/account/?tenant=master> and
 mint a personal access token under Security, or insert one directly for a user who
 already holds the permissions:

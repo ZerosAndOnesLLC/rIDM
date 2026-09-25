@@ -1,6 +1,7 @@
-# The documentation site (docs/, mdBook). Every PR builds it and checks every
-# link inside it, so a renamed page or a moved anchor fails here rather than
-# on the published site; `main` deploys it to GitHub Pages.
+# The GitHub Pages site: the website (site/) at the root and the documentation
+# (docs/, mdBook) under docs/. Every PR builds both and checks every link
+# inside them, so a renamed page or a moved anchor fails here rather than on
+# the published site; `main` deploys it to GitHub Pages.
 name: docs
 
 on:
@@ -25,7 +26,7 @@ jobs:
         with:
           tool: mdbook@0.5.4
       - name: build
-        run: docs/build.sh
+        run: scripts/pages/build.sh
       - name: no placeholder pages
         # `create-missing = false` catches a page missing from disk; this
         # catches one that exists but was never written.
@@ -33,21 +34,23 @@ jobs:
       - name: links
         # Offline: every link between pages, every anchor, and the OpenAPI
         # document the API reference loads. External links are not checked
-        # here, so a flaky third-party site cannot fail a PR. `404.html` is
-        # skipped: its links are absolute under `site-url` (`/rIDM/`), which
-        # only resolves once deployed.
+        # here, so a flaky third-party site cannot fail a PR. The 404 pages
+        # and the redirect stubs are skipped: their links are absolute under
+        # `/rIDM/`, which only resolves once deployed.
         uses: lycheeverse/lychee-action@v2
         with:
           args: >-
             --offline --include-fragments --no-progress
-            --root-dir ${{ github.workspace }}/docs/book
-            --exclude-path docs/book/404.html
-            'docs/book/**/*.html'
+            --root-dir ${{ github.workspace }}/_site
+            --exclude-path _site/404.html
+            --exclude-path _site/docs/404.html
+            _site/index.html
+            '_site/docs/**/*.html'
           fail: true
       - uses: actions/upload-pages-artifact@v5
         if: github.event_name == 'push'
         with:
-          path: docs/book
+          path: _site
 
   deploy:
     name: deploy

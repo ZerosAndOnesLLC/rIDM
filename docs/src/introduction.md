@@ -47,12 +47,10 @@ fall back to a weaker flow.
 - **No cloud-specific dependencies.** The default build needs a container
   runtime, Postgres and Valkey and nothing else. Email goes out over SMTP or an
   HTTP webhook, text messages over an HTTP gateway, and secrets at rest are
-  encrypted with a master key you supply. Integrations with cloud key
-  management services and HSMs are planned, not present.
+  encrypted with a master key you supply, or held in an HSM or a cloud key
+  management service if you choose one ([Key custody](deploy/key-custody.md)).
 
-Some things are not built yet, and this book says so where you would look for
-them: mutual-TLS client authentication, HSM and cloud KMS key custody, and
-per-tenant database routing are planned.
+Where something is not built yet, this book says so where you would look for it.
 
 ## How this book is organised
 
