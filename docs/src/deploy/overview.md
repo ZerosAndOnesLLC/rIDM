@@ -165,6 +165,8 @@ the deployment's `SMTP_HOST`) are not filtered. See
 - [Container image](container.md): building and running the image, migrations, health checks.
 - [TLS and reverse proxies](tls-and-proxies.md): `PUBLIC_URL`, `TRUSTED_PROXIES`, cookies,
   the nginx, Caddy and Traefik configurations.
+- [FIPS 140-3](fips.md): the optional FIPS build, for organizations that must run
+  validated cryptography. Everyone else can skip it.
 - [Postgres and Valkey](postgres-valkey.md): roles, row level security, pools, topologies.
 - [Scaling and performance](scaling.md) and [Observability](observability.md).
 - [Production checklist](checklist.md).
