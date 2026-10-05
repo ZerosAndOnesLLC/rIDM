@@ -27,6 +27,15 @@ async fn main() {
     // harmless for the rest: RIDM_URL and RIDM_TOKEN may live there too.
     let _ = dotenvy::dotenv();
 
+    // This build's TLS provider (the FIPS one in the `fips` build) for every
+    // connection the CLI makes: the admin API, and Postgres and Valkey for
+    // `bootstrap`.
+    #[cfg(feature = "bootstrap")]
+    if let Err(err) = ridm_api::crypto_provider::install() {
+        eprintln!("ridm: {err}");
+        std::process::exit(1);
+    }
+
     let cli = Cli::parse();
     match run(cli).await {
         Ok(()) => {}

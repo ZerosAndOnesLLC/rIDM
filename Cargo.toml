@@ -33,7 +33,7 @@ http = "=1.5.0"
 tokio = { version = "=1.53.1", features = ["full"] }
 
 # Storage
-sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls-ring", "postgres", "uuid", "chrono", "json", "migrate", "macros"] }
+sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "uuid", "chrono", "json", "migrate", "macros"] }
 deadpool-redis = { version = "=0.23.1", features = ["rt_tokio_1", "cluster", "sentinel"] }
 redis = { version = "=1.7.0", features = ["tokio-rustls-comp", "script", "cluster-async", "sentinel"] }
 # In-process (L1) cache: size-bounded, per-entry TTL.
@@ -54,9 +54,10 @@ md-5 = "=0.11.0"
 totp-rs = { version = "=6.0.0", features = ["qr", "gen_secret"] }
 webauthn-rs = { version = "=0.5.5", features = ["danger-allow-state-serialisation", "conditional-ui"] }
 webauthn-rs-proto = "=0.5.5"
-# webauthn-rs 0.5 needs OpenSSL for attestation; vendored so the distroless image
-# has no dynamic libssl dependency.
-openssl-sys = { version = "=0.9.117", features = ["vendored"] }
+# webauthn-rs 0.5 needs OpenSSL for attestation. The standard build vendors it
+# (ridm-api's default `vendored-openssl` feature) so the distroless image has no
+# dynamic libssl dependency; the FIPS build links the system's validated OpenSSL.
+openssl-sys = "=0.9.117"
 chacha20poly1305 = "=0.11.0"
 sha2 = "=0.11.0"
 hmac = "=0.13.0"

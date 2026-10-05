@@ -17,6 +17,15 @@ name = "ridm_api"
 path = "src/lib.rs"
 
 [features]
+# OpenSSL (needed only by webauthn-rs) compiled from source and linked
+# statically, so the standard image has no dynamic libssl. The FIPS build
+# turns it off (`--no-default-features`) and links the system OpenSSL instead.
+default = ["vendored-openssl"]
+vendored-openssl = ["openssl-sys/vendored"]
+# The FIPS 140-3 build (docs/src/deploy/fips.md): aws-lc-rs on the AWS-LC FIPS
+# module and rustls' FIPS provider. Off by default; every feature works in
+# both builds.
+fips = ["aws-lc-rs/fips", "rustls/fips", "tokio-rustls/fips"]
 # Compile the UI's static export (`ui/out`, from `npm run build` in `ui/`)
 # into the binary and serve it on the API's origin: the single-binary deploy
 # the container image ships. Off by default so a Rust-only checkout builds

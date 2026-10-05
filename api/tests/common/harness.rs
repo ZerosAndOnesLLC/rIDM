@@ -57,7 +57,7 @@ pub async fn infra() -> &'static Infra {
 }
 
 async fn start_infra() -> Infra {
-    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let _ = ridm_api::crypto_provider::install();
 
     let (database_url, redis_url, pg, redis) = match (
         std::env::var("RIDM_TEST_DATABASE_URL"),

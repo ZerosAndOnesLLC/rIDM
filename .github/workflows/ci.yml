@@ -202,7 +202,9 @@ jobs:
           tool: cargo-llvm-cov
       - name: cargo llvm-cov
         run: |
-          cargo llvm-cov --workspace --all-features --locked \
+          # Every feature but `fips`: coverage measures the standard build.
+          cargo llvm-cov --workspace --locked \
+            --features "$RIDM_FEATURES,ridm-api/embedded-ui,ridm-api/mimalloc,ridm-api/test-support" \
             --ignore-filename-regex '(tests?/|build\.rs|main\.rs)' \
             --lcov --output-path lcov.info
           cargo llvm-cov report --summary-only | tee coverage-summary.txt

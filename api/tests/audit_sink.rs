@@ -280,7 +280,7 @@ async fn syslog_over_tls_counts_octets_and_trusts_the_given_ca() {
         .unwrap();
     let key = PrivateKeyDer::from_pem_file(fixture("server.key")).unwrap();
     let config = rustls::ServerConfig::builder_with_provider(Arc::new(
-        rustls::crypto::aws_lc_rs::default_provider(),
+        ridm_api::crypto_provider::provider(),
     ))
     .with_safe_default_protocol_versions()
     .unwrap()
