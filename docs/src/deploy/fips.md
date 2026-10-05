@@ -26,8 +26,8 @@ Every feature works in both builds:
 | Cryptographic module | aws-lc-rs (AWS-LC) | aws-lc-rs on the **AWS-LC FIPS module**, and the host's validated OpenSSL for passkeys |
 | New password hashes | argon2id | PBKDF2-HMAC-SHA512 |
 | Secrets at rest | AES-256-GCM | AES-256-GCM |
-| TLS | TLS 1.2 and 1.3 with every rustls suite and group, including ChaCha20 and X25519 | TLS 1.2 and 1.3 with AES-GCM suites and the P-256/P-384 groups only |
-| Starts on a host without FIPS mode | yes | no: it refuses to start |
+| TLS | TLS 1.2 and 1.3 with every rustls suite and group, including ChaCha20 and X25519 | TLS 1.2 and 1.3 with AES-GCM suites only, and the P-256, P-384 and X25519MLKEM768 groups |
+| Starts on a host without FIPS mode | yes | no, unless `FIPS_ALLOW_NON_FIPS_HOST=true` (development and CI only) |
 | Platforms | image (amd64, arm64) and static musl binaries | image only (see [What isn't covered](#what-isnt-covered)) |
 
 The two builds use the same database schema, the same tenant documents and the same
@@ -72,9 +72,21 @@ signed and carry an SBOM, like every other release image. Pin them by digest.
 
 - **The host must be in FIPS mode.** For OpenShift, that means installing the cluster
   with `fips: true`. For RHEL, run `fips-mode-setup --enable` and reboot.
-- **At start-up** the server runs the FIPS module's self-test, logs the module name and
-  version, and checks that every TLS configuration it builds is FIPS-only. If any of
-  these fail, it refuses to start. The `ridm` command line does the same.
+- **At start-up** the server runs the FIPS module's self-test, checks that the host is
+  in FIPS mode (`/proc/sys/crypto/fips_enabled` is `1`), and logs the module version:
+
+  ```text
+  INFO FIPS build: the AWS-LC FIPS module passed its self-test module_version="4.2.0" fips_version=Some(4) host_fips=true
+  ```
+
+  Every TLS configuration it builds (the HTTPS and mutual-TLS listeners, LDAP, the
+  audit syslog sink, the healthcheck) must pass rustls' FIPS check. If any check fails,
+  the server refuses to start and says which. The `ridm` command line and every
+  `ridm-api` subcommand, the container healthcheck included, run the same checks.
+- **Developing or running CI on a machine that isn't in FIPS mode:** set
+  `FIPS_ALLOW_NON_FIPS_HOST=true`. The module self-test still has to pass, and the server
+  prints a warning at start-up and logs it again. Never set this in production. A host
+  that isn't in FIPS mode isn't a FIPS-validated configuration.
 - **Postgres:** connect with client-certificate authentication over TLS (`sslmode=verify-full` with
   `sslcert`/`sslkey`) rather than a password. The Postgres driver sqlx still
   implements password authentication (SCRAM) with non-validated code. That's tracked
@@ -87,8 +99,9 @@ signed and carry an SBOM, like every other release image. Pin them by digest.
 |---|---|---|
 | `PBKDF2_ITERATIONS` | `210000` | PBKDF2-HMAC-SHA512 iterations for new password hashes. It can't be set below 210,000. |
 | `FIPS_TRANSITION` | `false` | Allows the one-time legacy operations described below. Turn it off when the move is done. |
+| `FIPS_ALLOW_NON_FIPS_HOST` | `false` | Lets the FIPS build start on a host that isn't in FIPS mode, with a warning. For development and CI only. |
 
-The standard build ignores both variables, and its `ARGON2_*` settings are unchanged.
+The standard build ignores these variables, and its `ARGON2_*` settings are unchanged.
 
 ## Moving an existing deployment
 
@@ -129,7 +142,7 @@ sign in.
 
 | Feature | In the FIPS build | Issue |
 |---|---|---|
-| TLS (listener, mutual TLS, outbound connections) | Uses rustls' FIPS provider. Each configuration is checked with `ServerConfig::fips()` / `ClientConfig::fips()`. | [#1](https://github.com/ZerosAndOnesLLC/rIDM/issues/1) |
+| TLS (listener, mutual TLS, outbound connections) | Uses rustls' FIPS provider: AES-GCM suites only, with the P-256, P-384 and X25519MLKEM768 key exchange groups. X25519MLKEM768 is a post-quantum hybrid. rustls allows it in FIPS mode under NIST SP 800-56C rev 2, which permits a hybrid shared secret when one part (here ML-KEM, FIPS 203) is approved. Each configuration rIDM builds is checked with `ServerConfig::fips()` / `ClientConfig::fips()`. | [#1](https://github.com/ZerosAndOnesLLC/rIDM/issues/1) |
 | Token signing (RS256/384/512, ES256) | Runs on aws-lc-rs, as it already does in both builds. | [#5](https://github.com/ZerosAndOnesLLC/rIDM/issues/5) |
 | EdDSA signing keys | Available in both builds. Whether Ed25519 is inside the AWS-LC FIPS module boundary is being confirmed against the module's security policy. If it isn't, the FIPS build marks EdDSA as non-approved, and admins can turn it off per tenant. | [#5](https://github.com/ZerosAndOnesLLC/rIDM/issues/5) |
 | Key generation, hashing, HMAC, random numbers | Uses aws-lc-rs in both builds. Random values come from the module's SP 800-90A DRBG. | [#5](https://github.com/ZerosAndOnesLLC/rIDM/issues/5) |
@@ -173,7 +186,7 @@ Whether a particular deployment counts as compliant is up to your assessor.
 # The binary links only the FIPS module's AWS-LC:
 nm target/release/ridm-api | grep -oE 'aws_lc_(fips_)?[0-9]+_[0-9]+_[0-9]+' | sort -u
 
-# Only AES-GCM suites and P-256/P-384 are offered:
+# ChaCha20 and plain X25519 are refused:
 openssl s_client -connect ridm.example.com:443 -tls1_3 -groups X25519   # must fail
 openssl s_client -connect ridm.example.com:443 -tls1_2 -cipher ECDHE-RSA-CHACHA20-POLY1305   # must fail
 ```

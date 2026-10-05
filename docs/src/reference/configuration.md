@@ -95,6 +95,14 @@ Client certificates for [mutual-TLS client authentication and certificate-bound 
 | `MTLS_PUBLIC_URL` | URL | unset | Where clients reach the mTLS endpoints (`https://mtls.id.example.com`). Discovery publishes `{MTLS_PUBLIC_URL}/t/{slug}/token` and the other client-authenticated endpoints as `mtls_endpoint_aliases`, so browsers never meet a certificate prompt on the sign-in host. Needs `MTLS_BIND` or `CLIENT_CERT_HEADER`. |
 | `CLIENT_CERT_HEADER` | header name | unset | The header a TLS-terminating proxy puts the client certificate in (`X-Client-Cert`): PEM, URL-encoded PEM (nginx `$ssl_client_escaped_cert`) or base64 DER, leaf first, up to five certificates. **Only read from a `TRUSTED_PROXIES` peer**; the proxy must overwrite it on every request. |
 
+## FIPS build
+
+Read only by the [FIPS build](../deploy/fips.md) (`--features fips`, the `-fips` image). The standard build ignores them.
+
+| Variable | Type | Default | Meaning |
+|----------|------|---------|---------|
+| `FIPS_ALLOW_NON_FIPS_HOST` | boolean | `false` | Lets the FIPS build start on a host that isn't in FIPS mode (`/proc/sys/crypto/fips_enabled` is not `1`). It prints and logs a warning. The AWS-LC module self-test must still pass. For development and CI only: such a host isn't a FIPS-validated configuration. |
+
 ## Email
 
 Deployment-wide SMTP defaults, used by tenants that have not configured their own email backend (`PUT /admin/tenants/{slug}/messaging/email`). There is no deployment-wide SMS gateway; SMS is configured per tenant. See [Email, SMS and templates](../admin/messaging.md).

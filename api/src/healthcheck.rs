@@ -111,14 +111,14 @@ fn pinned_tls(path: &Path) -> Result<rustls::ClientConfig, String> {
         .ok_or_else(|| format!("TLS_CERT {}: no certificate", path.display()))?
         .map_err(|e| format!("TLS_CERT {}: {e}", path.display()))?;
     let provider = Arc::new(crate::crypto_provider::provider());
-    Ok(
-        rustls::ClientConfig::builder_with_provider(provider.clone())
-            .with_safe_default_protocol_versions()
-            .map_err(|e| e.to_string())?
-            .dangerous()
-            .with_custom_certificate_verifier(Arc::new(PinnedCert { cert, provider }))
-            .with_no_client_auth(),
-    )
+    let config = rustls::ClientConfig::builder_with_provider(provider.clone())
+        .with_safe_default_protocol_versions()
+        .map_err(|e| e.to_string())?
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(PinnedCert { cert, provider }))
+        .with_no_client_auth();
+    crate::crypto_provider::require_fips("the healthcheck", config.fips())?;
+    Ok(config)
 }
 
 /// Trusts one certificate, byte for byte; the handshake signature is still

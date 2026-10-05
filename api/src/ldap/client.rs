@@ -153,6 +153,7 @@ fn build_tls_config(ca: Option<&str>) -> Result<Arc<rustls::ClientConfig>, LdapF
                 .with_no_client_auth()
         }
     };
+    crate::crypto_provider::require_fips("LDAP", config.fips()).map_err(LdapFailure::Config)?;
     Ok(Arc::new(config))
 }
 

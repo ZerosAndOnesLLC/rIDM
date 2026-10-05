@@ -11,6 +11,7 @@ pub mod config;
 pub mod crypto_provider;
 pub mod db;
 pub mod error;
+pub mod fips;
 pub mod healthcheck;
 pub mod jobs;
 pub mod kerberos;
