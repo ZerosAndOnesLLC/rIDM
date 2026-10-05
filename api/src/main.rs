@@ -1,5 +1,4 @@
 use axum_server::Handle;
-use axum_server::tls_rustls::RustlsConfig;
 use ridm_api::config::Config;
 use ridm_api::services::bootstrap;
 use ridm_api::state::AppState;
@@ -15,6 +14,10 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 async fn main() {
     // Ignore a missing .env file; production sets real environment variables.
     let _ = dotenvy::dotenv();
+
+    // The FIPS build's self-test and host check, before anything else runs
+    // (the healthcheck and every subcommand included).
+    let fips = ridm_api::fips::check_or_exit("ridm-api");
 
     // Before anything opens a connection (telemetry's exporter among them), so
     // every library that takes the process default gets this build's provider.
@@ -62,6 +65,17 @@ async fn main() {
         }
     };
     telemetry::init_server(&config);
+    if let Some(status) = &fips {
+        tracing::info!(
+            module_version = status.module_version,
+            fips_version = ?status.fips_version,
+            host_fips = status.host_fips,
+            "FIPS build: the AWS-LC FIPS module passed its self-test"
+        );
+        if !status.host_fips {
+            tracing::warn!("{}", ridm_api::fips::NON_FIPS_HOST_WARNING);
+        }
+    }
 
     let outcome = run(config).await;
     telemetry::shutdown();
@@ -165,7 +179,7 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
 
     match tls {
         Some(tls) => {
-            let rustls = RustlsConfig::from_pem_file(&tls.cert_path, &tls.key_path).await?;
+            let rustls = ridm_api::tls::load_main(&tls)?;
             tracing::info!(%bind_addr, "listening (https)");
             axum_server::bind_rustls(bind_addr, rustls)
                 .handle(handle)

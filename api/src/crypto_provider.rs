@@ -27,6 +27,17 @@ pub fn install() -> Result<(), &'static str> {
         .map_err(|_| "failed to install the rustls crypto provider")
 }
 
+/// In the `fips` build, a TLS configuration that rustls doesn't consider
+/// FIPS-only is an error naming `what`; pass the config's `fips()`. Always
+/// `Ok` in the standard build.
+pub fn require_fips(what: &str, is_fips: bool) -> Result<(), String> {
+    if cfg!(feature = "fips") && !is_fips {
+        Err(format!("{what}: the TLS configuration is not FIPS-only"))
+    } else {
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rustls::CipherSuite;
@@ -45,5 +56,23 @@ mod tests {
             .iter()
             .any(|s| s.suite() == CipherSuite::TLS13_CHACHA20_POLY1305_SHA256);
         assert_eq!(chacha, !cfg!(feature = "fips"));
+    }
+
+    #[test]
+    fn configs_from_the_provider_pass_the_fips_requirement() {
+        let config = rustls::ClientConfig::builder_with_provider(provider().into())
+            .with_safe_default_protocol_versions()
+            .unwrap()
+            .with_root_certificates(rustls::RootCertStore::empty())
+            .with_no_client_auth();
+        assert!(super::require_fips("a client", config.fips()).is_ok());
+    }
+
+    #[test]
+    fn only_the_fips_build_refuses_a_non_fips_config() {
+        assert_eq!(
+            super::require_fips("a client", false).is_err(),
+            cfg!(feature = "fips")
+        );
     }
 }

@@ -221,6 +221,7 @@ fn tls_config(roots: Option<&[CertificateDer<'static>]>) -> Result<rustls::Clien
                 .with_no_client_auth()
         }
     };
+    crate::crypto_provider::require_fips("the audit syslog sink", config.fips())?;
     Ok(config)
 }
 

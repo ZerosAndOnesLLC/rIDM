@@ -31,6 +31,8 @@ async fn main() {
     // connection the CLI makes: the admin API, and Postgres and Valkey for
     // `bootstrap`.
     #[cfg(feature = "bootstrap")]
+    ridm_api::fips::check_or_exit("ridm");
+    #[cfg(feature = "bootstrap")]
     if let Err(err) = ridm_api::crypto_provider::install() {
         eprintln!("ridm: {err}");
         std::process::exit(1);

@@ -102,17 +102,41 @@ pub fn server_config(
         .with_single_cert(cert_chain, key)
         .map_err(io::Error::other)?;
     config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+    crate::crypto_provider::require_fips("the mTLS listener", config.fips())
+        .map_err(io::Error::other)?;
     Ok(config)
 }
 
-/// [`server_config`] from the PEM files of `MTLS_CERT`/`MTLS_KEY` (or the
-/// main listener's).
-pub fn load(tls: &TlsConfig) -> io::Result<RustlsConfig> {
+/// The main HTTPS listener's configuration (`TLS_CERT`/`TLS_KEY`): no client
+/// certificate, HTTP/2 and HTTP/1.1, on this build's provider.
+pub fn load_main(tls: &TlsConfig) -> io::Result<RustlsConfig> {
+    let (chain, key) = read_pem(tls)?;
+    let mut config =
+        rustls::ServerConfig::builder_with_provider(Arc::new(crate::crypto_provider::provider()))
+            .with_safe_default_protocol_versions()
+            .map_err(io::Error::other)?
+            .with_no_client_auth()
+            .with_single_cert(chain, key)
+            .map_err(io::Error::other)?;
+    config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+    crate::crypto_provider::require_fips("the HTTPS listener", config.fips())
+        .map_err(io::Error::other)?;
+    Ok(RustlsConfig::from_config(Arc::new(config)))
+}
+
+fn read_pem(tls: &TlsConfig) -> io::Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)> {
     let chain = CertificateDer::pem_file_iter(&tls.cert_path)
         .map_err(io::Error::other)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(io::Error::other)?;
     let key = PrivateKeyDer::from_pem_file(&tls.key_path).map_err(io::Error::other)?;
+    Ok((chain, key))
+}
+
+/// [`server_config`] from the PEM files of `MTLS_CERT`/`MTLS_KEY` (or the
+/// main listener's).
+pub fn load(tls: &TlsConfig) -> io::Result<RustlsConfig> {
+    let (chain, key) = read_pem(tls)?;
     Ok(RustlsConfig::from_config(Arc::new(server_config(
         chain, key,
     )?)))
