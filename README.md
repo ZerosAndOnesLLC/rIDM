@@ -136,7 +136,7 @@ Tenants are configured through the admin API, the consoles or one JSON document 
 | [Quickstarts](https://zerosandonesllc.github.io/rIDM/docs/quickstarts/local.html) | run locally, protect an API, SPA, server-side web app, machine-to-machine |
 | [Admin guide](https://zerosandonesllc.github.io/rIDM/docs/admin/consoles.html) | consoles, CLI, tenants, users, clients, MFA, SAML, LDAP, SCIM, webhooks, keys |
 | [Reference](https://zerosandonesllc.github.io/rIDM/docs/reference/endpoints.html) | endpoints, admin API (OpenAPI), token claims, configuration, errors |
-| [Deployment](https://zerosandonesllc.github.io/rIDM/docs/deploy/overview.html) | compose, container, Helm, TLS, scaling, backup, upgrades, checklist |
+| [Deployment](https://zerosandonesllc.github.io/rIDM/docs/deploy/overview.html) | compose, container, Helm, TLS, scaling, backup, upgrades, checklist, the optional [FIPS 140-3 build](https://zerosandonesllc.github.io/rIDM/docs/deploy/fips.html) (planned) |
 | [Migration](https://zerosandonesllc.github.io/rIDM/docs/migrate/overview.html) | from Keycloak or Auth0 |
 
 To work on rIDM itself, see [CONTRIBUTING.md](CONTRIBUTING.md) and

@@ -71,6 +71,7 @@
 - [TLS and reverse proxies](deploy/tls-and-proxies.md)
 - [Key custody: HSM and KMS](deploy/key-custody.md)
 - [Data residency](deploy/data-residency.md)
+- [FIPS 140-3](deploy/fips.md)
 - [Postgres and Valkey](deploy/postgres-valkey.md)
 - [Scaling and performance](deploy/scaling.md)
 - [Observability](deploy/observability.md)
