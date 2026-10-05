@@ -36,8 +36,8 @@ direction (see [Moving an existing deployment](#moving-an-existing-deployment)).
 
 Wherever the FIPS-approved way of doing something is just as good for everyone, both
 builds share it, so there is only one path to test. This applies to hashing, HMAC,
-key generation, random numbers, TOTP, Kerberos crypto, encryption at rest and AWS KMS
-request signing, all of which go through aws-lc-rs in both builds. The builds only
+key generation, random numbers, TOTP, Kerberos crypto and encryption at rest, all of
+which go through aws-lc-rs in both builds. The builds only
 differ where the standard build has a better choice for the average deployment, such as
 argon2id for passwords, or where FIPS needs a different library, such as OpenSSL for
 passkeys.
@@ -138,7 +138,7 @@ sign in.
 | Passwords | PBKDF2-HMAC-SHA512 (SP 800-132). Older hashes move over at sign-in. | [#4](https://github.com/ZerosAndOnesLLC/rIDM/issues/4) |
 | Passkeys (WebAuthn) | Verified through the host's validated OpenSSL, which is linked dynamically. | [#2](https://github.com/ZerosAndOnesLLC/rIDM/issues/2) |
 | Kerberos desktop sign-in | AES encryption types on aws-lc-rs in both builds. The SHA-2 encryption types (RFC 8009) are added because FIPS-mode KDCs may refuse the SHA-1 ones. | [#6](https://github.com/ZerosAndOnesLLC/rIDM/issues/6) |
-| AWS KMS | Requests are signed (SigV4) on aws-lc-rs in both builds. | [#1](https://github.com/ZerosAndOnesLLC/rIDM/issues/1) |
+| AWS KMS | Uses the AWS SDK, as in the standard build. Its TLS goes through the FIPS provider. Its request signing is the SDK's own code (see [What isn't covered](#what-isnt-covered)). | [#1](https://github.com/ZerosAndOnesLLC/rIDM/issues/1) |
 | Vault, Google Cloud KMS, Azure Key Vault | REST over the FIPS TLS provider. The key itself is protected by the service's own validation. | — |
 | PKCS#11 HSM | The HSM performs the key operations, so its own FIPS validation is the one that counts. | — |
 | SAML and OIDC | SHA-1 signatures are already refused. RSA-OAEP with SHA-1 (JWE `RSA-OAEP`, SAML `rsa-oaep-mgf1p`) stays available for compatibility with existing integrations. NIST plans to retire SHA-1, so the FIPS build may make it opt-in. | [#7](https://github.com/ZerosAndOnesLLC/rIDM/issues/7) |
@@ -153,6 +153,13 @@ sign in.
   rIDM's own advisory locks are hashed by the Postgres server. Using client-certificate
   authentication avoids the password path. The rest is tracked upstream in
   transact-rs/sqlx#4416, #4418 and #4421.
+- **The AWS SDK's request signing** (SigV4, for `KEY_WRAPPER=aws-kms`), which uses
+  its own, non-validated HMAC. The AWS SDK tracks this upstream. If you need every piece
+  validated, the other key custody backends don't have this gap.
+- **The Postgres driver's TLS settings.** sqlx builds its own TLS configuration, which
+  offers the non-approved ChaCha20 and X25519 next to the approved suites. A Postgres
+  server in FIPS mode only accepts approved ones, so the connection still uses an
+  approved suite.
 - **Everything outside the rIDM process**: your load balancer or ingress, Postgres,
   Valkey and the users' browsers. Each needs its own FIPS configuration.
 
@@ -163,14 +170,15 @@ Whether a particular deployment counts as compliant is up to your assessor.
 ## Checking a build
 
 ```bash
-# The FIPS module is in, and the non-validated libraries are out:
-cargo tree --locked -e normal -p ridm-api --no-default-features --features fips,... \
-  | grep -E 'aws-lc-fips-sys|aws-lc-sys|ring|openssl-src|chacha20poly1305|argon2'
+# The binary links only the FIPS module's AWS-LC:
+nm target/release/ridm-api | grep -oE 'aws_lc_(fips_)?[0-9]+_[0-9]+_[0-9]+' | sort -u
 
 # Only AES-GCM suites and P-256/P-384 are offered:
 openssl s_client -connect ridm.example.com:443 -tls1_3 -groups X25519   # must fail
 openssl s_client -connect ridm.example.com:443 -tls1_2 -cipher ECDHE-RSA-CHACHA20-POLY1305   # must fail
 ```
 
-The first `grep` should print only `aws-lc-fips-sys`. CI checks the same thing with
+The `nm` line should print only `aws_lc_fips_...`. `cargo tree` still lists `aws-lc-sys`,
+because rustls' `fips` feature compiles it alongside the FIPS module, but nothing in
+the build uses it and the linker drops it. CI checks the binary the same way, and runs
 a `cargo deny` ban list for the FIPS build.

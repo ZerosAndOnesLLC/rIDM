@@ -17,17 +17,21 @@ path = "src/main.rs"
 # `ridm bootstrap` reaches the database directly (no admin token exists yet),
 # which pulls the server library in. Build with `--no-default-features` for a
 # slim, HTTP-only CLI that leaves bootstrapping to `ridm-api bootstrap`.
-default = ["bootstrap"]
-bootstrap = ["dep:ridm-api", "dep:rustls"]
+default = ["bootstrap", "vendored-openssl"]
+bootstrap = ["dep:ridm-api"]
+# Forwarded to ridm-api (see its features).
+vendored-openssl = ["ridm-api?/vendored-openssl"]
+# The FIPS build needs the server library for its TLS provider, so it
+# includes `bootstrap`.
+fips = ["bootstrap", "ridm-api/fips"]
 
 [dependencies]
-ridm-api = { path = "../../api", version = "0.2.0", optional = true }
+ridm-api = { path = "../../api", version = "0.2.0", default-features = false, optional = true }
 ridm-core = { workspace = true }
 
 clap = { workspace = true }
 tokio = { workspace = true }
 reqwest = { workspace = true }
-rustls = { workspace = true, optional = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -48,7 +52,6 @@ ridm-api = { path = "../../api", version = "0.2.0" }
 ridm-core = { workspace = true }
 axum = { workspace = true }
 sqlx = { workspace = true }
-rustls = { workspace = true }
 reqwest = { workspace = true, features = ["cookies", "query"] }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }

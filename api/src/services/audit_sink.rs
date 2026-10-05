@@ -200,7 +200,7 @@ fn load_roots(path: &Path) -> Result<Vec<CertificateDer<'static>>, String> {
 
 /// TLS for a syslog collector: the given roots, or the platform's verifier.
 fn tls_config(roots: Option<&[CertificateDer<'static>]>) -> Result<rustls::ClientConfig, String> {
-    let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let provider = Arc::new(crate::crypto_provider::provider());
     let builder = rustls::ClientConfig::builder_with_provider(provider.clone())
         .with_safe_default_protocol_versions()
         .map_err(|e| e.to_string())?;

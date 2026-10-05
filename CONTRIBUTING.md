@@ -124,7 +124,7 @@ matrix. The short version:
 |------|---------|
 | Unit | `cargo test --workspace --lib --bins` |
 | Integration | `cargo test --workspace --tests` |
-| Coverage | `cargo llvm-cov --workspace --all-features --html` |
+| Coverage | `cargo llvm-cov --workspace --features ridm-api/kerberos,ridm-api/hsm-pkcs11,ridm-api/kms-aws,ridm-api/kms-vault,ridm-api/kms-gcp,ridm-api/kms-azure,ridm-api/test-support --html` (every feature but `fips`) |
 | UI lint / types / build | `npm run lint && npm run typecheck && npm run build` |
 | UI build scripts | `npm run test:scripts` |
 | UI end-to-end | `npm run e2e` (Playwright, against a running API and Mailpit; see [`ui/e2e/README.md`](ui/e2e/README.md)) |

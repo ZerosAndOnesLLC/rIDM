@@ -35,10 +35,6 @@ pub async fn run(args: &BootstrapArgs) -> Result<()> {
         .or_else(|| env.as_ref().map(|b| b.admin_username.clone()))
         .unwrap_or_else(|| "admin".to_string());
 
-    // The server installs this before it touches TLS; the CLI reaches
-    // Postgres and Valkey the same way.
-    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
-
     let db = db::connect(&config)
         .await
         .map_err(|e| CliError::failed(format!("database: {e}")))?;

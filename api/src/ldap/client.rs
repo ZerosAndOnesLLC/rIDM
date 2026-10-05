@@ -130,7 +130,7 @@ fn tls_config(ca: Option<&str>) -> Result<Arc<rustls::ClientConfig>, LdapFailure
 }
 
 fn build_tls_config(ca: Option<&str>) -> Result<Arc<rustls::ClientConfig>, LdapFailure> {
-    let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let provider = Arc::new(crate::crypto_provider::provider());
     let builder = rustls::ClientConfig::builder_with_provider(provider.clone())
         .with_safe_default_protocol_versions()
         .map_err(|e| LdapFailure::Config(e.to_string()))?;

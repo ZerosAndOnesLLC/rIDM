@@ -16,6 +16,13 @@ async fn main() {
     // Ignore a missing .env file; production sets real environment variables.
     let _ = dotenvy::dotenv();
 
+    // Before anything opens a connection (telemetry's exporter among them), so
+    // every library that takes the process default gets this build's provider.
+    if let Err(err) = ridm_api::crypto_provider::install() {
+        eprintln!("{err}");
+        std::process::exit(1);
+    }
+
     // `ridm-api --healthcheck` is used as the container HEALTHCHECK: distroless
     // images have no curl, so the binary probes itself.
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -65,10 +72,6 @@ async fn main() {
 }
 
 async fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
-    rustls::crypto::aws_lc_rs::default_provider()
-        .install_default()
-        .map_err(|_| "failed to install rustls crypto provider")?;
-
     let db = db::connect(&config).await?;
     let schema_current = if config.migrate_on_start {
         let applied = db::migrate_pending_all(&db).await?;
@@ -350,7 +353,6 @@ async fn bootstrap_command(args: &[String]) -> i32 {
         return 2;
     };
 
-    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let db = match db::connect(&config).await {
         Ok(d) => d,
         Err(err) => {
@@ -500,7 +502,6 @@ async fn migrate_command() -> i32 {
         }
     };
     telemetry::init(config.log_format);
-    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let db = match db::connect(&config).await {
         Ok(d) => d,
         Err(err) => {
@@ -560,7 +561,6 @@ async fn move_tenant_command(args: &[String]) -> i32 {
         }
     };
     telemetry::init(config.log_format);
-    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let db = match db::connect(&config).await {
         Ok(d) => d,
         Err(err) => {
@@ -623,7 +623,6 @@ async fn rotate_master_key_command(args: &[String]) -> i32 {
         }
     };
     telemetry::init(config.log_format);
-    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let db = match db::connect(&config).await {
         Ok(d) => d,
         Err(err) => {

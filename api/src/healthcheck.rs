@@ -110,7 +110,7 @@ fn pinned_tls(path: &Path) -> Result<rustls::ClientConfig, String> {
         .next()
         .ok_or_else(|| format!("TLS_CERT {}: no certificate", path.display()))?
         .map_err(|e| format!("TLS_CERT {}: {e}", path.display()))?;
-    let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let provider = Arc::new(crate::crypto_provider::provider());
     Ok(
         rustls::ClientConfig::builder_with_provider(provider.clone())
             .with_safe_default_protocol_versions()
@@ -200,7 +200,7 @@ mod tests {
     fn only_the_pinned_certificate_is_accepted() {
         let pinned = PinnedCert {
             cert: CertificateDer::from(vec![1, 2, 3]),
-            provider: Arc::new(rustls::crypto::aws_lc_rs::default_provider()),
+            provider: Arc::new(crate::crypto_provider::provider()),
         };
         let name = ServerName::try_from("127.0.0.1").unwrap();
         let now = UnixTime::now();

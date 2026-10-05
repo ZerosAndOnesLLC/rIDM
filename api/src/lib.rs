@@ -8,6 +8,7 @@
 
 pub mod cache;
 pub mod config;
+pub mod crypto_provider;
 pub mod db;
 pub mod error;
 pub mod healthcheck;

@@ -91,7 +91,7 @@ pub fn server_config(
     cert_chain: Vec<CertificateDer<'static>>,
     key: PrivateKeyDer<'static>,
 ) -> io::Result<rustls::ServerConfig> {
-    let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let provider = Arc::new(crate::crypto_provider::provider());
     let verifier = Arc::new(AnyClientCertificate {
         algorithms: provider.signature_verification_algorithms,
     });

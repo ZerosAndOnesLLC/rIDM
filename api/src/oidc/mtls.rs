@@ -691,7 +691,7 @@ impl ChainVerifier {
                 .add(CertificateDer::from(der.to_vec()))
                 .map_err(|e| format!("trust anchor: {e}"))?;
         }
-        let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+        let provider = Arc::new(crate::crypto_provider::provider());
         let verifier =
             rustls::server::WebPkiClientVerifier::builder_with_provider(Arc::new(roots), provider)
                 .build()
