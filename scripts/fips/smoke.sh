@@ -86,7 +86,12 @@ expect_no() { if probe "${@:2}"; then fail "accepted: $1"; fi; echo "ok: refuses
 
 expect_ok "TLS 1.3 AES-256-GCM over P-256" -tls1_3 -ciphersuites TLS_AES_256_GCM_SHA384 -groups P-256
 expect_ok "TLS 1.3 over P-384" -tls1_3 -groups P-384
-expect_ok "TLS 1.3 over X25519MLKEM768" -tls1_3 -groups X25519MLKEM768
+# The client needs OpenSSL 3.5+ to offer X25519MLKEM768 (Ubuntu 24.04 has 3.0).
+if echo | openssl s_client -connect 127.0.0.1:1 -groups X25519MLKEM768 2>&1 | grep -q "cannot be set"; then
+  echo "skip: this openssl ($(openssl version | cut -d' ' -f2)) can't offer X25519MLKEM768"
+else
+  expect_ok "TLS 1.3 over X25519MLKEM768" -tls1_3 -groups X25519MLKEM768
+fi
 expect_ok "TLS 1.2 ECDHE-ECDSA-AES256-GCM" -tls1_2 -cipher ECDHE-ECDSA-AES256-GCM-SHA384
 expect_no "TLS 1.3 ChaCha20" -tls1_3 -ciphersuites TLS_CHACHA20_POLY1305_SHA256
 expect_no "TLS 1.3 over plain X25519" -tls1_3 -groups X25519
