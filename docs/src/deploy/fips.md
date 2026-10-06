@@ -111,7 +111,7 @@ cargo build --release --locked -p ridm-api \
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `PBKDF2_ITERATIONS` | `210000` | PBKDF2-HMAC-SHA512 iterations for new password hashes. It can't be set below 210,000. |
+| `PBKDF2_ITERATIONS` | `210000` | PBKDF2-HMAC-SHA512 iterations for new password hashes, 210,000 to 1,000,000. Raising it re-hashes each user at their next sign-in. |
 | `FIPS_TRANSITION` | `false` | Allows the one-time legacy operations described below. Turn it off when the move is done. |
 | `FIPS_ALLOW_NON_FIPS_HOST` | `false` | Lets the FIPS build start on a host that isn't in FIPS mode, with a warning. For development and CI only. |
 
@@ -144,9 +144,13 @@ start, and names the steps below.
    a new master key. `rotate-master-key --status` shows what's left in
    `legacy_cipher_rows`.
 4. **Let passwords move over.** When a user with an older hash signs in, rIDM checks
-   the password once with the old algorithm and stores a PBKDF2 hash. The admin
-   console lists the accounts that haven't moved yet, and you can require those users
-   to reset their password whenever you decide.
+   the password once with the old algorithm and stores a PBKDF2-HMAC-SHA512 hash.
+   PBKDF2 hashes from elsewhere (SHA-256 or SHA-512, passlib or Django form) are
+   verified the approved way and need no transition, though they're re-hashed too.
+   To see who hasn't moved yet, list a tenant's users by hash format through the admin
+   API, `GET /admin/tenants/{slug}/users?password_algo=argon2id` (also `bcrypt`, `md5`,
+   ...); a user's detail shows its format as well. Reset those users' passwords
+   whenever you decide.
 5. **Turn `FIPS_TRANSITION` off.** From then on, the deployment runs only approved
    operations.
 
@@ -167,7 +171,7 @@ sign in.
 | Key generation, hashing, HMAC, random numbers | Uses aws-lc-rs in both builds. Random values come from the module's SP 800-90A DRBG. | [#5](https://github.com/ZerosAndOnesLLC/rIDM/issues/5) |
 | TOTP (authenticator apps) | RFC 6238 on aws-lc-rs HMAC in both builds. Existing enrolments keep working. | [#5](https://github.com/ZerosAndOnesLLC/rIDM/issues/5) |
 | Secrets at rest | AES-256-GCM under a key derived per value (HKDF-SHA-256 with a random salt), with the IV generated inside the module. The standard build reads it too, and writes it from the next release. | [#3](https://github.com/ZerosAndOnesLLC/rIDM/issues/3) |
-| Passwords | PBKDF2-HMAC-SHA512 (SP 800-132). Older hashes move over at sign-in. | [#4](https://github.com/ZerosAndOnesLLC/rIDM/issues/4) |
+| Passwords | PBKDF2-HMAC-SHA512 (SP 800-132) with a 128-bit salt. Other formats move over at sign-in; only PBKDF2 is verified outside `FIPS_TRANSITION`. Bulk imports of other formats need `FIPS_TRANSITION` too. | [#4](https://github.com/ZerosAndOnesLLC/rIDM/issues/4) |
 | Passkeys (WebAuthn) | Verified through the host's validated OpenSSL, which is linked dynamically. | [#2](https://github.com/ZerosAndOnesLLC/rIDM/issues/2) |
 | Kerberos desktop sign-in | AES encryption types on aws-lc-rs in both builds. The SHA-2 encryption types (RFC 8009) are added because FIPS-mode KDCs may refuse the SHA-1 ones. | [#6](https://github.com/ZerosAndOnesLLC/rIDM/issues/6) |
 | AWS KMS | Uses the AWS SDK, as in the standard build. Its TLS goes through the FIPS provider. Its request signing is the SDK's own code (see [What isn't covered](#what-isnt-covered)). | [#1](https://github.com/ZerosAndOnesLLC/rIDM/issues/1) |

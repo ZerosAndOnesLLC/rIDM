@@ -675,3 +675,61 @@ async fn effective_roles_resolve_groups_ancestors_and_composites() {
     assert_eq!(all.iter().filter(|r| !r.built_in).count(), 4);
     assert_eq!(all.iter().filter(|r| r.built_in).count(), 6);
 }
+
+/// Administrators find the accounts still on a given hash format, and an
+/// account leaves that list once its next sign-in re-hashes it.
+#[tokio::test]
+async fn users_filter_by_password_hash_format_until_they_are_rehashed() {
+    use ridm_api::services::password::{self, VerifyOutcome};
+    let app = TestApp::spawn().await;
+    let tid = app.tenant.id;
+    let legacy = users::create(&app.state, tid, Actor::System, new_user("legacy-hash"))
+        .await
+        .unwrap();
+    let _current = users::create(&app.state, tid, Actor::System, new_user("current-hash"))
+        .await
+        .unwrap();
+    let stored = bcrypt::hash("Legacy-Pass-123!", 4).unwrap();
+    password::import_hash(&app.state, tid, legacy.id, &stored)
+        .await
+        .unwrap();
+    let bcrypt_users = |state| async move {
+        users::list(
+            state,
+            tid,
+            &UserFilter {
+                password_algo: Some("bcrypt".into()),
+                ..Default::default()
+            },
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .items
+        .into_iter()
+        .map(|u| u.username)
+        .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        bcrypt_users(&app.state).await,
+        vec!["legacy-hash".to_string()]
+    );
+
+    let user = users::find_by_identifier(&app.state, tid, "legacy-hash")
+        .await
+        .unwrap()
+        .unwrap();
+    let tenant = tenants::get(&app.state, tid).await.unwrap();
+    let outcome = password::verify_and_upgrade(
+        &app.state,
+        tid,
+        &tenant.settings.password,
+        &user,
+        zeroize::Zeroizing::new("Legacy-Pass-123!".into()),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(outcome, VerifyOutcome::Valid { .. }));
+    assert!(bcrypt_users(&app.state).await.is_empty());
+}

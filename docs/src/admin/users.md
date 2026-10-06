@@ -22,6 +22,7 @@ GET /admin/tenants/acme/users?search=ali&status=active&limit=50
 |-----------|---------|
 | `search` | Case-insensitive prefix of the username or email |
 | `status` | `active`, `disabled`, `locked`, `pending` or `deleted` |
+| `password_algo` | Only users whose password hash is in this format: `argon2id`, `pbkdf2-sha512`, `pbkdf2-sha256`, `bcrypt`, `sha256`, `sha512`, `md5`, ... (who still has an imported hash, or hasn't been re-hashed after a move to the [FIPS build](../deploy/fips.md)) |
 | `include_deleted` | Include soft-deleted users (default `false`) |
 | `cursor`, `limit` | Paging: `limit` defaults to 50, at most 500; pass `next_cursor` back as `cursor` |
 

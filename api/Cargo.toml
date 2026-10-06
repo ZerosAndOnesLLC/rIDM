@@ -82,7 +82,6 @@ redis = { workspace = true }
 jsonwebtoken = { workspace = true }
 argon2 = { workspace = true }
 bcrypt = { workspace = true }
-pbkdf2 = { workspace = true }
 md-5 = { workspace = true }
 webauthn-rs = { workspace = true }
 webauthn-rs-proto = { workspace = true }
@@ -150,6 +149,8 @@ rust-embed = { workspace = true }
 hmac = { workspace = true }
 # The TOTP tests generate codes with an independent implementation (totp-rs).
 totp-rs = { workspace = true }
+# The legacy PBKDF2 tests derive their expected hashes independently (RustCrypto).
+pbkdf2 = { workspace = true }
 ridm-core = { workspace = true, features = ["test-support"] }
 ridm-api = { path = ".", features = ["test-support"] }
 # The published relying-party crate, tested against the tokens this server

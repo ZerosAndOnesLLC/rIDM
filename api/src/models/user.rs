@@ -135,6 +135,10 @@ pub struct UserFilter {
     pub search: Option<String>,
     pub status: Option<UserStatus>,
     pub org_id: Option<Uuid>,
+    /// Only accounts whose password hash is in this format (`argon2id`,
+    /// `pbkdf2-sha512`, `bcrypt`, ...), e.g. those a move to the FIPS build
+    /// hasn't re-hashed yet.
+    pub password_algo: Option<String>,
     pub include_deleted: bool,
 }
 

@@ -119,6 +119,12 @@ for the number of concurrent password operations you expect times the memory cos
 expect password sign-ins, not token requests, to dominate CPU. Raising the cost
 parameters upgrades existing hashes as each user next signs in.
 
+The [FIPS build](fips.md) hashes with PBKDF2-HMAC-SHA512 instead
+(`PBKDF2_ITERATIONS`, default 210,000). That uses CPU rather than memory: a few
+kilobytes per hash, and about 80 ms of one core at the default on a fast desktop CPU
+(an i9-12900K), so expect 100 to 200 ms on typical cloud vCPUs (measure yours). Size FIPS nodes for CPU: concurrent password operations times that time per
+hash.
+
 Client secrets are SHA-256 hashed, so `/token` does no password hashing.
 
 ## Load testing

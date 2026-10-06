@@ -435,6 +435,9 @@ pub async fn list<'e>(
     if let Some(org) = filter.org_id {
         qb.push(" AND org_id = ").push_bind(org);
     }
+    if let Some(algo) = &filter.password_algo {
+        qb.push(" AND password_algo = ").push_bind(algo.clone());
+    }
     if let Some(search) = filter
         .search
         .as_deref()

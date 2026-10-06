@@ -15,7 +15,7 @@ from reviews, fuzzing, conformance runs and external reports become named tests 
 
 | Asset | Why it matters | Where it lives |
 |---|---|---|
-| User credentials | Password reuse makes a leak everyone's problem | `users.password_hash` (argon2id), never logged or returned |
+| User credentials | Password reuse makes a leak everyone's problem | `users.password_hash` (argon2id; PBKDF2-HMAC-SHA512 in the FIPS build), never logged or returned |
 | Signing keys | Anyone holding one mints tokens for any user | `signing_keys.private_key_enc`, envelope-encrypted |
 | Client secrets, registration and provisioning tokens | Impersonate a relying party | Hashed; shown once on create or rotate |
 | Second-factor secrets | Defeat step-up authentication | `credentials.data_enc`, envelope-encrypted |
@@ -67,7 +67,7 @@ Both are game over by construction, and the mitigation is operational.
 
 | Threat | Mitigation |
 |---|---|
-| Password guessing, credential stuffing | argon2id hashing; per-user and per-IP flow rate limits; a CAPTCHA demanded after repeated failures; optional breached-password check against a configured service |
+| Password guessing, credential stuffing | argon2id hashing (PBKDF2-HMAC-SHA512, at least 210,000 iterations, in the FIPS build); per-user and per-IP flow rate limits; a CAPTCHA demanded after repeated failures; optional breached-password check against a configured service |
 | Weak or reused passwords | Per-tenant password policy; the breach check refuses known-leaked passwords at set time |
 | Phishing of a second factor | Passkeys are origin-bound by WebAuthn; TOTP and one-time codes are not, and the tenant chooses which to offer |
 | Second factor skipped | `flows::mfa_required` decides from tenant policy, the user's roles, and the `acr_values` the client asked for; a trusted device never skips a client-requested step-up |
@@ -152,7 +152,7 @@ Both are game over by construction, and the mitigation is operational.
 | Threat | Mitigation |
 |---|---|
 | Brute force and flooding | Fixed-window rate limits per IP, per client and per tenant on the token, authorize and flow families, with `RateLimit-*` headers |
-| Expensive operations as a lever | argon2id parameters are bounded; signing keys are cached; the token path avoids per-request database work |
+| Expensive operations as a lever | argon2id parameters are bounded, and so are the PBKDF2 iterations a stored or imported hash may ask for (1,000,000); signing keys are cached; the token path avoids per-request database work |
 | Queue and job pile-up | Background jobs hold a leader lock, retry with backoff, and dead-letter |
 | Unbounded growth | Retention-based cleanup of spent rows |
 

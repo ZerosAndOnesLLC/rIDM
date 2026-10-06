@@ -104,6 +104,9 @@ struct ListQuery {
     #[param(inline)]
     status: Option<UserStatus>,
     org_id: Option<Uuid>,
+    /// Only accounts whose password hash is in this format (`argon2id`,
+    /// `pbkdf2-sha512`, `bcrypt`, `md5`, ...).
+    password_algo: Option<String>,
     include_deleted: bool,
     cursor: Option<String>,
     limit: Option<u32>,
@@ -121,6 +124,7 @@ async fn list(
         search: q.search,
         status: q.status,
         org_id: q.org_id,
+        password_algo: q.password_algo,
         include_deleted: q.include_deleted,
     };
     Ok(Json(

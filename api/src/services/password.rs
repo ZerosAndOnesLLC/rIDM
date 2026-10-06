@@ -1,10 +1,13 @@
 //! Password hashing, verification, policy, history and transparent upgrades.
 //!
-//! New hashes are always argon2id. Verification also accepts the following
-//! legacy formats so that users imported from other systems keep working; a
-//! successful verification against any of them (or against argon2id with
-//! weaker-than-configured parameters) replaces the stored hash with a fresh
-//! argon2id hash.
+//! New hashes are argon2id in the standard build and PBKDF2-HMAC-SHA512
+//! ([`Pbkdf2Hasher`], SP 800-132) in the FIPS build. Verification also accepts
+//! the following formats so that users imported from other systems, or moved
+//! between builds, keep working; a successful verification against any other
+//! format than the build's own (or against its own with weaker-than-configured
+//! parameters) replaces the stored hash with a fresh one. The FIPS build
+//! verifies PBKDF2 with the validated module and the rest only with
+//! `FIPS_TRANSITION`.
 //!
 //! | Format | Example |
 //! |--------|---------|
@@ -38,6 +41,7 @@ use crate::repos;
 use crate::state::AppState;
 
 pub const ALGO_ARGON2ID: &str = "argon2id";
+pub const ALGO_PBKDF2_SHA512: &str = "pbkdf2-sha512";
 
 // ---------------------------------------------------------------------------
 // Hasher
@@ -122,8 +126,106 @@ impl PasswordHasher for Argon2Hasher {
     }
 }
 
+/// The FIPS build's hasher: PBKDF2-HMAC-SHA512 on aws-lc-rs, a 128-bit salt,
+/// stored as `$pbkdf2-sha512$<iterations>$<salt>$<hash>` (the passlib PHC
+/// form [`legacy::verify`] already reads, so both builds verify it).
+#[cfg(any(feature = "fips", test))]
+pub struct Pbkdf2Hasher {
+    iterations: u32,
+    /// `FIPS_TRANSITION`: verify the formats FIPS doesn't approve too.
+    transition: bool,
+    /// argon2 hashes are verified with the parameters they carry, so these
+    /// only matter for the (unused) upgrade check.
+    argon2: Argon2Hasher,
+}
+
+#[cfg(any(feature = "fips", test))]
+impl Pbkdf2Hasher {
+    const SALT_LEN: usize = 16;
+    const HASH_LEN: usize = 64;
+
+    pub fn new(iterations: u32, transition: bool) -> Self {
+        Self {
+            iterations,
+            transition,
+            argon2: Argon2Hasher::new(Argon2Params::default()),
+        }
+    }
+}
+
+#[cfg(any(feature = "fips", test))]
+impl PasswordHasher for Pbkdf2Hasher {
+    fn algorithm(&self) -> &'static str {
+        ALGO_PBKDF2_SHA512
+    }
+
+    fn hash(&self, password: &Zeroizing<String>) -> Result<String, ProviderError> {
+        use base64::Engine as _;
+        use base64::engine::general_purpose::STANDARD_NO_PAD as B64;
+        let salt: [u8; Self::SALT_LEN] = ridm_core::crypto::random_bytes();
+        let mut out = [0u8; Self::HASH_LEN];
+        let rounds = std::num::NonZeroU32::new(self.iterations)
+            .ok_or_else(|| ProviderError::Configuration("PBKDF2_ITERATIONS is 0".into()))?;
+        aws_lc_rs::pbkdf2::derive(
+            aws_lc_rs::pbkdf2::PBKDF2_HMAC_SHA512,
+            rounds,
+            &salt,
+            password.as_bytes(),
+            &mut out,
+        );
+        Ok(format!(
+            "$pbkdf2-sha512${}${}${}",
+            self.iterations,
+            B64.encode(salt),
+            B64.encode(out)
+        ))
+    }
+
+    fn verify(
+        &self,
+        password: &Zeroizing<String>,
+        stored_hash: &str,
+    ) -> Result<PasswordVerification, ProviderError> {
+        let pw = password.as_bytes();
+        if legacy::is_approved(stored_hash) {
+            let valid = legacy::verify(pw, stored_hash)?;
+            // Another PBKDF2 form, or fewer iterations than configured.
+            let current =
+                legacy::pbkdf2_sha512_rounds(stored_hash).is_some_and(|r| r >= self.iterations);
+            return Ok(PasswordVerification {
+                valid,
+                needs_rehash: valid && !current,
+            });
+        }
+        let algo = legacy::algorithm_of(stored_hash);
+        if !self.transition {
+            return Err(ProviderError::Rejected(format!(
+                "this password hash is {algo}, which the FIPS build verifies only with \
+                 FIPS_TRANSITION=true (the user can also reset their password)"
+            )));
+        }
+        tracing::warn!(
+            algorithm = algo,
+            "FIPS_TRANSITION: verifying a password hash FIPS doesn't approve"
+        );
+        metrics::counter!("ridm_fips_non_approved_total", "operation" => "password_verify")
+            .increment(1);
+        let valid = if stored_hash.starts_with("$argon2") {
+            self.argon2.verify_argon2(pw, stored_hash)?.valid
+        } else {
+            legacy::verify(pw, stored_hash)?
+        };
+        Ok(PasswordVerification {
+            valid,
+            needs_rehash: valid,
+        })
+    }
+}
+
 /// Verifiers for hashes produced by other systems.
 pub mod legacy {
+    use aws_lc_rs::pbkdf2;
+
     use super::*;
 
     /// Identifier for `users.password_algo` derived from a stored hash.
@@ -159,16 +261,16 @@ pub mod legacy {
             return bcrypt::verify(password, stored).map_err(ProviderError::rejected);
         }
         if let Some(rest) = stored.strip_prefix("$pbkdf2-sha256$") {
-            return pbkdf2_phc(password, rest, pbkdf2::pbkdf2_hmac::<sha2::Sha256>);
+            return pbkdf2_phc(password, rest, pbkdf2::PBKDF2_HMAC_SHA256);
         }
         if let Some(rest) = stored.strip_prefix("$pbkdf2-sha512$") {
-            return pbkdf2_phc(password, rest, pbkdf2::pbkdf2_hmac::<sha2::Sha512>);
+            return pbkdf2_phc(password, rest, pbkdf2::PBKDF2_HMAC_SHA512);
         }
         if let Some(rest) = stored.strip_prefix("pbkdf2_sha256$") {
-            return pbkdf2_django(password, rest, pbkdf2::pbkdf2_hmac::<sha2::Sha256>);
+            return pbkdf2_django(password, rest, pbkdf2::PBKDF2_HMAC_SHA256);
         }
         if let Some(rest) = stored.strip_prefix("pbkdf2_sha512$") {
-            return pbkdf2_django(password, rest, pbkdf2::pbkdf2_hmac::<sha2::Sha512>);
+            return pbkdf2_django(password, rest, pbkdf2::PBKDF2_HMAC_SHA512);
         }
         if let Some(rest) = stored.strip_prefix("$sha256$") {
             return salted_digest::<sha2::Sha256>(password, rest);
@@ -182,6 +284,29 @@ pub mod legacy {
         Err(ProviderError::Rejected(
             "unsupported password hash format".into(),
         ))
+    }
+
+    /// PBKDF2 (SP 800-132), the one stored format the FIPS build verifies
+    /// with an approved algorithm. Everything else needs `FIPS_TRANSITION`.
+    pub fn is_approved(stored: &str) -> bool {
+        [
+            "$pbkdf2-sha256$",
+            "$pbkdf2-sha512$",
+            "pbkdf2_sha256$",
+            "pbkdf2_sha512$",
+        ]
+        .iter()
+        .any(|p| stored.starts_with(p))
+    }
+
+    /// The iteration count of a `$pbkdf2-sha512$` PHC hash.
+    pub fn pbkdf2_sha512_rounds(stored: &str) -> Option<u32> {
+        stored
+            .strip_prefix("$pbkdf2-sha512$")?
+            .split('$')
+            .next()?
+            .parse()
+            .ok()
     }
 
     fn ct_eq(a: &[u8], b: &[u8]) -> bool {
@@ -201,11 +326,12 @@ pub mod legacy {
             .ok()
     }
 
-    /// PBKDF2 derivation function: (password, salt, rounds, out).
-    type Pbkdf2Fn = fn(&[u8], &[u8], u32, &mut [u8]);
-
     /// `<rounds>$<salt b64>$<hash b64>`
-    fn pbkdf2_phc(password: &[u8], rest: &str, derive: Pbkdf2Fn) -> Result<bool, ProviderError> {
+    fn pbkdf2_phc(
+        password: &[u8],
+        rest: &str,
+        alg: pbkdf2::Algorithm,
+    ) -> Result<bool, ProviderError> {
         let mut parts = rest.splitn(3, '$');
         let (Some(rounds), Some(salt), Some(hash)) = (parts.next(), parts.next(), parts.next())
         else {
@@ -218,11 +344,15 @@ pub mod legacy {
             .ok_or_else(|| ProviderError::Rejected("malformed pbkdf2 salt".into()))?;
         let expected = decode_b64(hash)
             .ok_or_else(|| ProviderError::Rejected("malformed pbkdf2 hash".into()))?;
-        pbkdf2_check(password, &salt, rounds, &expected, derive)
+        pbkdf2_check(password, &salt, rounds, &expected, alg)
     }
 
     /// Django: `<iterations>$<salt string>$<hash b64>` where the salt is used as raw ASCII.
-    fn pbkdf2_django(password: &[u8], rest: &str, derive: Pbkdf2Fn) -> Result<bool, ProviderError> {
+    fn pbkdf2_django(
+        password: &[u8],
+        rest: &str,
+        alg: pbkdf2::Algorithm,
+    ) -> Result<bool, ProviderError> {
         let mut parts = rest.splitn(3, '$');
         let (Some(rounds), Some(salt), Some(hash)) = (parts.next(), parts.next(), parts.next())
         else {
@@ -233,7 +363,7 @@ pub mod legacy {
             .map_err(|_| ProviderError::Rejected("malformed pbkdf2 rounds".into()))?;
         let expected = decode_b64(hash)
             .ok_or_else(|| ProviderError::Rejected("malformed pbkdf2 hash".into()))?;
-        pbkdf2_check(password, salt.as_bytes(), rounds, &expected, derive)
+        pbkdf2_check(password, salt.as_bytes(), rounds, &expected, alg)
     }
 
     /// The most iterations a legacy hash may ask for.
@@ -246,23 +376,24 @@ pub mod legacy {
     /// default is 720k, Keycloak's 210k) and is bounded at roughly two and a
     /// half seconds. Found by the `jwt_decode` fuzz target, which feeds the
     /// legacy verifier its own input.
-    const MAX_PBKDF2_ROUNDS: u32 = 1_000_000;
+    const MAX_PBKDF2_ROUNDS: u32 = crate::config::PBKDF2_ITERATIONS_MAX;
 
     fn pbkdf2_check(
         password: &[u8],
         salt: &[u8],
         rounds: u32,
         expected: &[u8],
-        derive: Pbkdf2Fn,
+        alg: pbkdf2::Algorithm,
     ) -> Result<bool, ProviderError> {
-        if rounds == 0 || rounds > MAX_PBKDF2_ROUNDS || expected.is_empty() || expected.len() > 512
-        {
-            return Err(ProviderError::Rejected(
-                "pbkdf2 parameters out of range".into(),
-            ));
+        let out_of_range = || ProviderError::Rejected("pbkdf2 parameters out of range".into());
+        let rounds = std::num::NonZeroU32::new(rounds)
+            .filter(|r| r.get() <= MAX_PBKDF2_ROUNDS)
+            .ok_or_else(out_of_range)?;
+        if expected.is_empty() || expected.len() > 512 {
+            return Err(out_of_range());
         }
         let mut out = vec![0u8; expected.len()];
-        derive(password, salt, rounds, &mut out);
+        pbkdf2::derive(alg, rounds, salt, password, &mut out);
         Ok(ct_eq(&out, expected))
     }
 
@@ -535,11 +666,8 @@ pub async fn set_temporary_password(
     user_id: Uuid,
 ) -> AppResult<Zeroizing<String>> {
     const ALPHABET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-    let mut bytes = [0u8; 24];
-    rand::fill(&mut bytes);
-    let temp: String = bytes
-        .iter()
-        .map(|b| ALPHABET[(*b as usize) % ALPHABET.len()] as char)
+    let temp: String = (0..24)
+        .map(|_| ALPHABET[ridm_core::crypto::random_below(ALPHABET.len())] as char)
         .collect();
     let temp = Zeroizing::new(format!("{}-{}-{}", &temp[..8], &temp[8..16], &temp[16..]));
     set_password(
@@ -574,6 +702,13 @@ pub async fn import_hash(
         return Err(AppError::BadRequest(
             "unsupported password hash format".into(),
         ));
+    }
+    if cfg!(feature = "fips") && !state.config.fips_transition && !legacy::is_approved(stored_hash)
+    {
+        return Err(AppError::BadRequest(format!(
+            "the FIPS build imports {algo} password hashes only with FIPS_TRANSITION=true \
+             (PBKDF2 hashes import as they are)"
+        )));
     }
     // A local hash would outrank the directory at sign-in.
     if crate::services::ldap::directory_of_user(state, tenant_id, user_id)
@@ -611,7 +746,13 @@ pub enum VerifyOutcome {
 /// account has, so a wrong username answers no faster than a wrong password.
 /// Only the hash: an unknown user has no directory link to look up.
 pub async fn equalize_timing(state: &AppState, password: Zeroizing<String>) {
-    let _ = verify_blocking(state.hasher.clone(), password, DUMMY_HASH.to_string()).await;
+    burn_time(state, password).await;
+}
+
+/// The time of one verification under this build's hasher and parameters:
+/// hashing costs the same as verifying a current hash.
+async fn burn_time(state: &AppState, password: Zeroizing<String>) {
+    let _ = hash_blocking(state.hasher.clone(), password).await;
 }
 
 /// Verify a password for login. On success, legacy or weaker hashes are
@@ -639,7 +780,7 @@ pub async fn verify_and_upgrade(
             });
         }
         // Burn comparable time so "no password" is not distinguishable by timing.
-        let _ = verify_blocking(state.hasher.clone(), password, DUMMY_HASH.to_string()).await;
+        burn_time(state, password).await;
         return Ok(VerifyOutcome::Invalid);
     };
 
@@ -691,10 +832,6 @@ pub async fn verify_and_upgrade(
         must_change: user.must_change_password || expired,
     })
 }
-
-/// A valid argon2id hash of an unguessable value, used to equalize timing when
-/// a user has no password.
-const DUMMY_HASH: &str = "$argon2id$v=19$m=8192,t=1,p=1$c2FsdHNhbHRzYWx0c2FsdA$Q2Y4c4mT4xN2sGmC1UkVwb8kk4z5j7nKqXhFq7d1e6A";
 
 #[cfg(test)]
 mod tests {
@@ -842,8 +979,55 @@ mod tests {
         );
     }
 
+    fn pbkdf2(iterations: u32, transition: bool) -> Pbkdf2Hasher {
+        Pbkdf2Hasher::new(iterations, transition)
+    }
+
     #[test]
-    fn dummy_hash_parses() {
-        assert!(PasswordHash::new(DUMMY_HASH).is_ok());
+    fn pbkdf2_sha512_round_trips_in_the_phc_form_both_builds_read() {
+        let h = pbkdf2(1_000, false);
+        let stored = h.hash(&pw("correct horse")).unwrap();
+        assert!(stored.starts_with("$pbkdf2-sha512$1000$"), "{stored}");
+        assert_eq!(legacy::algorithm_of(&stored), ALGO_PBKDF2_SHA512);
+        let v = h.verify(&pw("correct horse"), &stored).unwrap();
+        assert!(v.valid && !v.needs_rehash);
+        assert!(!h.verify(&pw("wrong"), &stored).unwrap().valid);
+        // The standard build reads it, and moves it onto argon2id.
+        let v = hasher().verify(&pw("correct horse"), &stored).unwrap();
+        assert!(v.valid && v.needs_rehash);
+        // More iterations configured: re-hash at the next sign-in.
+        let v = pbkdf2(2_000, false)
+            .verify(&pw("correct horse"), &stored)
+            .unwrap();
+        assert!(v.valid && v.needs_rehash);
+    }
+
+    #[test]
+    fn the_fips_hasher_verifies_other_formats_only_in_transition() {
+        let argon = hasher().hash(&pw("pw")).unwrap();
+        let bcrypt = bcrypt::hash("pw", 4).unwrap();
+        for stored in [&argon, &bcrypt] {
+            let err = pbkdf2(1_000, false).verify(&pw("pw"), stored).unwrap_err();
+            assert!(err.to_string().contains("FIPS_TRANSITION"), "{err}");
+            let v = pbkdf2(1_000, true).verify(&pw("pw"), stored).unwrap();
+            assert!(v.valid && v.needs_rehash, "{stored}");
+            assert!(!pbkdf2(1_000, true).verify(&pw("px"), stored).unwrap().valid);
+        }
+        // PBKDF2-SHA256 is approved: no transition needed, but it moves to SHA-512.
+        let mut out = [0u8; 32];
+        aws_lc_rs::pbkdf2::derive(
+            aws_lc_rs::pbkdf2::PBKDF2_HMAC_SHA256,
+            std::num::NonZeroU32::new(1000).unwrap(),
+            b"saltsalt",
+            b"pw",
+            &mut out,
+        );
+        use base64::Engine as _;
+        let django = format!(
+            "pbkdf2_sha256$1000$saltsalt${}",
+            base64::engine::general_purpose::STANDARD.encode(out)
+        );
+        let v = pbkdf2(1_000, false).verify(&pw("pw"), &django).unwrap();
+        assert!(v.valid && v.needs_rehash);
     }
 }
