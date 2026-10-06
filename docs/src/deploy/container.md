@@ -29,6 +29,10 @@ build has three stages:
   `/ridm-api`. There is no shell and no package manager, and no dynamic OpenSSL: TLS
   uses rustls with the aws-lc-rs provider.
 
+For organizations that must run FIPS 140-3 validated cryptography there is a second
+image, built from `api/Dockerfile.fips` on Red Hat UBI 9 and published as
+`ridm:<version>-fips`. It is configured the same way. See [FIPS 140-3](fips.md).
+
 The image serves the sign-in pages and both consoles itself on `PUBLIC_URL`'s origin
 (`/login/`, `/console/`, `/account/`, ...); nothing else needs hosting. Set
 `EMBEDDED_UI=false` for a node that should answer the API alone, or `UI_URL` to another

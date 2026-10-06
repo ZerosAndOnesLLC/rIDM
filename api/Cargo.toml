@@ -25,7 +25,12 @@ vendored-openssl = ["openssl-sys/vendored"]
 # The FIPS 140-3 build (docs/src/deploy/fips.md): aws-lc-rs on the AWS-LC FIPS
 # module and rustls' FIPS provider. Off by default; every feature works in
 # both builds.
-fips = ["aws-lc-rs/fips", "rustls/fips", "tokio-rustls/fips"]
+fips = [
+  "aws-lc-rs/fips",
+  "rustls/fips",
+  "tokio-rustls/fips",
+  "aws-smithy-http-client?/rustls-aws-lc-fips",
+]
 # Compile the UI's static export (`ui/out`, from `npm run build` in `ui/`)
 # into the binary and serve it on the API's origin: the single-binary deploy
 # the container image ships. Off by default so a Rust-only checkout builds
@@ -52,7 +57,7 @@ kerberos = ["dep:picky-krb"]
 # them all on; the static (musl) binaries every one but PKCS#11, which loads a
 # vendor library a static binary cannot.
 hsm-pkcs11 = ["dep:cryptoki"]
-kms-aws = ["dep:aws-config", "dep:aws-sdk-kms"]
+kms-aws = ["dep:aws-config", "dep:aws-sdk-kms", "dep:aws-smithy-http-client"]
 kms-vault = []
 kms-gcp = []
 kms-azure = []
@@ -111,6 +116,7 @@ picky-krb = { workspace = true, optional = true }
 cryptoki = { workspace = true, optional = true }
 aws-config = { workspace = true, optional = true }
 aws-sdk-kms = { workspace = true, optional = true }
+aws-smithy-http-client = { workspace = true, optional = true }
 lettre = { workspace = true }
 handlebars = { workspace = true }
 

@@ -44,29 +44,41 @@ passkeys.
 
 ## Building the FIPS image
 
-The FIPS image is built on Red Hat Universal Base Image (UBI). It has to be built with
-a RHEL subscription (an entitled build, for example on an entitled OpenShift cluster),
-because the build installs RHEL packages. You need:
+Each release publishes the FIPS image as `ghcr.io/zerosandonesllc/ridm:<version>-fips`
+(also `<major>.<minor>-fips` and `latest-fips`), for linux/amd64 and linux/arm64. It's
+signed and carries an SBOM like the standard image (see
+[Releases and verification](releases.md)). Pin it by digest.
 
-- **A RHEL entitlement** for the build. On OpenShift, use entitled builds with the
-  cluster's entitlement secret. Elsewhere, use a subscribed RHEL host.
-- **`golang`, `cmake`, `clang` and `perl`.** The AWS-LC FIPS module is compiled from
-  source by `aws-lc-fips-sys`, and its build needs Go.
-- **`openssl-devel`.** Passkey verification links against the system OpenSSL instead
-  of a vendored copy, so on a FIPS host it runs inside RHEL's validated OpenSSL FIPS
-  provider.
+To build it yourself, use [`api/Dockerfile.fips`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/api/Dockerfile.fips)
+from the repository root:
 
-The build command is the standard one, with `fips` added:
+```bash
+docker build -f api/Dockerfile.fips -t ridm:fips .
+```
+
+It's built on Red Hat Universal Base Image 9 (`ubi9/ubi` for the build, `ubi9/ubi-minimal`
+at run time). Every package it installs comes from the freely available UBI
+repositories, so **no RHEL subscription is needed to build it**. It builds the same way
+on an entitled OpenShift cluster, a RHEL host or a laptop. The build stage:
+
+- installs `golang`, `cmake`, `clang` and `perl`. The AWS-LC FIPS module is compiled
+  from source by `aws-lc-fips-sys`, and its build needs Go;
+- installs `openssl-devel`. Passkey verification links against the system OpenSSL
+  instead of a vendored copy, so on a FIPS host it runs inside RHEL's validated OpenSSL
+  FIPS provider (`ubi-minimal` ships it);
+- builds with `--no-default-features --features fips,embedded-ui,kerberos,hsm-pkcs11,kms-aws,kms-vault,kms-gcp,kms-azure`.
+  Every feature of the standard image is included;
+- fails if the binary links anything but the FIPS module's AWS-LC, links `ring`, or
+  carries a vendored OpenSSL ([`scripts/fips/check-binary.sh`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/scripts/fips/check-binary.sh)).
+
+The runtime image runs as the same non-root user (65532) as the standard one, with the
+same healthcheck and environment. Outside a container, the build command is:
 
 ```bash
 cargo build --release --locked -p ridm-api \
   --no-default-features \
   --features fips,embedded-ui,kerberos,hsm-pkcs11,kms-aws,kms-vault,kms-gcp,kms-azure
 ```
-
-The FIPS Dockerfile and image tag are added in
-[#1](https://github.com/ZerosAndOnesLLC/rIDM/issues/1). Published `-fips` images are
-signed and carry an SBOM, like every other release image. Pin them by digest.
 
 ## Running it
 
@@ -193,5 +205,7 @@ openssl s_client -connect ridm.example.com:443 -tls1_2 -cipher ECDHE-RSA-CHACHA2
 
 The `nm` line should print only `aws_lc_fips_...`. `cargo tree` still lists `aws-lc-sys`,
 because rustls' `fips` feature compiles it alongside the FIPS module, but nothing in
-the build uses it and the linker drops it. CI checks the binary the same way, and runs
-a `cargo deny` ban list for the FIPS build.
+the build uses it and the linker drops it. `scripts/fips/check-binary.sh` runs these
+checks (and the OpenSSL one) on a binary, and `scripts/fips/smoke.sh <image>` boots an
+image and probes its TLS. CI runs both on every pull request, along with a `cargo deny`
+ban list for the FIPS build (`deny-fips.toml`).

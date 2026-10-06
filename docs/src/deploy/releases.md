@@ -14,14 +14,16 @@ The first published release is `v0.2.0`.
 | Artifact | Where | Platforms |
 |----------|-------|-----------|
 | Container image | `ghcr.io/zerosandonesllc/ridm:{version}` | linux/amd64, linux/arm64 |
+| FIPS 140-3 image | `ghcr.io/zerosandonesllc/ridm:{version}-fips` ([FIPS 140-3](fips.md)) | linux/amd64, linux/arm64 |
 | Helm chart | `oci://ghcr.io/zerosandonesllc/charts/ridm`, and `ridm-{version}.tgz` on the GitHub release | |
 | Static binaries | `ridm-{version}-linux-amd64.tar.gz`, `ridm-{version}-linux-arm64.tar.gz` on the GitHub release | linux x86_64, aarch64 |
-| SBOM | attached to the image (BuildKit's attestation, and an SPDX document attested with cosign), and `ridm-{version}.spdx.json` on the GitHub release | |
+| SBOM | attached to each image (BuildKit's attestation, and an SPDX document attested with cosign), and `ridm-{version}.spdx.json` and `ridm-{version}-fips.spdx.json` on the GitHub release | |
 | Checksums | `SHA256SUMS` and its Sigstore bundle `SHA256SUMS.sigstore.json` on the GitHub release | |
 
 ### Image tags
 
-A release `1.2.3` is tagged `1.2.3`, `1.2` and `latest`. A pre-release such as
+A release `1.2.3` is tagged `1.2.3`, `1.2` and `latest`, and the FIPS image `1.2.3-fips`,
+`1.2-fips` and `latest-fips`. A pre-release such as
 `0.2.0-rc.1` gets only its own tag and never moves `latest` or a minor tag. The image is
 one multi-arch index; Docker, containerd and Kubernetes pick the architecture.
 
@@ -103,6 +105,9 @@ ISSUER=https://token.actions.githubusercontent.com
 cosign verify ghcr.io/zerosandonesllc/ridm:1.2.3 \
   --certificate-identity-regexp "$IDENTITY" --certificate-oidc-issuer "$ISSUER"
 ```
+
+The FIPS image is signed the same way: verify `ghcr.io/zerosandonesllc/ridm:1.2.3-fips`
+with the same command.
 
 **Its SBOM** (an SPDX document, attested by the same identity):
 

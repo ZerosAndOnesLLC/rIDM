@@ -501,6 +501,48 @@ jobs:
             target/upgrade-smoke
           retention-days: 7
 
+  # The FIPS build (docs/src/deploy/fips.md): lint and unit-test it, check
+  # its dependency bans, build the UBI image, and boot it (scripts/fips/
+  # smoke.sh says what). The runner isn't in FIPS mode, so the smoke uses
+  # FIPS_ALLOW_NON_FIPS_HOST, after checking that the image refuses without it.
+  fips:
+    name: fips
+    runs-on: ubuntu-latest
+    env:
+      FIPS_FEATURES: ridm-cli/fips,ridm-api/kerberos,ridm-api/hsm-pkcs11,ridm-api/kms-aws,ridm-api/kms-vault,ridm-api/kms-gcp,ridm-api/kms-azure,ridm-api/test-support
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: fips
+      - name: clippy (fips)
+        run: cargo clippy -p ridm-api -p ridm-cli --all-targets --locked --no-default-features --features "$FIPS_FEATURES" -- -D warnings
+      - name: unit tests (fips)
+        run: cargo test -p ridm-api --lib --locked --no-default-features --features "$FIPS_FEATURES"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - name: cargo deny (fips bans)
+        run: cargo deny check bans --config deny-fips.toml
+      - uses: docker/setup-buildx-action@v4
+      # The builder stage runs scripts/fips/check-binary.sh on the release
+      # binary: only the FIPS module's AWS-LC, no ring, system OpenSSL.
+      - name: build image (fips, amd64)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: api/Dockerfile.fips
+          push: false
+          load: true
+          tags: ridm:fips
+          cache-from: type=gha,scope=fips
+          cache-to: type=gha,mode=max,scope=fips
+      - name: boot the FIPS image
+        run: scripts/fips/smoke.sh ridm:fips
+
   # The Helm chart installed on a throwaway kind cluster from the image built
   # here, upgraded and uninstalled (deploy/helm/smoke/run.sh says what).
   helm-smoke:

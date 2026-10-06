@@ -1,0 +1,37 @@
+# cargo-deny for the FIPS build (docs/src/deploy/fips.md): the crates that must
+# not be in it. `deny.toml` stays the supply-chain policy for every build; this
+# file only checks bans, on the FIPS feature set:
+#
+#   cargo deny --config deny-fips.toml check bans
+#
+# Vendored OpenSSL (`openssl-src`) can't be banned here: cargo metadata unifies
+# dev-dependency features, and the test builds keep `vendored-openssl`.
+# scripts/fips/check-binary.sh checks the built binary instead (system
+# libcrypto.so.3, dynamically linked, no vendored copy).
+#
+# Each Phase 14 sub-phase that moves a crypto function onto aws-lc-rs adds the
+# crate it replaced here (working-plan.md, issues #2-#6).
+
+[graph]
+no-default-features = true
+features = [
+  "ridm-api/fips",
+  "ridm-api/embedded-ui",
+  "ridm-api/kerberos",
+  "ridm-api/hsm-pkcs11",
+  "ridm-api/kms-aws",
+  "ridm-api/kms-vault",
+  "ridm-api/kms-gcp",
+  "ridm-api/kms-azure",
+  "ridm-cli/fips",
+]
+exclude-dev = true
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
+
+[bans]
+multiple-versions = "allow"
+wildcards = "allow"
+deny = [
+  { crate = "ring", reason = "TLS and crypto go through aws-lc-rs on the AWS-LC FIPS module" },
+  { crate = "native-tls", reason = "use rustls with the FIPS provider" },
+]

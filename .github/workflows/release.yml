@@ -3,6 +3,8 @@ name: release
 # A `v*` tag becomes a release (see CONTRIBUTING.md, "Cutting a release"):
 #
 #   image      linux/amd64 and linux/arm64, built natively on each architecture,
+#              in two variants: the standard image (api/Dockerfile) and the FIPS
+#              image (api/Dockerfile.fips, tagged `<version>-fips`), each
 #              pushed to ghcr.io/zerosandonesllc/ridm as one multi-arch index
 #              with BuildKit's SBOM and provenance attestations, signed with
 #              cosign (keyless, this workflow's GitHub identity) and carrying
@@ -182,16 +184,16 @@ jobs:
           retention-days: 7
 
   image:
-    name: image (${{ matrix.arch }})
+    name: image (${{ matrix.variant }}, ${{ matrix.arch }})
     needs: prepare
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: amd64
-            runner: ubuntu-24.04
-          - arch: arm64
-            runner: ubuntu-24.04-arm
+          - { variant: standard, file: api/Dockerfile, arch: amd64, runner: ubuntu-24.04 }
+          - { variant: standard, file: api/Dockerfile, arch: arm64, runner: ubuntu-24.04-arm }
+          - { variant: fips, file: api/Dockerfile.fips, arch: amd64, runner: ubuntu-24.04 }
+          - { variant: fips, file: api/Dockerfile.fips, arch: arm64, runner: ubuntu-24.04-arm }
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -219,15 +221,15 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: api/Dockerfile
+          file: ${{ matrix.file }}
           platforms: linux/${{ matrix.arch }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
           outputs: ${{ env.PUBLISH == 'true' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.IMAGE) || 'type=cacheonly' }}
           sbom: ${{ env.PUBLISH == 'true' }}
           provenance: ${{ env.PUBLISH == 'true' && 'mode=max' || 'false' }}
-          cache-from: type=gha,scope=release-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=release-${{ matrix.arch }}
+          cache-from: type=gha,scope=release-${{ matrix.variant }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=release-${{ matrix.variant }}-${{ matrix.arch }}
       - name: record digest
         if: env.PUBLISH == 'true'
         run: |
@@ -238,25 +240,31 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: env.PUBLISH == 'true'
         with:
-          name: digest-${{ matrix.arch }}
+          name: digest-${{ matrix.variant }}-${{ matrix.arch }}
           path: digests/*
           retention-days: 3
 
   manifest:
-    name: manifest
+    name: manifest (${{ matrix.variant }})
     needs: [prepare, image]
     if: needs.prepare.outputs.publish == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { variant: standard, suffix: "" }
+          - { variant: fips, suffix: "-fips" }
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
       id-token: write
-    outputs:
-      digest: ${{ steps.push.outputs.digest }}
+    env:
+      SUFFIX: ${{ matrix.suffix }}
     steps:
       - uses: actions/download-artifact@v8
         with:
-          pattern: digest-*
+          pattern: digest-${{ matrix.variant }}-*
           merge-multiple: true
           path: digests
       - uses: docker/setup-buildx-action@v4
@@ -265,12 +273,15 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # 1.2.3 gets 1.2.3, 1.2 and latest; a pre-release gets only its own tag.
+      # 1.2.3 gets 1.2.3, 1.2 and latest (1.2.3-fips, 1.2-fips and latest-fips
+      # for the FIPS image); a pre-release gets only its own tag.
       - id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
-          flavor: latest=false
+          flavor: |
+            latest=false
+            suffix=${{ matrix.suffix }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}},enable=${{ needs.prepare.outputs.prerelease == 'false' }}
@@ -283,17 +294,24 @@ jobs:
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<<"$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf "$IMAGE@sha256:%s " *)
-          digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)"
+          digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION$SUFFIX" --format '{{json .Manifest}}' | jq -r .digest)"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          mkdir -p ../manifest-digest && echo "$digest" > "../manifest-digest/$VARIANT"
           docker buildx imagetools inspect "$IMAGE@$digest"
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
+          VARIANT: ${{ matrix.variant }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: manifest-digest-${{ matrix.variant }}
+          path: manifest-digest/*
+          retention-days: 3
       - uses: sigstore/cosign-installer@v4.1.2
       - uses: anchore/sbom-action@v0
         with:
           image: ${{ env.IMAGE }}@${{ steps.push.outputs.digest }}
           format: spdx-json
-          output-file: ridm-${{ needs.prepare.outputs.version }}.spdx.json
+          output-file: ridm-${{ needs.prepare.outputs.version }}${{ matrix.suffix }}.spdx.json
           upload-artifact: false
           upload-release-assets: false
       - name: sign and attest
@@ -301,14 +319,14 @@ jobs:
         # what `cosign verify` checks (docs/src/deploy/releases.md).
         env:
           REF: ${{ env.IMAGE }}@${{ steps.push.outputs.digest }}
-          SBOM: ridm-${{ needs.prepare.outputs.version }}.spdx.json
+          SBOM: ridm-${{ needs.prepare.outputs.version }}${{ matrix.suffix }}.spdx.json
         run: |
           cosign sign --yes "$REF"
           cosign attest --yes --type spdxjson --predicate "$SBOM" "$REF"
       - uses: actions/upload-artifact@v7
         with:
-          name: sbom
-          path: ridm-${{ needs.prepare.outputs.version }}.spdx.json
+          name: sbom${{ matrix.suffix }}
+          path: ridm-${{ needs.prepare.outputs.version }}${{ matrix.suffix }}.spdx.json
           retention-days: 7
 
   chart:
@@ -380,8 +398,14 @@ jobs:
           path: dist
       - uses: actions/download-artifact@v8
         with:
-          name: sbom
+          pattern: sbom*
+          merge-multiple: true
           path: dist
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: manifest-digest-*
+          merge-multiple: true
+          path: digests
       - uses: sigstore/cosign-installer@v4.1.2
       - name: checksums
         working-directory: dist
@@ -393,14 +417,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
-          DIGEST: ${{ needs.manifest.outputs.digest }}
         run: |
+          DIGEST="$(cat digests/standard)"
+          FIPS_DIGEST="$(cat digests/fips)"
           {
             scripts/release/notes.sh "$VERSION"
             echo
             echo "## Artifacts"
             echo
             echo "- Image: \`$IMAGE:$VERSION\` (\`$DIGEST\`), linux/amd64 and linux/arm64"
+            echo "- FIPS 140-3 image: \`$IMAGE:$VERSION-fips\` (\`$FIPS_DIGEST\`), linux/amd64 and linux/arm64 ([what it is](https://zerosandonesllc.github.io/rIDM/docs/deploy/fips.html))"
             echo "- Helm chart: \`helm install ridm $CHART_REPO/ridm --version $VERSION\`"
             echo "- Static binaries for linux amd64 and arm64 below; verify them with \`SHA256SUMS\` and its Sigstore bundle."
             echo
