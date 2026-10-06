@@ -28,6 +28,17 @@ impl AwsKms {
         if let Some(endpoint) = &config.endpoint {
             loader = loader.endpoint_url(endpoint.as_str().trim_end_matches('/'));
         }
+        // The SDK's default client hard-codes the non-FIPS aws-lc-rs provider;
+        // the FIPS build gives it one on rustls' FIPS provider instead.
+        #[cfg(feature = "fips")]
+        {
+            use aws_smithy_http_client::tls::{Provider, rustls_provider::CryptoMode};
+            loader = loader.http_client(
+                aws_smithy_http_client::Builder::new()
+                    .tls_provider(Provider::Rustls(CryptoMode::AwsLcFips))
+                    .build_https(),
+            );
+        }
         let sdk = loader.load().await;
         Self::with_client(Client::new(&sdk), &config.key_id)
     }

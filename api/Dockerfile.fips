@@ -1,0 +1,108 @@
+# syntax=docker/dockerfile:1.7
+#
+# The FIPS 140-3 build of ridm-api (docs/src/deploy/fips.md).
+#
+#   docker build -f api/Dockerfile.fips -t ridm:fips .
+#
+# Same three stages as api/Dockerfile, on Red Hat Universal Base Image 9:
+#
+# - ui is the standard UI export (the same static files; no cryptography).
+# - builder compiles `--no-default-features --features fips,...`: aws-lc-rs on
+#   the AWS-LC FIPS module (built from source, so it needs Go, cmake, clang
+#   and perl) and OpenSSL from the system rather than vendored. Every package
+#   comes from the freely available UBI repositories, so no RHEL subscription
+#   is needed to build. The stage fails if anything but the FIPS module's
+#   AWS-LC is linked.
+# - runtime is ubi-minimal. Its OpenSSL carries Red Hat's FIPS provider, which
+#   a host in FIPS mode enables. The binary refuses to start on a host that
+#   isn't in FIPS mode (FIPS_ALLOW_NON_FIPS_HOST=true overrides that for
+#   development and CI only).
+
+ARG RUST_VERSION=1.98.1
+ARG NODE_VERSION=24.21.0
+ARG UBI_VERSION=9.8
+
+# ---------------------------------------------------------------------------
+# ui
+# ---------------------------------------------------------------------------
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-bookworm-slim AS ui
+
+WORKDIR /src/ui
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY ui ./
+ENV NEXT_PUBLIC_API_URL="" NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
+
+# ---------------------------------------------------------------------------
+# builder
+# ---------------------------------------------------------------------------
+FROM registry.access.redhat.com/ubi9/ubi:${UBI_VERSION} AS builder
+
+ARG RUST_VERSION
+RUN dnf install -y --setopt=install_weak_deps=False \
+      gcc gcc-c++ make cmake clang perl-interpreter golang \
+      openssl-devel pkgconf-pkg-config binutils \
+ && dnf clean all
+ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo PATH=/usr/local/cargo/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+      | sh -s -- -y --profile minimal --default-toolchain "${RUST_VERSION}" --no-modify-path
+
+ENV RIDM_FEATURES=fips,embedded-ui,kerberos,hsm-pkcs11,kms-aws,kms-vault,kms-gcp,kms-azure
+# Keep the symbols until check-binary.sh has read them; `strip` runs after it.
+ENV CARGO_PROFILE_RELEASE_STRIP=false
+WORKDIR /src
+
+# Dependencies first, against stub sources (see api/Dockerfile).
+COPY Cargo.toml Cargo.lock ./
+COPY api/Cargo.toml api/Cargo.toml
+COPY crates/ridm-core/Cargo.toml crates/ridm-core/Cargo.toml
+COPY crates/ridm-cli/Cargo.toml crates/ridm-cli/Cargo.toml
+COPY crates/ridm-auth/Cargo.toml crates/ridm-auth/Cargo.toml
+COPY examples/axum-api/Cargo.toml examples/axum-api/Cargo.toml
+COPY examples/confidential-client/Cargo.toml examples/confidential-client/Cargo.toml
+RUN mkdir -p api/src crates/ridm-core/src crates/ridm-cli/src crates/ridm-auth/src \
+      examples/axum-api/src examples/confidential-client/src \
+ && echo 'fn main() {}' > api/src/main.rs \
+ && echo '' > api/src/lib.rs \
+ && echo '' > crates/ridm-core/src/lib.rs \
+ && echo 'fn main() {}' > crates/ridm-cli/src/main.rs \
+ && echo '' > crates/ridm-auth/src/lib.rs \
+ && echo 'fn main() {}' > examples/axum-api/src/main.rs \
+ && echo 'fn main() {}' > examples/confidential-client/src/main.rs \
+ && cargo build --release --locked -p ridm-api --no-default-features --features "$RIDM_FEATURES" \
+ && rm -rf api/src crates/ridm-core/src crates/ridm-cli/src crates/ridm-auth/src \
+      examples/axum-api/src examples/confidential-client/src
+
+COPY api api
+COPY crates crates
+COPY examples/axum-api examples/axum-api
+COPY examples/confidential-client examples/confidential-client
+COPY --from=ui /src/ui/out ui/out
+COPY scripts/fips/check-binary.sh /usr/local/bin/check-binary.sh
+RUN touch api/src/main.rs api/src/lib.rs crates/ridm-core/src/lib.rs \
+ && cargo build --release --locked -p ridm-api --no-default-features --features "$RIDM_FEATURES" \
+ && check-binary.sh target/release/ridm-api \
+ && strip target/release/ridm-api
+
+# ---------------------------------------------------------------------------
+# runtime
+# ---------------------------------------------------------------------------
+FROM registry.access.redhat.com/ubi9/ubi-minimal:${UBI_VERSION}
+
+LABEL org.opencontainers.image.title="rIDM (FIPS)" \
+      org.opencontainers.image.description="Multi-tenant OpenID Connect identity server, FIPS 140-3 build" \
+      org.opencontainers.image.source="https://github.com/ZerosAndOnesLLC/rIDM" \
+      org.opencontainers.image.licenses="MIT"
+
+COPY --from=builder /src/target/release/ridm-api /ridm-api
+
+ENV BIND_ADDR=0.0.0.0:8080
+EXPOSE 8080
+# The same non-root user as the distroless image.
+USER 65532:65532
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=3 \
+    CMD ["/ridm-api", "--healthcheck"]
+
+ENTRYPOINT ["/ridm-api"]
