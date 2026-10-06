@@ -50,8 +50,8 @@ multiple-versions = "warn"
 wildcards = "deny"
 highlight = "all"
 deny = [
-  # TLS is rustls everywhere. OpenSSL is present only because webauthn-rs 0.5
-  # needs it for attestation, and it is statically vendored (see Cargo.toml).
+  # TLS is rustls everywhere. The server links no OpenSSL; only the tests'
+  # webauthn-rs (an oracle for rIDM's own passkey code) does.
   { crate = "native-tls", reason = "use rustls" },
 ]
 

@@ -10,7 +10,7 @@ use serde_json::Value;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 use uuid::Uuid;
-use webauthn_rs::prelude::RegisterPublicKeyCredential;
+use webauthn_rs_proto::RegisterPublicKeyCredential;
 
 use crate::error::{AppError, AppResult, FieldError};
 use crate::middleware::{AccountCtx, Json};

@@ -28,6 +28,7 @@ release renames that heading to the version and date.
 - Hashes, HMAC, random numbers, signing-key generation and TOTP all run on aws-lc-rs, in both builds. The algorithms and stored formats are unchanged: existing keys, TOTP enrolments and tokens keep working. `rsa`, `p256`, `ed25519-dalek` and `totp-rs` are no longer dependencies, and the RUSTSEC-2023-0071 (Marvin) exception is gone with `rsa`.
 - Postgres TLS uses aws-lc-rs instead of `ring`.
 - Imported PBKDF2 password hashes are verified with aws-lc-rs.
+- **Passkeys are verified by rIDM's own WebAuthn relying party** on aws-lc-rs, which replaces webauthn-rs. The options, the checks and the stored format are the same, so existing passkeys keep working and a release that still uses webauthn-rs reads the ones registered now. Challenges come from the module's DRBG. Attestation statements are no longer re-verified (rIDM requests and trusts none), so authenticators that send TPM attestation now register. **rIDM no longer links OpenSSL**, in either build, and the `vendored-openssl` feature is gone.
 - Kerberos crypto runs on aws-lc-rs, written in-house and checked against the RFC 3961, 3962 and 8009 vectors and a real MIT KDC. `picky-krb` is no longer a dependency of the server.
 - The time spent for an unknown user or a user without a password now matches a real verification under the configured parameters, in either build. It used to verify a fixed, cheaper argon2id hash.
 - Temporary passwords are drawn without modulo bias.

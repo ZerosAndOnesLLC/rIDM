@@ -32,7 +32,7 @@ use crate::services::{
     profile_schema, risk, roles, totp, trusted_devices, users,
 };
 use crate::state::AppState;
-use webauthn_rs::prelude::{
+use webauthn_rs_proto::{
     CreationChallengeResponse, PublicKeyCredential, RegisterPublicKeyCredential,
     RequestChallengeResponse,
 };

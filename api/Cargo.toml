@@ -17,11 +17,6 @@ name = "ridm_api"
 path = "src/lib.rs"
 
 [features]
-# OpenSSL (needed only by webauthn-rs) compiled from source and linked
-# statically, so the standard image has no dynamic libssl. The FIPS build
-# turns it off (`--no-default-features`) and links the system OpenSSL instead.
-default = ["vendored-openssl"]
-vendored-openssl = ["openssl-sys/vendored"]
 # The FIPS 140-3 build (docs/src/deploy/fips.md): aws-lc-rs on the AWS-LC FIPS
 # module and rustls' FIPS provider. Off by default; every feature works in
 # both builds.
@@ -83,9 +78,9 @@ jsonwebtoken = { workspace = true }
 argon2 = { workspace = true }
 bcrypt = { workspace = true }
 md-5 = { workspace = true }
-webauthn-rs = { workspace = true }
+# The WebAuthn wire types (serde only); the ceremonies are `webauthn`.
 webauthn-rs-proto = { workspace = true }
-openssl-sys = { workspace = true }
+base64urlsafedata = { workspace = true }
 chacha20poly1305 = { workspace = true }
 sha2 = { workspace = true }
 rand = { workspace = true }
@@ -162,3 +157,6 @@ testcontainers-modules = { workspace = true }
 testcontainers = { workspace = true }
 proptest = { workspace = true }
 webauthn-authenticator-rs = { version = "0.5.5", default-features = false, features = ["softpasskey"] }
+# The passkey tests check rIDM's relying party against webauthn-rs, which it
+# replaced: each reads what the other stores.
+webauthn-rs = { workspace = true }

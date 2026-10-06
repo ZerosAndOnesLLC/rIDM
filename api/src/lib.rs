@@ -30,6 +30,7 @@ pub mod state;
 pub mod telemetry;
 pub mod tls;
 pub mod util;
+pub mod webauthn;
 
 use axum::Router;
 use axum::middleware::from_fn_with_state;

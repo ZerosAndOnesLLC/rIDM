@@ -82,3 +82,10 @@ path = "fuzz_targets/client_cert.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "passkey_answer"
+path = "fuzz_targets/passkey_answer.rs"
+test = false
+doc = false
+bench = false
