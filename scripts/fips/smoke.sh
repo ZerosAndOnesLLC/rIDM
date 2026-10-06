@@ -79,7 +79,9 @@ echo "ok: starts with the override, self-test logged, /healthz over TLS"
 
 # 3. Ciphers and groups.
 probe() {
-  echo | timeout 10 openssl s_client -connect "127.0.0.1:$port" "$@" 2>&1 | grep -q '^New, TLS'
+  local out
+  out="$(echo | timeout 10 openssl s_client -connect "127.0.0.1:$port" "$@" 2>&1 || true)"
+  grep -q '^New, TLS' <<<"$out"
 }
 expect_ok() { probe "${@:2}" || fail "refused: $1"; echo "ok: accepts $1"; }
 expect_no() { if probe "${@:2}"; then fail "accepted: $1"; fi; echo "ok: refuses $1"; }
@@ -87,7 +89,8 @@ expect_no() { if probe "${@:2}"; then fail "accepted: $1"; fi; echo "ok: refuses
 expect_ok "TLS 1.3 AES-256-GCM over P-256" -tls1_3 -ciphersuites TLS_AES_256_GCM_SHA384 -groups P-256
 expect_ok "TLS 1.3 over P-384" -tls1_3 -groups P-384
 # The client needs OpenSSL 3.5+ to offer X25519MLKEM768 (Ubuntu 24.04 has 3.0).
-if echo | openssl s_client -connect 127.0.0.1:1 -groups X25519MLKEM768 2>&1 | grep -q "cannot be set"; then
+mlkem_client="$(echo | openssl s_client -connect 127.0.0.1:1 -groups X25519MLKEM768 2>&1 || true)"
+if grep -q "cannot be set" <<<"$mlkem_client"; then
   echo "skip: this openssl ($(openssl version | cut -d' ' -f2)) can't offer X25519MLKEM768"
 else
   expect_ok "TLS 1.3 over X25519MLKEM768" -tls1_3 -groups X25519MLKEM768
