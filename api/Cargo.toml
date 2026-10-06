@@ -80,9 +80,6 @@ moka = { workspace = true }
 redis = { workspace = true }
 
 jsonwebtoken = { workspace = true }
-rsa = { workspace = true }
-p256 = { workspace = true }
-ed25519-dalek = { workspace = true }
 argon2 = { workspace = true }
 bcrypt = { workspace = true }
 pbkdf2 = { workspace = true }
@@ -94,7 +91,6 @@ openssl-sys = { workspace = true }
 chacha20poly1305 = { workspace = true }
 sha2 = { workspace = true }
 rand = { workspace = true }
-rand_core_06 = { workspace = true }
 rustls = { workspace = true }
 tokio-rustls = { workspace = true }
 rustls-platform-verifier = { workspace = true }

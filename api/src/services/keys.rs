@@ -43,60 +43,58 @@ pub struct GeneratedKey {
 /// Generate a key pair. CPU-bound (RSA especially); call through
 /// `spawn_blocking` on request paths.
 pub fn generate(alg: SigningAlg, rsa_bits: RsaBits) -> AppResult<GeneratedKey> {
+    use aws_lc_rs::encoding::AsDer as _;
+    use aws_lc_rs::signature::KeyPair as _;
+    let failed = |what: &str| AppError::Internal(format!("{what} key generation failed"));
     let (params, private_der): (Value, Zeroizing<Vec<u8>>) = match alg {
         SigningAlg::RS256 | SigningAlg::RS384 | SigningAlg::RS512 => {
-            use rsa::pkcs8::EncodePrivateKey as _;
-            use rsa::traits::PublicKeyParts as _;
-            let key = rsa::RsaPrivateKey::new(&mut rand_core_06::OsRng, rsa_bits.bits())
-                .map_err(|e| AppError::Internal(format!("rsa keygen: {e}")))?;
-            let der = key
-                .to_pkcs8_der()
-                .map_err(|e| AppError::Internal(format!("rsa pkcs8: {e}")))?;
-            let n = URL_SAFE_NO_PAD.encode(key.n().to_bytes_be());
-            let e = URL_SAFE_NO_PAD.encode(key.e().to_bytes_be());
+            use aws_lc_rs::rsa::KeySize;
+            let size = match rsa_bits {
+                RsaBits::B2048 => KeySize::Rsa2048,
+                RsaBits::B3072 => KeySize::Rsa3072,
+                RsaBits::B4096 => KeySize::Rsa4096,
+            };
+            let key = aws_lc_rs::rsa::KeyPair::generate(size).map_err(|_| failed("RSA"))?;
+            let der = key.as_der().map_err(|_| failed("RSA"))?;
+            let public = key.public_key();
+            let n = URL_SAFE_NO_PAD.encode(public.modulus().big_endian_without_leading_zero());
+            let e = URL_SAFE_NO_PAD.encode(public.exponent().big_endian_without_leading_zero());
             (
                 json!({"kty": "RSA", "n": n, "e": e}),
-                Zeroizing::new(der.as_bytes().to_vec()),
+                Zeroizing::new(der.as_ref().to_vec()),
             )
         }
         SigningAlg::ES256 => {
-            use p256::elliptic_curve::Generate as _;
-            use p256::elliptic_curve::sec1::ToSec1Point as _;
-            use p256::pkcs8::EncodePrivateKey as _;
-            let secret = p256::SecretKey::generate_from_rng(&mut rand::rng());
-            let der = secret
-                .to_pkcs8_der()
-                .map_err(|e| AppError::Internal(format!("p256 pkcs8: {e}")))?;
-            let point = secret.public_key().to_sec1_point(false);
-            let x = point
-                .x()
-                .ok_or_else(|| AppError::Internal("p256 x".into()))?;
-            let y = point
-                .y()
-                .ok_or_else(|| AppError::Internal("p256 y".into()))?;
+            use aws_lc_rs::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair};
+            let key = EcdsaKeyPair::generate(&ECDSA_P256_SHA256_FIXED_SIGNING)
+                .map_err(|_| failed("P-256"))?;
+            let der = key.to_pkcs8v1().map_err(|_| failed("P-256"))?;
+            // The uncompressed point: 0x04 || X || Y.
+            let point = key.public_key().as_ref();
+            if point.len() != 65 || point[0] != 0x04 {
+                return Err(failed("P-256"));
+            }
             (
                 json!({
                     "kty": "EC",
                     "crv": "P-256",
-                    "x": URL_SAFE_NO_PAD.encode(x),
-                    "y": URL_SAFE_NO_PAD.encode(y),
+                    "x": URL_SAFE_NO_PAD.encode(&point[1..33]),
+                    "y": URL_SAFE_NO_PAD.encode(&point[33..]),
                 }),
-                Zeroizing::new(der.as_bytes().to_vec()),
+                Zeroizing::new(der.as_ref().to_vec()),
             )
         }
         SigningAlg::EdDSA => {
-            use ed25519_dalek::pkcs8::EncodePrivateKey as _;
-            let signing = ed25519_dalek::SigningKey::generate(&mut rand::rng());
-            let der = signing
-                .to_pkcs8_der()
-                .map_err(|e| AppError::Internal(format!("ed25519 pkcs8: {e}")))?;
+            let key =
+                aws_lc_rs::signature::Ed25519KeyPair::generate().map_err(|_| failed("Ed25519"))?;
+            let der = key.to_pkcs8v1().map_err(|_| failed("Ed25519"))?;
             (
                 json!({
                     "kty": "OKP",
                     "crv": "Ed25519",
-                    "x": URL_SAFE_NO_PAD.encode(signing.verifying_key().to_bytes()),
+                    "x": URL_SAFE_NO_PAD.encode(key.public_key().as_ref()),
                 }),
-                Zeroizing::new(der.as_bytes().to_vec()),
+                Zeroizing::new(der.as_ref().to_vec()),
             )
         }
     };

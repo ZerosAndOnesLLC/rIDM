@@ -83,16 +83,14 @@ fn rsa_public_from_jwk(jwk: &Value) -> AppResult<PublicEncryptingKey> {
         .decode(jwk["e"].as_str().unwrap_or_default())
         .map_err(|_| AppError::BadRequest("jwk: bad e".into()))?;
     // aws-lc-rs wants X.509 SubjectPublicKeyInfo DER; build it from the components.
-    use rsa::pkcs8::EncodePublicKey as _;
-    let public = rsa::RsaPublicKey::new(
-        rsa::BigUint::from_bytes_be(&n),
-        rsa::BigUint::from_bytes_be(&e),
-    )
+    use aws_lc_rs::encoding::AsDer as _;
+    let spki = aws_lc_rs::rsa::PublicKeyComponents {
+        n: &n[..],
+        e: &e[..],
+    }
+    .as_der()
     .map_err(|_| AppError::BadRequest("jwk: invalid RSA public key".into()))?;
-    let spki = public
-        .to_public_key_der()
-        .map_err(|_| AppError::BadRequest("jwk: cannot encode RSA public key".into()))?;
-    PublicEncryptingKey::from_der(spki.as_bytes())
+    PublicEncryptingKey::from_der(spki.as_ref())
         .map_err(|_| AppError::BadRequest("jwk: invalid RSA public key".into()))
 }
 

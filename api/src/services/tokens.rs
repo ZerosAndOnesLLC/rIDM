@@ -280,18 +280,26 @@ pub fn encoding_key_from_der(alg: SigningAlg, der: &[u8]) -> AppResult<EncodingK
     Ok(match alg {
         SigningAlg::RS256 | SigningAlg::RS384 | SigningAlg::RS512 => {
             // jsonwebtoken (aws-lc-rs) wants PKCS#1 for RSA; we store PKCS#8.
-            use rsa::pkcs1::EncodeRsaPrivateKey as _;
-            use rsa::pkcs8::DecodePrivateKey as _;
-            let private = rsa::RsaPrivateKey::from_pkcs8_der(der)
-                .map_err(|e| AppError::Internal(format!("rsa key parse: {e}")))?;
-            let pkcs1 = private
-                .to_pkcs1_der()
-                .map_err(|e| AppError::Internal(format!("rsa pkcs1: {e}")))?;
-            EncodingKey::from_rsa_der(pkcs1.as_bytes())
+            EncodingKey::from_rsa_der(rsa_pkcs1_of_pkcs8(der)?)
         }
         SigningAlg::ES256 => EncodingKey::from_ec_der(der),
         SigningAlg::EdDSA => EncodingKey::from_ed_der(der),
     })
+}
+
+/// The PKCS#1 `RSAPrivateKey` inside an RSA PKCS#8 `PrivateKeyInfo`
+/// (RFC 5208: version, algorithm, then the key as an OCTET STRING). The key
+/// is checked to parse first, so a bad one fails here, not at the first
+/// signature.
+fn rsa_pkcs1_of_pkcs8(der: &[u8]) -> AppResult<&[u8]> {
+    use crate::kerberos::der::{self as asn1, Reader};
+    let bad = || AppError::Internal("rsa key parse: not an RSA PKCS#8 key".into());
+    aws_lc_rs::rsa::KeyPair::from_pkcs8(der).map_err(|_| bad())?;
+    let info = asn1::single(der, asn1::SEQUENCE).map_err(|_| bad())?;
+    let mut r = Reader::new(info);
+    r.expect(asn1::INTEGER).map_err(|_| bad())?;
+    r.expect(asn1::SEQUENCE).map_err(|_| bad())?;
+    r.expect(asn1::OCTET_STRING).map_err(|_| bad())
 }
 
 /// Parsed signing material, cached per node.
