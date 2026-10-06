@@ -13,11 +13,11 @@ test-support = []
 
 [dependencies]
 async-trait = { workspace = true }
+# Hashes, HMAC and randomness (`crypto`): the AWS-LC FIPS module in the FIPS build.
+aws-lc-rs = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sha1 = { workspace = true }
-sha2 = { workspace = true }
 hex = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

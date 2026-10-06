@@ -106,7 +106,7 @@ async fn handle(
     })?;
 
     let mut bytes = [0u8; 32];
-    rand::fill(&mut bytes);
+    ridm_core::crypto::fill(&mut bytes);
     let id = base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, bytes);
     let stored = Stored {
         client_id: client.id,

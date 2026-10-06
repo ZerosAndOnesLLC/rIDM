@@ -2,7 +2,7 @@
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use sha2::{Digest as _, Sha256};
+use ridm_core::crypto::Sha256;
 use subtle::ConstantTimeEq as _;
 
 /// `code_challenge` grammar: 43–128 unreserved characters.

@@ -15,7 +15,7 @@ use super::xml::{El, child, is, text_of};
 /// A fresh message or assertion ID: an NCName, 128 random bits.
 pub fn new_id() -> String {
     let mut bytes = [0u8; 16];
-    rand::fill(&mut bytes);
+    ridm_core::crypto::fill(&mut bytes);
     format!("_{}", hex::encode(bytes))
 }
 

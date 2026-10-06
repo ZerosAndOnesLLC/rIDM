@@ -9,10 +9,12 @@
 //!   HSM, SaaS mailers) implement the same traits behind cargo features.
 //! * [`events`]: the typed internal event bus that feeds audit, webhooks,
 //!   notifications and cache invalidation from a single emit point.
+//! * [`crypto`]: hashes, HMAC and random numbers on aws-lc-rs.
 //! * [`audit_chain`]: the audit log's hash chain, so a tool can check an
 //!   export without trusting the server that wrote it.
 
 pub mod audit_chain;
+pub mod crypto;
 pub mod events;
 pub mod providers;
 #[cfg(feature = "test-support")]

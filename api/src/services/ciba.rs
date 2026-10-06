@@ -19,9 +19,9 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Utc};
 use redis::AsyncCommands as _;
+use ridm_core::crypto::Sha256;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
 use crate::cache::keys;
@@ -175,7 +175,7 @@ pub async fn start(
         .backchannel_token_delivery_mode
         .ok_or_else(|| AppError::Internal("CIBA client without a delivery mode".into()))?;
     let mut bytes = [0u8; 32];
-    rand::fill(&mut bytes);
+    ridm_core::crypto::fill(&mut bytes);
     let auth_req_id = URL_SAFE_NO_PAD.encode(bytes);
     let auth_req_hash = hash(&auth_req_id);
     let now = Utc::now();

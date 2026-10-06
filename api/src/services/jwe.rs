@@ -109,9 +109,9 @@ pub fn encrypt(
 
     // Content encryption key and IV.
     let mut cek = vec![0u8; enc.key_len()];
-    rand::fill(&mut cek[..]);
+    ridm_core::crypto::fill(&mut cek[..]);
     let mut iv = [0u8; 12];
-    rand::fill(&mut iv);
+    ridm_core::crypto::fill(&mut iv);
 
     let mut header = json!({"alg": alg.as_str(), "enc": enc.as_str(), "cty": "JWT"});
     if let Some(kid) = recipient_jwk.get("kid") {

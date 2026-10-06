@@ -10,9 +10,9 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Utc};
 use redis::AsyncCommands as _;
+use ridm_core::crypto::Sha256;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
 use subtle::ConstantTimeEq as _;
 use totp_rs::{Algorithm, Builder, Secret, Totp};
 use uuid::Uuid;
@@ -270,7 +270,7 @@ pub async fn confirm_enrolment(
 
 fn random_code() -> String {
     let mut bytes = [0u8; RECOVERY_CODE_LEN];
-    rand::fill(&mut bytes);
+    ridm_core::crypto::fill(&mut bytes);
     let raw: String = bytes
         .iter()
         .map(|b| RECOVERY_ALPHABET[(*b % 32) as usize] as char)

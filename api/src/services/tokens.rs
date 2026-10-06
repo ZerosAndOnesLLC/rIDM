@@ -18,8 +18,8 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Utc};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use ridm_core::crypto::{Sha256, Sha384, Sha512};
 use serde_json::{Map, Value, json};
-use sha2::{Digest as _, Sha256, Sha384, Sha512};
 use uuid::Uuid;
 
 use crate::cache::keys as cache_keys;

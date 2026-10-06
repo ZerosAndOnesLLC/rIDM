@@ -119,8 +119,7 @@ static TLS_CONFIGS: std::sync::LazyLock<moka::sync::Cache<[u8; 32], Arc<rustls::
     std::sync::LazyLock::new(|| moka::sync::Cache::new(1024));
 
 fn tls_config(ca: Option<&str>) -> Result<Arc<rustls::ClientConfig>, LdapFailure> {
-    use sha2::Digest as _;
-    let id: [u8; 32] = sha2::Sha256::digest(ca.unwrap_or("\0platform").as_bytes()).into();
+    let id: [u8; 32] = ridm_core::crypto::Sha256::digest(ca.unwrap_or("\0platform").as_bytes());
     if let Some(config) = TLS_CONFIGS.get(&id) {
         return Ok(config);
     }

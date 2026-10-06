@@ -13,8 +13,8 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Utc};
 use redis::AsyncCommands as _;
+use ridm_core::crypto::Sha256;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
 use crate::cache::keys;
@@ -103,7 +103,9 @@ fn hash(code: &str) -> String {
 
 fn random_user_code() -> String {
     let letters: String = (0..USER_CODE_LEN)
-        .map(|_| USER_CODE_ALPHABET[rand::random_range(0..USER_CODE_ALPHABET.len())] as char)
+        .map(|_| {
+            USER_CODE_ALPHABET[ridm_core::crypto::random_below(USER_CODE_ALPHABET.len())] as char
+        })
         .collect();
     format!("{}-{}", &letters[..4], &letters[4..])
 }
@@ -153,7 +155,7 @@ pub async fn issue(
     audiences: Vec<String>,
 ) -> AppResult<DeviceAuthorization> {
     let mut bytes = [0u8; 32];
-    rand::fill(&mut bytes);
+    ridm_core::crypto::fill(&mut bytes);
     let device_code = URL_SAFE_NO_PAD.encode(bytes);
     let device_hash = hash(&device_code);
     let mut conn = state.redis.get().await?;

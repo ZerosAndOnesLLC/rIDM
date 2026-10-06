@@ -93,7 +93,6 @@ webauthn-rs-proto = { workspace = true }
 openssl-sys = { workspace = true }
 chacha20poly1305 = { workspace = true }
 sha2 = { workspace = true }
-hmac = { workspace = true }
 rand = { workspace = true }
 rand_core_06 = { workspace = true }
 rustls = { workspace = true }
@@ -152,6 +151,8 @@ utoipa-swagger-ui = { workspace = true }
 rust-embed = { workspace = true }
 
 [dev-dependencies]
+# The webhook test checks signatures with an independent HMAC implementation.
+hmac = { workspace = true }
 ridm-core = { workspace = true, features = ["test-support"] }
 ridm-api = { path = ".", features = ["test-support"] }
 # The published relying-party crate, tested against the tokens this server

@@ -14,10 +14,10 @@
 //! `|impersonator:<uuid>` appended only for a row that has an impersonator
 //! (so rows written before that field existed hash exactly as they did).
 
+use crate::crypto::Sha256;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::Value;
-use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
 /// The chain a tenant's rows belong to: its id, or the nil UUID for the

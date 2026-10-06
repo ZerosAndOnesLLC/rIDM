@@ -18,7 +18,6 @@ use redis::AsyncCommands as _;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use sha2::Digest as _;
 use uuid::Uuid;
 
 use crate::cache::keys as cache_keys;
@@ -177,7 +176,7 @@ async fn first_sighting(state: &AppState, tenant_id: Uuid, sp: Uuid, id: &str) -
     let key = format!(
         "{}:t:{tenant_id}:saml:seen:{sp}:{}",
         cache_keys::PREFIX,
-        hex::encode(sha2::Sha256::digest(id.as_bytes()))
+        hex::encode(ridm_core::crypto::Sha256::digest(id.as_bytes()))
     );
     let mut conn = state.redis.get().await?;
     let fresh: bool = redis::cmd("SET")
@@ -753,7 +752,7 @@ pub async fn redeem_ticket(state: &AppState, tenant: &TenantCtx, id: Uuid) -> Re
 
 /// The `SessionIndex` of a session: opaque, and the same for every SP.
 pub fn session_index(tenant: &Tenant, session_id: Uuid) -> String {
-    let mut h = sha2::Sha256::new();
+    let mut h = ridm_core::crypto::Sha256::new();
     h.update(b"saml-session-index|");
     h.update(session_id.as_bytes());
     h.update(&tenant.pairwise_salt);

@@ -5,8 +5,8 @@ use axum::http::HeaderMap;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{Duration, Utc};
+use ridm_core::crypto::Sha256;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
-use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
 use crate::db;
@@ -74,7 +74,7 @@ pub async fn trust(
     ip: Option<&str>,
 ) -> AppResult<(TrustedDevice, String)> {
     let mut bytes = [0u8; 32];
-    rand::fill(&mut bytes);
+    ridm_core::crypto::fill(&mut bytes);
     let secret = URL_SAFE_NO_PAD.encode(bytes);
     let days = tenant.settings.session.remember_device_days.max(1);
     let mut tx = db::tenant_tx(&state.db, tenant.id).await?;

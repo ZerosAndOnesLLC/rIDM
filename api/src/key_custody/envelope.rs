@@ -309,7 +309,7 @@ impl EnvelopeEncryptor {
         let in_use = crate::services::master_key::highest_version_in_use(&custody.db).await?;
         let version = highest.max(env_highest).max(in_use) + 1;
         let mut data_key = Zeroizing::new(vec![0u8; MASTER_KEY_LEN]);
-        rand::fill(&mut data_key[..]);
+        ridm_core::crypto::fill(&mut data_key[..]);
         let context = wrap_context(version);
         let wrapped = wrapper.wrap(&data_key, &context).await?;
         // Prove the backend gives it back before anything is encrypted under
@@ -441,7 +441,7 @@ impl KeyEncryptor for EnvelopeEncryptor {
         })?;
         let cipher = Self::cipher(&key)?;
         let mut nonce = [0u8; NONCE_LEN];
-        rand::fill(&mut nonce);
+        ridm_core::crypto::fill(&mut nonce);
         let ciphertext = cipher
             .encrypt(
                 &XNonce::from(nonce),

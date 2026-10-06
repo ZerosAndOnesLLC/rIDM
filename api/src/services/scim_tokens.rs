@@ -6,8 +6,8 @@ use std::sync::Arc;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{Duration, Utc};
+use ridm_core::crypto::Sha256;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
-use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
 use crate::cache::keys;
@@ -72,7 +72,7 @@ pub async fn create(
         None => None,
     };
     let mut bytes = [0u8; 32];
-    rand::fill(&mut bytes);
+    ridm_core::crypto::fill(&mut bytes);
     let token = format!("{PREFIX}{}", URL_SAFE_NO_PAD.encode(bytes));
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     crate::services::limits::ensure_room(&mut *tx, tenant_id, crate::services::limits::SCIM_TOKENS)

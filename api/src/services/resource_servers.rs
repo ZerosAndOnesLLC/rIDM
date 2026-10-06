@@ -120,8 +120,7 @@ pub async fn permissions_for_roles_cached(
     sorted.sort();
     sorted.dedup();
     let roles_key = {
-        use sha2::Digest as _;
-        let mut h = sha2::Sha256::new();
+        let mut h = ridm_core::crypto::Sha256::new();
         for id in &sorted {
             h.update(id.as_bytes());
         }

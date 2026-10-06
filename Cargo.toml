@@ -73,7 +73,6 @@ subtle = "=2.6.1"
 zeroize = "=1.9.0"
 base64 = "=0.23.1"
 hex = "=0.4.3"
-sha1 = "=0.11.0"
 # SAML 2.0: a read-only XML tree that refuses DTDs (so no entity expansion
 # or external entities), self-signed certificates for the IdP metadata, the
 # X.509 reader webauthn-rs already builds (SP certificates), and raw DEFLATE
