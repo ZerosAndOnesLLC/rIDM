@@ -49,7 +49,7 @@ test-support = []
 # `/t/{slug}/kerberos/negotiate`. Without it a `kerberos` identity provider can
 # still be configured (tenant documents stay portable between builds) but
 # nobody can sign in with it. The released image and binaries turn it on.
-kerberos = ["dep:picky-krb"]
+kerberos = []
 # Key custody backends: an HSM or a cloud KMS wraps the data keys that encrypt
 # secrets at rest (see `key_custody`). Each is its own feature so the default
 # build stays provider-neutral; `KEY_WRAPPER` picks one at run time, and a
@@ -105,7 +105,6 @@ flate2 = { workspace = true }
 reqwest = { workspace = true }
 hickory-resolver = { workspace = true }
 ldap3 = { workspace = true }
-picky-krb = { workspace = true, optional = true }
 cryptoki = { workspace = true, optional = true }
 aws-config = { workspace = true, optional = true }
 aws-sdk-kms = { workspace = true, optional = true }
@@ -151,6 +150,8 @@ hmac = { workspace = true }
 totp-rs = { workspace = true }
 # The legacy PBKDF2 tests derive their expected hashes independently (RustCrypto).
 pbkdf2 = { workspace = true }
+# The Kerberos tests check the aws-lc-rs AES types against picky-krb (17/18).
+picky-krb = { workspace = true }
 ridm-core = { workspace = true, features = ["test-support"] }
 ridm-api = { path = ".", features = ["test-support"] }
 # The published relying-party crate, tested against the tokens this server

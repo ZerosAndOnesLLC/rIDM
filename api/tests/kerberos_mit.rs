@@ -39,8 +39,8 @@ RUN apt-get update \\\n\
 const SPN: &str = "HTTP/sso.example.test@EXAMPLE.TEST";
 const ALICE_PW: &str = "Alice-Krb-Pw1";
 
-/// The realm, the service principal (AES-SHA1 keys only: RFC 8009's
-/// SHA-2 types, MIT's newer default, are not supported) and its keytab.
+/// The realm, the service principal with the keys of `@ENCTYPES@` and its
+/// keytab.
 const SETUP: &str = r#"set -e
 cat > /etc/krb5.conf <<'EOF'
 [libdefaults]
@@ -60,7 +60,7 @@ cat > /etc/krb5.conf <<'EOF'
 EOF
 kdb5_util create -s -r EXAMPLE.TEST -P master-pw >/dev/null
 kadmin.local -q "addprinc -pw Alice-Krb-Pw1 alice" >/dev/null
-kadmin.local -q "addprinc -randkey -e aes256-cts-hmac-sha1-96:normal,aes128-cts-hmac-sha1-96:normal HTTP/sso.example.test" >/dev/null
+kadmin.local -q "addprinc -randkey -e @ENCTYPES@ HTTP/sso.example.test" >/dev/null
 kadmin.local -q "ktadd -norandkey -k /tmp/http.keytab HTTP/sso.example.test" >/dev/null
 krb5kdc
 touch /tmp/ready
@@ -110,7 +110,13 @@ impl Drop for Kdc {
     }
 }
 
-async fn start_kdc() -> Option<Kdc> {
+/// The RFC 3962 types, which Active Directory issues.
+const AES_SHA1: &str = "aes256-cts-hmac-sha1-96:normal,aes128-cts-hmac-sha1-96:normal";
+/// The RFC 8009 types, MIT's and RHEL IdM's default (and what a KDC in FIPS
+/// mode may be limited to).
+const AES_SHA2: &str = "aes256-cts-hmac-sha384-192:normal,aes128-cts-hmac-sha256-128:normal";
+
+async fn start_kdc(enctypes: &str) -> Option<Kdc> {
     let required = std::env::var("RIDM_REQUIRE_KDC").as_deref() == Ok("1");
     let skip = |why: &str| {
         assert!(!required, "RIDM_REQUIRE_KDC=1 but {why}");
@@ -141,7 +147,8 @@ async fn start_kdc() -> Option<Kdc> {
             return skip("the KDC image did not build");
         }
     }
-    let id = docker(&["run", "-d", IMAGE, "sh", "-c", SETUP])
+    let setup = SETUP.replace("@ENCTYPES@", enctypes);
+    let id = docker(&["run", "-d", IMAGE, "sh", "-c", &setup])
         .await
         .expect("docker run");
     let kdc = Kdc(id);
@@ -160,7 +167,18 @@ async fn start_kdc() -> Option<Kdc> {
 
 #[tokio::test]
 async fn mit_kerberos_signs_in_through_spnego_and_verifies_the_answer() {
-    let Some(kdc) = start_kdc().await else {
+    sign_in_through_spnego(AES_SHA1, &[18, 17]).await;
+}
+
+#[tokio::test]
+async fn mit_kerberos_signs_in_with_the_rfc_8009_types() {
+    sign_in_through_spnego(AES_SHA2, &[20, 19]).await;
+}
+
+/// Alice signs in through SPNEGO with a service whose keys are `enctypes`
+/// (`etypes`, as the keytab lists them), and MIT checks rIDM's answer.
+async fn sign_in_through_spnego(enctypes: &str, etypes: &[i64]) {
+    let Some(kdc) = start_kdc(enctypes).await else {
         return;
     };
     let keytab = docker(&["exec", &kdc.0, "base64", "-w0", "/tmp/http.keytab"])
@@ -209,6 +227,10 @@ async fn mit_kerberos_signs_in_through_spnego_and_verifies_the_answer() {
     .await;
     assert_eq!(s, 201, "{created}");
     assert_eq!(created["kerberos"]["service_principal"], SPN);
+    let entries = created["kerberos"]["keytab_entries"].as_array().unwrap();
+    let listed: Vec<i64> = entries.iter().filter_map(|k| k["etype"].as_i64()).collect();
+    assert_eq!(listed, etypes, "{created}");
+    assert!(entries.iter().all(|k| k["supported"] == true), "{created}");
 
     // A login flow, as the browser starts it.
     let http = reqwest::Client::builder()
