@@ -47,7 +47,8 @@ argon2 = "=0.6.0"
 bcrypt = "=0.19.3"
 pbkdf2 = "=0.13.0"
 md-5 = "=0.11.0"
-totp-rs = { version = "=6.0.0", features = ["qr", "gen_secret"] }
+# Tests only: an independent TOTP implementation the server's codes are checked against.
+totp-rs = { version = "=6.0.0", features = ["otpauth"] }
 webauthn-rs = { version = "=0.5.5", features = ["danger-allow-state-serialisation", "conditional-ui"] }
 webauthn-rs-proto = "=0.5.5"
 # webauthn-rs 0.5 needs OpenSSL for attestation. The standard build vendors it

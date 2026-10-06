@@ -34,4 +34,9 @@ wildcards = "allow"
 deny = [
   { crate = "ring", reason = "TLS and crypto go through aws-lc-rs on the AWS-LC FIPS module" },
   { crate = "native-tls", reason = "use rustls with the FIPS provider" },
+  # 14.4 (#5): key generation and TOTP on aws-lc-rs.
+  { crate = "rsa", reason = "RSA keys come from aws-lc-rs" },
+  { crate = "p256", reason = "P-256 keys come from aws-lc-rs" },
+  { crate = "ed25519-dalek", reason = "Ed25519 keys come from aws-lc-rs" },
+  { crate = "totp-rs", reason = "TOTP is computed with aws-lc-rs HMAC (totp-rs stays a test-only oracle)" },
 ]

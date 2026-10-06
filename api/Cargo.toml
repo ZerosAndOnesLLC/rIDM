@@ -84,7 +84,6 @@ argon2 = { workspace = true }
 bcrypt = { workspace = true }
 pbkdf2 = { workspace = true }
 md-5 = { workspace = true }
-totp-rs = { workspace = true }
 webauthn-rs = { workspace = true }
 webauthn-rs-proto = { workspace = true }
 openssl-sys = { workspace = true }
@@ -149,6 +148,8 @@ rust-embed = { workspace = true }
 [dev-dependencies]
 # The webhook test checks signatures with an independent HMAC implementation.
 hmac = { workspace = true }
+# The TOTP tests generate codes with an independent implementation (totp-rs).
+totp-rs = { workspace = true }
 ridm-core = { workspace = true, features = ["test-support"] }
 ridm-api = { path = ".", features = ["test-support"] }
 # The published relying-party crate, tested against the tokens this server
