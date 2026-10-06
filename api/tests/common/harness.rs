@@ -360,6 +360,8 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
         // (XChaCha20-Poly1305), which the FIPS build reads only in transition.
         // The standard build ignores this.
         fips_transition: true,
+        // The FIPS build's floor; the standard build ignores it.
+        pbkdf2_iterations: ridm_api::config::PBKDF2_ITERATIONS_MIN,
         // Cheap parameters keep the test suite fast; production uses Config defaults.
         argon2: ridm_api::config::Argon2Params {
             m_cost: 8 * 1024,

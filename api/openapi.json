@@ -13977,6 +13977,15 @@
             }
           },
           {
+            "name": "password_algo",
+            "in": "query",
+            "description": "Only accounts whose password hash is in this format (`argon2id`,\n`pbkdf2-sha512`, `bcrypt`, `md5`, ...).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "include_deleted",
             "in": "query",
             "required": false,

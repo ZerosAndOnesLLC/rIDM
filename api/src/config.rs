@@ -179,6 +179,10 @@ pub struct Config {
     /// while a deployment moves onto the FIPS build. Always `false` in the
     /// standard build, which reads such data anyway.
     pub fips_transition: bool,
+    /// FIPS build only (`PBKDF2_ITERATIONS`): PBKDF2-HMAC-SHA512 iterations
+    /// for new password hashes, 210,000 (OWASP's floor for SHA-512) to
+    /// 1,000,000 (what verification accepts).
+    pub pbkdf2_iterations: u32,
     pub argon2: Argon2Params,
     /// Range endpoint of a Have I Been Pwned compatible breached-password
     /// API; `None` disables the check deployment-wide (air-gapped installs).
@@ -271,6 +275,12 @@ pub struct BootstrapConfig {
     /// [`crate::services::bootstrap::ensure_sample_client`].
     pub sample_client: bool,
 }
+
+/// PBKDF2-HMAC-SHA512 iterations for the FIPS build's password hashes: OWASP's
+/// floor for SHA-512, and the most a stored hash may ask for (verification
+/// refuses more, so one crafted hash can't hold a worker for seconds).
+pub const PBKDF2_ITERATIONS_MIN: u32 = 210_000;
+pub const PBKDF2_ITERATIONS_MAX: u32 = 1_000_000;
 
 /// argon2id cost parameters. Defaults follow the OWASP minimum recommendation
 /// (19 MiB, 2 iterations, 1 lane); raise them on capable hardware.
@@ -512,6 +522,20 @@ impl Config {
         } else {
             false
         };
+        let pbkdf2_iterations = if cfg!(feature = "fips") {
+            parse_u32("PBKDF2_ITERATIONS", PBKDF2_ITERATIONS_MIN)?
+        } else {
+            PBKDF2_ITERATIONS_MIN
+        };
+        if !(PBKDF2_ITERATIONS_MIN..=PBKDF2_ITERATIONS_MAX).contains(&pbkdf2_iterations) {
+            return Err(ConfigError::Invalid {
+                name: "PBKDF2_ITERATIONS",
+                reason: format!(
+                    "must be {PBKDF2_ITERATIONS_MIN} to {PBKDF2_ITERATIONS_MAX} (the most a stored \
+                     hash may ask for)"
+                ),
+            });
+        }
         let defaults = Argon2Params::default();
         let argon2 = Argon2Params {
             m_cost: parse_u32("ARGON2_M_COST_KIB", defaults.m_cost)?,
@@ -631,6 +655,7 @@ impl Config {
             redis_pool_max,
             migrate_on_start,
             fips_transition,
+            pbkdf2_iterations,
             argon2,
             breach_check_url,
             smtp,

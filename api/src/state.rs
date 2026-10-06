@@ -60,7 +60,16 @@ impl AppState {
         let redis = redis.route_with(db.clone());
         crate::util::outbound::allow_networks(&config.outbound_allow_networks);
         let cache = CacheLayer::new(redis.clone());
-        let hasher = Arc::new(crate::services::password::Argon2Hasher::new(config.argon2));
+        // argon2id in the standard build, PBKDF2-HMAC-SHA512 in the FIPS build.
+        #[cfg(not(feature = "fips"))]
+        let hasher: Arc<dyn PasswordHasher> =
+            Arc::new(crate::services::password::Argon2Hasher::new(config.argon2));
+        #[cfg(feature = "fips")]
+        let hasher: Arc<dyn PasswordHasher> =
+            Arc::new(crate::services::password::Pbkdf2Hasher::new(
+                config.pbkdf2_iterations,
+                config.fips_transition,
+            ));
         let master_keys = Arc::new(crate::key_custody::EnvelopeEncryptor::from_config(&config));
         let key_encryptor: Arc<dyn KeyEncryptor> = master_keys.clone();
         let breach = config.breach_check_url.clone().map(|url| {

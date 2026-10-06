@@ -18,12 +18,17 @@ release renames that heading to the version and date.
 
 - **An optional FIPS 140-3 build** ([docs](https://zerosandonesllc.github.io/rIDM/docs/deploy/fips.html), #7). The `fips` cargo feature (off by default) and a new image, `ghcr.io/zerosandonesllc/ridm:<version>-fips`, built on Red Hat UBI 9 from `api/Dockerfile.fips` (no RHEL subscription needed). It runs every TLS connection on rustls' FIPS provider and the AWS-LC FIPS module. It refuses to start unless the module passes its self-test and the host is in FIPS mode; `FIPS_ALLOW_NON_FIPS_HOST=true` overrides the host check for development and CI only. Every feature of the standard build is included. The standard build and image are unchanged.
 - **`FIPS_TRANSITION`** (FIPS build only): reads the secrets at rest written before the move to AES-256-GCM, logging and counting each read (`ridm_fips_non_approved_total`), so an existing deployment can switch to the FIPS build and re-encrypt with `rotate-master-key`.
+- **PBKDF2-HMAC-SHA512 passwords in the FIPS build** (`PBKDF2_ITERATIONS`, default 210,000), with a 128-bit salt. Other formats are re-hashed at sign-in. Outside `FIPS_TRANSITION`, the FIPS build verifies and bulk-imports only PBKDF2 hashes. The standard build keeps argon2id and reads PBKDF2-SHA512 hashes, so a deployment can move between builds either way.
+- `GET /admin/tenants/{slug}/users?password_algo=…` lists the users whose password hash is in a given format.
 - **Secrets at rest in AES-256-GCM**, under a key derived per value with HKDF-SHA-256. Every server reads it. The FIPS build writes it now. The standard build keeps writing XChaCha20-Poly1305 for this release, so a rolling update or a rollback to 0.2.0 never meets a value it can't read, and switches in the next release. `rotate-master-key --status` counts the remaining XChaCha20 rows (`legacy_cipher_rows`).
 
 ### Changed
 
 - Hashes, HMAC, random numbers, signing-key generation and TOTP all run on aws-lc-rs, in both builds. The algorithms and stored formats are unchanged: existing keys, TOTP enrolments and tokens keep working. `rsa`, `p256`, `ed25519-dalek` and `totp-rs` are no longer dependencies, and the RUSTSEC-2023-0071 (Marvin) exception is gone with `rsa`.
 - Postgres TLS uses aws-lc-rs instead of `ring`.
+- Imported PBKDF2 password hashes are verified with aws-lc-rs.
+- The time spent for an unknown user or a user without a password now matches a real verification under the configured parameters, in either build. It used to verify a fixed, cheaper argon2id hash.
+- Temporary passwords are drawn without modulo bias.
 
 ## [0.2.0] - 2026-09-24
 

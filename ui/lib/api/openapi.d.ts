@@ -16931,6 +16931,11 @@ export interface operations {
                 search?: string;
                 status?: "active" | "disabled" | "locked" | "pending" | "deleted";
                 org_id?: string;
+                /**
+                 * @description Only accounts whose password hash is in this format (`argon2id`,
+                 *     `pbkdf2-sha512`, `bcrypt`, `md5`, ...).
+                 */
+                password_algo?: string;
                 include_deleted?: boolean;
                 cursor?: string;
                 limit?: number;

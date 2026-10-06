@@ -101,7 +101,8 @@ Read only by the [FIPS build](../deploy/fips.md) (`--features fips`, the `-fips`
 
 | Variable | Type | Default | Meaning |
 |----------|------|---------|---------|
-| `FIPS_TRANSITION` | boolean | `false` | Allows the one-time reads FIPS doesn't approve while a deployment moves onto the FIPS build: secrets at rest still sealed with XChaCha20-Poly1305. Each read is logged as a warning and counted in `ridm_fips_non_approved_total`. Turn it off once `rotate-master-key` has moved everything (see [FIPS 140-3](../deploy/fips.md#moving-an-existing-deployment)). |
+| `FIPS_TRANSITION` | boolean | `false` | Allows the one-time reads FIPS doesn't approve while a deployment moves onto the FIPS build: secrets at rest still sealed with XChaCha20-Poly1305, and password hashes other than PBKDF2 (argon2, bcrypt, MD5, salted digests), at sign-in and in bulk imports. Each read is logged as a warning and counted in `ridm_fips_non_approved_total`. Turn it off once `rotate-master-key` has moved everything (see [FIPS 140-3](../deploy/fips.md#moving-an-existing-deployment)). |
+| `PBKDF2_ITERATIONS` | integer | `210000` | PBKDF2-HMAC-SHA512 iterations for new password hashes, 210,000 (OWASP's floor for SHA-512) to 1,000,000 (the most a stored hash may ask for). Raising it re-hashes each user at their next sign-in. The standard build hashes with argon2id (`ARGON2_*`) instead. |
 | `FIPS_ALLOW_NON_FIPS_HOST` | boolean | `false` | Lets the FIPS build start on a host that isn't in FIPS mode (`/proc/sys/crypto/fips_enabled` is not `1`). It prints and logs a warning. The AWS-LC module self-test must still pass. For development and CI only: such a host isn't a FIPS-validated configuration. |
 
 ## Email
