@@ -1,20 +1,40 @@
 //! Envelope encryption for secrets at rest (signing keys, IdP client secrets,
 //! SMTP passwords, ...).
 //!
-//! The default implementation (in the server) uses ChaCha20-Poly1305 with a
-//! master key from the environment or a mounted file. KMS / HSM backends
-//! implement the same trait behind optional cargo features.
+//! The default implementation (in the server) uses AES-256-GCM under a key
+//! derived per message from a master-key generation, which comes from the
+//! environment or a key custody backend (HSM or KMS, behind optional cargo
+//! features). Blobs written before that are XChaCha20-Poly1305.
 
 use async_trait::async_trait;
 use zeroize::Zeroizing;
 
-/// Format version of the serialized [`Encrypted`] blob.
-const BLOB_FORMAT_V1: u8 = 1;
+/// The cipher a blob was sealed with: its first byte on disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cipher {
+    /// XChaCha20-Poly1305 under the generation key, a 24-byte nonce.
+    XChaCha20Poly1305 = 1,
+    /// AES-256-GCM under a key derived per message with HKDF-SHA-256 from
+    /// the generation key and a random salt. The nonce field holds the salt
+    /// (32 bytes) then the GCM IV (12 bytes).
+    Aes256GcmHkdf = 2,
+}
+
+impl Cipher {
+    fn from_byte(b: u8) -> Option<Self> {
+        match b {
+            1 => Some(Self::XChaCha20Poly1305),
+            2 => Some(Self::Aes256GcmHkdf),
+            _ => None,
+        }
+    }
+}
 
 /// A ciphertext together with the master-key generation that produced it, so
 /// that master-key rotation can re-encrypt rows incrementally.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Encrypted {
+    pub cipher: Cipher,
     /// Master key generation (see [`KeyEncryptor::current_version`]).
     pub key_version: u32,
     /// Backend-specific nonce / IV (empty for backends that manage it themselves).
@@ -25,10 +45,10 @@ pub struct Encrypted {
 
 impl Encrypted {
     /// Serialize to the on-disk layout stored in `*_enc bytea` columns:
-    /// `format(1) || key_version(4, BE) || nonce_len(1) || nonce || ciphertext`.
+    /// `cipher(1) || key_version(4, BE) || nonce_len(1) || nonce || ciphertext`.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(6 + self.nonce.len() + self.ciphertext.len());
-        out.push(BLOB_FORMAT_V1);
+        out.push(self.cipher as u8);
         out.extend_from_slice(&self.key_version.to_be_bytes());
         out.push(self.nonce.len() as u8);
         out.extend_from_slice(&self.nonce);
@@ -38,9 +58,10 @@ impl Encrypted {
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, super::ProviderError> {
         let err = || super::ProviderError::Rejected("malformed encrypted blob".into());
-        if bytes.len() < 6 || bytes[0] != BLOB_FORMAT_V1 {
+        if bytes.len() < 6 {
             return Err(err());
         }
+        let cipher = Cipher::from_byte(bytes[0]).ok_or_else(err)?;
         let key_version = u32::from_be_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
         let nonce_len = bytes[5] as usize;
         let rest = &bytes[6..];
@@ -48,6 +69,7 @@ impl Encrypted {
             return Err(err());
         }
         Ok(Self {
+            cipher,
             key_version,
             nonce: rest[..nonce_len].to_vec(),
             ciphertext: rest[nonce_len..].to_vec(),
@@ -88,13 +110,18 @@ mod tests {
 
     #[test]
     fn blob_round_trips() {
-        let e = Encrypted {
-            key_version: 7,
-            nonce: vec![1, 2, 3],
-            ciphertext: vec![9; 40],
-        };
-        assert_eq!(Encrypted::from_bytes(&e.to_bytes()).unwrap(), e);
+        for cipher in [Cipher::XChaCha20Poly1305, Cipher::Aes256GcmHkdf] {
+            let e = Encrypted {
+                cipher,
+                key_version: 7,
+                nonce: vec![1, 2, 3],
+                ciphertext: vec![9; 40],
+            };
+            let bytes = e.to_bytes();
+            assert_eq!(bytes[0], cipher as u8);
+            assert_eq!(Encrypted::from_bytes(&bytes).unwrap(), e);
+        }
         assert!(Encrypted::from_bytes(&[]).is_err());
-        assert!(Encrypted::from_bytes(&[2, 0, 0, 0, 1, 0]).is_err());
+        assert!(Encrypted::from_bytes(&[3, 0, 0, 0, 1, 0]).is_err());
     }
 }

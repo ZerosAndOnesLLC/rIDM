@@ -98,7 +98,10 @@ personal access tokens, SCIM tokens and dynamic registration initial access
 tokens (SHA-256). Opaque access tokens are not stored in the database at all:
 Valkey holds their claims under the token's SHA-256 hash.
 
-Encryption is XChaCha20-Poly1305 with a fresh random nonce per value. Each
+Encryption is XChaCha20-Poly1305 with a fresh random nonce per value. rIDM is moving to
+AES-256-GCM under a key derived for each value (HKDF-SHA-256 from the master key and a
+random salt): every server reads both, the [FIPS build](../deploy/fips.md) already
+writes AES-256-GCM, and the standard build will from the next release. Each
 ciphertext is bound to its table, tenant and row as associated data, so a
 ciphertext copied into another row, or another tenant's row, fails to decrypt
 rather than being read in the wrong place. Private signing keys are decrypted

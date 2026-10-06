@@ -6,12 +6,13 @@
 use std::collections::BTreeMap;
 
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
-use ridm_core::providers::Encrypted;
+use ridm_core::providers::{Cipher, Encrypted};
 use serde::Serialize;
 use uuid::Uuid;
 
 use crate::db;
 use crate::error::{AppError, AppResult};
+use crate::key_custody::STALE_CIPHER;
 use crate::state::AppState;
 
 const BATCH: i64 = 200;
@@ -99,16 +100,41 @@ pub struct StatusReport {
     pub key_wrapper: Option<String>,
     /// table → (key_version → rows)
     pub rows_by_version: BTreeMap<String, BTreeMap<i32, i64>>,
+    /// table → (key_version → rows still XChaCha20-Poly1305), only where
+    /// there are any. The FIPS build's `rotate-master-key` moves them onto
+    /// AES-256-GCM; the standard build still writes it for this release.
+    pub legacy_cipher_rows: BTreeMap<String, BTreeMap<i32, i64>>,
 }
 
 impl StatusReport {
+    /// Rows the next rotation rewrites: those under an older generation, and,
+    /// in a build with a [`STALE_CIPHER`], those under the current one still
+    /// sealed with it.
     pub fn pending(&self) -> i64 {
         let current = self.current_version as i32;
-        self.rows_by_version
+        let older: i64 = self
+            .rows_by_version
             .values()
             .flat_map(|m| m.iter())
             .filter(|(v, _)| **v != current)
             .map(|(_, n)| *n)
+            .sum();
+        let stale_current: i64 = match STALE_CIPHER {
+            Some(Cipher::XChaCha20Poly1305) => self
+                .legacy_cipher_rows
+                .values()
+                .filter_map(|m| m.get(&current))
+                .sum(),
+            _ => 0,
+        };
+        older + stale_current
+    }
+
+    /// Rows still on XChaCha20-Poly1305, under any generation.
+    pub fn legacy(&self) -> i64 {
+        self.legacy_cipher_rows
+            .values()
+            .flat_map(|m| m.values())
             .sum()
     }
 }
@@ -117,20 +143,32 @@ impl StatusReport {
 /// every database (home and regions).
 pub async fn status(state: &AppState) -> AppResult<StatusReport> {
     let mut rows_by_version: BTreeMap<String, BTreeMap<i32, i64>> = BTreeMap::new();
+    let mut legacy_cipher_rows: BTreeMap<String, BTreeMap<i32, i64>> = BTreeMap::new();
     for database in state.db.all() {
         let mut tx = db::bypass_tx(&database.primary).await?;
         for t in TABLES {
-            // Table names are compile-time constants from TABLES, never user input.
+            // Table and column names are compile-time constants from TABLES,
+            // never user input. The blob's first byte is its cipher.
             let sql = format!(
-                "SELECT key_version, count(*) FROM {} GROUP BY key_version ORDER BY key_version",
-                t.table
+                "SELECT key_version, count(*), count(*) FILTER (WHERE get_byte({col}, 0) = {legacy}) \
+                 FROM {table} GROUP BY key_version ORDER BY key_version",
+                col = t.column,
+                table = t.table,
+                legacy = Cipher::XChaCha20Poly1305 as u8,
             );
-            let rows: Vec<(i32, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(sql))
+            let rows: Vec<(i32, i64, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(sql))
                 .fetch_all(&mut *tx)
                 .await?;
             let counts = rows_by_version.entry(t.table.to_string()).or_default();
-            for (version, n) in rows {
+            for (version, n, legacy) in rows {
                 *counts.entry(version).or_default() += n;
+                if legacy > 0 {
+                    *legacy_cipher_rows
+                        .entry(t.table.to_string())
+                        .or_default()
+                        .entry(version)
+                        .or_default() += legacy;
+                }
             }
         }
         tx.commit().await?;
@@ -150,6 +188,7 @@ pub async fn status(state: &AppState) -> AppResult<StatusReport> {
         generations,
         key_wrapper: state.master_keys.primary_backend().map(str::to_string),
         rows_by_version,
+        legacy_cipher_rows,
     })
 }
 
@@ -244,17 +283,15 @@ pub async fn rotate_all(state: &AppState) -> AppResult<RotationReport> {
 /// backend may be a network round trip per row).
 const REENCRYPT_CONCURRENCY: usize = 8;
 
-/// Move every row of `t` in this database onto generation `target`, one
-/// older generation at a time, in `(tenant_id, id)` order from a cursor: each
-/// batch is one index range read and one update, and a row that fails is
-/// passed over by the cursor (and counted) rather than read again.
+/// Move every row of `t` in this database onto generation `target` and this
+/// build's cipher: one older generation at a time, then (with a
+/// [`STALE_CIPHER`]) the target generation's rows still sealed with it.
 async fn rotate_table(
     state: &AppState,
     pool: &sqlx::PgPool,
     t: &EncryptedTable,
     target: u32,
 ) -> AppResult<(u64, u64)> {
-    use futures::StreamExt as _;
     let mut ok = 0u64;
     let mut failed = 0u64;
     // The generations in use besides the target, one index probe each (a
@@ -277,90 +314,134 @@ async fn rotate_table(
         versions
     };
     for version in versions {
-        let mut after: Option<(Uuid, String)> = None;
-        loop {
-            let mut sql = format!(
-                "SELECT {id}::text, tenant_id, {col} FROM {table} WHERE key_version = $1",
+        let (o, f) = rotate_rows(state, pool, t, target, version, false).await?;
+        ok += o;
+        failed += f;
+    }
+    // Rows already under the target generation but sealed with a cipher this
+    // build no longer writes.
+    if STALE_CIPHER.is_some() {
+        let (o, f) = rotate_rows(state, pool, t, target, target as i32, true).await?;
+        ok += o;
+        failed += f;
+    }
+    Ok((ok, failed))
+}
+
+/// Rewrite the rows of `t` under `version` onto generation `target` (and
+/// this build's cipher), in `(tenant_id, id)` order from a cursor; with
+/// `legacy_only`, only those sealed with the [`STALE_CIPHER`]. Each batch is one
+/// index range read and one update, and a row that fails is passed over by
+/// the cursor (and counted) rather than read again.
+async fn rotate_rows(
+    state: &AppState,
+    pool: &sqlx::PgPool,
+    t: &EncryptedTable,
+    target: u32,
+    version: i32,
+    legacy_only: bool,
+) -> AppResult<(u64, u64)> {
+    use futures::StreamExt as _;
+    let mut ok = 0u64;
+    let mut failed = 0u64;
+    let mut after: Option<(Uuid, String)> = None;
+    loop {
+        let mut sql = format!(
+            "SELECT {id}::text, tenant_id, {col} FROM {table} WHERE key_version = $1{legacy}",
+            id = t.id_column,
+            col = t.column,
+            table = t.table,
+            legacy = legacy_filter(t, "", legacy_only),
+        );
+        if after.is_some() {
+            sql.push_str(&format!(
+                " AND (tenant_id, {id}) > ($3, $4::{ty})",
                 id = t.id_column,
-                col = t.column,
-                table = t.table
-            );
-            if after.is_some() {
-                sql.push_str(&format!(
-                    " AND (tenant_id, {id}) > ($3, $4::{ty})",
-                    id = t.id_column,
-                    ty = t.id_type
-                ));
-            }
-            sql.push_str(&format!(" ORDER BY tenant_id, {} LIMIT $2", t.id_column));
-            let mut tx = db::bypass_tx(pool).await?;
-            let mut query = sqlx::query_as::<_, (String, Uuid, Vec<u8>)>(sqlx::AssertSqlSafe(sql))
-                .bind(version)
-                .bind(BATCH);
-            if let Some((tenant_id, id)) = &after {
-                query = query.bind(*tenant_id).bind(id.clone());
-            }
-            let rows = query.fetch_all(&mut *tx).await?;
-            tx.commit().await?;
-            let Some((last_id, last_tenant, _)) = rows.last() else {
-                break;
-            };
-            after = Some((*last_tenant, last_id.clone()));
-            let full = rows.len() as i64 == BATCH;
-            let outcomes: Vec<(String, Uuid, AppResult<Vec<u8>>)> = futures::stream::iter(rows)
-                .map(|(id, tenant_id, blob)| async move {
-                    let fresh = reencrypt(state, t, tenant_id, &id, &blob).await;
-                    (id, tenant_id, fresh)
-                })
-                .buffer_unordered(REENCRYPT_CONCURRENCY)
-                .collect()
-                .await;
-            let (mut ids, mut tenants, mut blobs) = (vec![], vec![], vec![]);
-            for (id, tenant_id, fresh) in outcomes {
-                match fresh {
-                    Ok(blob) => {
-                        ids.push(id);
-                        tenants.push(tenant_id);
-                        blobs.push(blob);
-                    }
-                    Err(err) => {
-                        tracing::error!(table = t.table, %id, %tenant_id, error = %err, "re-encryption failed");
-                        failed += 1;
-                    }
+                ty = t.id_type
+            ));
+        }
+        sql.push_str(&format!(" ORDER BY tenant_id, {} LIMIT $2", t.id_column));
+        let mut tx = db::bypass_tx(pool).await?;
+        let mut query = sqlx::query_as::<_, (String, Uuid, Vec<u8>)>(sqlx::AssertSqlSafe(sql))
+            .bind(version)
+            .bind(BATCH);
+        if let Some((tenant_id, id)) = &after {
+            query = query.bind(*tenant_id).bind(id.clone());
+        }
+        let rows = query.fetch_all(&mut *tx).await?;
+        tx.commit().await?;
+        let Some((last_id, last_tenant, _)) = rows.last() else {
+            break;
+        };
+        after = Some((*last_tenant, last_id.clone()));
+        let full = rows.len() as i64 == BATCH;
+        let outcomes: Vec<(String, Uuid, AppResult<Vec<u8>>)> = futures::stream::iter(rows)
+            .map(|(id, tenant_id, blob)| async move {
+                let fresh = reencrypt(state, t, tenant_id, &id, &blob).await;
+                (id, tenant_id, fresh)
+            })
+            .buffer_unordered(REENCRYPT_CONCURRENCY)
+            .collect()
+            .await;
+        let (mut ids, mut tenants, mut blobs) = (vec![], vec![], vec![]);
+        for (id, tenant_id, fresh) in outcomes {
+            match fresh {
+                Ok(blob) => {
+                    ids.push(id);
+                    tenants.push(tenant_id);
+                    blobs.push(blob);
+                }
+                Err(err) => {
+                    tracing::error!(table = t.table, %id, %tenant_id, error = %err, "re-encryption failed");
+                    failed += 1;
                 }
             }
-            if !ids.is_empty() {
-                // Only rows still on the generation they were read under: one
-                // rewritten meanwhile (by a writer or another rotation run) is
-                // left as it is.
-                let sql = format!(
-                    "UPDATE {table} AS t SET {col} = u.blob, key_version = $4 \
-                     FROM unnest($1::text[], $2::uuid[], $3::bytea[]) AS u(id, tenant_id, blob) \
-                     WHERE t.{idc} = u.id::{ty} AND t.tenant_id = u.tenant_id AND t.key_version = $5",
-                    table = t.table,
-                    col = t.column,
-                    idc = t.id_column,
-                    ty = t.id_type
-                );
-                let mut tx = db::bypass_tx(pool).await?;
-                let n = sqlx::query(sqlx::AssertSqlSafe(sql))
-                    .bind(&ids)
-                    .bind(&tenants)
-                    .bind(&blobs)
-                    .bind(target as i32)
-                    .bind(version)
-                    .execute(&mut *tx)
-                    .await?
-                    .rows_affected();
-                tx.commit().await?;
-                ok += n;
-            }
-            if !full {
-                break;
-            }
+        }
+        if !ids.is_empty() {
+            // Only rows still on the generation they were read under: one
+            // rewritten meanwhile (by a writer or another rotation run) is
+            // left as it is.
+            let sql = format!(
+                "UPDATE {table} AS t SET {col} = u.blob, key_version = $4 \
+                 FROM unnest($1::text[], $2::uuid[], $3::bytea[]) AS u(id, tenant_id, blob) \
+                 WHERE t.{idc} = u.id::{ty} AND t.tenant_id = u.tenant_id AND t.key_version = $5{legacy}",
+                table = t.table,
+                col = t.column,
+                idc = t.id_column,
+                ty = t.id_type,
+                legacy = legacy_filter(t, "t.", legacy_only),
+            );
+            let mut tx = db::bypass_tx(pool).await?;
+            let n = sqlx::query(sqlx::AssertSqlSafe(sql))
+                .bind(&ids)
+                .bind(&tenants)
+                .bind(&blobs)
+                .bind(target as i32)
+                .bind(version)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
+            tx.commit().await?;
+            ok += n;
+        }
+        if !full {
+            break;
         }
     }
     Ok((ok, failed))
+}
+
+/// `AND <column's blob> is sealed with the stale cipher` when `legacy_only`.
+/// The column name is a compile-time constant from TABLES.
+fn legacy_filter(t: &EncryptedTable, alias: &str, legacy_only: bool) -> String {
+    match (legacy_only, STALE_CIPHER) {
+        (true, Some(stale)) => format!(
+            " AND get_byte({alias}{col}, 0) = {stale}",
+            col = t.column,
+            stale = stale as u8
+        ),
+        _ => String::new(),
+    }
 }
 
 /// What [`check`] found.
@@ -369,6 +450,9 @@ pub struct CheckReport {
     /// Sampled signing keys that decrypted.
     pub signing_keys_ok: usize,
     pub failures: Vec<CheckFailure>,
+    /// Sampled rows still XChaCha20-Poly1305 that this build won't read (the
+    /// FIPS build outside `FIPS_TRANSITION`).
+    pub legacy_refused: usize,
 }
 
 /// A stored secret the configured master keys could not decrypt.
@@ -403,6 +487,12 @@ pub async fn check(state: &AppState) -> AppResult<CheckReport> {
     }
     let mut report = CheckReport::default();
     for (t, id, tenant_id, blob, key_version) in samples {
+        if blob.first() == Some(&(Cipher::XChaCha20Poly1305 as u8))
+            && !state.master_keys.reads_legacy()
+        {
+            report.legacy_refused += 1;
+            continue;
+        }
         match decrypt_row(state, t, tenant_id, &id, &blob).await {
             Ok(_) if t.table == "signing_keys" => report.signing_keys_ok += 1,
             Ok(_) => {}

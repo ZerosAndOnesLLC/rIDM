@@ -4757,7 +4757,8 @@ export interface components {
         MasterStatus: components["schemas"]["StatusReport"] & {
             /**
              * Format: int64
-             * @description Encrypted rows still under an older generation.
+             * @description Encrypted rows the next rotation rewrites: under an older generation,
+             *     or still XChaCha20-Poly1305.
              */
             pending_rows: number;
         };
@@ -6711,6 +6712,16 @@ export interface components {
             /** @description The backend new generations are wrapped by (`KEY_WRAPPER`), if any. */
             key_wrapper?: string | null;
             known_versions: number[];
+            /**
+             * @description table → (key_version → rows still XChaCha20-Poly1305), only where
+             *     there are any. The FIPS build's `rotate-master-key` moves them onto
+             *     AES-256-GCM; the standard build still writes it for this release.
+             */
+            legacy_cipher_rows: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
             /** @description table → (key_version → rows) */
             rows_by_version: {
                 [key: string]: {

@@ -174,6 +174,11 @@ pub struct Config {
     pub redis_pool_max: u32,
     /// Apply pending migrations at startup.
     pub migrate_on_start: bool,
+    /// FIPS build only (`FIPS_TRANSITION`): allow the one-time reads of data
+    /// FIPS doesn't approve (secrets at rest written with XChaCha20-Poly1305)
+    /// while a deployment moves onto the FIPS build. Always `false` in the
+    /// standard build, which reads such data anyway.
+    pub fips_transition: bool,
     pub argon2: Argon2Params,
     /// Range endpoint of a Have I Been Pwned compatible breached-password
     /// API; `None` disables the check deployment-wide (air-gapped installs).
@@ -502,6 +507,11 @@ impl Config {
             });
         }
         let migrate_on_start = parse_bool("MIGRATE_ON_START", false)?;
+        let fips_transition = if cfg!(feature = "fips") {
+            parse_bool("FIPS_TRANSITION", false)?
+        } else {
+            false
+        };
         let defaults = Argon2Params::default();
         let argon2 = Argon2Params {
             m_cost: parse_u32("ARGON2_M_COST_KIB", defaults.m_cost)?,
@@ -620,6 +630,7 @@ impl Config {
             db_acquire_timeout_ms,
             redis_pool_max,
             migrate_on_start,
+            fips_transition,
             argon2,
             breach_check_url,
             smtp,

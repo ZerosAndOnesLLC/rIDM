@@ -132,8 +132,9 @@ every key change replaces, so a change is visible on every node at once; clients
 
 ### How it works
 
-Each encrypted value is sealed with XChaCha20-Poly1305 under the master key, bound to
-the row it belongs to, and stored with the *generation* (key version) that sealed it. A
+Each encrypted value is sealed with XChaCha20-Poly1305 under the master key (AES-256-GCM
+under a per-value derived key in the [FIPS build](../deploy/fips.md), and in both builds
+from the next release; every server reads both), bound to the row it belongs to, and stored with the *generation* (key version) that sealed it. A
 node knows its current key (`MASTER_KEY` or `MASTER_KEY_FILE`, generation
 `MASTER_KEY_VERSION`) and, optionally, older generations (`MASTER_KEY_PREVIOUS`). New
 writes always use the current generation; reads use whichever generation the row
@@ -177,7 +178,10 @@ involved.
    Restart or redeploy every node. From here on new secrets are written under
    generation 2 and old rows still decrypt.
 
-3. **Re-encrypt** everything still on an older generation, once, from anywhere:
+3. **Re-encrypt** everything still on an older generation, once, from anywhere. On the
+   FIPS build this also rewrites values still sealed with XChaCha20-Poly1305 onto
+   AES-256-GCM, whatever their generation; the status lists them under
+   `legacy_cipher_rows`.
 
    ```bash
    ridm master-key status          # current generation, rows still on older ones

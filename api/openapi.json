@@ -25129,7 +25129,7 @@
               "pending_rows": {
                 "type": "integer",
                 "format": "int64",
-                "description": "Encrypted rows still under an older generation."
+                "description": "Encrypted rows the next rotation rewrites: under an older generation,\nor still XChaCha20-Poly1305."
               }
             }
           }
@@ -30203,7 +30203,8 @@
           "current_version",
           "known_versions",
           "generations",
-          "rows_by_version"
+          "rows_by_version",
+          "legacy_cipher_rows"
         ],
         "properties": {
           "current_version": {
@@ -30231,6 +30232,24 @@
               "type": "integer",
               "format": "int32",
               "minimum": 0
+            }
+          },
+          "legacy_cipher_rows": {
+            "type": "object",
+            "description": "table → (key_version → rows still XChaCha20-Poly1305), only where\nthere are any. The FIPS build's `rotate-master-key` moves them onto\nAES-256-GCM; the standard build still writes it for this release.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "propertyNames": {
+                "type": "integer",
+                "format": "int32"
+              }
+            },
+            "propertyNames": {
+              "type": "string"
             }
           },
           "rows_by_version": {

@@ -242,6 +242,15 @@ async fn drain_background(state: &AppState, limit: std::time::Duration) {
 async fn check_master_key(state: &AppState) -> Result<(), Box<dyn std::error::Error>> {
     let current = state.key_encryptor.current_version() as i32;
     let report = ridm_api::services::master_key::check(state).await?;
+    if report.legacy_refused > 0 {
+        return Err(
+            "this database still holds secrets encrypted with XChaCha20-Poly1305 (written \
+             before AES-256-GCM), which the FIPS build reads only with FIPS_TRANSITION=true. \
+             Start it with FIPS_TRANSITION=true, run `ridm-api rotate-master-key`, then turn \
+             FIPS_TRANSITION off (docs/src/deploy/fips.md, \"Moving an existing deployment\")"
+                .into(),
+        );
+    }
     for f in &report.failures {
         tracing::error!(
             table = f.table,

@@ -182,7 +182,8 @@ async fn revoke(
 struct MasterStatus {
     #[serde(flatten)]
     report: StatusReport,
-    /// Encrypted rows still under an older generation.
+    /// Encrypted rows the next rotation rewrites: under an older generation,
+    /// or still XChaCha20-Poly1305.
     pending_rows: i64,
 }
 

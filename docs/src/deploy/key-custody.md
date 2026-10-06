@@ -27,7 +27,8 @@ key. The backend encrypts ("wraps") it once, when the generation is created, and
 the wrapped form is stored, in the `master_key_generations` table. Each node asks the
 backend to unwrap every generation when it starts and keeps the data keys in memory;
 rows are then encrypted and decrypted locally, exactly as under `MASTER_KEY`
-(XChaCha20-Poly1305, bound to the row, tagged with the generation).
+(XChaCha20-Poly1305, or AES-256-GCM under a per-value derived key in the FIPS build; bound
+to the row, tagged with the generation).
 
 What that means in practice:
 

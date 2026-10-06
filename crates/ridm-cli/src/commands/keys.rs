@@ -122,7 +122,8 @@ pub async fn master(ctx: &mut Ctx, command: &MasterKeyCommand) -> Result<()> {
     }
 }
 
-/// Rows still on an older generation. The endpoint has already summed them
+/// Rows the next rotation rewrites (an older generation, or still
+/// XChaCha20-Poly1305). The endpoint has already summed them
 /// as `pending_rows`; `rows_by_version` (table → generation → rows) is the
 /// fallback if that ever stops being sent.
 fn pending(status: &Value) -> i64 {
@@ -157,5 +158,25 @@ fn render_status(status: &Value) {
         Some(backend) => println!("key custody: {backend}"),
         None => println!("key custody: environment (MASTER_KEY)"),
     }
-    println!("{} row(s) still on an older generation", pending(status));
+    println!(
+        "{} row(s) to re-encrypt (on an older generation, or sealed with a cipher this build retires)",
+        pending(status)
+    );
+    let legacy: i64 = status
+        .get("legacy_cipher_rows")
+        .and_then(Value::as_object)
+        .map(|tables| {
+            tables
+                .values()
+                .filter_map(Value::as_object)
+                .flat_map(|versions| versions.values())
+                .filter_map(Value::as_i64)
+                .sum()
+        })
+        .unwrap_or(0);
+    if legacy > 0 {
+        println!(
+            "{legacy} row(s) sealed with XChaCha20-Poly1305 (the FIPS build moves them onto AES-256-GCM)"
+        );
+    }
 }

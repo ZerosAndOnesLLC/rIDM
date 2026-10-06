@@ -1,5 +1,19 @@
-//! The server's [`KeyEncryptor`]: XChaCha20-Poly1305 under a master-key
-//! generation's 32-byte key. Generations come from the environment
+//! The server's [`KeyEncryptor`], under a master-key generation's 32-byte
+//! key. Two ciphers, told apart by the blob's first byte, are read by both
+//! builds:
+//!
+//! - AES-256-GCM under a key derived per message (HKDF-SHA-256, random salt),
+//!   sealed with an IV the module generates. Every message having its own key
+//!   keeps GCM's random-IV limit out of reach however many rows there are.
+//!   The FIPS build writes it.
+//! - XChaCha20-Poly1305 under the generation key, which the standard build
+//!   still writes for this one release, so a rolling update or a rollback to
+//!   the release before (which reads only this) never meets a value it can't
+//!   read. The next release writes AES-256-GCM in both builds. The FIPS build
+//!   reads it only with `FIPS_TRANSITION`, and its `rotate-master-key` moves
+//!   such rows onto AES-256-GCM.
+//!
+//! Generations come from the environment
 //! (`MASTER_KEY`, `MASTER_KEY_PREVIOUS`) or, with a key custody backend, from
 //! `master_key_generations`, where each is a random data key the backend
 //! wrapped. Either way the key is in memory once loaded, so encrypting a row
@@ -12,9 +26,11 @@ use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use aws_lc_rs::aead::{self, Aad, Nonce, RandomizedNonceKey};
+use aws_lc_rs::hkdf;
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{XChaCha20Poly1305, XNonce};
-use ridm_core::providers::{Encrypted, KeyEncryptor, KeyWrapper, ProviderError};
+use ridm_core::providers::{Cipher, Encrypted, KeyEncryptor, KeyWrapper, ProviderError};
 use zeroize::Zeroizing;
 
 use super::generations::{self, GenerationInfo, GenerationRow};
@@ -22,7 +38,27 @@ use crate::config::{Config, MASTER_KEY_LEN};
 use crate::db::Db;
 use crate::util::secret::SecretBytes;
 
-const NONCE_LEN: usize = 24;
+/// XChaCha20-Poly1305's nonce (blobs written before AES-256-GCM).
+const XCHACHA_NONCE_LEN: usize = 24;
+/// The HKDF salt each AES-256-GCM message's key is derived with.
+const SALT_LEN: usize = 32;
+/// HKDF's `info`: what the derived key is for.
+const HKDF_INFO: &[u8] = b"ridm:at-rest:aes-256-gcm";
+
+/// What this build seals new values with (see the module docs).
+pub const WRITE_CIPHER: Cipher = if cfg!(feature = "fips") {
+    Cipher::Aes256GcmHkdf
+} else {
+    Cipher::XChaCha20Poly1305
+};
+
+/// Values `rotate-master-key` rewrites even when they are already under the
+/// current generation, because this build no longer wants them.
+pub const STALE_CIPHER: Option<Cipher> = if cfg!(feature = "fips") {
+    Some(Cipher::XChaCha20Poly1305)
+} else {
+    None
+};
 
 /// How long a generation that failed to load is not asked for again: rows
 /// under it fail fast instead of each calling the backend.
@@ -71,7 +107,15 @@ pub struct EnvelopeEncryptor {
     custody: OnceLock<Custody>,
     /// Serialises lazy loads; remembers recent failures.
     loading: tokio::sync::Mutex<HashMap<u32, Instant>>,
+    /// XChaCha20-Poly1305 rows may be read: always in the standard build, and
+    /// in the FIPS build only with `FIPS_TRANSITION`.
+    legacy_reads: bool,
 }
+
+/// Why the FIPS build refuses an XChaCha20-Poly1305 row.
+pub const LEGACY_REFUSED: &str = "this secret is encrypted with XChaCha20-Poly1305 (written \
+     before AES-256-GCM), which the FIPS build reads only with FIPS_TRANSITION=true: set it, \
+     run `ridm-api rotate-master-key`, then turn it off";
 
 /// What [`EnvelopeEncryptor::attach`] did.
 #[derive(Debug, Default)]
@@ -111,17 +155,25 @@ impl EnvelopeEncryptor {
             env_versions,
             custody: OnceLock::new(),
             loading: tokio::sync::Mutex::new(HashMap::new()),
+            legacy_reads: !cfg!(feature = "fips"),
         }
     }
 
     pub fn from_config(config: &Config) -> Self {
-        Self::new(
+        let mut enc = Self::new(
             config
                 .master_key
                 .clone()
                 .map(|k| (config.master_key_version, k)),
             config.master_key_previous.clone(),
-        )
+        );
+        enc.legacy_reads = !cfg!(feature = "fips") || config.fips_transition;
+        enc
+    }
+
+    /// XChaCha20-Poly1305 rows are readable here (see [`LEGACY_REFUSED`]).
+    pub fn reads_legacy(&self) -> bool {
+        self.legacy_reads
     }
 
     /// Generations this node holds, sorted.
@@ -407,9 +459,105 @@ impl EnvelopeEncryptor {
         }
     }
 
-    fn cipher(key: &SecretBytes) -> Result<XChaCha20Poly1305, ProviderError> {
+    /// The AES-256-GCM key for one message: HKDF-SHA-256 of the generation
+    /// key with the message's salt.
+    fn message_key(key: &SecretBytes, salt: &[u8]) -> Result<RandomizedNonceKey, ProviderError> {
+        let failed = || ProviderError::Configuration("key derivation failed".into());
+        let prk = hkdf::Salt::new(hkdf::HKDF_SHA256, salt).extract(key.expose());
+        let mut derived = Zeroizing::new([0u8; 32]);
+        prk.expand(&[HKDF_INFO], hkdf::HKDF_SHA256)
+            .and_then(|okm| okm.fill(&mut derived[..]))
+            .map_err(|_| failed())?;
+        RandomizedNonceKey::new(&aead::AES_256_GCM, &derived[..]).map_err(|_| failed())
+    }
+
+    fn xchacha(key: &SecretBytes) -> Result<XChaCha20Poly1305, ProviderError> {
         XChaCha20Poly1305::new_from_slice(key.expose())
             .map_err(|_| ProviderError::Configuration("master key must be 32 bytes".into()))
+    }
+
+    fn seal(
+        cipher: Cipher,
+        key: &SecretBytes,
+        version: u32,
+        plaintext: &[u8],
+        aad: &[u8],
+    ) -> Result<Encrypted, ProviderError> {
+        let failed = || ProviderError::Rejected("encryption failed".into());
+        let (nonce, ciphertext) = match cipher {
+            Cipher::Aes256GcmHkdf => {
+                let salt: [u8; SALT_LEN] = ridm_core::crypto::random_bytes();
+                let mut ciphertext = plaintext.to_vec();
+                let iv = Self::message_key(key, &salt)?
+                    .seal_in_place_append_tag(Aad::from(aad), &mut ciphertext)
+                    .map_err(|_| failed())?;
+                let mut nonce = Vec::with_capacity(SALT_LEN + aead::NONCE_LEN);
+                nonce.extend_from_slice(&salt);
+                nonce.extend_from_slice(iv.as_ref());
+                (nonce, ciphertext)
+            }
+            Cipher::XChaCha20Poly1305 => {
+                let nonce: [u8; XCHACHA_NONCE_LEN] = ridm_core::crypto::random_bytes();
+                let ciphertext = Self::xchacha(key)?
+                    .encrypt(
+                        &XNonce::from(nonce),
+                        Payload {
+                            msg: plaintext,
+                            aad,
+                        },
+                    )
+                    .map_err(|_| failed())?;
+                (nonce.to_vec(), ciphertext)
+            }
+        };
+        Ok(Encrypted {
+            cipher,
+            key_version: version,
+            nonce,
+            ciphertext,
+        })
+    }
+
+    fn decrypt_xchacha(
+        key: &SecretBytes,
+        encrypted: &Encrypted,
+        aad: &[u8],
+    ) -> Result<Zeroizing<Vec<u8>>, ProviderError> {
+        if encrypted.nonce.len() != XCHACHA_NONCE_LEN {
+            return Err(ProviderError::Rejected("bad nonce length".into()));
+        }
+        let nonce = XNonce::try_from(encrypted.nonce.as_slice())
+            .map_err(|_| ProviderError::Rejected("bad nonce".into()))?;
+        Self::xchacha(key)?
+            .decrypt(
+                &nonce,
+                Payload {
+                    msg: &encrypted.ciphertext,
+                    aad,
+                },
+            )
+            .map(Zeroizing::new)
+            .map_err(|_| decryption_failed())
+    }
+
+    fn decrypt_aes_gcm(
+        key: &SecretBytes,
+        encrypted: &Encrypted,
+        aad: &[u8],
+    ) -> Result<Zeroizing<Vec<u8>>, ProviderError> {
+        if encrypted.nonce.len() != SALT_LEN + aead::NONCE_LEN {
+            return Err(ProviderError::Rejected("bad nonce length".into()));
+        }
+        let (salt, iv) = encrypted.nonce.split_at(SALT_LEN);
+        let nonce = Nonce::try_assume_unique_for_key(iv)
+            .map_err(|_| ProviderError::Rejected("bad nonce".into()))?;
+        let mut buf = Zeroizing::new(encrypted.ciphertext.clone());
+        let len = Self::message_key(key, salt)?
+            .open_in_place(nonce, Aad::from(aad), &mut buf[..])
+            .map_err(|_| decryption_failed())?
+            .len();
+        buf.truncate(len);
+        Ok(buf)
     }
 
     fn read_keys(&self) -> std::sync::RwLockReadGuard<'_, HashMap<u32, Arc<SecretBytes>>> {
@@ -439,23 +587,7 @@ impl KeyEncryptor for EnvelopeEncryptor {
                  custody has not been attached)"
             ))
         })?;
-        let cipher = Self::cipher(&key)?;
-        let mut nonce = [0u8; NONCE_LEN];
-        ridm_core::crypto::fill(&mut nonce);
-        let ciphertext = cipher
-            .encrypt(
-                &XNonce::from(nonce),
-                Payload {
-                    msg: plaintext,
-                    aad,
-                },
-            )
-            .map_err(|_| ProviderError::Rejected("encryption failed".into()))?;
-        Ok(Encrypted {
-            key_version: version,
-            nonce: nonce.to_vec(),
-            ciphertext,
-        })
+        Self::seal(WRITE_CIPHER, &key, version, plaintext, aad)
     }
 
     async fn decrypt(
@@ -463,28 +595,33 @@ impl KeyEncryptor for EnvelopeEncryptor {
         encrypted: &Encrypted,
         aad: &[u8],
     ) -> Result<Zeroizing<Vec<u8>>, ProviderError> {
-        if encrypted.nonce.len() != NONCE_LEN {
-            return Err(ProviderError::Rejected("bad nonce length".into()));
+        match encrypted.cipher {
+            Cipher::Aes256GcmHkdf => {
+                let key = self.key(encrypted.key_version).await?;
+                Self::decrypt_aes_gcm(&key, encrypted, aad)
+            }
+            Cipher::XChaCha20Poly1305 => {
+                if !self.legacy_reads {
+                    return Err(ProviderError::Rejected(LEGACY_REFUSED.into()));
+                }
+                if cfg!(feature = "fips") {
+                    // FIPS_TRANSITION: allowed, but never quietly.
+                    tracing::warn!(
+                        key_version = encrypted.key_version,
+                        "FIPS_TRANSITION: decrypting an XChaCha20-Poly1305 secret (not FIPS-approved)"
+                    );
+                    metrics::counter!("ridm_fips_non_approved_total", "operation" => "xchacha20_decrypt")
+                        .increment(1);
+                }
+                let key = self.key(encrypted.key_version).await?;
+                Self::decrypt_xchacha(&key, encrypted, aad)
+            }
         }
-        let key = self.key(encrypted.key_version).await?;
-        let cipher = Self::cipher(&key)?;
-        let nonce = XNonce::try_from(encrypted.nonce.as_slice())
-            .map_err(|_| ProviderError::Rejected("bad nonce".into()))?;
-        cipher
-            .decrypt(
-                &nonce,
-                Payload {
-                    msg: &encrypted.ciphertext,
-                    aad,
-                },
-            )
-            .map(Zeroizing::new)
-            .map_err(|_| {
-                ProviderError::Rejected(
-                    "decryption failed (wrong key, aad, or tampered data)".into(),
-                )
-            })
     }
+}
+
+fn decryption_failed() -> ProviderError {
+    ProviderError::Rejected("decryption failed (wrong key, aad, or tampered data)".into())
 }
 
 #[cfg(test)]
@@ -503,7 +640,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(e.key_version, 1);
-        assert_eq!(e.nonce.len(), NONCE_LEN);
+        assert_eq!(e.cipher, WRITE_CIPHER);
         assert_ne!(e.ciphertext, b"private key bytes");
         let pt = enc.decrypt(&e, b"signing_keys:abc").await.unwrap();
         assert_eq!(&*pt, b"private key bytes");
@@ -544,6 +681,67 @@ mod tests {
         assert_eq!(none.current_version(), 0);
         let err = none.encrypt(b"x", b"a").await.unwrap_err();
         assert!(matches!(err, ProviderError::Configuration(_)), "{err}");
+    }
+
+    #[test]
+    fn the_fips_build_writes_aes_gcm_and_the_standard_build_xchacha20_for_now() {
+        if cfg!(feature = "fips") {
+            assert_eq!(WRITE_CIPHER, Cipher::Aes256GcmHkdf);
+            assert_eq!(STALE_CIPHER, Some(Cipher::XChaCha20Poly1305));
+        } else {
+            assert_eq!(WRITE_CIPHER, Cipher::XChaCha20Poly1305);
+            assert_eq!(STALE_CIPHER, None);
+        }
+    }
+
+    #[tokio::test]
+    async fn both_ciphers_round_trip_and_bind_their_aad() {
+        let enc = EnvelopeEncryptor::new(Some((1, key(1))), vec![]);
+        for cipher in [Cipher::Aes256GcmHkdf, Cipher::XChaCha20Poly1305] {
+            let mut enc = EnvelopeEncryptor::new(Some((1, key(1))), vec![]);
+            enc.legacy_reads = true;
+            let e = EnvelopeEncryptor::seal(cipher, &key(1), 1, b"secret", b"a").unwrap();
+            assert_eq!(e.cipher, cipher);
+            let back = Encrypted::from_bytes(&e.to_bytes()).unwrap();
+            assert_eq!(&*enc.decrypt(&back, b"a").await.unwrap(), b"secret");
+            assert!(enc.decrypt(&back, b"b").await.is_err());
+        }
+        let aes = EnvelopeEncryptor::seal(Cipher::Aes256GcmHkdf, &key(1), 1, b"x", b"a").unwrap();
+        assert_eq!(aes.nonce.len(), SALT_LEN + aead::NONCE_LEN);
+        assert_eq!(
+            &*enc.decrypt(&aes, b"a").await.unwrap(),
+            b"x",
+            "AES-GCM is always read"
+        );
+    }
+
+    #[tokio::test]
+    async fn xchacha20_is_refused_outside_fips_transition() {
+        let old = EnvelopeEncryptor::seal(Cipher::XChaCha20Poly1305, &key(1), 1, b"secret", b"a")
+            .unwrap();
+        let mut enc = EnvelopeEncryptor::new(Some((1, key(1))), vec![]);
+        assert_eq!(enc.reads_legacy(), !cfg!(feature = "fips"));
+        enc.legacy_reads = false;
+        let err = enc.decrypt(&old, b"a").await.unwrap_err();
+        assert!(err.to_string().contains("FIPS_TRANSITION"), "{err}");
+        enc.legacy_reads = true;
+        assert_eq!(&*enc.decrypt(&old, b"a").await.unwrap(), b"secret");
+    }
+
+    #[tokio::test]
+    async fn every_aes_gcm_message_gets_its_own_salt_and_iv() {
+        let enc = EnvelopeEncryptor::new(Some((1, key(1))), vec![]);
+        let seal =
+            || EnvelopeEncryptor::seal(Cipher::Aes256GcmHkdf, &key(1), 1, b"same", b"a").unwrap();
+        let (a, b) = (seal(), seal());
+        assert_ne!(a.nonce[..SALT_LEN], b.nonce[..SALT_LEN]);
+        assert_ne!(a.ciphertext, b.ciphertext);
+        let mut bad = a.clone();
+        bad.nonce[0] ^= 1;
+        assert!(
+            enc.decrypt(&bad, b"a").await.is_err(),
+            "the salt is authenticated through the key"
+        );
     }
 
     #[test]

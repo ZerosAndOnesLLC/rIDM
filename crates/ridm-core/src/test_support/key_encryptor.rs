@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use async_trait::async_trait;
 use zeroize::Zeroizing;
 
-use crate::providers::{Encrypted, KeyEncryptor, ProviderError};
+use crate::providers::{Cipher, Encrypted, KeyEncryptor, ProviderError};
 
 /// Reversible, **insecure** "encryption" that still enforces the contract:
 /// the key version is recorded, the AAD must match on decrypt, and blobs
@@ -61,6 +61,7 @@ impl KeyEncryptor for MockKeyEncryptor {
             .collect();
         ciphertext.extend_from_slice(&Self::aad_tag(aad));
         Ok(Encrypted {
+            cipher: Cipher::Aes256GcmHkdf,
             key_version: version,
             nonce,
             ciphertext,
