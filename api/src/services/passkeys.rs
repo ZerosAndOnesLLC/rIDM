@@ -13,13 +13,12 @@ use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use serde::Deserialize;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use url::Url;
 use uuid::Uuid;
-use webauthn_rs::prelude::{
-    CreationChallengeResponse, CredentialID, DiscoverableAuthentication, DiscoverableKey, Passkey,
-    PasskeyAuthentication, PasskeyRegistration, PublicKeyCredential, RegisterPublicKeyCredential,
-    RequestChallengeResponse, Url, Webauthn, WebauthnBuilder, WebauthnError,
+use webauthn_rs_proto::{
+    CreationChallengeResponse, PublicKeyCredential, RegisterPublicKeyCredential,
+    RequestChallengeResponse, ResidentKeyRequirement,
 };
-use webauthn_rs_proto::ResidentKeyRequirement;
 
 use crate::cache::keys;
 use crate::db;
@@ -30,6 +29,9 @@ use crate::repos::credentials::CredentialSecret;
 use crate::services::credential_secrets::{decrypt, encrypt};
 use crate::services::notifications;
 use crate::state::AppState;
+use crate::webauthn::{
+    Assertion, AuthenticationState, RegistrationState, Rejected, RelyingParty, StoredPasskey,
+};
 
 pub const KIND: &str = "webauthn";
 const CEREMONY_TTL_SECS: u64 = 5 * 60;
@@ -39,7 +41,7 @@ const ASSERT: &str = "assert";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct PasskeyData {
-    key: Passkey,
+    key: StoredPasskey,
 }
 
 /// A passkey assertion that verified.
@@ -52,11 +54,11 @@ pub struct Verified {
 }
 
 /// The credential id as kept in `credentials.external_id`.
-fn external_id(id: &CredentialID) -> String {
-    URL_SAFE_NO_PAD.encode(id.as_ref())
+fn external_id(id: &[u8]) -> String {
+    URL_SAFE_NO_PAD.encode(id)
 }
 
-fn config_err(e: WebauthnError) -> AppError {
+fn config_err(e: Rejected) -> AppError {
     AppError::Internal(format!("webauthn: {e}"))
 }
 
@@ -64,7 +66,7 @@ fn config_err(e: WebauthnError) -> AppError {
 /// has one, else the host the UI is served from. The API's own origin is
 /// accepted too when it shares that host (the dev proxy setup), since the
 /// browser reports whichever origin the page was loaded from.
-pub fn relying_party(state: &AppState, tenant: &Tenant) -> AppResult<Webauthn> {
+pub fn relying_party(state: &AppState, tenant: &Tenant) -> AppResult<RelyingParty> {
     let ui = &state.config.ui_url;
     let (rp_id, origin) = match &tenant.settings.custom_domain {
         Some(host) => (
@@ -79,15 +81,13 @@ pub fn relying_party(state: &AppState, tenant: &Tenant) -> AppResult<Webauthn> {
             ui.clone(),
         ),
     };
-    let mut builder = WebauthnBuilder::new(&rp_id, &origin)
-        .map_err(config_err)?
-        .rp_name(&tenant.display_name);
+    let mut rp = RelyingParty::new(&rp_id, &origin, &tenant.display_name).map_err(config_err)?;
     for extra in [ui, &state.config.public_url] {
         if extra.host_str() == Some(rp_id.as_str()) && extra.origin() != origin.origin() {
-            builder = builder.append_allowed_origin(extra);
+            rp = rp.allow_origin(extra);
         }
     }
-    builder.build().map_err(config_err)
+    Ok(rp)
 }
 
 async fn put_state<T: Serialize>(
@@ -133,7 +133,7 @@ async fn keys_of(
     state: &AppState,
     tenant_id: Uuid,
     user_id: Uuid,
-) -> AppResult<Vec<(CredentialSecret, Passkey)>> {
+) -> AppResult<Vec<(CredentialSecret, StoredPasskey)>> {
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let rows = repos::credentials::list_secrets_of_type(&mut *tx, tenant_id, user_id, KIND).await?;
     tx.commit().await?;
@@ -165,21 +165,16 @@ pub async fn begin_registration(
     user: &User,
 ) -> AppResult<CreationChallengeResponse> {
     let rp = relying_party(state, tenant)?;
-    let exclude: Vec<CredentialID> = keys_of(state, tenant.id, user.id)
+    let exclude: Vec<Vec<u8>> = keys_of(state, tenant.id, user.id)
         .await?
         .into_iter()
-        .map(|(_, k)| k.cred_id().clone())
+        .map(|(_, k)| k.cred_id().to_vec())
         .collect();
     let account = user.email.as_deref().unwrap_or(&user.username);
     let (mut options, pending) = rp
-        .start_passkey_registration(
-            user.id,
-            account,
-            &display_name_of(user),
-            (!exclude.is_empty()).then_some(exclude),
-        )
+        .start_registration(user.id, account, &display_name_of(user), &exclude)
         .map_err(config_err)?;
-    // webauthn-rs discourages resident keys; a passkey that can sign the user
+    // The defaults discourage resident keys; a passkey that can sign the user
     // in without a password has to be one, so ask for it where the
     // authenticator can (a security key without storage still enrols as a
     // second factor).
@@ -201,9 +196,9 @@ pub async fn finish_registration(
     credential: &RegisterPublicKeyCredential,
     label: Option<&str>,
 ) -> AppResult<Option<Credential>> {
-    let pending: PasskeyRegistration = take_state(state, tenant.id, scope, REGISTER).await?;
+    let pending: RegistrationState = take_state(state, tenant.id, scope, REGISTER).await?;
     let rp = relying_party(state, tenant)?;
-    let key = match rp.finish_passkey_registration(credential, &pending) {
+    let key = match rp.finish_registration(credential, &pending) {
         Ok(k) => k,
         Err(e) => {
             tracing::debug!(error = %e, "passkey registration rejected");
@@ -262,7 +257,7 @@ pub async fn begin_authentication(
     scope: Uuid,
     user: &User,
 ) -> AppResult<RequestChallengeResponse> {
-    let keys: Vec<Passkey> = keys_of(state, tenant.id, user.id)
+    let keys: Vec<StoredPasskey> = keys_of(state, tenant.id, user.id)
         .await?
         .into_iter()
         .map(|(_, k)| k)
@@ -271,7 +266,7 @@ pub async fn begin_authentication(
         return Err(AppError::BadRequest("no passkey is registered".into()));
     }
     let rp = relying_party(state, tenant)?;
-    let (options, pending) = rp.start_passkey_authentication(&keys).map_err(config_err)?;
+    let (options, pending) = rp.start_authentication(&keys);
     put_state(state, tenant.id, scope, ASSERT, &pending).await?;
     Ok(options)
 }
@@ -285,26 +280,27 @@ pub async fn finish_authentication(
     user: &User,
     credential: &PublicKeyCredential,
 ) -> AppResult<Option<Verified>> {
-    let pending: PasskeyAuthentication = take_state(state, tenant.id, scope, ASSERT).await?;
+    let pending: AuthenticationState = take_state(state, tenant.id, scope, ASSERT).await?;
     let rp = relying_party(state, tenant)?;
-    let result = match rp.finish_passkey_authentication(credential, &pending) {
+    let Some((row, key)) = keys_of(state, tenant.id, user.id)
+        .await?
+        .into_iter()
+        .find(|(_, k)| k.cred_id() == credential.raw_id.as_ref())
+    else {
+        tracing::debug!("passkey assertion rejected: not one of the user's credentials");
+        return Ok(None);
+    };
+    let result = match rp.finish_authentication(credential, &pending, &key) {
         Ok(r) => r,
         Err(e) => {
             tracing::debug!(error = %e, "passkey assertion rejected");
             return Ok(None);
         }
     };
-    let Some((row, key)) = keys_of(state, tenant.id, user.id)
-        .await?
-        .into_iter()
-        .find(|(_, k)| k.cred_id() == result.cred_id())
-    else {
-        return Ok(None);
-    };
     record_use(state, tenant.id, row.id, key, &result).await?;
     Ok(Some(Verified {
         credential_id: row.id,
-        user_verified: result.user_verified(),
+        user_verified: result.user_verified,
     }))
 }
 
@@ -316,7 +312,7 @@ pub async fn begin_discoverable(
     scope: Uuid,
 ) -> AppResult<RequestChallengeResponse> {
     let rp = relying_party(state, tenant)?;
-    let (mut options, pending) = rp.start_discoverable_authentication().map_err(config_err)?;
+    let (mut options, pending) = rp.start_discoverable();
     // The page asks with a button, not an autofill prompt.
     options.mediation = None;
     put_state(state, tenant.id, scope, ASSERT, &pending).await?;
@@ -333,9 +329,9 @@ pub async fn finish_discoverable(
     scope: Uuid,
     credential: &PublicKeyCredential,
 ) -> AppResult<Option<(Uuid, Verified)>> {
-    let pending: DiscoverableAuthentication = take_state(state, tenant.id, scope, ASSERT).await?;
+    let pending: AuthenticationState = take_state(state, tenant.id, scope, ASSERT).await?;
     let rp = relying_party(state, tenant)?;
-    let Ok((user_id, cred_id)) = rp.identify_discoverable_authentication(credential) else {
+    let Ok((user_id, cred_id)) = RelyingParty::identify_discoverable(credential) else {
         return Ok(None);
     };
     let ext = URL_SAFE_NO_PAD.encode(cred_id);
@@ -347,11 +343,7 @@ pub async fn finish_discoverable(
         return Ok(None);
     };
     let data: PasskeyData = decrypt(state, tenant.id, row.id, &row.data_enc).await?;
-    let result = match rp.finish_discoverable_authentication(
-        credential,
-        pending,
-        &[DiscoverableKey::from(&data.key)],
-    ) {
+    let result = match rp.finish_authentication(credential, &pending, &data.key) {
         Ok(r) => r,
         Err(e) => {
             tracing::debug!(error = %e, "discoverable passkey assertion rejected");
@@ -363,7 +355,7 @@ pub async fn finish_discoverable(
         user_id,
         Verified {
             credential_id: row.id,
-            user_verified: result.user_verified(),
+            user_verified: result.user_verified,
         },
     )))
 }
@@ -373,11 +365,11 @@ async fn record_use(
     state: &AppState,
     tenant_id: Uuid,
     credential_id: Uuid,
-    mut key: Passkey,
-    result: &webauthn_rs::prelude::AuthenticationResult,
+    mut key: StoredPasskey,
+    result: &Assertion,
 ) -> AppResult<()> {
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
-    if key.update_credential(result) == Some(true) {
+    if key.update(result) {
         let enc = encrypt(state, tenant_id, credential_id, &PasskeyData { key }).await?;
         repos::credentials::update_data(
             &mut *tx,

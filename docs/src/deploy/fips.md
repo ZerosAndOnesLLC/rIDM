@@ -1,9 +1,8 @@
 # FIPS 140-3
 
-> **Status: planned.** This page describes the FIPS build as it is being built. The
-> work is tracked in [#7](https://github.com/ZerosAndOnesLLC/rIDM/issues/7), and each
-> section below names the issue that delivers it. Until those issues are closed, no
-> released rIDM build is a FIPS build.
+> **Status: built, not yet released.** Everything on this page is in rIDM's main
+> branch; the next release is the first to publish the `-fips` image. The work is
+> tracked in [#7](https://github.com/ZerosAndOnesLLC/rIDM/issues/7).
 
 FIPS 140-3 is the US and Canadian government standard for cryptographic modules. Some
 organizations must run software whose cryptography comes only from a module that NIST
@@ -23,7 +22,7 @@ Every feature works in both builds:
 | | Standard build (default) | FIPS build |
 |---|---|---|
 | How to get it | `cargo build`, or the `ghcr.io/zerosandonesllc/ridm:<version>` image | `--features fips`, or the `ghcr.io/zerosandonesllc/ridm:<version>-fips` image |
-| Cryptographic module | aws-lc-rs (AWS-LC) | aws-lc-rs on the **AWS-LC FIPS module**, and the host's validated OpenSSL for passkeys |
+| Cryptographic module | aws-lc-rs (AWS-LC) | aws-lc-rs on the **AWS-LC FIPS module**, for everything: neither build links OpenSSL |
 | New password hashes | argon2id | PBKDF2-HMAC-SHA512 |
 | Secrets at rest | XChaCha20-Poly1305, AES-256-GCM from the next release (reads both) | AES-256-GCM |
 | TLS | TLS 1.2 and 1.3 with every rustls suite and group, including ChaCha20 and X25519 | TLS 1.2 and 1.3 with AES-GCM suites only, and the P-256, P-384 and X25519MLKEM768 groups |
@@ -41,8 +40,7 @@ aws-lc-rs in both builds. Both builds also read both ciphers for secrets at rest
 standard build keeps writing XChaCha20-Poly1305 for one more release, so a rolling
 update or a rollback to the release before never meets a value it can't read. The builds only
 differ where the standard build has a better choice for the average deployment, such as
-argon2id for passwords, or where FIPS needs a different library, such as OpenSSL for
-passkeys.
+argon2id for passwords.
 
 ## Building the FIPS image
 
@@ -65,13 +63,10 @@ on an entitled OpenShift cluster, a RHEL host or a laptop. The build stage:
 
 - installs `golang`, `cmake`, `clang` and `perl`. The AWS-LC FIPS module is compiled
   from source by `aws-lc-fips-sys`, and its build needs Go;
-- installs `openssl-devel`. Passkey verification links against the system OpenSSL
-  instead of a vendored copy, so on a FIPS host it runs inside RHEL's validated OpenSSL
-  FIPS provider (`ubi-minimal` ships it);
 - builds with `--no-default-features --features fips,embedded-ui,kerberos,hsm-pkcs11,kms-aws,kms-vault,kms-gcp,kms-azure`.
   Every feature of the standard image is included;
 - fails if the binary links anything but the FIPS module's AWS-LC, links `ring`, or
-  carries a vendored OpenSSL ([`scripts/fips/check-binary.sh`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/scripts/fips/check-binary.sh)).
+  links any OpenSSL ([`scripts/fips/check-binary.sh`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/scripts/fips/check-binary.sh)).
 
 The runtime image runs as the same non-root user (65532) as the standard one, with the
 same healthcheck and environment. Outside a container, the build command is:
@@ -172,7 +167,7 @@ sign in.
 | TOTP (authenticator apps) | RFC 6238 on aws-lc-rs HMAC in both builds. Existing enrolments keep working. | [#5](https://github.com/ZerosAndOnesLLC/rIDM/issues/5) |
 | Secrets at rest | AES-256-GCM under a key derived per value (HKDF-SHA-256 with a random salt), with the IV generated inside the module. The standard build reads it too, and writes it from the next release. | [#3](https://github.com/ZerosAndOnesLLC/rIDM/issues/3) |
 | Passwords | PBKDF2-HMAC-SHA512 (SP 800-132) with a 128-bit salt. Other formats move over at sign-in; only PBKDF2 is verified outside `FIPS_TRANSITION`. Bulk imports of other formats need `FIPS_TRANSITION` too. | [#4](https://github.com/ZerosAndOnesLLC/rIDM/issues/4) |
-| Passkeys (WebAuthn) | Verified through the host's validated OpenSSL, which is linked dynamically. | [#2](https://github.com/ZerosAndOnesLLC/rIDM/issues/2) |
+| Passkeys (WebAuthn) | rIDM's own relying party on aws-lc-rs in both builds: ES256 and RS256 signatures (what registration offers), challenges from the module's DRBG. It replaced webauthn-rs, which needed OpenSSL, and stores passkeys in the same format, so existing passkeys keep working. RHEL's OpenSSL FIPS provider couldn't have done it alone: it has no Ed25519. | [#2](https://github.com/ZerosAndOnesLLC/rIDM/issues/2) |
 | Kerberos desktop sign-in | The AES encryption types on aws-lc-rs in both builds: RFC 3962's (17/18) and RFC 8009's (19/20). The RFC 8009 types use only approved algorithms: AES, HMAC-SHA-256/384 and the SP 800-108 key derivation. RFC 3962's key derivation (RFC 3961 "DK") is built from AES, but it isn't an SP 800-108 KDF, so prefer RFC 8009 keys where the KDC has them. Active Directory issues only RFC 3962 types, and RHEL IdM in FIPS mode issues the RFC 8009 ones. | [#6](https://github.com/ZerosAndOnesLLC/rIDM/issues/6) |
 | AWS KMS | Uses the AWS SDK, as in the standard build. Its TLS goes through the FIPS provider. Its request signing is the SDK's own code (see [What isn't covered](#what-isnt-covered)). | [#1](https://github.com/ZerosAndOnesLLC/rIDM/issues/1) |
 | Vault, Google Cloud KMS, Azure Key Vault | REST over the FIPS TLS provider. The key itself is protected by the service's own validation. | — |
@@ -199,8 +194,9 @@ sign in.
 - **Everything outside the rIDM process**: your load balancer or ingress, Postgres,
   Valkey and the users' browsers. Each needs its own FIPS configuration.
 
-FIPS validation belongs to the cryptographic modules (AWS-LC and RHEL's OpenSSL), not to rIDM.
-The FIPS build makes sure every security function runs inside one of those modules.
+FIPS validation belongs to the cryptographic module (AWS-LC), not to rIDM. The FIPS
+build makes sure every security function runs inside it, apart from the gaps listed
+above.
 Whether a particular deployment counts as compliant is up to your assessor.
 
 ## Checking a build
@@ -217,6 +213,6 @@ openssl s_client -connect ridm.example.com:443 -tls1_2 -cipher ECDHE-RSA-CHACHA2
 The `nm` line should print only `aws_lc_fips_...`. `cargo tree` still lists `aws-lc-sys`,
 because rustls' `fips` feature compiles it alongside the FIPS module, but nothing in
 the build uses it and the linker drops it. `scripts/fips/check-binary.sh` runs these
-checks (and the OpenSSL one) on a binary, and `scripts/fips/smoke.sh <image>` boots an
+checks (and that no OpenSSL is linked) on a binary, and `scripts/fips/smoke.sh <image>` boots an
 image and probes its TLS. CI runs both on every pull request, along with a `cargo deny`
 ban list for the FIPS build (`deny-fips.toml`).

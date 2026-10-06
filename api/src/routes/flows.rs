@@ -22,7 +22,7 @@ use crate::services::flows::{self, AuthStep, ConsentOutcome};
 use crate::services::login_flows::FlowStage;
 use crate::services::{geoip, sessions, trusted_devices};
 use crate::state::AppState;
-use webauthn_rs::prelude::{PublicKeyCredential, RegisterPublicKeyCredential};
+use webauthn_rs_proto::{PublicKeyCredential, RegisterPublicKeyCredential};
 
 pub fn router() -> Router<AppState> {
     Router::new()

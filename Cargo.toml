@@ -49,12 +49,12 @@ pbkdf2 = "=0.13.0"
 md-5 = "=0.11.0"
 # Tests only: an independent TOTP implementation the server's codes are checked against.
 totp-rs = { version = "=6.0.0", features = ["otpauth"] }
+# Tests only: the WebAuthn library rIDM's own relying party replaced, kept as
+# an oracle (it links OpenSSL; the server doesn't).
 webauthn-rs = { version = "=0.5.5", features = ["danger-allow-state-serialisation", "conditional-ui"] }
+# The WebAuthn wire types, serde only.
 webauthn-rs-proto = "=0.5.5"
-# webauthn-rs 0.5 needs OpenSSL for attestation. The standard build vendors it
-# (ridm-api's default `vendored-openssl` feature) so the distroless image has no
-# dynamic libssl dependency; the FIPS build links the system's validated OpenSSL.
-openssl-sys = "=0.9.117"
+base64urlsafedata = "=0.5.5"
 chacha20poly1305 = "=0.11.0"
 sha2 = "=0.11.0"
 hmac = "=0.13.0"
@@ -70,7 +70,7 @@ base64 = "=0.23.1"
 hex = "=0.4.3"
 # SAML 2.0: a read-only XML tree that refuses DTDs (so no entity expansion
 # or external entities), self-signed certificates for the IdP metadata, the
-# X.509 reader webauthn-rs already builds (SP certificates), and raw DEFLATE
+# X.509 reader (SP certificates), and raw DEFLATE
 # for the HTTP-Redirect binding. XML-DSig and XML-Enc are rIDM's own code.
 roxmltree = { version = "=0.21.1", default-features = false, features = ["std", "positions"] }
 rcgen = { version = "=0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }

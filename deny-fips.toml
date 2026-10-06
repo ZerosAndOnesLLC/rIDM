@@ -4,10 +4,9 @@
 #
 #   cargo deny --config deny-fips.toml check bans
 #
-# Vendored OpenSSL (`openssl-src`) can't be banned here: cargo metadata unifies
-# dev-dependency features, and the test builds keep `vendored-openssl`.
-# scripts/fips/check-binary.sh checks the built binary instead (system
-# libcrypto.so.3, dynamically linked, no vendored copy).
+# The tests keep webauthn-rs (which links OpenSSL) as an oracle; dev
+# dependencies aren't part of this graph, and scripts/fips/check-binary.sh
+# checks the built binary too.
 #
 # Each Phase 14 sub-phase that moves a crypto function onto aws-lc-rs adds the
 # crate it replaced here (working-plan.md, issues #2-#6).
@@ -45,4 +44,10 @@ deny = [
   { crate = "aes", reason = "AES is aws-lc-rs" },
   { crate = "cbc", reason = "AES-CBC is aws-lc-rs" },
   { crate = "des", reason = "no DES" },
+  # 14.8 (#2): passkeys on aws-lc-rs, and with them the last OpenSSL.
+  { crate = "webauthn-rs", reason = "passkeys are rIDM's own relying party on aws-lc-rs" },
+  { crate = "webauthn-rs-core", reason = "passkeys are rIDM's own relying party on aws-lc-rs" },
+  { crate = "openssl", reason = "no OpenSSL: all crypto is aws-lc-rs" },
+  { crate = "openssl-sys", reason = "no OpenSSL: all crypto is aws-lc-rs" },
+  { crate = "openssl-src", reason = "no OpenSSL: all crypto is aws-lc-rs" },
 ]

@@ -9,12 +9,11 @@
 # - ui is the standard UI export (the same static files; no cryptography).
 # - builder compiles `--no-default-features --features fips,...`: aws-lc-rs on
 #   the AWS-LC FIPS module (built from source, so it needs Go, cmake, clang
-#   and perl) and OpenSSL from the system rather than vendored. Every package
+#   and perl); rIDM uses no OpenSSL. Every package
 #   comes from the freely available UBI repositories, so no RHEL subscription
 #   is needed to build. The stage fails if anything but the FIPS module's
 #   AWS-LC is linked.
-# - runtime is ubi-minimal. Its OpenSSL carries Red Hat's FIPS provider, which
-#   a host in FIPS mode enables. The binary refuses to start on a host that
+# - runtime is ubi-minimal. The binary refuses to start on a host that
 #   isn't in FIPS mode (FIPS_ALLOW_NON_FIPS_HOST=true overrides that for
 #   development and CI only).
 
@@ -42,7 +41,7 @@ FROM registry.access.redhat.com/ubi9/ubi:${UBI_VERSION} AS builder
 ARG RUST_VERSION
 RUN dnf install -y --setopt=install_weak_deps=False \
       gcc gcc-c++ make cmake clang perl-interpreter golang \
-      openssl-devel pkgconf-pkg-config binutils \
+      pkgconf-pkg-config binutils \
  && dnf clean all
 ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo PATH=/usr/local/cargo/bin:$PATH
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \

@@ -17,10 +17,8 @@ path = "src/main.rs"
 # `ridm bootstrap` reaches the database directly (no admin token exists yet),
 # which pulls the server library in. Build with `--no-default-features` for a
 # slim, HTTP-only CLI that leaves bootstrapping to `ridm-api bootstrap`.
-default = ["bootstrap", "vendored-openssl"]
+default = ["bootstrap"]
 bootstrap = ["dep:ridm-api"]
-# Forwarded to ridm-api (see its features).
-vendored-openssl = ["ridm-api?/vendored-openssl"]
 # The FIPS build needs the server library for its TLS provider, so it
 # includes `bootstrap`.
 fips = ["bootstrap", "ridm-api/fips"]

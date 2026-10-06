@@ -7,8 +7,8 @@
 #     `cargo tree` lists it, but its `aws_lc_<version>_*` symbols must not be
 #     linked.
 #   - No `ring` (`ring_core_*`).
-#   - OpenSSL is the system's, linked dynamically (libcrypto.so.3), not a
-#     vendored static copy.
+#   - No OpenSSL: neither a vendored copy nor the system's (rIDM's crypto is
+#     all aws-lc-rs, passkeys included).
 set -euo pipefail
 
 bin="${1:?usage: check-binary.sh <ridm-api>}"
@@ -42,13 +42,14 @@ else
 fi
 
 # A vendored copy defines OpenSSL 3's functions inside the binary (as local
-# symbols); OSSL_PROVIDER_load exists only in OpenSSL 3, never in AWS-LC.
+# symbols; OSSL_PROVIDER_load exists only in OpenSSL 3, never in AWS-LC), and a
+# dynamic one is a NEEDED entry.
 if grep -qE ' [Tt] OSSL_PROVIDER_load$' <<<"$symbols"; then
   echo "FAIL: OpenSSL is statically linked (vendored)"; fail=1
-elif readelf -d "$bin" | grep -q 'NEEDED.*libcrypto\.so\.3'; then
-  echo "ok: system OpenSSL linked dynamically (libcrypto.so.3)"
+elif readelf -d "$bin" | grep -qE 'NEEDED.*lib(crypto|ssl)\.so'; then
+  echo "FAIL: OpenSSL is linked dynamically"; fail=1
 else
-  echo "FAIL: libcrypto.so.3 is not a dynamic dependency"; fail=1
+  echo "ok: no OpenSSL"
 fi
 
 exit "$fail"
