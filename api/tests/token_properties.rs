@@ -27,7 +27,7 @@ proptest! {
 
     #[test]
     fn encrypted_blob_round_trips(version in any::<u32>(), nonce in proptest::collection::vec(any::<u8>(), 0..=255), ct in proptest::collection::vec(any::<u8>(), 0..512)) {
-        let e = Encrypted { key_version: version, nonce, ciphertext: ct };
+        let e = Encrypted { cipher: ridm_core::providers::Cipher::Aes256GcmHkdf, key_version: version, nonce, ciphertext: ct };
         prop_assert_eq!(Encrypted::from_bytes(&e.to_bytes()).unwrap(), e);
     }
 

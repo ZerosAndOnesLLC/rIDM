@@ -25,7 +25,7 @@ Every feature works in both builds:
 | How to get it | `cargo build`, or the `ghcr.io/zerosandonesllc/ridm:<version>` image | `--features fips`, or the `ghcr.io/zerosandonesllc/ridm:<version>-fips` image |
 | Cryptographic module | aws-lc-rs (AWS-LC) | aws-lc-rs on the **AWS-LC FIPS module**, and the host's validated OpenSSL for passkeys |
 | New password hashes | argon2id | PBKDF2-HMAC-SHA512 |
-| Secrets at rest | AES-256-GCM | AES-256-GCM |
+| Secrets at rest | XChaCha20-Poly1305, AES-256-GCM from the next release (reads both) | AES-256-GCM |
 | TLS | TLS 1.2 and 1.3 with every rustls suite and group, including ChaCha20 and X25519 | TLS 1.2 and 1.3 with AES-GCM suites only, and the P-256, P-384 and X25519MLKEM768 groups |
 | Starts on a host without FIPS mode | yes | no, unless `FIPS_ALLOW_NON_FIPS_HOST=true` (development and CI only) |
 | Platforms | image (amd64, arm64) and static musl binaries | image only (see [What isn't covered](#what-isnt-covered)) |
@@ -36,8 +36,10 @@ direction (see [Moving an existing deployment](#moving-an-existing-deployment)).
 
 Wherever the FIPS-approved way of doing something is just as good for everyone, both
 builds share it, so there is only one path to test. This applies to hashing, HMAC,
-key generation, random numbers, TOTP, Kerberos crypto and encryption at rest, all of
-which go through aws-lc-rs in both builds. The builds only
+key generation, random numbers, TOTP and Kerberos crypto, all of which go through
+aws-lc-rs in both builds. Both builds also read both ciphers for secrets at rest; the
+standard build keeps writing XChaCha20-Poly1305 for one more release, so a rolling
+update or a rollback to the release before never meets a value it can't read. The builds only
 differ where the standard build has a better choice for the average deployment, such as
 argon2id for passwords, or where FIPS needs a different library, such as OpenSSL for
 passkeys.
@@ -126,16 +128,21 @@ that FIPS doesn't approve:
 
 No library can make reading this data FIPS-approved, but rIDM doesn't make you throw it
 away either. Turning on `FIPS_TRANSITION=true` lets the FIPS build do those reads
-during a migration window. Every one of them is written to the audit log as a
-non-approved operation. With the flag off, which is the default, the FIPS build refuses
-them and says why.
+during a migration window. Every one of them is logged as a warning and counted in the
+`ridm_fips_non_approved_total` metric (labelled with the operation), so you can watch
+it drop to zero. With the flag off, which is the default, the FIPS build refuses them
+and says why: a FIPS server that finds XChaCha20 secrets in its database refuses to
+start, and names the steps below.
 
 1. **Upgrade to a release that includes the FIPS work**, still on the standard build.
-   It writes new secrets with AES-256-GCM from then on.
-2. **Re-encrypt secrets at rest** with `ridm rotate-master-key`. After this no
-   XChaCha20 rows are left. You can run it on either build. On the FIPS build it
-   needs `FIPS_TRANSITION=true`.
-3. **Switch to the `-fips` image** with `FIPS_TRANSITION=true`.
+   It reads AES-256-GCM as well as XChaCha20-Poly1305, so you can go back to it later.
+2. **Switch to the `-fips` image** with `FIPS_TRANSITION=true`. It writes new secrets
+   with AES-256-GCM.
+3. **Re-encrypt secrets at rest** with `ridm-api rotate-master-key` (or `ridm master-key
+   rotate`) on the FIPS build. It rewrites every XChaCha20 row onto AES-256-GCM,
+   including rows already under the current master-key generation, so you don't need
+   a new master key. `rotate-master-key --status` shows what's left in
+   `legacy_cipher_rows`.
 4. **Let passwords move over.** When a user with an older hash signs in, rIDM checks
    the password once with the old algorithm and stores a PBKDF2 hash. The admin
    console lists the accounts that haven't moved yet, and you can require those users
@@ -159,7 +166,7 @@ sign in.
 | EdDSA signing keys | Available in both builds. Whether Ed25519 is inside the AWS-LC FIPS module boundary is being confirmed against the module's security policy. If it isn't, the FIPS build marks EdDSA as non-approved, and admins can turn it off per tenant. | [#5](https://github.com/ZerosAndOnesLLC/rIDM/issues/5) |
 | Key generation, hashing, HMAC, random numbers | Uses aws-lc-rs in both builds. Random values come from the module's SP 800-90A DRBG. | [#5](https://github.com/ZerosAndOnesLLC/rIDM/issues/5) |
 | TOTP (authenticator apps) | RFC 6238 on aws-lc-rs HMAC in both builds. Existing enrolments keep working. | [#5](https://github.com/ZerosAndOnesLLC/rIDM/issues/5) |
-| Secrets at rest | AES-256-GCM in both builds. | [#3](https://github.com/ZerosAndOnesLLC/rIDM/issues/3) |
+| Secrets at rest | AES-256-GCM under a key derived per value (HKDF-SHA-256 with a random salt), with the IV generated inside the module. The standard build reads it too, and writes it from the next release. | [#3](https://github.com/ZerosAndOnesLLC/rIDM/issues/3) |
 | Passwords | PBKDF2-HMAC-SHA512 (SP 800-132). Older hashes move over at sign-in. | [#4](https://github.com/ZerosAndOnesLLC/rIDM/issues/4) |
 | Passkeys (WebAuthn) | Verified through the host's validated OpenSSL, which is linked dynamically. | [#2](https://github.com/ZerosAndOnesLLC/rIDM/issues/2) |
 | Kerberos desktop sign-in | AES encryption types on aws-lc-rs in both builds. The SHA-2 encryption types (RFC 8009) are added because FIPS-mode KDCs may refuse the SHA-1 ones. | [#6](https://github.com/ZerosAndOnesLLC/rIDM/issues/6) |

@@ -224,3 +224,91 @@ async fn the_start_up_check_catches_a_wrong_master_key() {
         "{report:?}"
     );
 }
+
+/// A secret as the server wrote it before AES-256-GCM: XChaCha20-Poly1305
+/// under the generation key, in a blob whose first byte is 1.
+fn legacy_blob(key: u8, version: u32, plaintext: &[u8], aad: &[u8]) -> Vec<u8> {
+    use chacha20poly1305::aead::{Aead, KeyInit, Payload};
+    let nonce = [9u8; 24];
+    let ciphertext = chacha20poly1305::XChaCha20Poly1305::new_from_slice(&[key; 32])
+        .unwrap()
+        .encrypt(
+            &nonce.into(),
+            Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
+        .unwrap();
+    ridm_core::providers::Encrypted {
+        cipher: ridm_core::providers::Cipher::XChaCha20Poly1305,
+        key_version: version,
+        nonce: nonce.to_vec(),
+        ciphertext,
+    }
+    .to_bytes()
+}
+
+#[tokio::test]
+async fn the_fips_build_moves_xchacha20_rows_of_the_current_generation_onto_aes_gcm() {
+    let _turn = ROTATION.lock().await;
+    let app = TestApp::spawn().await; // master key: 0x07.., version 1
+    let tid = app.tenant.id;
+    let user = ridm_api::services::users::create(
+        &app.state,
+        tid,
+        Actor::System,
+        ridm_api::models::NewUser {
+            username: "legacy".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let cred_id = Uuid::now_v7();
+    let aad = format!("credentials:{tid}:{cred_id}");
+    let blob = legacy_blob(0x07, 1, b"totp-secret", aad.as_bytes());
+    let mut tx = ridm_api::db::tenant_tx(&app.state.db, tid).await.unwrap();
+    sqlx::query("INSERT INTO credentials (id, tenant_id, user_id, type, data_enc, key_version) VALUES ($1, $2, $3, 'totp', $4, 1)")
+        .bind(cred_id).bind(tid).bind(user.id).bind(&blob).execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
+
+    let before = master_key::status(&app.state).await.unwrap();
+    assert!(before.legacy() >= 1, "{before:?}");
+
+    // Other tests leave rows under keys this node doesn't hold in the shared
+    // database, so only this test's row is checked, not the failure count.
+    let report = master_key::rotate_all(&app.state).await.unwrap();
+    if !cfg!(feature = "fips") {
+        // The standard build still writes XChaCha20-Poly1305 for this release,
+        // so it leaves the row alone (a rollback must still read everything).
+        assert_eq!(before.pending(), 0, "{before:?}");
+        assert!(master_key::status(&app.state).await.unwrap().legacy() >= 1);
+        return;
+    }
+    assert!(
+        before.pending() >= 1,
+        "same generation, stale cipher: pending"
+    );
+    assert!(report.rewritten["credentials"] >= 1, "{report:?}");
+
+    let mut tx = ridm_api::db::bypass_tx(app.state.db.home()).await.unwrap();
+    let (stored, version): (Vec<u8>, i32) =
+        sqlx::query_as("SELECT data_enc, key_version FROM credentials WHERE id = $1")
+            .bind(cred_id)
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(version, 1, "the generation is unchanged");
+    assert_eq!(stored[0], ridm_core::providers::Cipher::Aes256GcmHkdf as u8);
+    let encrypted = ridm_core::providers::Encrypted::from_bytes(&stored).unwrap();
+    let plain = app
+        .state
+        .key_encryptor
+        .decrypt(&encrypted, aad.as_bytes())
+        .await
+        .unwrap();
+    assert_eq!(&*plain, b"totp-secret");
+    assert_eq!(master_key::status(&app.state).await.unwrap().legacy(), 0);
+}

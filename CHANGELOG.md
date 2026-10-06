@@ -14,6 +14,17 @@ release renames that heading to the version and date.
 
 ## [Unreleased]
 
+### Added
+
+- **An optional FIPS 140-3 build** ([docs](https://zerosandonesllc.github.io/rIDM/docs/deploy/fips.html), #7). The `fips` cargo feature (off by default) and a new image, `ghcr.io/zerosandonesllc/ridm:<version>-fips`, built on Red Hat UBI 9 from `api/Dockerfile.fips` (no RHEL subscription needed). It runs every TLS connection on rustls' FIPS provider and the AWS-LC FIPS module. It refuses to start unless the module passes its self-test and the host is in FIPS mode; `FIPS_ALLOW_NON_FIPS_HOST=true` overrides the host check for development and CI only. Every feature of the standard build is included. The standard build and image are unchanged.
+- **`FIPS_TRANSITION`** (FIPS build only): reads the secrets at rest written before the move to AES-256-GCM, logging and counting each read (`ridm_fips_non_approved_total`), so an existing deployment can switch to the FIPS build and re-encrypt with `rotate-master-key`.
+- **Secrets at rest in AES-256-GCM**, under a key derived per value with HKDF-SHA-256. Every server reads it. The FIPS build writes it now. The standard build keeps writing XChaCha20-Poly1305 for this release, so a rolling update or a rollback to 0.2.0 never meets a value it can't read, and switches in the next release. `rotate-master-key --status` counts the remaining XChaCha20 rows (`legacy_cipher_rows`).
+
+### Changed
+
+- Hashes, HMAC, random numbers, signing-key generation and TOTP all run on aws-lc-rs, in both builds. The algorithms and stored formats are unchanged: existing keys, TOTP enrolments and tokens keep working. `rsa`, `p256`, `ed25519-dalek` and `totp-rs` are no longer dependencies, and the RUSTSEC-2023-0071 (Marvin) exception is gone with `rsa`.
+- Postgres TLS uses aws-lc-rs instead of `ring`.
+
 ## [0.2.0] - 2026-09-24
 
 The first published release. 0.1.0 was cut but never tagged or published, so this
