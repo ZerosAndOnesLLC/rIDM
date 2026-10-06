@@ -522,9 +522,10 @@ jobs:
         run: cargo clippy -p ridm-api -p ridm-cli --all-targets --locked --no-default-features --features "$FIPS_FEATURES" -- -D warnings
       - name: unit tests (fips)
         run: cargo test -p ridm-api --lib --locked --no-default-features --features "ridm-api/fips,$RIDM_FEATURES,ridm-api/test-support"
+      # Pinned: 0.20 moved `--config` off the `check` subcommand.
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-deny
+          tool: cargo-deny@0.19.0
       - name: cargo deny (fips bans)
         run: cargo deny check bans --config deny-fips.toml
       - uses: docker/setup-buildx-action@v4
