@@ -34,7 +34,8 @@ async fn aws_kms_wraps_under_the_generation_context() {
     let port = container.get_host_port_ipv4(8080).await.unwrap();
     let kms = client(&format!("http://127.0.0.1:{port}"));
     let mut key = None;
-    for _ in 0..60 {
+    // Two minutes, for a machine busy with a full test build.
+    for _ in 0..480 {
         if let Ok(out) = kms.create_key().send().await {
             key = out
                 .key_metadata()

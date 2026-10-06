@@ -61,7 +61,9 @@ async fn dev_server(
     let addr = format!("http://127.0.0.1:{port}");
     let http = reqwest::Client::new();
     let mut up = false;
-    for _ in 0..120 {
+    // Two minutes: a container can take that long while a full test build
+    // keeps every core busy, and a healthy one answers on the first try.
+    for _ in 0..480 {
         if http
             .get(format!("{addr}/v1/sys/health"))
             .send()

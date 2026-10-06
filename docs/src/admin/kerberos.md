@@ -26,11 +26,11 @@ keytab file.
   policy). An address typed as an IP never gets Kerberos. Use a fully qualified name:
   MIT Kerberos clients (1.20+) append the resolver's search domain to a name with no
   dots, and ask for a principal you did not register.
-- **AES keys only.** rIDM accepts `aes256-cts-hmac-sha1-96` and `aes128-cts-hmac-sha1-96`
-  tickets. RC4 and DES are refused as broken. The newer RFC 8009 types
-  (`aes256-cts-hmac-sha384-192`, `aes128-cts-hmac-sha256-128`, MIT's default since 1.21)
-  are not supported yet: give the service principal AES-SHA1 keys only, so the KDC issues
-  tickets rIDM can read.
+- **AES keys only.** rIDM accepts tickets of the AES types: `aes256-cts-hmac-sha1-96` and
+  `aes128-cts-hmac-sha1-96` (RFC 3962, what Active Directory issues), and
+  `aes256-cts-hmac-sha384-192` and `aes128-cts-hmac-sha256-128` (RFC 8009, MIT's and RHEL
+  IdM's default). RC4 and DES are refused as broken. Prefer the RFC 8009 types where your
+  KDC has them; a KDC in FIPS mode may allow only those.
 
 **Active Directory.** Create a service account (a user with a strong random password that
 never expires), allow AES on it, register the principal and export the keytab:
@@ -48,9 +48,12 @@ invalidates the keytab, so export a new one each time.
 **MIT Kerberos.**
 
 ```sh
-kadmin -q "addprinc -randkey -e aes256-cts-hmac-sha1-96:normal HTTP/sso.corp.example"
-kadmin -q "ktadd -k ridm.keytab -e aes256-cts-hmac-sha1-96:normal HTTP/sso.corp.example"
+kadmin -q "addprinc -randkey -e aes256-cts-hmac-sha384-192:normal,aes256-cts-hmac-sha1-96:normal HTTP/sso.corp.example"
+kadmin -q "ktadd -k ridm.keytab HTTP/sso.corp.example"
 ```
+
+Keep the `aes256-cts-hmac-sha1-96` key too if some clients' Kerberos libraries predate
+RFC 8009 (MIT before 1.15, for example).
 
 ## Adding the provider
 

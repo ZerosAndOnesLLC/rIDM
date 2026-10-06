@@ -1,7 +1,7 @@
-//! The RFC 3962 AES encryption types (`aes128-cts-hmac-sha1-96`,
-//! `aes256-cts-hmac-sha1-96`), from `picky-krb` when rIDM is built with
-//! the `kerberos` feature. Without it every operation says so, and nothing
-//! else in the acceptor needs to know.
+//! The Kerberos AES encryption types (RFC 3962's 17/18 and RFC 8009's 19/20,
+//! see [`super::aes`]) on aws-lc-rs, when rIDM is built with the `kerberos`
+//! feature. Without it every operation says so, and nothing else in the
+//! acceptor needs to know.
 
 use super::keytab::etype_supported;
 
@@ -20,13 +20,8 @@ pub enum CryptoError {
 }
 
 #[cfg(feature = "kerberos")]
-fn cipher(etype: i32) -> Result<Box<dyn picky_krb::crypto::Cipher>, CryptoError> {
-    use picky_krb::crypto::CipherSuite;
-    match etype {
-        17 => Ok(CipherSuite::Aes128CtsHmacSha196.cipher()),
-        18 => Ok(CipherSuite::Aes256CtsHmacSha196.cipher()),
-        other => Err(CryptoError::Etype(other)),
-    }
+fn cipher(etype: i32) -> Result<super::aes::Profile, CryptoError> {
+    super::aes::Profile::of(etype).ok_or(CryptoError::Etype(etype))
 }
 
 /// Decrypt and check the integrity of `data` under `key` for `usage`.
@@ -36,7 +31,7 @@ pub fn decrypt(etype: i32, key: &[u8], usage: i32, data: &[u8]) -> Result<Vec<u8
         return Err(CryptoError::Etype(etype));
     }
     let c = cipher(etype)?;
-    if key.len() != c.key_size() {
+    if key.len() != c.key_len() {
         return Err(CryptoError::Integrity);
     }
     c.decrypt(key, usage, data)
@@ -58,7 +53,7 @@ pub fn encrypt(etype: i32, key: &[u8], usage: i32, data: &[u8]) -> Result<Vec<u8
         return Err(CryptoError::Etype(etype));
     }
     let c = cipher(etype)?;
-    if key.len() != c.key_size() {
+    if key.len() != c.key_len() {
         return Err(CryptoError::Integrity);
     }
     c.encrypt(key, usage, data)
@@ -79,7 +74,7 @@ mod tests {
 
     #[test]
     fn round_trip_and_tamper() {
-        for (etype, len) in [(17, 16), (18, 32)] {
+        for (etype, len) in [(17, 16), (18, 32), (19, 16), (20, 32)] {
             let key = vec![9u8; len];
             let c = encrypt(etype, &key, 2, b"hello ticket").unwrap();
             assert_eq!(decrypt(etype, &key, 2, &c).unwrap(), b"hello ticket");

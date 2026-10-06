@@ -39,4 +39,10 @@ deny = [
   { crate = "p256", reason = "P-256 keys come from aws-lc-rs" },
   { crate = "ed25519-dalek", reason = "Ed25519 keys come from aws-lc-rs" },
   { crate = "totp-rs", reason = "TOTP is computed with aws-lc-rs HMAC (totp-rs stays a test-only oracle)" },
+  # 14.6 (#4) and 14.7 (#6): PBKDF2 and the Kerberos AES types on aws-lc-rs.
+  { crate = "pbkdf2", reason = "PBKDF2 is aws-lc-rs (RustCrypto pbkdf2 stays a test-only oracle)" },
+  { crate = "picky-krb", reason = "Kerberos crypto is aws-lc-rs (picky-krb stays a test-only oracle)" },
+  { crate = "aes", reason = "AES is aws-lc-rs" },
+  { crate = "cbc", reason = "AES-CBC is aws-lc-rs" },
+  { crate = "des", reason = "no DES" },
 ]

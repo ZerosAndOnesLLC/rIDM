@@ -15,19 +15,25 @@ const MAX_ENTRIES: usize = 256;
 pub const ETYPE_AES128: i32 = 17;
 /// `aes256-cts-hmac-sha1-96`.
 pub const ETYPE_AES256: i32 = 18;
+/// `aes128-cts-hmac-sha256-128` (RFC 8009).
+pub const ETYPE_AES128_SHA256: i32 = 19;
+/// `aes256-cts-hmac-sha384-192` (RFC 8009).
+pub const ETYPE_AES256_SHA384: i32 = 20;
 
-/// Whether rIDM decrypts tickets of this encryption type. RC4 and the DES
-/// family are refused: they are broken, and Active Directory issues AES
-/// tickets to an account whose `msDS-SupportedEncryptionTypes` allow it.
+/// Whether rIDM decrypts tickets of this encryption type: the AES types of
+/// RFC 3962 and RFC 8009. RC4 and the DES family are refused: they are
+/// broken, and Active Directory issues AES tickets to an account whose
+/// `msDS-SupportedEncryptionTypes` allow it. MIT and RHEL IdM KDCs issue the
+/// RFC 8009 types by default, and in FIPS mode may allow only those.
 pub fn etype_supported(etype: i32) -> bool {
-    matches!(etype, ETYPE_AES128 | ETYPE_AES256)
+    etype_key_len(etype).is_some()
 }
 
 /// The key length an encryption type needs.
 pub fn etype_key_len(etype: i32) -> Option<usize> {
     match etype {
-        ETYPE_AES128 => Some(16),
-        ETYPE_AES256 => Some(32),
+        ETYPE_AES128 | ETYPE_AES128_SHA256 => Some(16),
+        ETYPE_AES256 | ETYPE_AES256_SHA384 => Some(32),
         _ => None,
     }
 }
@@ -39,8 +45,8 @@ pub fn etype_name(etype: i32) -> String {
         16 => "des3-cbc-sha1".into(),
         ETYPE_AES128 => "aes128-cts-hmac-sha1-96".into(),
         ETYPE_AES256 => "aes256-cts-hmac-sha1-96".into(),
-        19 => "aes128-cts-hmac-sha256-128".into(),
-        20 => "aes256-cts-hmac-sha384-192".into(),
+        ETYPE_AES128_SHA256 => "aes128-cts-hmac-sha256-128".into(),
+        ETYPE_AES256_SHA384 => "aes256-cts-hmac-sha384-192".into(),
         23 => "rc4-hmac".into(),
         24 => "rc4-hmac-exp".into(),
         25 => "camellia128-cts-cmac".into(),
