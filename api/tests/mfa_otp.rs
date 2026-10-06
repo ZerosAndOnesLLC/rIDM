@@ -228,7 +228,15 @@ async fn code_emails(fx: &Fx) -> usize {
 
 async fn last_email_code(fx: &Fx) -> String {
     common::settle(&fx.app.state).await;
-    let mail = fx.email.last().expect("an email");
+    // The last code email, not the last email: security notices (new device,
+    // factor enrolled) go out asynchronously and can land after it.
+    let mail = fx
+        .email
+        .sent()
+        .into_iter()
+        .rev()
+        .find(|m| m.subject.contains("code:"))
+        .expect("a code email");
     assert_eq!(mail.to[0].email, "alice@example.com");
     six_digits(&mail.text)
 }
