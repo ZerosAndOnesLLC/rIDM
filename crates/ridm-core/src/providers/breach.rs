@@ -1,5 +1,5 @@
+use crate::crypto::Sha1;
 use async_trait::async_trait;
-use sha1::{Digest as _, Sha1};
 
 /// Tells how often a password appears in breach corpora, given only its
 /// SHA-1 (the k-anonymity scheme Have I Been Pwned popularised: the

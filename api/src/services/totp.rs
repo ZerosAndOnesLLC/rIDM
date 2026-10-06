@@ -10,11 +10,10 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Utc};
 use redis::AsyncCommands as _;
+use ridm_core::crypto::Sha256;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
 use subtle::ConstantTimeEq as _;
-use totp_rs::{Algorithm, Builder, Secret, Totp};
 use uuid::Uuid;
 
 use crate::cache::keys;
@@ -131,19 +130,126 @@ fn account_of(user: &User) -> String {
     label_safe(user.email.as_deref().unwrap_or(&user.username), "user")
 }
 
-fn build(secret_b32: &str, issuer: &str, account: &str) -> AppResult<Totp> {
-    let secret = Secret::try_from_base32(secret_b32)
-        .map_err(|e| AppError::Internal(format!("totp secret: {e}")))?;
-    Builder::new()
-        .with_algorithm(Algorithm::SHA1)
-        .with_digits(DIGITS)
-        .with_skew(SKEW)
-        .with_step_duration(PERIOD_SECS)
-        .with_secret(secret)
-        .with_issuer(Some(issuer))
-        .with_account_name(account)
-        .build()
-        .map_err(|e| AppError::Internal(format!("totp: {e}")))
+fn build(secret_b32: &str, issuer: &str, account: &str) -> AppResult<Authenticator> {
+    let secret = base32_decode(secret_b32)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| AppError::Internal("totp secret: not base32".into()))?;
+    Ok(Authenticator {
+        secret,
+        issuer: issuer.to_string(),
+        account: account.to_string(),
+    })
+}
+
+/// A fresh secret: 20 random bytes (160 bits, RFC 4226's recommendation) as
+/// base32, the form authenticator apps take.
+fn new_secret() -> String {
+    base32_encode(&ridm_core::crypto::random_bytes::<20>())
+}
+
+/// One authenticator: RFC 6238 TOTP with HMAC-SHA-1, [`DIGITS`] digits and
+/// [`PERIOD_SECS`]-second steps (the defaults every authenticator app
+/// supports), computed with aws-lc-rs.
+struct Authenticator {
+    secret: Vec<u8>,
+    issuer: String,
+    account: String,
+}
+
+impl Authenticator {
+    /// RFC 4226 HOTP for time step `counter`, as a zero-padded string.
+    fn code_at(&self, counter: u64) -> String {
+        let mac = ridm_core::crypto::hmac(
+            ridm_core::crypto::HMAC_SHA1,
+            &self.secret,
+            &counter.to_be_bytes(),
+        );
+        // Dynamic truncation (RFC 4226 §5.3).
+        let offset = usize::from(mac[mac.len() - 1] & 0x0f);
+        let bin = u32::from_be_bytes([
+            mac[offset],
+            mac[offset + 1],
+            mac[offset + 2],
+            mac[offset + 3],
+        ]) & 0x7fff_ffff;
+        let code = bin % 10u32.pow(u32::from(DIGITS));
+        format!("{code:0width$}", width = usize::from(DIGITS))
+    }
+
+    /// The time step `code` is valid for at `now` (Unix seconds), allowing
+    /// [`SKEW`] steps of drift either side, or `None`.
+    fn check(&self, code: &str, now: u64) -> Option<u64> {
+        if code.len() != usize::from(DIGITS) || !code.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        let origin = now / PERIOD_SECS;
+        let skew = u64::from(SKEW);
+        (origin.saturating_sub(skew)..=origin + skew)
+            .find(|&counter| bool::from(self.code_at(counter).as_bytes().ct_eq(code.as_bytes())))
+    }
+
+    fn check_current(&self, code: &str) -> Option<u64> {
+        self.check(code, Utc::now().timestamp().max(0) as u64)
+    }
+
+    /// The `otpauth://` URI authenticator apps scan (the Key Uri Format).
+    fn to_url(&self) -> String {
+        let issuer = percent_encode(&self.issuer);
+        format!(
+            "otpauth://totp/{issuer}:{}?secret={}&issuer={issuer}",
+            percent_encode(&self.account),
+            base32_encode(&self.secret),
+        )
+    }
+}
+
+const BASE32: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+/// RFC 4648 base32, upper case, without padding.
+fn base32_encode(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len().div_ceil(5) * 8);
+    let (mut buffer, mut bits) = (0u32, 0u32);
+    for &b in bytes {
+        buffer = (buffer << 8) | u32::from(b);
+        bits += 8;
+        while bits >= 5 {
+            bits -= 5;
+            out.push(char::from(BASE32[((buffer >> bits) & 31) as usize]));
+        }
+    }
+    if bits > 0 {
+        out.push(char::from(BASE32[((buffer << (5 - bits)) & 31) as usize]));
+    }
+    out
+}
+
+/// RFC 4648 base32 in either case, with or without `=` padding.
+fn base32_decode(s: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(s.len() * 5 / 8);
+    let (mut buffer, mut bits) = (0u32, 0u32);
+    for c in s.trim_end_matches('=').bytes() {
+        let v = BASE32.iter().position(|&a| a == c.to_ascii_uppercase())? as u32;
+        buffer = (buffer << 5) | v;
+        bits += 5;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buffer >> bits) as u8);
+        }
+    }
+    Some(out)
+}
+
+/// Percent-encode everything but letters, digits and `-_.~`.
+fn percent_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
+            out.push(char::from(b));
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }
 
 /// Start an enrolment for the flow: a secret the user must prove once. Asking
@@ -159,7 +265,7 @@ pub async fn begin_enrolment(
     let mut conn = state.redis.get().await?;
     // Claim the slot atomically: concurrent requests (a double-fired effect,
     // a double click) must all see the one secret that won.
-    let fresh = Secret::generate().to_base32();
+    let fresh = new_secret();
     let claimed: Option<String> = redis::cmd("SET")
         .arg(&key)
         .arg(serde_json::to_string(&PendingEnrolment {
@@ -182,9 +288,7 @@ pub async fn begin_enrolment(
     let issuer = issuer_of(tenant);
     let account = account_of(user);
     let totp = build(&secret, &issuer, &account)?;
-    let otpauth_uri = totp
-        .to_url()
-        .map_err(|e| AppError::Internal(format!("otpauth url: {e}")))?;
+    let otpauth_uri = totp.to_url();
     Ok(Enrolment {
         secret,
         otpauth_uri,
@@ -270,7 +374,7 @@ pub async fn confirm_enrolment(
 
 fn random_code() -> String {
     let mut bytes = [0u8; RECOVERY_CODE_LEN];
-    rand::fill(&mut bytes);
+    ridm_core::crypto::fill(&mut bytes);
     let raw: String = bytes
         .iter()
         .map(|b| RECOVERY_ALPHABET[(*b % 32) as usize] as char)
@@ -563,14 +667,57 @@ mod tests {
 
     #[test]
     fn a_generated_secret_round_trips_through_the_otpauth_uri() {
-        let secret = Secret::generate().to_base32();
+        let secret = new_secret();
+        assert_eq!(secret.len(), 32);
         let totp = build(&secret, "Acme", "alice@example.com").unwrap();
-        let url = totp.to_url().unwrap();
-        assert!(url.starts_with("otpauth://totp/Acme:alice%40example.com?"));
-        let parsed = Totp::from_url(&url).unwrap();
-        assert_eq!(parsed.secret().to_base32(), secret);
-        let code = totp.generate_current().to_string();
+        assert_eq!(
+            totp.to_url(),
+            format!("otpauth://totp/Acme:alice%40example.com?secret={secret}&issuer=Acme")
+        );
+        let now = Utc::now().timestamp() as u64;
+        let code = totp.code_at(now / PERIOD_SECS);
         assert_eq!(code.len(), 6);
-        assert!(parsed.check_current(&code).is_some());
+        assert_eq!(totp.check_current(&code), Some(now / PERIOD_SECS));
+    }
+
+    /// RFC 6238 appendix B, SHA-1, truncated to six digits.
+    #[test]
+    fn codes_match_the_rfc_6238_test_vectors() {
+        let totp = build(&base32_encode(b"12345678901234567890"), "i", "a").unwrap();
+        for (time, code) in [
+            (59, "287082"),
+            (1_111_111_109, "081804"),
+            (1_111_111_111, "050471"),
+            (1_234_567_890, "005924"),
+            (2_000_000_000, "279037"),
+            (20_000_000_000, "353130"),
+        ] {
+            assert_eq!(totp.code_at(time / PERIOD_SECS), code, "T = {time}");
+            assert_eq!(totp.check(code, time), Some(time / PERIOD_SECS));
+        }
+    }
+
+    #[test]
+    fn one_step_of_drift_is_accepted_and_two_are_not() {
+        let totp = build(&new_secret(), "i", "a").unwrap();
+        let now = 1_700_000_000;
+        let step = now / PERIOD_SECS;
+        assert_eq!(totp.check(&totp.code_at(step - 1), now), Some(step - 1));
+        assert_eq!(totp.check(&totp.code_at(step + 1), now), Some(step + 1));
+        assert_eq!(totp.check(&totp.code_at(step + 2), now), None);
+        assert_eq!(totp.check("12345", now), None);
+        assert_eq!(totp.check("+12345", now), None);
+    }
+
+    #[test]
+    fn base32_matches_rfc_4648_and_reads_what_totp_rs_wrote() {
+        assert_eq!(base32_encode(b"foobar"), "MZXW6YTBOI");
+        assert_eq!(base32_decode("MZXW6YTBOI======").unwrap(), b"foobar");
+        assert_eq!(base32_decode("mzxw6ytboi").unwrap(), b"foobar");
+        assert!(base32_decode("not base32!").is_none());
+        // A secret as totp-rs 6 stored it.
+        let stored = "OBWGC2LOFVZXI4TJNZTS243FMNZGK5BNGEZDG";
+        assert_eq!(base32_decode(stored).unwrap(), b"plain-string-secret-123");
+        assert_eq!(base32_encode(b"plain-string-secret-123"), stored);
     }
 }

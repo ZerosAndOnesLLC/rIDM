@@ -5,7 +5,7 @@
 //! fresh. The caller keeps the replay cache ([`Accepted::replay_key`]).
 
 use chrono::{DateTime, Duration, Utc};
-use sha2::{Digest as _, Sha256};
+use ridm_core::crypto::Sha256;
 
 use super::Principal;
 use super::crypto::{self, CryptoError};
@@ -303,7 +303,7 @@ impl Acceptor<'_> {
             client,
             auth_time,
             end_time,
-            replay_key: Sha256::digest(authenticator.cipher).into(),
+            replay_key: Sha256::digest(authenticator.cipher),
             ap_rep,
         })
     }
@@ -311,7 +311,7 @@ impl Acceptor<'_> {
 
 /// `AP-REP` echoing the authenticator's time, encrypted in the session key.
 fn ap_rep(session: &Key, ctime_raw: &[u8], cusec: i64) -> Result<Vec<u8>, CryptoError> {
-    let seq_number = i64::from(rand::random::<u32>() & 0x3fff_ffff);
+    let seq_number = i64::from(ridm_core::crypto::random_u32() & 0x3fff_ffff);
     let part = der::tlv(
         der::app(27),
         &der::tlv(

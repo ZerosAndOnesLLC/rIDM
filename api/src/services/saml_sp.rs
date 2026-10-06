@@ -30,7 +30,6 @@ use redis::AsyncCommands as _;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use sha2::Digest as _;
 use uuid::Uuid;
 
 use crate::cache::keys as cache_keys;
@@ -99,12 +98,12 @@ fn key(tenant_id: Uuid, what: &str, id: &str) -> String {
 }
 
 fn hashed(s: &str) -> String {
-    hex::encode(sha2::Sha256::digest(s.as_bytes()))
+    hex::encode(ridm_core::crypto::Sha256::digest(s.as_bytes()))
 }
 
 fn random_token() -> String {
     let mut buf = [0u8; 32];
-    rand::fill(&mut buf);
+    ridm_core::crypto::fill(&mut buf);
     hex::encode(buf)
 }
 

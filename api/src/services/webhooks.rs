@@ -14,12 +14,10 @@ use futures::StreamExt as _;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{Duration, Utc};
-use hmac::{Hmac, KeyInit as _, Mac as _};
 use redis::AsyncCommands as _;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use ridm_core::providers::Encrypted;
 use serde::Serialize;
-use sha2::Sha256;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -49,7 +47,7 @@ fn aad(tenant_id: Uuid, id: Uuid) -> Vec<u8> {
 
 fn random_secret() -> Zeroizing<String> {
     let mut bytes = [0u8; 32];
-    rand::fill(&mut bytes);
+    ridm_core::crypto::fill(&mut bytes);
     Zeroizing::new(format!("{SECRET_PREFIX}{}", URL_SAFE_NO_PAD.encode(bytes)))
 }
 
@@ -517,14 +515,11 @@ pub fn spawn_dispatcher(state: AppState) -> tokio::task::JoinHandle<()> {
 
 /// `t=<unix>,v1=<hex>` over `"<t>.<body>"`.
 pub fn sign(secret: &str, timestamp: i64, body: &[u8]) -> String {
-    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("hmac accepts any key");
-    mac.update(timestamp.to_string().as_bytes());
-    mac.update(b".");
-    mac.update(body);
-    format!(
-        "t={timestamp},v1={}",
-        hex::encode(mac.finalize().into_bytes())
-    )
+    let tag = ridm_core::crypto::hmac_sha256(
+        secret.as_bytes(),
+        &[timestamp.to_string().as_bytes(), b".", body],
+    );
+    format!("t={timestamp},v1={}", hex::encode(tag))
 }
 
 /// Backoff after `attempt` failures: 30s, 2m, 10m, 30m, 2h, then 6h.

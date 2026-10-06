@@ -227,9 +227,8 @@ static POOLS: std::sync::LazyLock<moka::sync::Cache<Uuid, std::sync::Arc<Pool>>>
     });
 
 fn fingerprint(dir: &Directory) -> [u8; 32] {
-    use sha2::Digest as _;
     let o = dir.options();
-    let mut h = sha2::Sha256::new();
+    let mut h = ridm_core::crypto::Sha256::new();
     for part in [
         o.url.as_str(),
         if o.starttls { "starttls" } else { "" },
@@ -241,7 +240,7 @@ fn fingerprint(dir: &Directory) -> [u8; 32] {
         h.update(part.as_bytes());
         h.update([0]);
     }
-    h.finalize().into()
+    h.finalize()
 }
 
 /// A service-bound connection from the directory's pool, opened (and bound)

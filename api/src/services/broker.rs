@@ -17,10 +17,10 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::Utc;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use redis::AsyncCommands as _;
+use ridm_core::crypto::Sha256;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
 use crate::cache::keys;
@@ -50,7 +50,7 @@ fn hash(token: &str) -> String {
 
 fn random_token(bytes: usize) -> String {
     let mut buf = vec![0u8; bytes];
-    rand::fill(&mut buf[..]);
+    ridm_core::crypto::fill(&mut buf[..]);
     URL_SAFE_NO_PAD.encode(buf)
 }
 

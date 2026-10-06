@@ -83,7 +83,7 @@ impl Kdc {
     /// A service with a random AES-256 key.
     pub fn new(service: &str) -> Kdc {
         let mut key = vec![0u8; 32];
-        rand::fill(&mut key[..]);
+        ridm_core::crypto::fill(&mut key[..]);
         Kdc {
             service: Principal::parse(service).expect("service principal"),
             kvno: 2,
@@ -127,7 +127,7 @@ impl Kdc {
     /// Build the AP-REQ.
     pub fn issue(&self, req: &Request) -> Result<Issued, CryptoError> {
         let mut session_key = vec![0u8; 32];
-        rand::fill(&mut session_key[..]);
+        ridm_core::crypto::fill(&mut session_key[..]);
         let mut part = vec![
             der::enc_explicit(0, bits(if req.invalid { 0x01 } else { 0x40 })),
             der::enc_explicit(

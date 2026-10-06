@@ -24,10 +24,10 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Utc};
 use redis::AsyncCommands as _;
+use ridm_core::crypto::Sha256;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _, acting};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
 use crate::cache::keys;
@@ -129,7 +129,7 @@ pub async fn request(
     check_target(state, tenant, user_id, &impersonator).await?;
 
     let mut bytes = [0u8; 32];
-    rand::fill(&mut bytes);
+    ridm_core::crypto::fill(&mut bytes);
     let ticket = URL_SAFE_NO_PAD.encode(bytes);
     let admin_id = impersonator.user_id;
     let mut conn = state.redis.get().await?;

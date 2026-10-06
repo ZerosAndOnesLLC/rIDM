@@ -83,16 +83,14 @@ fn rsa_public_from_jwk(jwk: &Value) -> AppResult<PublicEncryptingKey> {
         .decode(jwk["e"].as_str().unwrap_or_default())
         .map_err(|_| AppError::BadRequest("jwk: bad e".into()))?;
     // aws-lc-rs wants X.509 SubjectPublicKeyInfo DER; build it from the components.
-    use rsa::pkcs8::EncodePublicKey as _;
-    let public = rsa::RsaPublicKey::new(
-        rsa::BigUint::from_bytes_be(&n),
-        rsa::BigUint::from_bytes_be(&e),
-    )
+    use aws_lc_rs::encoding::AsDer as _;
+    let spki = aws_lc_rs::rsa::PublicKeyComponents {
+        n: &n[..],
+        e: &e[..],
+    }
+    .as_der()
     .map_err(|_| AppError::BadRequest("jwk: invalid RSA public key".into()))?;
-    let spki = public
-        .to_public_key_der()
-        .map_err(|_| AppError::BadRequest("jwk: cannot encode RSA public key".into()))?;
-    PublicEncryptingKey::from_der(spki.as_bytes())
+    PublicEncryptingKey::from_der(spki.as_ref())
         .map_err(|_| AppError::BadRequest("jwk: invalid RSA public key".into()))
 }
 
@@ -109,9 +107,9 @@ pub fn encrypt(
 
     // Content encryption key and IV.
     let mut cek = vec![0u8; enc.key_len()];
-    rand::fill(&mut cek[..]);
+    ridm_core::crypto::fill(&mut cek[..]);
     let mut iv = [0u8; 12];
-    rand::fill(&mut iv);
+    ridm_core::crypto::fill(&mut iv);
 
     let mut header = json!({"alg": alg.as_str(), "enc": enc.as_str(), "cty": "JWT"});
     if let Some(kid) = recipient_jwk.get("kid") {

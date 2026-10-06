@@ -14,8 +14,8 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::Utc;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
+use ridm_core::crypto::Sha256;
 use serde_json::{Map, Value};
-use sha2::{Digest as _, Sha256};
 use url::Url;
 
 use crate::error::AppError;

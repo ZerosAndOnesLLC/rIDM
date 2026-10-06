@@ -22,8 +22,8 @@ use std::fmt;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use redis::AsyncCommands;
+use ridm_core::crypto::Sha256;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 use crate::cache::keys;
 use crate::error::{AppError, AppResult};
@@ -102,7 +102,7 @@ pub async fn issue(
         )));
     }
     let mut bytes = [0u8; 32];
-    rand::fill(&mut bytes);
+    ridm_core::crypto::fill(&mut bytes);
     let ticket = URL_SAFE_NO_PAD.encode(bytes);
     let record = Record {
         dpop: scheme == Scheme::Dpop,

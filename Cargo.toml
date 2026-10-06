@@ -40,18 +40,15 @@ redis = { version = "=1.7.0", features = ["tokio-rustls-comp", "script", "cluste
 moka = { version = "=0.12.16", features = ["sync"] }
 
 # Crypto / tokens
-# Signing/verification via aws-lc-rs (constant-time RSA); the `rsa` crate is
-# used only for key generation and JWK/PEM encoding.
+# Signing, verification and key generation all go through aws-lc-rs.
 jsonwebtoken = { version = "=11.0.0", features = ["aws_lc_rs"] }
-rsa = { version = "=0.9.10", features = ["pem"] }
-p256 = { version = "=0.14.0", features = ["ecdsa", "pem"] }
-ed25519-dalek = { version = "=3.0.0", features = ["rand_core", "pkcs8", "alloc"] }
 argon2 = "=0.6.0"
 # Legacy hash verification for migrated users (never used for new hashes).
 bcrypt = "=0.19.3"
 pbkdf2 = "=0.13.0"
 md-5 = "=0.11.0"
-totp-rs = { version = "=6.0.0", features = ["qr", "gen_secret"] }
+# Tests only: an independent TOTP implementation the server's codes are checked against.
+totp-rs = { version = "=6.0.0", features = ["otpauth"] }
 webauthn-rs = { version = "=0.5.5", features = ["danger-allow-state-serialisation", "conditional-ui"] }
 webauthn-rs-proto = "=0.5.5"
 # webauthn-rs 0.5 needs OpenSSL for attestation. The standard build vendors it
@@ -62,8 +59,6 @@ chacha20poly1305 = "=0.11.0"
 sha2 = "=0.11.0"
 hmac = "=0.13.0"
 rand = "=0.10.2"
-# rsa 0.9 still takes a rand_core 0.6 RNG for key generation.
-rand_core_06 = { package = "rand_core", version = "=0.6.4", features = ["getrandom"] }
 rustls = { version = "=0.23.45", default-features = false, features = ["aws-lc-rs", "std", "tls12"] }
 tokio-rustls = { version = "=0.26.5", default-features = false, features = ["aws_lc_rs", "tls12"] }
 rustls-platform-verifier = "=0.7.0"
@@ -73,7 +68,6 @@ subtle = "=2.6.1"
 zeroize = "=1.9.0"
 base64 = "=0.23.1"
 hex = "=0.4.3"
-sha1 = "=0.11.0"
 # SAML 2.0: a read-only XML tree that refuses DTDs (so no entity expansion
 # or external entities), self-signed certificates for the IdP metadata, the
 # X.509 reader webauthn-rs already builds (SP certificates), and raw DEFLATE
@@ -159,19 +153,10 @@ lto = "thin"
 codegen-units = 1
 strip = true
 
-# Debug builds still optimise the two deliberately expensive computations:
-# the big-integer arithmetic behind RSA key generation (unoptimised, one key
-# takes seconds, and creating a tenant or rotating its keys waits for one) and
-# argon2 password hashing (every sign-in and password change). Only these
-# crates are affected; everything else keeps fast, debuggable dev builds.
-[profile.dev.package.rsa]
-opt-level = 3
-[profile.dev.package.num-bigint-dig]
-opt-level = 3
-[profile.dev.package.num-integer]
-opt-level = 3
-[profile.dev.package.num-traits]
-opt-level = 3
+# Debug builds still optimise argon2 password hashing, which is deliberately
+# expensive (every sign-in and password change). Only these crates are
+# affected; everything else keeps fast, debuggable dev builds. (RSA key
+# generation is aws-lc-rs, which is C and optimised in every build.)
 [profile.dev.package.argon2]
 opt-level = 3
 [profile.dev.package.blake2]

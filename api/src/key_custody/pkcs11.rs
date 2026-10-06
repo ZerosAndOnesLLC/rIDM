@@ -209,7 +209,7 @@ impl KeyWrapper for Pkcs11Wrapper {
         self.run(move |inner, session| {
             let handle = inner.key(session, &inner.key_label)?;
             let mut iv = [0u8; IV_LEN];
-            rand::fill(&mut iv);
+            ridm_core::crypto::fill(&mut iv);
             let mut iv_param = iv;
             let params = GcmParams::new(&mut iv_param, &context, TAG_BITS.into())
                 .map_err(|e| ck("gcm parameters", e))?;

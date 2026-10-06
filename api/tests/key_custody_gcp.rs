@@ -184,12 +184,12 @@ impl Drop for Server {
 }
 
 async fn server() -> Server {
-    use rsa::pkcs8::{EncodePrivateKey as _, EncodePublicKey as _, LineEnding};
-    let private = rsa::RsaPrivateKey::new(&mut rand_core_06::OsRng, 2048).unwrap();
-    let public_pem = private
-        .to_public_key()
-        .to_public_key_pem(LineEnding::LF)
-        .unwrap();
+    use aws_lc_rs::encoding::{AsDer as _, Pkcs8V1Der, PublicKeyX509Der};
+    use aws_lc_rs::signature::KeyPair as _;
+    let private = aws_lc_rs::rsa::KeyPair::generate(aws_lc_rs::rsa::KeySize::Rsa2048).unwrap();
+    let private_der: Pkcs8V1Der = private.as_der().unwrap();
+    let public_der: PublicKeyX509Der = private.public_key().as_der().unwrap();
+    let public_pem = pem("PUBLIC KEY", public_der.as_ref());
     let fake: Shared = Arc::new(Mutex::new(Fake {
         sa_public_pem: public_pem,
         ..Default::default()
@@ -209,7 +209,7 @@ async fn server() -> Server {
     fake.lock().unwrap().base = base.clone();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     // The key file the service-account test writes.
-    let pem = private.to_pkcs8_pem(LineEnding::LF).unwrap();
+    let pem = pem("PRIVATE KEY", private_der.as_ref());
     let sa_file = temp_file(
         "sa.json",
         &json!({
@@ -225,6 +225,20 @@ async fn server() -> Server {
         fake,
         sa_file,
     }
+}
+
+fn pem(label: &str, der: &[u8]) -> String {
+    use base64::Engine as _;
+    let body = base64::engine::general_purpose::STANDARD.encode(der);
+    let lines: Vec<&str> = body
+        .as_bytes()
+        .chunks(64)
+        .map(|c| std::str::from_utf8(c).unwrap())
+        .collect();
+    format!(
+        "-----BEGIN {label}-----\n{}\n-----END {label}-----\n",
+        lines.join("\n")
+    )
 }
 
 fn temp_file(name: &str, contents: &str) -> PathBuf {

@@ -30,9 +30,9 @@ use axum::http::{Extensions, HeaderMap};
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
+use ridm_core::crypto::Sha256;
 use rustls::pki_types::{CertificateDer, UnixTime};
 use serde_json::{Map, Value};
-use sha2::{Digest as _, Sha256};
 use x509_parser::prelude::{FromDer as _, GeneralName, X509Certificate, X509Name};
 
 use crate::error::{OAuthError, OAuthErrorCode};

@@ -119,8 +119,7 @@ pub fn saml_sp(tenant_id: Uuid, client_id: Uuid) -> String {
 /// A SAML service provider by entity ID. Entity IDs are URLs of any
 /// length, so the key holds their SHA-256.
 pub fn saml_sp_by_entity(tenant_id: Uuid, entity_id: &str) -> String {
-    use sha2::Digest as _;
-    let h = sha2::Sha256::digest(entity_id.as_bytes());
+    let h = ridm_core::crypto::Sha256::digest(entity_id.as_bytes());
     format!("{PREFIX}:t:{tenant_id}:saml:entity:{}", hex::encode(h))
 }
 

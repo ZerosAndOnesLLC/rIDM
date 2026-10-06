@@ -16,10 +16,6 @@ targets = [
 version = 2
 yanked = "deny"
 ignore = [
-  # rsa: Marvin timing side-channel. JWT signing goes through aws-lc-rs
-  # (jsonwebtoken `aws_lc_rs` feature); the `rsa` crate only generates keys and
-  # encodes JWK/PEM, which are not attacker-timed operations. No fixed release exists.
-  { id = "RUSTSEC-2023-0071", reason = "rsa used for keygen/encoding only; signing is aws-lc-rs" },
   # paste: unmaintained proc-macro pulled in by utoipa-axum; compile-time only.
   { id = "RUSTSEC-2024-0436", reason = "compile-time proc-macro via utoipa-axum; revisit when utoipa-axum drops it" },
 ]

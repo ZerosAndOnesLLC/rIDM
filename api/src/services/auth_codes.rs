@@ -4,8 +4,8 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Utc};
+use ridm_core::crypto::Sha256;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -51,7 +51,7 @@ fn hash(code: &str) -> String {
 /// Mint and store a code; the returned secret goes to the client exactly once.
 pub async fn issue(state: &AppState, record: &AuthCode) -> AppResult<Zeroizing<String>> {
     let mut bytes = [0u8; 32];
-    rand::fill(&mut bytes);
+    ridm_core::crypto::fill(&mut bytes);
     let code = Zeroizing::new(URL_SAFE_NO_PAD.encode(bytes));
     let mut conn = state.redis.get().await?;
     let _: () = redis::AsyncCommands::set_ex(

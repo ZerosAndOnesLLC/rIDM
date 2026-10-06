@@ -16,8 +16,8 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Utc};
 use redis::AsyncCommands as _;
+use ridm_core::crypto::Sha256;
 use serde_json::{Map, Value};
-use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
 use crate::cache::keys;
@@ -38,7 +38,7 @@ fn hash(token: &str) -> String {
 
 fn random_token() -> String {
     let mut bytes = [0u8; 32];
-    rand::fill(&mut bytes);
+    ridm_core::crypto::fill(&mut bytes);
     format!("{PREFIX}{}", URL_SAFE_NO_PAD.encode(bytes))
 }
 

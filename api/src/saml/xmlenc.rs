@@ -18,9 +18,9 @@ use aws_lc_rs::rsa::{
 };
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
+use ridm_core::crypto::Sha256;
 use roxmltree::Node;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
 use std::sync::{Arc, LazyLock};
 
 use super::cert::Certificate;
@@ -131,7 +131,7 @@ pub fn encrypt(
         .rsa_spki()
         .ok_or_else(|| crypto("the encryption certificate must hold an RSA key"))?;
     let mut key = vec![0u8; data.key_len()];
-    rand::fill(key.as_mut_slice());
+    ridm_core::crypto::fill(key.as_mut_slice());
 
     let cipher_value = match data {
         DataEncryption::Aes256Gcm | DataEncryption::Aes128Gcm => {
@@ -143,7 +143,7 @@ pub fn encrypt(
             let sealing =
                 LessSafeKey::new(UnboundKey::new(alg, &key).map_err(|_| crypto("content key"))?);
             let mut iv = [0u8; 12];
-            rand::fill(&mut iv);
+            ridm_core::crypto::fill(&mut iv);
             let mut buf = plaintext.as_bytes().to_vec();
             sealing
                 .seal_in_place_append_tag(Nonce::assume_unique_for_key(iv), Aad::empty(), &mut buf)
@@ -232,7 +232,7 @@ static PARSED: LazyLock<moka::sync::Cache<[u8; 32], Arc<Parsed>>> =
     LazyLock::new(|| moka::sync::Cache::new(1024));
 
 fn parsed(private_pkcs8: &[u8]) -> SamlResult<Arc<Parsed>> {
-    let id: [u8; 32] = Sha256::digest(private_pkcs8).into();
+    let id: [u8; 32] = Sha256::digest(private_pkcs8);
     if let Some(p) = PARSED.get(&id) {
         return Ok(p);
     }

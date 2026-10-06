@@ -4,8 +4,8 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use redis::AsyncCommands as _;
+use ridm_core::crypto::Sha256;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
-use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -45,7 +45,7 @@ pub async fn request_password_reset(
     }
     passwordless::check_send_limit(state, tenant.id, &format!("reset:user:{}", user.id)).await?;
     let mut bytes = [0u8; 32];
-    rand::fill(&mut bytes);
+    ridm_core::crypto::fill(&mut bytes);
     let token = URL_SAFE_NO_PAD.encode(bytes);
     let mut conn = state.redis.get().await?;
     let _: () = conn

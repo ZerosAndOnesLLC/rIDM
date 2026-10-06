@@ -4,8 +4,8 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Duration, Utc};
+use ridm_core::crypto::Sha256;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
-use sha2::{Digest as _, Sha256};
 use subtle::ConstantTimeEq as _;
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -57,7 +57,7 @@ fn hash(token: &str) -> Vec<u8> {
 
 fn random_token() -> Zeroizing<String> {
     let mut bytes = [0u8; 32];
-    rand::fill(&mut bytes);
+    ridm_core::crypto::fill(&mut bytes);
     Zeroizing::new(format!("{PREFIX}{}", URL_SAFE_NO_PAD.encode(bytes)))
 }
 

@@ -94,10 +94,9 @@ impl Certificate {
 
     /// [`Certificate::parse`], once per node for a given text.
     pub fn parse_cached(input: &str) -> SamlResult<Self> {
-        use sha2::Digest as _;
         static PARSED: std::sync::LazyLock<moka::sync::Cache<[u8; 32], Certificate>> =
             std::sync::LazyLock::new(|| moka::sync::Cache::new(10_000));
-        let id: [u8; 32] = sha2::Sha256::digest(input.as_bytes()).into();
+        let id: [u8; 32] = ridm_core::crypto::Sha256::digest(input.as_bytes());
         if let Some(cert) = PARSED.get(&id) {
             return Ok(cert);
         }
@@ -209,7 +208,7 @@ pub fn self_signed(pkcs8: &[u8], common_name: &str, years: i32) -> SamlResult<Ve
     params.not_before = rcgen::date_time_ymd(today.year(), m, d);
     params.not_after = rcgen::date_time_ymd(today.year() + years, m, d);
     let mut serial = [0u8; 16];
-    rand::fill(&mut serial);
+    ridm_core::crypto::fill(&mut serial);
     serial[0] &= 0x7f;
     params.serial_number = Some(rcgen::SerialNumber::from_slice(&serial));
     let cert = params

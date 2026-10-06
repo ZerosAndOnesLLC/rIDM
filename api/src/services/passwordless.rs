@@ -7,9 +7,9 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::Utc;
 use redis::AsyncCommands as _;
+use ridm_core::crypto::Sha256;
 use ridm_core::events::{Actor, Event, EventKind, EventSink as _};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
 use subtle::ConstantTimeEq as _;
 use uuid::Uuid;
 
@@ -73,7 +73,7 @@ fn hash(s: &str) -> String {
 
 fn six_digits() -> String {
     let mut b = [0u8; 4];
-    rand::fill(&mut b);
+    ridm_core::crypto::fill(&mut b);
     format!("{:06}", u32::from_le_bytes(b) % 1_000_000)
 }
 
@@ -162,7 +162,7 @@ pub async fn send(
     match method {
         Method::MagicLink => {
             let mut bytes = [0u8; 32];
-            rand::fill(&mut bytes);
+            ridm_core::crypto::fill(&mut bytes);
             let token = URL_SAFE_NO_PAD.encode(bytes);
             let rec = MagicRecord {
                 flow_id: flow.id,
