@@ -100,11 +100,11 @@ pub fn fill(buf: &mut [u8]) {
         .expect("the system random number generator failed");
 }
 
-/// `N` random bytes from [`fill`].
+/// `N` random bytes from the module's DRBG, as [`fill`].
 pub fn random_bytes<const N: usize>() -> [u8; N] {
-    let mut out = [0u8; N];
-    fill(&mut out);
-    out
+    aws_lc_rs::rand::generate(&SystemRandom::new())
+        .expect("the system random number generator failed")
+        .expose()
 }
 
 /// A random `u32` from [`fill`].
