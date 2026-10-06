@@ -521,7 +521,7 @@ jobs:
       - name: clippy (fips)
         run: cargo clippy -p ridm-api -p ridm-cli --all-targets --locked --no-default-features --features "$FIPS_FEATURES" -- -D warnings
       - name: unit tests (fips)
-        run: cargo test -p ridm-api --lib --locked --no-default-features --features "$FIPS_FEATURES"
+        run: cargo test -p ridm-api --lib --locked --no-default-features --features "ridm-api/fips,$RIDM_FEATURES,ridm-api/test-support"
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny
