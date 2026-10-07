@@ -119,7 +119,7 @@ export function Dashboard({ tenant }: { tenant: string }) {
             <div className="h-2 rounded-full bg-ground" role="progressbar" aria-valuenow={adoption} aria-valuemin={0} aria-valuemax={100} aria-label="Two-step adoption">
               <div className="h-2 rounded-full bg-[var(--series-1)]" style={{ width: `${adoption}%` }} />
             </div>
-            <p className="mt-2 text-[0.8125rem] text-muted">Second factors arrive with Phase 7; adoption stays at zero until then.</p>
+            <p className="mt-2 text-[0.8125rem] text-muted">Active users with a passkey, an authenticator app or another second step enrolled.</p>
           </div>
         </Card>
       </div>

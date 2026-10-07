@@ -65,6 +65,7 @@
     </a>
     <nav aria-label="Site">
       <a class="nav-page" href="#why">Why rIDM</a>
+      <a class="nav-page" href="#consoles">Consoles</a>
       <a class="nav-page" href="#standards">Standards</a>
       <a class="nav-page" href="#deploy">Deploy</a>
       <a class="nav-page" href="#migrate">Migrate</a>
@@ -138,6 +139,27 @@
       <p><strong>Every tenant is its own issuer.</strong> Its own signing keys, users, clients, policies, branding and administrators. A token from one tenant is never valid in another, because the <code>iss</code> claim differs and its key is not in the set the relying party fetched.</p>
       <p><strong>Isolated in Postgres, not just in code.</strong> Every tenant-scoped table has a forced row level security policy bound per transaction, and foreign keys carry the tenant id. A query that forgets its <code>WHERE</code> returns nothing from other tenants.</p>
       <p><strong>Slugs, or your own domain.</strong> <code>staging</code> and <code>production</code> side by side, one tenant per customer, or a custom domain so users keep the login hostname they know. <a href="docs/concepts/tenants.html">Tenants and issuers</a> explains the model.</p>
+    </div>
+  </section>
+
+  <section class="wrap section" id="consoles" aria-labelledby="consoles-title">
+    <div class="section-head">
+      <h2 id="consoles-title">Two consoles, in the same image</h2>
+      <p>The admin console for the people who run tenants, the account console for the people who sign in, and the sign-in pages themselves, all served by <code>ridm-api</code> on its own origin. Every tenant gets its own colors, logo and links.</p>
+    </div>
+    <div class="shots">
+      <figure class="shot wide">
+        <img src="assets/screens/console-tour.gif" width="900" height="563" loading="lazy" alt="The admin console: signing in, then the tenants, users, clients, signing keys and playground pages">
+        <figcaption>The admin console: tenants, users, groups, roles, clients, SAML, signing keys, audit log and an OAuth playground, per tenant.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="assets/screens/login.png" width="1440" height="900" loading="lazy" alt="A tenant's sign-in page in its own colors, with password, passkey and magic-link options">
+        <figcaption>A tenant's sign-in page in its own branding: password, passkey or a sign-in link by email.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="assets/screens/account-security.png" width="1440" height="900" loading="lazy" alt="The account console's security page: password, two-step verification, trusted devices and active sessions">
+        <figcaption>The account console: users change passwords, enrol second steps, and see and end their own sessions.</figcaption>
+      </figure>
     </div>
   </section>
 
@@ -278,7 +300,7 @@
   <section class="wrap section" id="standards" aria-labelledby="std-title">
     <div class="section-head">
       <h2 id="std-title">The standards, by number</h2>
-      <p>Integrate with any OpenID Connect or JWT library. Discovery is published per tenant, and every endpoint behaves the way the specification says it should.</p>
+      <p>Integrate with any OpenID Connect or JWT library. Discovery is published per tenant, and every endpoint behaves the way the specification says it should: the <a href="https://github.com/ZerosAndOnesLLC/rIDM/actions/workflows/conformance.yml">OpenID Foundation conformance suite</a> runs its configuration, basic OP and logout certification plans against every pull request.</p>
     </div>
     <div class="specs">
       <div class="cell">
