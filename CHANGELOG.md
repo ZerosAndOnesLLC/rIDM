@@ -33,6 +33,10 @@ release renames that heading to the version and date.
 - The time spent for an unknown user or a user without a password now matches a real verification under the configured parameters, in either build. It used to verify a fixed, cheaper argon2id hash.
 - Temporary passwords are drawn without modulo bias.
 
+### Fixed
+
+- The console overview's two-step adoption card described second factors as still to come; it now says what the number counts.
+
 ## [0.2.0] - 2026-09-24
 
 The first published release. 0.1.0 was cut but never tagged or published, so this

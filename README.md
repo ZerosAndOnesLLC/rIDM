@@ -1,6 +1,7 @@
 # rIDM
 
 [![ci](https://github.com/ZerosAndOnesLLC/rIDM/actions/workflows/ci.yml/badge.svg)](https://github.com/ZerosAndOnesLLC/rIDM/actions/workflows/ci.yml)
+[![conformance](https://github.com/ZerosAndOnesLLC/rIDM/actions/workflows/conformance.yml/badge.svg)](https://github.com/ZerosAndOnesLLC/rIDM/actions/workflows/conformance.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A modern, multi-tenant Identity Management server: OpenID Connect provider, JWT issuer,
@@ -16,6 +17,23 @@ end-user account console.
 **Documentation:** <https://zerosandonesllc.github.io/rIDM/docs/> — concepts,
 quickstarts, the admin guide, the API reference, deployment and migration from Keycloak
 or Auth0. The source is in [`docs/`](docs/); the website's is in [`site/`](site/).
+
+<p align="center">
+  <img src="site/assets/screens/console-tour.gif" width="900"
+       alt="The admin console: signing in, then the tenants, users, clients, signing keys and playground pages">
+</p>
+<table>
+  <tr>
+    <td width="50%"><img src="site/assets/screens/login.png"
+        alt="A tenant's sign-in page in its own colors, with password, passkey and magic-link options"></td>
+    <td width="50%"><img src="site/assets/screens/account-security.png"
+        alt="The account console's security page: password, two-step verification, trusted devices and active sessions"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Each tenant's sign-in pages carry its own branding.</sub></td>
+    <td align="center"><sub>End users manage passwords, second steps, devices and sessions themselves.</sub></td>
+  </tr>
+</table>
 
 ## Why rIDM
 
@@ -34,6 +52,11 @@ or Auth0. The source is in [`docs/`](docs/); the website's is in [`site/`](site/
   provider and as the service provider of upstream SAML IdPs (SSO over both browser
   bindings, front-channel Single Logout). LDAP and Active Directory directories, and
   Kerberos desktop sign-in (SPNEGO). No implicit, hybrid, or password grants.
+- **Conformance-tested.** The OpenID Foundation conformance suite runs against every
+  pull request and weekly: the configuration, basic OP (discovery, dynamic registration),
+  RP-initiated, back-channel and front-channel logout certification plans, all
+  `response_type=code`. The rig is in [`conformance/`](conformance/) and the results in the
+  [`conformance` workflow](https://github.com/ZerosAndOnesLLC/rIDM/actions/workflows/conformance.yml).
 - **One image.** A deployment is the API image plus Postgres and Valkey. The image
   compiles the UI's static export into the server, which serves the sign-in pages and
   both consoles on its own origin; the same export can also go on any static host or
