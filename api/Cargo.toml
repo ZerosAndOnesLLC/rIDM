@@ -70,6 +70,7 @@ http = { workspace = true }
 tokio = { workspace = true }
 
 sqlx = { workspace = true }
+deadpool = { workspace = true }
 deadpool-redis = { workspace = true }
 moka = { workspace = true }
 redis = { workspace = true }

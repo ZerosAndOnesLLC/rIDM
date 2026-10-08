@@ -101,7 +101,12 @@ cargo build --release --locked -p ridm-api \
   implements password authentication (SCRAM) with non-validated code. That's tracked
   upstream in transact-rs/sqlx#4416. On Kubernetes the chart's `database.tls` and
   `migrations.database.tls` mount the certificates and build the URLs
-  ([Kubernetes](kubernetes.md#tls-to-postgres-with-client-certificates)). Valkey, SMTP,
+  ([Kubernetes](kubernetes.md#tls-to-postgres-with-client-certificates)).
+- **Valkey:** likewise, authenticate by client certificate rather than a password:
+  `rediss://` with `REDIS_TLS_CA_FILE`, `REDIS_TLS_CERT_FILE` and `REDIS_TLS_KEY_FILE`,
+  and Valkey's `tls-auth-clients-user CN` mapping the certificate onto a user with no
+  password, so Valkey's own password hashing never runs
+  ([Postgres and Valkey](postgres-valkey.md#tls-and-certificate-authentication)). SMTP,
   LDAP, webhooks and the KMS backends all use the FIPS TLS provider.
 
 ### Settings only the FIPS build reads

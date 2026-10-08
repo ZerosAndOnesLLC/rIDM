@@ -164,6 +164,15 @@ Secret. The client certificate is mounted at `/run/secrets/ridm-db-tls/tls.crt` 
 paths itself, since the chart cannot edit it. A `caSecret` alone (with a password in
 the URL) turns on `verify-full` against that CA.
 
+`redis.tls` does the same for Valkey in the single-server `rediss://` form:
+`redis.tls.clientCertSecret` (a `kubernetes.io/tls` Secret) and `redis.tls.caSecret`
+are mounted into the pods at `/run/secrets/ridm-redis-tls` and
+`/run/secrets/ridm-redis-ca` and passed as `REDIS_TLS_CERT_FILE`, `REDIS_TLS_KEY_FILE`
+and `REDIS_TLS_CA_FILE`. With Valkey's `tls-auth-clients-user CN`, the pods log in as
+the user the certificate names and the URL carries no password
+([Postgres and Valkey](postgres-valkey.md#tls-and-certificate-authentication)). The
+files are re-read when they change, so cert-manager's renewals need no restart.
+
 ## FIPS and OpenShift
 
 The [FIPS 140-3 build](fips.md) is the same chart with three changes, and
@@ -173,8 +182,9 @@ is a complete example that CI renders and validates:
 - `image.variant: fips` runs `ghcr.io/zerosandonesllc/ridm:<version>-fips`. To pin by
   digest, set `image.digest` to the FIPS image's own and keep `-fips` in `image.tag`,
   so the variant stays visible in the release.
-- Client-certificate Postgres for the pods and the Job, as above. The FIPS build
-  requires it: the driver's password authentication isn't FIPS-validated code.
+- Client-certificate Postgres for the pods and the Job, and client-certificate Valkey
+  for the pods, as above. The FIPS build wants both: neither the Postgres driver's
+  password authentication nor Valkey's password hashing is FIPS-validated code.
 - On OpenShift, `podSecurityContext.runAsUser`, `runAsGroup` and `fsGroup` are set to
   `null`, since the `restricted-v2` SCC assigns them from the namespace's range and
   rejects fixed values. The image already runs as a non-root user and needs no
