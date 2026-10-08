@@ -99,8 +99,10 @@ cargo build --release --locked -p ridm-api \
 - **Postgres:** connect with client-certificate authentication over TLS (`sslmode=verify-full` with
   `sslcert`/`sslkey`) rather than a password. The Postgres driver sqlx still
   implements password authentication (SCRAM) with non-validated code. That's tracked
-  upstream in transact-rs/sqlx#4416. Valkey, SMTP, LDAP, webhooks and the KMS backends
-  all use the FIPS TLS provider.
+  upstream in transact-rs/sqlx#4416. On Kubernetes the chart's `database.tls` and
+  `migrations.database.tls` mount the certificates and build the URLs
+  ([Kubernetes](kubernetes.md#tls-to-postgres-with-client-certificates)). Valkey, SMTP,
+  LDAP, webhooks and the KMS backends all use the FIPS TLS provider.
 
 ### Settings only the FIPS build reads
 
@@ -111,6 +113,10 @@ cargo build --release --locked -p ridm-api \
 | `FIPS_ALLOW_NON_FIPS_HOST` | `false` | Lets the FIPS build start on a host that isn't in FIPS mode, with a warning. For development and CI only. |
 
 The standard build ignores these variables, and its `ARGON2_*` settings are unchanged.
+A fresh FIPS deployment sets neither `FIPS_TRANSITION` nor `FIPS_ALLOW_NON_FIPS_HOST`:
+the first exists only for the move described below, the second only for development
+and CI. The Helm chart's FIPS example
+([Kubernetes](kubernetes.md#fips-and-openshift)) sets neither.
 
 ## Moving an existing deployment
 

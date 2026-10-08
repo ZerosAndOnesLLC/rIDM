@@ -1,0 +1,66 @@
+# A second Postgres for the smoke test's client-certificate phase: TLS on,
+# and pg_hba that accepts only certificate authentication over TLS from the
+# network (the init script and the test's own psql use the local socket).
+# run.sh creates the `postgres-tls-certs` Secret (server.crt, server.key,
+# ca.crt) and the `postgres-tls-hba` ConfigMap first.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-tls
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: postgres-tls}
+  template:
+    metadata:
+      labels: {app: postgres-tls}
+    spec:
+      # The server key is root-owned and group-readable by the postgres
+      # group (70 in the alpine image), which Postgres accepts.
+      securityContext:
+        fsGroup: 70
+      containers:
+        - name: postgres
+          image: postgres:18.6-alpine
+          args:
+            - -c
+            - ssl=on
+            - -c
+            - ssl_cert_file=/certs/server.crt
+            - -c
+            - ssl_key_file=/certs/server.key
+            - -c
+            - ssl_ca_file=/certs/ca.crt
+            - -c
+            - hba_file=/etc/postgres-hba/pg_hba.conf
+          env:
+            - {name: POSTGRES_DB, value: ridm}
+            - {name: POSTGRES_USER, value: ridm}
+            - {name: POSTGRES_PASSWORD, value: ridm}
+            # Unused: the roles authenticate with certificates. The init
+            # script still wants them set.
+            - {name: RIDM_MIGRATOR_PASSWORD, value: unused}
+            - {name: RIDM_APP_PASSWORD, value: unused}
+          ports: [{containerPort: 5432}]
+          readinessProbe:
+            exec: {command: ["pg_isready", "-U", "ridm", "-d", "ridm"]}
+            periodSeconds: 2
+          volumeMounts:
+            - {name: init, mountPath: /docker-entrypoint-initdb.d}
+            - {name: certs, mountPath: /certs, readOnly: true}
+            - {name: hba, mountPath: /etc/postgres-hba, readOnly: true}
+      volumes:
+        - name: init
+          configMap: {name: postgres-init, defaultMode: 0755}
+        - name: certs
+          secret: {secretName: postgres-tls-certs, defaultMode: 0640}
+        - name: hba
+          configMap: {name: postgres-tls-hba}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-tls
+spec:
+  selector: {app: postgres-tls}
+  ports: [{port: 5432}]

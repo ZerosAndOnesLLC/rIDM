@@ -1,0 +1,35 @@
+# The FIPS build on OpenShift: the -fips image, client-certificate Postgres
+# for the pods and the migration Job (no database password anywhere, as the
+# FIPS build wants), the UIDs left to the restricted SCC, and a Route instead
+# of an Ingress. The docs' "Kubernetes (Helm)" page walks through it.
+publicUrl: https://id.example.com
+# OpenShift's router forwards X-Forwarded-For; its pods live in the
+# openshift-ingress namespace on the pod network.
+trustedProxies: 10.128.0.0/14
+image:
+  variant: fips
+database:
+  # No password: the server authenticates the certificate's CN (ridm_app).
+  url: postgres://ridm_app@postgres.db.svc:5432/ridm
+  tls:
+    clientCertSecret: ridm-db-app-cert
+    caSecret: ridm-db-ca
+redis:
+  url: rediss://valkey.db.svc:6379
+masterKey:
+  existingSecret: {name: ridm-master-key, key: key}
+migrations:
+  database:
+    url: postgres://ridm_migrator@postgres.db.svc:5432/ridm
+    tls:
+      clientCertSecret: ridm-db-migrator-cert
+      caSecret: ridm-db-ca
+# The restricted-v2 SCC assigns the UID, GID and fsGroup from the namespace's
+# range and rejects fixed ones.
+podSecurityContext:
+  runAsUser: null
+  runAsGroup: null
+  fsGroup: null
+route:
+  enabled: true
+  host: id.example.com

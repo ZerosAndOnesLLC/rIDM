@@ -6,6 +6,14 @@
 #   docker build -f api/Dockerfile -t ridm:smoke .
 #   RIDM_IMAGE=ridm:smoke deploy/helm/smoke/run.sh
 #
+# A second phase installs the chart again against a Postgres that accepts
+# only client-certificate authentication over TLS (pg_hba `hostssl ... cert`),
+# with the certificates mounted by database.tls and migrations.database.tls
+# and no database password anywhere, as the FIPS build wants. RIDM_FIPS_IMAGE
+# names a locally built FIPS image (api/Dockerfile.fips) to run that phase
+# with; unset, it runs with RIDM_IMAGE. The host isn't in FIPS mode, so the
+# FIPS image runs with FIPS_ALLOW_NON_FIPS_HOST, as CI does.
+#
 # KEEP_CLUSTER=1 leaves the cluster up for a look afterwards, with the
 # kubeconfig path printed (kind delete cluster --name "$CLUSTER" removes it).
 # Your own kubeconfig and current context are never touched.
@@ -48,6 +56,9 @@ log "cluster $CLUSTER"
 kind delete cluster --name "$CLUSTER" >/dev/null 2>&1 || true
 kind create cluster --name "$CLUSTER" --wait 120s
 kind load docker-image "$RIDM_IMAGE" --name "$CLUSTER"
+if [ -n "${RIDM_FIPS_IMAGE:-}" ]; then
+  kind load docker-image "$RIDM_FIPS_IMAGE" --name "$CLUSTER"
+fi
 
 log "postgres and valkey"
 kubectl create namespace "$NS"
@@ -125,4 +136,77 @@ kubectl -n "$NS" wait --for=delete pod -l app.kubernetes.io/instance=ridm --time
 left="$(kubectl -n "$NS" get all,secrets,configmaps -l app.kubernetes.io/instance=ridm -o name)"
 [ -z "$left" ] || { echo "FAIL left behind: $left"; exit 1; }
 echo "ok   nothing of the release left"
+
+log "postgres with client-certificate authentication"
+certs="$(mktemp -d)"
+# A private CA, the server's certificate (its Service names) and one client
+# certificate per database role; Postgres maps the CN onto the role name.
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 \
+  -keyout "$certs/ca.key" -out "$certs/ca.crt" -subj /CN=ridm-smoke-ca 2>/dev/null
+issue() { # issue <name> <subject> [san]
+  local ext=()
+  if [ -n "${3:-}" ]; then
+    printf 'subjectAltName=%s\n' "$3" > "$certs/$1.ext"
+    ext=(-extfile "$certs/$1.ext")
+  fi
+  openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
+    -keyout "$certs/$1.key" -out "$certs/$1.csr" -subj "$2" 2>/dev/null
+  openssl x509 -req -in "$certs/$1.csr" -CA "$certs/ca.crt" -CAkey "$certs/ca.key" \
+    -CAcreateserial -days 1 -out "$certs/$1.crt" ${ext[@]+"${ext[@]}"} 2>/dev/null
+}
+issue server /CN=postgres-tls "DNS:postgres-tls,DNS:postgres-tls.$NS.svc"
+issue app /CN=ridm_app
+issue migrator /CN=ridm_migrator
+kubectl -n "$NS" create secret generic postgres-tls-certs \
+  --from-file=server.crt="$certs/server.crt" --from-file=server.key="$certs/server.key" \
+  --from-file=ca.crt="$certs/ca.crt"
+kubectl -n "$NS" create configmap postgres-tls-hba --from-literal=pg_hba.conf="$(printf '%s\n' \
+  'local   all all        trust' \
+  'hostssl all all 0.0.0.0/0 cert' \
+  'hostssl all all ::/0      cert' \
+  'host    all all all       reject')"
+kubectl -n "$NS" create secret tls db-app-cert --cert="$certs/app.crt" --key="$certs/app.key"
+kubectl -n "$NS" create secret tls db-migrator-cert --cert="$certs/migrator.crt" --key="$certs/migrator.key"
+kubectl -n "$NS" create secret generic db-ca --from-file=ca.crt="$certs/ca.crt"
+rm -rf "$certs"
+kubectl -n "$NS" apply -f "$here/deps-tls.yaml"
+kubectl -n "$NS" rollout status deploy/postgres-tls --timeout=180s
+
+tls_image="${RIDM_FIPS_IMAGE:-$RIDM_IMAGE}"
+tls_set=(
+  --set image.repository="${tls_image%:*}" --set image.tag="${tls_image##*:}"
+  --set database.url="postgres://ridm_app@postgres-tls:5432/ridm"
+  --set database.tls.clientCertSecret=db-app-cert --set database.tls.caSecret=db-ca
+  --set migrations.database.url="postgres://ridm_migrator@postgres-tls:5432/ridm"
+  --set migrations.database.tls.clientCertSecret=db-migrator-cert --set migrations.database.tls.caSecret=db-ca
+)
+if [ -n "${RIDM_FIPS_IMAGE:-}" ]; then
+  log "install with the FIPS image $RIDM_FIPS_IMAGE (no database password, certificates only)"
+  tls_set+=(--set env.FIPS_ALLOW_NON_FIPS_HOST=true)
+else
+  log "install against it (no database password, certificates only)"
+fi
+helm install ridm "$chart" -n "$NS" -f "$here/values.yaml" "${tls_set[@]}" --wait --timeout 5m
+forward
+expect 200 /readyz '"database":"ok"'
+expect 200 /t/master/.well-known/openid-configuration '"issuer"'
+# The pods' sessions really are TLS with the application role's certificate.
+sessions="$(kubectl -n "$NS" exec deploy/postgres-tls -- psql -U ridm -d ridm -tAc \
+  "SELECT count(*) FROM pg_stat_ssl s JOIN pg_stat_activity a USING (pid) \
+   WHERE a.usename='ridm_app' AND s.ssl AND s.client_dn LIKE '%CN=ridm_app%'")"
+[ "${sessions:-0}" -ge 1 ] || { echo "FAIL no TLS session authenticated by the ridm_app certificate (got '$sessions')"; exit 1; }
+echo "ok   $sessions session(s) over TLS, authenticated by certificate"
+kubectl -n "$NS" exec deploy/postgres-tls -- psql -U ridm -d ridm -tAc \
+  "SET app.bypass_rls='on'; SELECT count(*) FROM users WHERE email='admin@ridm.smoke.test'" | grep -qx 1 \
+  || { echo "FAIL bootstrap admin missing after the certificate-authenticated migration"; exit 1; }
+echo "ok   migrated and bootstrapped through the migrator's certificate"
+if [ -n "${RIDM_FIPS_IMAGE:-}" ]; then
+  # Into a variable first: grep -q closing the pipe early would fail kubectl under pipefail.
+  logs="$(kubectl -n "$NS" logs -l app.kubernetes.io/name=ridm --tail=200)"
+  grep -q 'the AWS-LC FIPS module passed its self-test' <<<"$logs" \
+    || { echo "FAIL the FIPS image did not log its FIPS module"; exit 1; }
+  echo "ok   FIPS image running"
+fi
+kill "$pf" 2>/dev/null || true; pf=""
+helm uninstall ridm -n "$NS" --wait
 log "chart smoke test passed"

@@ -44,10 +44,73 @@ app.kubernetes.io/part-of: ridm
 
 {{- define "ridm.image" -}}
 {{- $tag := default .Chart.AppVersion .Values.image.tag -}}
+{{- if and (eq .Values.image.variant "fips") (not (hasSuffix "-fips" $tag)) -}}
+{{- $tag = printf "%s-fips" $tag -}}
+{{- end -}}
 {{- if .Values.image.digest -}}
 {{ .Values.image.repository }}@{{ .Values.image.digest }}
 {{- else -}}
 {{ .Values.image.repository }}:{{ $tag }}
+{{- end }}
+{{- end }}
+
+{{/*
+The TLS query parameters for a Postgres URL, from a `tls` block (database.tls
+or migrations.database.tls): empty unless a certificate or CA Secret is named.
+The paths are where the Deployment and the Job mount them.
+*/}}
+{{- define "ridm.dbTlsParams" -}}
+{{- if or .clientCertSecret .caSecret -}}
+{{- $params := list (printf "sslmode=%s" .sslMode) -}}
+{{- if .clientCertSecret -}}
+{{- $params = append $params "sslcert=/run/secrets/ridm-db-tls/tls.crt" -}}
+{{- $params = append $params "sslkey=/run/secrets/ridm-db-tls/tls.key" -}}
+{{- end -}}
+{{- if .caSecret -}}
+{{- $params = append $params (printf "sslrootcert=/run/secrets/ridm-db-ca/%s" .caKey) -}}
+{{- end -}}
+{{- join "&" $params -}}
+{{- end -}}
+{{- end }}
+
+{{/* An inline database URL with the TLS parameters appended, or unchanged when there are none. */}}
+{{- define "ridm.dbUrl" -}}
+{{- $params := include "ridm.dbTlsParams" .tls -}}
+{{- if and .url $params -}}
+{{- .url }}{{ ternary "&" "?" (contains "?" .url) }}{{ $params -}}
+{{- else -}}
+{{- .url -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+The volume mounts and volumes for a `tls` block: the client certificate at
+/run/secrets/ridm-db-tls and the CA at /run/secrets/ridm-db-ca.
+*/}}
+{{- define "ridm.dbTlsMounts" -}}
+{{- with .clientCertSecret }}
+- name: db-tls
+  mountPath: /run/secrets/ridm-db-tls
+  readOnly: true
+{{- end }}
+{{- with .caSecret }}
+- name: db-ca
+  mountPath: /run/secrets/ridm-db-ca
+  readOnly: true
+{{- end }}
+{{- end }}
+{{- define "ridm.dbTlsVolumes" -}}
+{{- with .clientCertSecret }}
+- name: db-tls
+  secret:
+    secretName: {{ . }}
+    defaultMode: 0440
+{{- end }}
+{{- with .caSecret }}
+- name: db-ca
+  secret:
+    secretName: {{ . }}
+    defaultMode: 0444
 {{- end }}
 {{- end }}
 
@@ -58,8 +121,8 @@ goes into the chart's own Secret under the variable's name.
 */}}
 {{- define "ridm.secretItems" -}}
 {{- $v := .Values -}}
-- {env: DATABASE_URL, value: {{ $v.database.url | quote }}, ref: {{ toJson $v.database.existingSecret }}}
-- {env: DATABASE_READ_URL, value: {{ $v.database.readUrl | quote }}, ref: {{ toJson $v.database.readExistingSecret }}}
+- {env: DATABASE_URL, value: {{ include "ridm.dbUrl" (dict "url" $v.database.url "tls" $v.database.tls) | quote }}, ref: {{ toJson $v.database.existingSecret }}}
+- {env: DATABASE_READ_URL, value: {{ include "ridm.dbUrl" (dict "url" $v.database.readUrl "tls" $v.database.tls) | quote }}, ref: {{ toJson $v.database.readExistingSecret }}}
 - {env: REDIS_URL, value: {{ $v.redis.url | quote }}, ref: {{ toJson $v.redis.existingSecret }}}
 - {env: MASTER_KEY, value: {{ $v.masterKey.value | quote }}, ref: {{ toJson $v.masterKey.existingSecret }}}
 - {env: MASTER_KEY_PREVIOUS, value: {{ $v.masterKey.previous | quote }}, ref: {{ toJson $v.masterKey.previousExistingSecret }}}
@@ -155,6 +218,17 @@ caller's Secret or `secret` (where an inline key lives).
 {{- end -}}
 {{- if and $v.mtls.clientCertHeader (not $v.trustedProxies) -}}
 {{- fail "mtls.clientCertHeader needs trustedProxies: the header is read only from a trusted proxy" -}}
+{{- end -}}
+{{- if and $v.image.digest (eq $v.image.variant "fips") (not (contains "fips" $v.image.tag)) -}}
+{{- fail "image.variant=fips with image.digest: pin the FIPS image's own digest and name it in image.tag (<version>-fips), so the variant is visible in the release" -}}
+{{- end -}}
+{{- range (list (dict "name" "database.tls" "tls" $v.database.tls) (dict "name" "migrations.database.tls" "tls" $v.migrations.database.tls)) -}}
+{{- if not (has .tls.sslMode (list "verify-full" "verify-ca" "require")) -}}
+{{- fail (printf "%s.sslMode must be verify-full, verify-ca or require" .name) -}}
+{{- end -}}
+{{- end -}}
+{{- if and $v.route.enabled $v.ingress.enabled -}}
+{{- fail "route.enabled and ingress.enabled are alternatives: pick one" -}}
 {{- end -}}
 {{- end }}
 

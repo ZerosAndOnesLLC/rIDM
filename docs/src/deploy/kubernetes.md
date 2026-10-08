@@ -116,7 +116,9 @@ the pool sizes, `masterKey.version`/`previous` for a
 `dataRegions.*` for [regional databases](data-residency.md#kubernetes),
 `mtls.*` for [mutual TLS](../admin/mtls.md#kubernetes),
 `smtp.*` for the deployment's mail defaults. Anything else goes in `env` (plain values), `extraEnv` (full `EnvVar` entries)
-or `extraEnvFrom`:
+or `extraEnvFrom`, and anything a variable points at (a CA bundle, a certificate) is
+mounted with `extraVolumes` and `extraVolumeMounts` (`migrations.extraVolumes` and
+`migrations.extraVolumeMounts` for the migration Job, which has its own pod):
 
 ```yaml
 env:
@@ -133,6 +135,57 @@ A tenant's [custom domain](../admin/custom-domains.md) needs its own Ingress rul
 certificate) pointing at the same Service with the `Host` header preserved, which every
 common ingress controller does.
 
+## TLS to Postgres with client certificates
+
+`database.tls` mounts certificates for the pods' database connections and adds the
+matching parameters to an inline `database.url`:
+
+```yaml
+database:
+  url: postgres://ridm_app@postgres.db.svc:5432/ridm        # no password
+  tls:
+    clientCertSecret: ridm-db-app-cert    # kubernetes.io/tls: tls.crt, tls.key
+    caSecret: ridm-db-ca                  # the server's CA, under caKey (ca.crt)
+    sslMode: verify-full                  # or verify-ca, require
+migrations:
+  database:
+    url: postgres://ridm_migrator@postgres.db.svc:5432/ridm
+    tls:
+      clientCertSecret: ridm-db-migrator-cert
+      caSecret: ridm-db-ca
+```
+
+The pods connect as `ridm_app` and the migration Job as `ridm_migrator`, each with its
+own certificate (its CN is the role name, which `pg_hba.conf`'s `cert` method maps onto
+the role), and no password is stored anywhere. cert-manager issues exactly this kind of
+Secret. The client certificate is mounted at `/run/secrets/ridm-db-tls/tls.crt` and
+`tls.key`, the CA at `/run/secrets/ridm-db-ca/<caKey>`; a URL that comes from
+`existingSecret` must carry `sslmode`, `sslcert`, `sslkey` and `sslrootcert` with those
+paths itself, since the chart cannot edit it. A `caSecret` alone (with a password in
+the URL) turns on `verify-full` against that CA.
+
+## FIPS and OpenShift
+
+The [FIPS 140-3 build](fips.md) is the same chart with three changes, and
+[`ci/fips-openshift-values.yaml`](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/deploy/helm/ridm/ci/fips-openshift-values.yaml)
+is a complete example that CI renders and validates:
+
+- `image.variant: fips` runs `ghcr.io/zerosandonesllc/ridm:<version>-fips`. To pin by
+  digest, set `image.digest` to the FIPS image's own and keep `-fips` in `image.tag`,
+  so the variant stays visible in the release.
+- Client-certificate Postgres for the pods and the Job, as above. The FIPS build
+  requires it: the driver's password authentication isn't FIPS-validated code.
+- On OpenShift, `podSecurityContext.runAsUser`, `runAsGroup` and `fsGroup` are set to
+  `null`, since the `restricted-v2` SCC assigns them from the namespace's range and
+  rejects fixed values. The image already runs as a non-root user and needs no
+  particular UID. `route.enabled` adds a Route (edge TLS at the router, HTTP
+  redirected) in place of the Ingress; the router forwards `X-Forwarded-For`, so put
+  its pods' network in `trustedProxies`.
+
+A fresh FIPS deployment sets neither `FIPS_TRANSITION` nor `FIPS_ALLOW_NON_FIPS_HOST`.
+The first is for moving a standard deployment's data across; the second lets the FIPS
+build start on a host that isn't in FIPS mode, for development and CI only.
+
 ## Upgrading
 
 `helm upgrade` runs the migration Job first; the Deployment rolls only after it
@@ -145,10 +198,17 @@ notes before upgrading across versions; see [Upgrading](upgrading.md).
 [kind](https://kind.sigs.k8s.io/) cluster with Postgres and Valkey beside it, checks
 readiness, discovery, the key set and the embedded pages through a port-forward, checks
 that no pod restarted and that the migration Job and its Secret are gone, upgrades (the
-hook runs again and the pods roll), uninstalls, and deletes the cluster. CI's
-`helm-smoke` job runs it on every pull request against the image built there:
+hook runs again and the pods roll), and uninstalls. It then installs the chart again
+against a Postgres that accepts only client-certificate authentication over TLS, with
+`database.tls` and `migrations.database.tls` and no database password, checks through
+`pg_stat_ssl` that the pods' sessions are authenticated by the application role's
+certificate, uninstalls, and deletes the cluster. `RIDM_FIPS_IMAGE` names a FIPS
+image to run that second phase with (started with `FIPS_ALLOW_NON_FIPS_HOST`, as the
+host isn't in FIPS mode). CI's `helm-smoke` job runs it on every pull request against
+the standard image built there and the FIPS image the `fips` job built:
 
 ```bash
 docker build -f api/Dockerfile -t ridm:smoke .
-RIDM_IMAGE=ridm:smoke deploy/helm/smoke/run.sh
+docker build -f api/Dockerfile.fips -t ridm:fips .      # optional
+RIDM_IMAGE=ridm:smoke RIDM_FIPS_IMAGE=ridm:fips deploy/helm/smoke/run.sh
 ```

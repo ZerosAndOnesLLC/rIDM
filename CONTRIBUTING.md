@@ -206,7 +206,7 @@ Every pull request runs the `ci` workflow (`.github/workflows/ci.yml`):
 | `load-smoke` | a k6 smoke on `/token` with thresholds |
 | `fuzz-smoke` | a minute of fuzzing per target |
 | `packaging` | the container image boots, migrates and is ready; production compose behind each proxy; an upgrade from the previous release's image |
-| `helm-smoke` | the chart on a kind cluster (`deploy/helm/smoke/run.sh`) |
+| `helm-smoke` | the chart on a kind cluster, then again against client-certificate Postgres with the FIPS image from `fips` (`deploy/helm/smoke/run.sh`) |
 | `examples-smoke` | the example applications signed into in headless Chromium against that image under docker-compose |
 
 The `conformance` workflow runs the OpenID Foundation suite on the same pull request
