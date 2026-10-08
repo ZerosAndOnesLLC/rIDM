@@ -8,7 +8,7 @@ A modern, multi-tenant Identity Management server: OpenID Connect provider, JWT 
 user/group/role management, MFA, and identity brokering, with a bundled admin console and
 end-user account console.
 
-> **Status:** v0.2.0, the first published release. Until 1.0.0 a minor version may break
+> **Status:** v0.3.0. Until 1.0.0 a minor version may break
 > compatibility; [`CHANGELOG.md`](CHANGELOG.md) says how under **Upgrade notes**. See
 > [`working-plan.md`](working-plan.md) for the roadmap and what is still to come.
 
@@ -159,7 +159,7 @@ Tenants are configured through the admin API, the consoles or one JSON document 
 | [Quickstarts](https://zerosandonesllc.github.io/rIDM/docs/quickstarts/local.html) | run locally, protect an API, SPA, server-side web app, machine-to-machine |
 | [Admin guide](https://zerosandonesllc.github.io/rIDM/docs/admin/consoles.html) | consoles, CLI, tenants, users, clients, MFA, SAML, LDAP, SCIM, webhooks, keys |
 | [Reference](https://zerosandonesllc.github.io/rIDM/docs/reference/endpoints.html) | endpoints, admin API (OpenAPI), token claims, configuration, errors |
-| [Deployment](https://zerosandonesllc.github.io/rIDM/docs/deploy/overview.html) | compose, container, Helm, TLS, scaling, backup, upgrades, checklist, the optional [FIPS 140-3 build](https://zerosandonesllc.github.io/rIDM/docs/deploy/fips.html) (planned) |
+| [Deployment](https://zerosandonesllc.github.io/rIDM/docs/deploy/overview.html) | compose, container, Helm, TLS, scaling, backup, upgrades, checklist, the optional [FIPS 140-3 build](https://zerosandonesllc.github.io/rIDM/docs/deploy/fips.html) |
 | [Migration](https://zerosandonesllc.github.io/rIDM/docs/migrate/overview.html) | from Keycloak or Auth0 |
 
 To work on rIDM itself, see [CONTRIBUTING.md](CONTRIBUTING.md) and
@@ -190,7 +190,7 @@ To work on rIDM itself, see [CONTRIBUTING.md](CONTRIBUTING.md) and
 ## Releases
 
 Each `v*` tag publishes a signed multi-arch image (`ghcr.io/zerosandonesllc/ridm`, amd64
-and arm64, with an SBOM), the Helm chart (`oci://ghcr.io/zerosandonesllc/charts/ridm`),
+and arm64, with an SBOM, and a `<version>-fips` variant for the [FIPS 140-3 build](https://zerosandonesllc.github.io/rIDM/docs/deploy/fips.html)), the Helm chart (`oci://ghcr.io/zerosandonesllc/charts/ridm`),
 static Linux binaries of `ridm-api` and `ridm`, and a GitHub release with signed
 checksums; see [Releases and verification](https://zerosandonesllc.github.io/rIDM/docs/deploy/releases.html)
 and [`CHANGELOG.md`](CHANGELOG.md). The roadmap is in [`working-plan.md`](working-plan.md).

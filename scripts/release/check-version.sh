@@ -8,6 +8,7 @@
 #   ui/package.json             version
 #   deploy/helm/ridm/Chart.yaml version and appVersion
 #   examples/*/Cargo.toml       the version on the ridm-auth path dependency
+#   api/Cargo.toml, crates/ridm-cli/Cargo.toml   the versions on the path dependencies between crates
 #   CHANGELOG.md                a "## [X.Y.Z]" section
 set -euo pipefail
 
@@ -38,6 +39,13 @@ for manifest in "$root"/examples/*/Cargo.toml; do
   line="$(grep '^ridm-auth' "$manifest" || true)"
   [ -n "$line" ] || continue
   check "${manifest#"$root"/} ridm-auth" "$(sed -n 's/.*version *= *"\([^"]*\)".*/\1/p' <<<"$line")"
+done
+# Path dependencies between workspace crates carry a version too (needed to
+# publish ridm-auth); cargo refuses to resolve the workspace when it lags.
+check "api/Cargo.toml ridm-auth" \
+  "$(grep '^ridm-auth' "$root/api/Cargo.toml" | sed -n 's/.*version *= *"\([^"]*\)".*/\1/p')"
+grep '^ridm-api' "$root/crates/ridm-cli/Cargo.toml" | sed -n 's/.*version *= *"\([^"]*\)".*/\1/p' | sort -u | while read -r v; do
+  check "crates/ridm-cli/Cargo.toml ridm-api" "$v"
 done
 if grep -q "^## \[$want\]" "$root/CHANGELOG.md"; then
   echo "ok   CHANGELOG.md has a [$want] section"
