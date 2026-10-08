@@ -9,6 +9,7 @@
 #   deploy/helm/ridm/Chart.yaml version and appVersion
 #   examples/*/Cargo.toml       the version on the ridm-auth path dependency
 #   api/Cargo.toml, crates/ridm-cli/Cargo.toml   the versions on the path dependencies between crates
+#   api/openapi.json            info.version (regenerate with `make openapi`)
 #   CHANGELOG.md                a "## [X.Y.Z]" section
 set -euo pipefail
 
@@ -47,6 +48,8 @@ check "api/Cargo.toml ridm-auth" \
 grep '^ridm-api' "$root/crates/ridm-cli/Cargo.toml" | sed -n 's/.*version *= *"\([^"]*\)".*/\1/p' | sort -u | while read -r v; do
   check "crates/ridm-cli/Cargo.toml ridm-api" "$v"
 done
+check "api/openapi.json info.version" \
+  "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["info"]["version"])' "$root/api/openapi.json")"
 if grep -q "^## \[$want\]" "$root/CHANGELOG.md"; then
   echo "ok   CHANGELOG.md has a [$want] section"
 else

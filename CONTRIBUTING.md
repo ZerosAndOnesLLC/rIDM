@@ -260,7 +260,10 @@ is in the docs' *Releases and verification* page.
    ordinary PRs): `Cargo.toml` (`[workspace.package] version`), `ui/package.json` (and
    `npm install --package-lock-only` for the lockfile), `deploy/helm/ridm/Chart.yaml`
    (`version` and `appVersion`), and the `version` on the `ridm-auth` path dependency in
-   `examples/*/Cargo.toml`. Run `cargo check` so `Cargo.lock` follows.
+   `examples/*/Cargo.toml`. Also the pins between crates (`ridm-auth` in `api/Cargo.toml`, `ridm-api` in
+   `crates/ridm-cli/Cargo.toml`). Run `cargo check` so `Cargo.lock` follows, and
+   `make openapi`: the committed `api/openapi.json` carries the version, and the
+   integration test and the e2e contract spec compare it with the server's.
 2. **Write the notes**: rename `## [Unreleased]` in `CHANGELOG.md` to
    `## [X.Y.Z] - YYYY-MM-DD`, start a new empty Unreleased section above it, and update
    the link references at the bottom.
