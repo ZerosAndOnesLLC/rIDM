@@ -24,7 +24,7 @@ bootstrap = ["dep:ridm-api"]
 fips = ["bootstrap", "ridm-api/fips"]
 
 [dependencies]
-ridm-api = { path = "../../api", version = "0.2.0", default-features = false, optional = true }
+ridm-api = { path = "../../api", version = "0.3.0", default-features = false, optional = true }
 ridm-core = { workspace = true }
 
 clap = { workspace = true }
@@ -46,7 +46,7 @@ zeroize = { workspace = true }
 # `tests/cli.rs` runs the built `ridm` binary against the server's own
 # integration harness (`api/tests/common`, included by path), so it needs what
 # that harness needs.
-ridm-api = { path = "../../api", version = "0.2.0" }
+ridm-api = { path = "../../api", version = "0.3.0" }
 ridm-core = { workspace = true }
 axum = { workspace = true }
 sqlx = { workspace = true }

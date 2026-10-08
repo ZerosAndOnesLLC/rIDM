@@ -34,7 +34,7 @@
   "applicationCategory": "SecurityApplication",
   "applicationSubCategory": "Identity and access management",
   "operatingSystem": "Linux",
-  "softwareVersion": "0.2.0",
+  "softwareVersion": "0.3.0",
   "license": "https://opensource.org/licenses/MIT",
   "isAccessibleForFree": true,
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -84,7 +84,7 @@
 
   <section class="hero wrap" aria-labelledby="hero-title">
     <div class="hero-copy">
-      <p class="release"><span class="dot" aria-hidden="true"></span>Version 0.2.0 is the first published release, licensed MIT.</p>
+      <p class="release"><span class="dot" aria-hidden="true"></span>Version 0.3.0 adds the FIPS 140-3 build. Open source, licensed MIT.</p>
       <h1 id="hero-title">An identity server you run yourself, written in Rust.</h1>
       <p class="lede">rIDM is an open-source OpenID Connect and SAML 2.0 provider for many tenants at once, with MFA, passkeys, brokering to the providers and directories your users already have, and an admin console and account console in the same image. One container, Postgres and Valkey.</p>
       <div class="actions">
@@ -442,20 +442,20 @@
         <p>A Deployment, Service, optional Ingress, autoscaler and disruption budget. Migrations run in a Job before every upgrade.</p>
         <div class="term"><div class="term-tag"><i></i>oci://ghcr.io/zerosandonesllc/charts/ridm</div><pre><code><span class="p">$</span> helm install ridm \
     oci://ghcr.io/zerosandonesllc/charts/ridm \
-    --version 0.2.0 -f values.yaml</code></pre></div>
+    --version 0.3.0 -f values.yaml</code></pre></div>
         <p class="more"><a href="docs/deploy/kubernetes.html">Kubernetes (Helm)</a></p>
       </div>
       <div class="cell">
         <h3>Container image</h3>
         <p>Multi-arch, amd64 and arm64, with an SBOM attached. Deploy by digest: tags move, a digest names one image.</p>
-        <div class="term"><div class="term-tag"><i></i>ghcr.io</div><pre><code>ghcr.io/zerosandonesllc/ridm:0.2.0</code></pre></div>
+        <div class="term"><div class="term-tag"><i></i>ghcr.io</div><pre><code>ghcr.io/zerosandonesllc/ridm:0.3.0</code></pre></div>
         <p class="more"><a href="docs/deploy/container.html">Container image</a></p>
       </div>
       <div class="cell">
         <h3>Static binaries</h3>
         <p><code>ridm-api</code> with the UI compiled in, and the <code>ridm</code> CLI, statically linked against musl. Any Linux, no libc or OpenSSL needed.</p>
-        <div class="term"><div class="term-tag"><i></i>GitHub release assets</div><pre><code>ridm-0.2.0-linux-amd64.tar.gz
-ridm-0.2.0-linux-arm64.tar.gz</code></pre></div>
+        <div class="term"><div class="term-tag"><i></i>GitHub release assets</div><pre><code>ridm-0.3.0-linux-amd64.tar.gz
+ridm-0.3.0-linux-arm64.tar.gz</code></pre></div>
         <p class="more"><a href="docs/deploy/releases.html">Releases</a></p>
       </div>
     </div>
@@ -472,9 +472,9 @@ ridm-0.2.0-linux-arm64.tar.gz</code></pre></div>
         <p class="more"><a href="docs/deploy/releases.html">Releases and verification</a></p>
       </div>
       <div class="codeblock">
-        <div class="codeblock-head"><span>verify the 0.2.0 image</span><span class="crate">cosign</span></div>
+        <div class="codeblock-head"><span>verify the 0.3.0 image</span><span class="crate">cosign</span></div>
 <pre><code>IDENTITY='^https://github.com/ZerosAndOnesLLC/rIDM/\.github/workflows/release\.yml@refs/tags/v'
-<span class="cmd">cosign verify</span> ghcr.io/zerosandonesllc/ridm:<span class="v">0.2.0</span> \
+<span class="cmd">cosign verify</span> ghcr.io/zerosandonesllc/ridm:<span class="v">0.3.0</span> \
   --certificate-identity-regexp "$IDENTITY" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com</code></pre>
       </div>

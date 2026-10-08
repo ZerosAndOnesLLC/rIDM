@@ -14,6 +14,8 @@ release renames that heading to the version and date.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-08
+
 ### Added
 
 - **An optional FIPS 140-3 build** ([docs](https://zerosandonesllc.github.io/rIDM/docs/deploy/fips.html), #7). The `fips` cargo feature (off by default) and a new image, `ghcr.io/zerosandonesllc/ridm:<version>-fips`, built on Red Hat UBI 9 from `api/Dockerfile.fips` (no RHEL subscription needed). It runs every TLS connection on rustls' FIPS provider and the AWS-LC FIPS module. It refuses to start unless the module passes its self-test and the host is in FIPS mode; `FIPS_ALLOW_NON_FIPS_HOST=true` overrides the host check for development and CI only. Every feature of the standard build is included. The standard build and image are unchanged.
@@ -384,5 +386,6 @@ Cut but never tagged or published; everything here ships in 0.2.0.
 - `/.well-known/security.txt` is the operator's: `SECURITY_CONTACT`,
   `SECURITY_POLICY_URL` or a whole `SECURITY_TXT_FILE`, and 404 until one is set.
 
-[Unreleased]: https://github.com/ZerosAndOnesLLC/rIDM/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ZerosAndOnesLLC/rIDM/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.3.0
 [0.2.0]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.2.0

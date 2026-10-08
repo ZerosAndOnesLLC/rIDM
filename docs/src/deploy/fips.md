@@ -1,8 +1,8 @@
 # FIPS 140-3
 
-> **Status: built, not yet released.** Everything on this page is in rIDM's main
-> branch; the next release is the first to publish the `-fips` image. The work is
-> tracked in [#7](https://github.com/ZerosAndOnesLLC/rIDM/issues/7).
+> Available since 0.3.0 as `ghcr.io/zerosandonesllc/ridm:<version>-fips`, next to the
+> standard image. The work was tracked in
+> [#7](https://github.com/ZerosAndOnesLLC/rIDM/issues/7).
 
 FIPS 140-3 is the US and Canadian government standard for cryptographic modules. Some
 organizations must run software whose cryptography comes only from a module that NIST
