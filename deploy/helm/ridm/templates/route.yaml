@@ -1,0 +1,36 @@
+{{- if .Values.route.enabled }}
+{{- $fullname := include "ridm.fullname" . }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "ridm.labels" . | nindent 4 }}
+  {{- with .Values.route.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.route.host }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ $fullname }}
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: {{ .Values.route.tls.termination }}
+    insecureEdgeTerminationPolicy: {{ .Values.route.tls.insecureEdgeTerminationPolicy }}
+    {{- with .Values.route.tls.certificate }}
+    certificate: {{ . | quote }}
+    {{- end }}
+    {{- with .Values.route.tls.key }}
+    key: {{ . | quote }}
+    {{- end }}
+    {{- with .Values.route.tls.caCertificate }}
+    caCertificate: {{ . | quote }}
+    {{- end }}
+  wildcardPolicy: None
+{{- end }}

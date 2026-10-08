@@ -10,6 +10,10 @@ image:
   repository: ghcr.io/zerosandonesllc/ridm
   # Defaults to the chart's appVersion.
   tag: ""
+  # "" for the standard image, "fips" for the FIPS 140-3 build, which appends
+  # "-fips" to the tag (see the docs, "FIPS 140-3"). Ignored with a digest:
+  # pin the FIPS image's own digest then.
+  variant: ""
   # Pin by digest in production: sha256:...
   digest: ""
   pullPolicy: IfNotPresent
@@ -58,6 +62,21 @@ database:
   readExistingSecret:
     name: ""
     key: DATABASE_READ_URL
+  # TLS to Postgres with certificates the chart mounts. clientCertSecret is a
+  # kubernetes.io/tls Secret (tls.crt, tls.key) for the application role, as
+  # cert-manager issues them: the server authenticates the pod by its
+  # certificate (pg_hba `hostssl ... cert`) and no password is needed, which
+  # the FIPS build requires. caSecret holds the server's CA under caKey.
+  # With an inline `url` the chart appends sslmode, sslcert, sslkey and
+  # sslrootcert to it; a URL from existingSecret must carry them itself,
+  # pointing at the paths the chart mounts: /run/secrets/ridm-db-tls/tls.crt,
+  # /run/secrets/ridm-db-tls/tls.key and /run/secrets/ridm-db-ca/<caKey>.
+  tls:
+    clientCertSecret: ""
+    caSecret: ""
+    caKey: ca.crt
+    # verify-full, verify-ca or require.
+    sslMode: verify-full
   poolMin: 2
   poolMax: 20
 
@@ -170,9 +189,20 @@ migrations:
     existingSecret:
       name: ""
       key: MIGRATOR_DATABASE_URL
+    # As database.tls, for the schema owner: its own client certificate
+    # (CN = the migrator role), mounted at the same paths in the Job.
+    tls:
+      clientCertSecret: ""
+      caSecret: ""
+      caKey: ca.crt
+      sslMode: verify-full
   backoffLimit: 3
   activeDeadlineSeconds: 600
   resources: {}
+  # Further volumes and mounts on the Job only (the API pods have their own
+  # below), e.g. a Secret the migrator's DATABASE_URL points at.
+  extraVolumes: []
+  extraVolumeMounts: []
 
 # Further plain environment variables (see the configuration reference),
 # e.g. RETENTION_DAYS: "30" or OTEL_EXPORTER_OTLP_ENDPOINT: http://otel:4318.
@@ -181,6 +211,10 @@ env: {}
 extraEnv: []
 # Further envFrom sources (a ConfigMap or Secret of variables).
 extraEnvFrom: []
+# Further volumes and mounts on the API pods: certificates, a CA bundle,
+# anything a variable in env or extraEnv points at.
+extraVolumes: []
+extraVolumeMounts: []
 
 serviceAccount:
   create: true
@@ -190,6 +224,9 @@ serviceAccount:
 podAnnotations: {}
 podLabels: {}
 
+# OpenShift's restricted SCCs assign the UID, GID and fsGroup themselves
+# and reject fixed ones: set runAsUser, runAsGroup and fsGroup to null there
+# (ci/fips-openshift-values.yaml does).
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 65532
@@ -245,6 +282,25 @@ ingress:
   tls: []
   #  - secretName: ridm-tls
   #    hosts: [id.example.com]
+
+# An OpenShift Route to the Service instead of an Ingress. TLS ends at the
+# router (edge), which forwards X-Forwarded-For: put the router's pods or
+# network in trustedProxies.
+route:
+  enabled: false
+  # Empty: the router picks a host under its default domain.
+  host: ""
+  annotations: {}
+  tls:
+    # edge (the router's certificate, or the one below) or passthrough
+    # (for a TLS listener of your own in front of the pods, not this chart's).
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+    # Inline PEM for an edge route with its own certificate; empty uses the
+    # router's wildcard certificate.
+    certificate: ""
+    key: ""
+    caCertificate: ""
 
 resources:
   requests:

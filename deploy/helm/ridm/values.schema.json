@@ -24,6 +24,12 @@
             "IfNotPresent",
             "Never"
           ]
+        },
+        "variant": {
+          "enum": [
+            "",
+            "fips"
+          ]
         }
       }
     },
@@ -114,6 +120,29 @@
         "poolMax": {
           "type": "integer",
           "minimum": 1
+        },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "clientCertSecret": {
+              "type": "string"
+            },
+            "caSecret": {
+              "type": "string"
+            },
+            "caKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sslMode": {
+              "enum": [
+                "verify-full",
+                "verify-ca",
+                "require"
+              ]
+            }
+          }
         }
       }
     },
@@ -381,6 +410,29 @@
                   "type": "string"
                 }
               }
+            },
+            "tls": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "clientCertSecret": {
+                  "type": "string"
+                },
+                "caSecret": {
+                  "type": "string"
+                },
+                "caKey": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sslMode": {
+                  "enum": [
+                    "verify-full",
+                    "verify-ca",
+                    "require"
+                  ]
+                }
+              }
             }
           }
         },
@@ -394,6 +446,18 @@
         },
         "resources": {
           "type": "object"
+        },
+        "extraVolumes": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "extraVolumeMounts": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
         }
       }
     },
@@ -412,6 +476,18 @@
     },
     "extraEnvFrom": {
       "type": "array"
+    },
+    "extraVolumes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "extraVolumeMounts": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
     },
     "serviceAccount": {
       "type": "object",
@@ -566,6 +642,50 @@
                   "type": "string"
                 }
               }
+            }
+          }
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "host": {
+          "type": "string"
+        },
+        "annotations": {
+          "type": "object"
+        },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "termination": {
+              "enum": [
+                "edge",
+                "passthrough",
+                "reencrypt"
+              ]
+            },
+            "insecureEdgeTerminationPolicy": {
+              "enum": [
+                "None",
+                "Allow",
+                "Redirect"
+              ]
+            },
+            "certificate": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string"
+            },
+            "caCertificate": {
+              "type": "string"
             }
           }
         }

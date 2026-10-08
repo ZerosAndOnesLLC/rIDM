@@ -124,6 +124,10 @@ spec:
               mountPath: /run/secrets/ridm-mtls
               readOnly: true
             {{- end }}
+            {{- include "ridm.dbTlsMounts" .Values.database.tls | nindent 12 }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir:
@@ -135,6 +139,10 @@ spec:
         - name: mtls-tls
           secret:
             secretName: {{ .Values.mtls.listener.tlsSecret }}
+        {{- end }}
+        {{- include "ridm.dbTlsVolumes" .Values.database.tls | nindent 8 }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

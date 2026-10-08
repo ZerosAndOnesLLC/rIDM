@@ -5,7 +5,7 @@
 {{- $v := .Values }}
 {{- /* The Job connects as the schema owner; the rest is what configuration parsing needs. `migrate` reads no master key and no key custody setting, so the Job holds neither. */}}
 {{- $items := list
-  (dict "env" "DATABASE_URL" "value" $v.migrations.database.url "ref" $v.migrations.database.existingSecret)
+  (dict "env" "DATABASE_URL" "value" (include "ridm.dbUrl" (dict "url" $v.migrations.database.url "tls" $v.migrations.database.tls)) "ref" $v.migrations.database.existingSecret)
   (dict "env" "REDIS_URL" "value" $v.redis.url "ref" $v.redis.existingSecret) }}
 {{- $inline := dict }}
 {{- range $items }}
@@ -90,6 +90,16 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- $mounts := concat (include "ridm.dbTlsMounts" $v.migrations.database.tls | fromYamlArray) $v.migrations.extraVolumeMounts }}
+          {{- with $mounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- $volumes := concat (include "ridm.dbTlsVolumes" $v.migrations.database.tls | fromYamlArray) $v.migrations.extraVolumes }}
+      {{- with $volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with $v.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

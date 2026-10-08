@@ -25,6 +25,7 @@ and validated by [`values.schema.json`](values.schema.json).
 | Secret | when any secret value is given inline |
 | Job (+ hook Secret) running `ridm-api migrate` | `pre-install`/`pre-upgrade`, `migrations.enabled` |
 | Ingress | `ingress.enabled` |
+| Route (OpenShift) | `route.enabled` |
 | Service `<release>-mtls` for the mutual TLS listener | `mtls.listener.enabled` |
 | HorizontalPodAutoscaler | `autoscaling.enabled` |
 | PodDisruptionBudget | `podDisruptionBudget.enabled` and more than one replica |
@@ -32,5 +33,7 @@ and validated by [`values.schema.json`](values.schema.json).
 
 The full guide is the documentation's
 [Kubernetes (Helm)](../../../docs/src/deploy/kubernetes.md) page. `ci/` holds the value
-sets the chart is linted and schema-checked with; `../smoke/run.sh` installs it into a
-throwaway kind cluster.
+sets the chart is linted and schema-checked with (`fips-openshift-values.yaml` is the
+FIPS image with client-certificate Postgres on OpenShift); `../smoke/run.sh` installs
+it into a throwaway kind cluster, once as shipped and once against a Postgres that
+authenticates by client certificate.
