@@ -143,20 +143,23 @@ certs="$(mktemp -d)"
 # certificate per database role; Postgres maps the CN onto the role name.
 openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 \
   -keyout "$certs/ca.key" -out "$certs/ca.crt" -subj /CN=ridm-smoke-ca 2>/dev/null
-issue() { # issue <name> <subject> [san]
-  local ext=()
-  if [ -n "${3:-}" ]; then
-    printf 'subjectAltName=%s\n' "$3" > "$certs/$1.ext"
-    ext=(-extfile "$certs/$1.ext")
-  fi
+issue() { # issue <name> <subject> <serverAuth|clientAuth> [san]
+  # Always with extensions: without any, OpenSSL before 3.2 writes an X.509
+  # v1 certificate, which rustls refuses (UnsupportedCertVersion).
+  {
+    echo 'basicConstraints=CA:FALSE'
+    echo 'keyUsage=digitalSignature'
+    echo "extendedKeyUsage=$3"
+    [ -n "${4:-}" ] && echo "subjectAltName=$4"
+  } > "$certs/$1.ext"
   openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
     -keyout "$certs/$1.key" -out "$certs/$1.csr" -subj "$2" 2>/dev/null
   openssl x509 -req -in "$certs/$1.csr" -CA "$certs/ca.crt" -CAkey "$certs/ca.key" \
-    -CAcreateserial -days 1 -out "$certs/$1.crt" ${ext[@]+"${ext[@]}"} 2>/dev/null
+    -CAcreateserial -days 1 -out "$certs/$1.crt" -extfile "$certs/$1.ext" 2>/dev/null
 }
-issue server /CN=postgres-tls "DNS:postgres-tls,DNS:postgres-tls.$NS.svc"
-issue app /CN=ridm_app
-issue migrator /CN=ridm_migrator
+issue server /CN=postgres-tls serverAuth "DNS:postgres-tls,DNS:postgres-tls.$NS.svc"
+issue app /CN=ridm_app clientAuth
+issue migrator /CN=ridm_migrator clientAuth
 kubectl -n "$NS" create secret generic postgres-tls-certs \
   --from-file=server.crt="$certs/server.crt" --from-file=server.key="$certs/server.key" \
   --from-file=ca.crt="$certs/ca.crt"
