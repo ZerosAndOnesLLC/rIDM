@@ -4,7 +4,7 @@
 //! same image and configures it through the variables documented in `.env.example`.
 
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use ipnet::IpNet;
@@ -93,6 +93,10 @@ pub struct Config {
     pub database_read_url: Option<String>,
     /// Redis / Valkey connection string.
     pub redis_url: String,
+    /// TLS to Valkey with a private CA and/or a client certificate
+    /// (`REDIS_TLS_CA_FILE`, `REDIS_TLS_CERT_FILE`, `REDIS_TLS_KEY_FILE`);
+    /// `None` verifies `rediss://` against the system roots.
+    pub redis_tls: Option<RedisTlsConfig>,
     /// Regional databases a tenant's data can be placed in (`DATA_REGIONS`);
     /// empty: every tenant lives in the `DATABASE_URL` database.
     pub data_regions: Vec<RegionConfig>,
@@ -337,6 +341,7 @@ impl Config {
         let database_url = required_secret!("DATABASE_URL")?;
         let database_read_url = secret!("DATABASE_READ_URL")?;
         let redis_url = required_secret!("REDIS_URL")?;
+        let redis_tls = parse_redis_tls("", &redis_url)?;
         let data_regions = parse_data_regions(optional("DATA_REGIONS"))?;
         let public_url = parse("PUBLIC_URL", required("PUBLIC_URL")?, |v| {
             Url::parse(&v).map_err(|e| e.to_string()).and_then(|u| {
@@ -621,6 +626,7 @@ impl Config {
             database_url,
             database_read_url,
             redis_url,
+            redis_tls,
             data_regions,
             public_url,
             ui_url,
@@ -833,6 +839,90 @@ pub struct RegionConfig {
     /// The region's own Valkey for its tenants' sessions, flows and cached
     /// rows; `None` keeps them on `REDIS_URL`.
     pub redis_url: Option<String>,
+    /// TLS to that Valkey (`REDIS_TLS_CA_FILE_<NAME>`, `REDIS_TLS_CERT_FILE_<NAME>`,
+    /// `REDIS_TLS_KEY_FILE_<NAME>`), as [`Config::redis_tls`] for `REDIS_URL`.
+    pub redis_tls: Option<RedisTlsConfig>,
+}
+
+/// TLS to Valkey beyond what `rediss://` alone gives: a private CA to verify
+/// the server against instead of the system roots, and a client certificate
+/// the server authenticates the connection by (Valkey's `tls-auth-clients`
+/// with `tls-auth-clients-user CN`), so no password travels or is stored.
+/// Single-server `rediss://` only; the files are read when a connection is
+/// made and again whenever they change, so a renewed certificate is picked
+/// up without a restart.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RedisTlsConfig {
+    /// PEM roots to trust, in place of the system's.
+    pub ca_file: Option<PathBuf>,
+    /// The client certificate (chain) and its private key, both PEM.
+    pub client_cert: Option<(PathBuf, PathBuf)>,
+}
+
+impl RedisTlsConfig {
+    /// Every file involved, for change detection.
+    pub fn files(&self) -> Vec<&Path> {
+        let mut files = vec![];
+        if let Some(ca) = &self.ca_file {
+            files.push(ca.as_path());
+        }
+        if let Some((cert, key)) = &self.client_cert {
+            files.push(cert.as_path());
+            files.push(key.as_path());
+        }
+        files
+    }
+}
+
+/// `REDIS_TLS_CA_FILE`, `REDIS_TLS_CERT_FILE` and `REDIS_TLS_KEY_FILE` with
+/// `suffix` (`""` for `REDIS_URL`, `"_EU"` for `REDIS_URL_EU`): the
+/// certificate and key go together, and any of them needs `url` to be the
+/// single-server `rediss://` form, the only one the certificates reach.
+fn parse_redis_tls(suffix: &str, url: &str) -> Result<Option<RedisTlsConfig>, ConfigError> {
+    let var = |base: &str| format!("{base}{suffix}");
+    let read = |base: &str| {
+        std::env::var(var(base))
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .map(PathBuf::from)
+    };
+    let ca_file = read("REDIS_TLS_CA_FILE");
+    let cert = read("REDIS_TLS_CERT_FILE");
+    let key = read("REDIS_TLS_KEY_FILE");
+    let invalid = |reason: String| ConfigError::Invalid {
+        name: if suffix.is_empty() {
+            "REDIS_TLS_CERT_FILE"
+        } else {
+            "DATA_REGIONS"
+        },
+        reason,
+    };
+    let client_cert = match (cert, key) {
+        (Some(cert), Some(key)) => Some((cert, key)),
+        (None, None) => None,
+        (Some(_), None) | (None, Some(_)) => {
+            return Err(invalid(format!(
+                "{} and {} go together: set both or neither",
+                var("REDIS_TLS_CERT_FILE"),
+                var("REDIS_TLS_KEY_FILE")
+            )));
+        }
+    };
+    if ca_file.is_none() && client_cert.is_none() {
+        return Ok(None);
+    }
+    if !url.starts_with("rediss://") {
+        return Err(invalid(format!(
+            "{} settings need {} to be the single-server rediss:// form; the cluster and \
+             Sentinel clients make their own connections and carry no certificates",
+            var("REDIS_TLS_*"),
+            var("REDIS_URL")
+        )));
+    }
+    Ok(Some(RedisTlsConfig {
+        ca_file,
+        client_cert,
+    }))
 }
 
 /// Whether `name` can name a region: 1-32 lowercase letters, digits and
@@ -874,11 +964,17 @@ fn parse_data_regions(raw: Option<String>) -> Result<Vec<RegionConfig>, ConfigEr
                 "region `{name}` needs DATABASE_URL_{suffix} or DATABASE_URL_{suffix}_FILE"
             ))
         })?;
+        let redis_url = region_secret(&format!("REDIS_URL_{suffix}"))?;
+        let redis_tls = match &redis_url {
+            Some(url) => parse_redis_tls(&format!("_{suffix}"), url)?,
+            None => None,
+        };
         regions.push(RegionConfig {
             name: name.to_string(),
             database_url,
             database_read_url: region_secret(&format!("DATABASE_READ_URL_{suffix}"))?,
-            redis_url: region_secret(&format!("REDIS_URL_{suffix}"))?,
+            redis_url,
+            redis_tls,
         });
     }
     Ok(regions)

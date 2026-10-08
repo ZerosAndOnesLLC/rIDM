@@ -15,7 +15,12 @@ database:
     clientCertSecret: ridm-db-app-cert
     caSecret: ridm-db-ca
 redis:
+  # No password here either: Valkey authenticates the pods' certificate
+  # (tls-auth-clients-user CN) as a user without one.
   url: rediss://valkey.db.svc:6379
+  tls:
+    clientCertSecret: ridm-valkey-cert
+    caSecret: ridm-valkey-ca
 masterKey:
   existingSecret: {name: ridm-master-key, key: key}
 migrations:

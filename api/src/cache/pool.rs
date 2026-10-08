@@ -21,7 +21,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::keys;
-use crate::config::{Config, HOME_REGION};
+use super::tls::{TlsConnection, TlsManager, TlsPool};
+use crate::config::{Config, HOME_REGION, RedisTlsConfig};
 use crate::db::Db;
 use crate::error::AppError;
 
@@ -97,6 +98,8 @@ fn split_hosts(hosts: &str, scheme: &str) -> Result<Vec<String>, String> {
 #[derive(Clone)]
 enum Inner {
     Single(deadpool_redis::Pool),
+    /// One server with a private CA or a client certificate (`REDIS_TLS_*`).
+    Tls(TlsPool),
     Cluster(deadpool_redis::cluster::Pool),
     Sentinel(deadpool_redis::sentinel::Pool),
 }
@@ -106,14 +109,27 @@ enum Inner {
 struct Backend {
     inner: Inner,
     topology: Topology,
+    tls: Option<RedisTlsConfig>,
 }
 
 impl Backend {
-    fn connect(url: &str, max_size: u32) -> Result<Self, AppError> {
+    fn connect(url: &str, tls: Option<&RedisTlsConfig>, max_size: u32) -> Result<Self, AppError> {
         let topology = Topology::parse(url).map_err(AppError::Cache)?;
         let pool = pool_config(max_size);
-        let inner = match &topology {
-            Topology::Single { url } => {
+        let inner = match (&topology, tls) {
+            (Topology::Single { url }, Some(tls)) => Inner::Tls(
+                TlsPool::builder(TlsManager::new(url, tls.clone())?)
+                    .config(pool)
+                    .runtime(Runtime::Tokio1)
+                    .build()
+                    .map_err(|e| AppError::Cache(e.to_string()))?,
+            ),
+            (_, Some(_)) => {
+                return Err(AppError::Cache(
+                    "REDIS_TLS_* settings need the single-server rediss:// form".into(),
+                ));
+            }
+            (Topology::Single { url }, None) => {
                 let mut cfg = deadpool_redis::Config::from_url(url);
                 cfg.pool = Some(pool);
                 Inner::Single(
@@ -121,7 +137,7 @@ impl Backend {
                         .map_err(|e| AppError::Cache(e.to_string()))?,
                 )
             }
-            Topology::Cluster { urls } => {
+            (Topology::Cluster { urls }, None) => {
                 let mut cfg = deadpool_redis::cluster::Config::from_urls(urls.clone());
                 cfg.pool = Some(pool);
                 Inner::Cluster(
@@ -129,7 +145,7 @@ impl Backend {
                         .map_err(|e| AppError::Cache(e.to_string()))?,
                 )
             }
-            Topology::Sentinel { urls, master } => {
+            (Topology::Sentinel { urls, master }, None) => {
                 let mut cfg = deadpool_redis::sentinel::Config::from_urls(
                     urls.clone(),
                     master.clone(),
@@ -142,12 +158,17 @@ impl Backend {
                 )
             }
         };
-        Ok(Self { inner, topology })
+        Ok(Self {
+            inner,
+            topology,
+            tls: tls.cloned(),
+        })
     }
 
     async fn get(&self) -> Result<RawConn, AppError> {
         Ok(match &self.inner {
             Inner::Single(p) => RawConn::Single(p.get().await?),
+            Inner::Tls(p) => RawConn::Tls(p.get().await?),
             Inner::Cluster(p) => {
                 RawConn::Cluster(p.get().await.map_err(|e| AppError::Cache(e.to_string()))?)
             }
@@ -174,6 +195,7 @@ pub struct Cache {
 /// A raw pooled connection of any topology.
 enum RawConn {
     Single(deadpool_redis::Connection),
+    Tls(TlsConnection),
     Cluster(deadpool_redis::cluster::Connection),
     Sentinel(deadpool_redis::sentinel::Connection),
 }
@@ -182,6 +204,7 @@ impl ConnectionLike for RawConn {
     fn req_packed_command<'a>(&'a mut self, cmd: &'a Cmd) -> RedisFuture<'a, Value> {
         match self {
             Self::Single(c) => c.req_packed_command(cmd),
+            Self::Tls(c) => c.req_packed_command(cmd),
             Self::Cluster(c) => c.req_packed_command(cmd),
             Self::Sentinel(c) => c.req_packed_command(cmd),
         }
@@ -195,6 +218,7 @@ impl ConnectionLike for RawConn {
     ) -> RedisFuture<'a, Vec<Value>> {
         match self {
             Self::Single(c) => c.req_packed_commands(cmd, offset, count),
+            Self::Tls(c) => c.req_packed_commands(cmd, offset, count),
             Self::Cluster(c) => c.req_packed_commands(cmd, offset, count),
             Self::Sentinel(c) => c.req_packed_commands(cmd, offset, count),
         }
@@ -203,6 +227,7 @@ impl ConnectionLike for RawConn {
     fn get_db(&self) -> i64 {
         match self {
             Self::Single(c) => c.get_db(),
+            Self::Tls(c) => c.get_db(),
             Self::Cluster(c) => c.get_db(),
             Self::Sentinel(c) => c.get_db(),
         }
@@ -417,7 +442,13 @@ impl Cache {
                 let mut sentinel = redis::sentinel::Sentinel::build(urls.clone())?;
                 sentinel.async_master_for(master, None).await
             }
-            other => redis::Client::open(other.first_url()),
+            other => super::tls::client(&other.first_url(), self.home.tls.as_ref()).map_err(|e| {
+                redis::RedisError::from((
+                    redis::ErrorKind::InvalidClientConfig,
+                    "Valkey TLS",
+                    e.to_string(),
+                ))
+            }),
         }
     }
 }
@@ -556,13 +587,17 @@ pub async fn delete_keys(cache: &Cache, keys: &[String]) -> Result<(), AppError>
 /// `REDIS_URL`, plus `REDIS_URL_<REGION>` for each region that has one.
 /// Tenant keys are routed once [`Cache::route_with`] attaches placements.
 pub fn connect(config: &Config) -> Result<Cache, AppError> {
-    let home = Backend::connect(&config.redis_url, config.redis_pool_max)?;
+    let home = Backend::connect(
+        &config.redis_url,
+        config.redis_tls.as_ref(),
+        config.redis_pool_max,
+    )?;
     let mut regions = vec![];
     for region in &config.data_regions {
         if let Some(url) = &region.redis_url {
             regions.push((
                 Arc::<str>::from(region.name.as_str()),
-                Backend::connect(url, config.redis_pool_max)?,
+                Backend::connect(url, region.redis_tls.as_ref(), config.redis_pool_max)?,
             ));
         }
     }

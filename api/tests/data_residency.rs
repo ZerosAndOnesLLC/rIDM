@@ -88,12 +88,14 @@ async fn fixture() -> Fx {
             database_url: eu_url,
             database_read_url: None,
             redis_url: Some(eu_valkey),
+            redis_tls: None,
         },
         RegionConfig {
             name: us.clone(),
             database_url: us_url,
             database_read_url: None,
             redis_url: None,
+            redis_tls: None,
         },
     ];
     let app = TestApp::spawn_reconfigured(

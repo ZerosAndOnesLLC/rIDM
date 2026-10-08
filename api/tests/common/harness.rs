@@ -318,6 +318,7 @@ pub fn test_config(database_url: &str, redis_url: &str, public_url: &str) -> Con
         database_url: database_url.to_string(),
         database_read_url: None,
         redis_url: redis_url.to_string(),
+        redis_tls: None,
         data_regions: vec![],
         public_url: public_url.parse().expect("public url"),
         ui_url: public_url.parse().expect("ui url"),

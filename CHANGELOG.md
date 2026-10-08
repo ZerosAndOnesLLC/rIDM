@@ -14,6 +14,10 @@ release renames that heading to the version and date.
 
 ## [Unreleased]
 
+### Added
+
+- **Valkey with a private CA and client-certificate authentication** (#23): `REDIS_TLS_CA_FILE` verifies a `rediss://` server against your own roots (outbound HTTPS keeps the system's), and `REDIS_TLS_CERT_FILE` + `REDIS_TLS_KEY_FILE` present a client certificate, which Valkey's `tls-auth-clients-user CN` maps onto an ACL user with no password. Single-server form only; per region as `REDIS_TLS_*_<NAME>`. The files are re-read whenever they change, so a renewal needs no restart. The Helm chart's `redis.tls` mounts the Secrets. The FIPS build asserts the connection's TLS configuration like every other.
+
 ## [0.3.0] - 2026-10-08
 
 ### Added

@@ -86,6 +86,19 @@ redis:
   existingSecret:
     name: ""
     key: REDIS_URL
+  # TLS to Valkey beyond rediss://: a private CA to verify the server
+  # against (caSecret, under caKey) and a kubernetes.io/tls Secret with the
+  # client certificate the server authenticates the pods by (Valkey's
+  # tls-auth-clients with tls-auth-clients-user CN), so no password is
+  # stored anywhere; the FIPS build wants exactly that. Single-server
+  # rediss:// only. Mounted at /run/secrets/ridm-redis-tls and
+  # /run/secrets/ridm-redis-ca and passed as REDIS_TLS_CERT_FILE,
+  # REDIS_TLS_KEY_FILE and REDIS_TLS_CA_FILE; the files are re-read when
+  # they change, so a renewal needs no restart.
+  tls:
+    clientCertSecret: ""
+    caSecret: ""
+    caKey: ca.crt
   poolMax: 32
 
 masterKey:

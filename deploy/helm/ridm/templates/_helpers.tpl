@@ -227,6 +227,9 @@ caller's Secret or `secret` (where an inline key lives).
 {{- fail (printf "%s.sslMode must be verify-full, verify-ca or require" .name) -}}
 {{- end -}}
 {{- end -}}
+{{- if and (or $v.redis.tls.clientCertSecret $v.redis.tls.caSecret) $v.redis.url (not (hasPrefix "rediss://" $v.redis.url)) -}}
+{{- fail "redis.tls needs redis.url to be the single-server rediss:// form" -}}
+{{- end -}}
 {{- if and $v.route.enabled $v.ingress.enabled -}}
 {{- fail "route.enabled and ingress.enabled are alternatives: pick one" -}}
 {{- end -}}

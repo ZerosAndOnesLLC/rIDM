@@ -92,6 +92,16 @@ spec:
             - name: CLIENT_CERT_HEADER
               value: {{ . | quote }}
             {{- end }}
+            {{- if .Values.redis.tls.clientCertSecret }}
+            - name: REDIS_TLS_CERT_FILE
+              value: /run/secrets/ridm-redis-tls/tls.crt
+            - name: REDIS_TLS_KEY_FILE
+              value: /run/secrets/ridm-redis-tls/tls.key
+            {{- end }}
+            {{- if .Values.redis.tls.caSecret }}
+            - name: REDIS_TLS_CA_FILE
+              value: /run/secrets/ridm-redis-ca/{{ .Values.redis.tls.caKey }}
+            {{- end }}
             {{- if .Values.mtls.listener.enabled }}
             - name: MTLS_BIND
               value: "0.0.0.0:8443"
@@ -125,6 +135,16 @@ spec:
               readOnly: true
             {{- end }}
             {{- include "ridm.dbTlsMounts" .Values.database.tls | nindent 12 }}
+            {{- with .Values.redis.tls.clientCertSecret }}
+            - name: redis-tls
+              mountPath: /run/secrets/ridm-redis-tls
+              readOnly: true
+            {{- end }}
+            {{- with .Values.redis.tls.caSecret }}
+            - name: redis-ca
+              mountPath: /run/secrets/ridm-redis-ca
+              readOnly: true
+            {{- end }}
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -141,6 +161,18 @@ spec:
             secretName: {{ .Values.mtls.listener.tlsSecret }}
         {{- end }}
         {{- include "ridm.dbTlsVolumes" .Values.database.tls | nindent 8 }}
+        {{- with .Values.redis.tls.clientCertSecret }}
+        - name: redis-tls
+          secret:
+            secretName: {{ . }}
+            defaultMode: 0440
+        {{- end }}
+        {{- with .Values.redis.tls.caSecret }}
+        - name: redis-ca
+          secret:
+            secretName: {{ . }}
+            defaultMode: 0444
+        {{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

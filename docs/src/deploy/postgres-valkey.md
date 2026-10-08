@@ -177,6 +177,43 @@ Credentials go before an `@` and apply to every listed host:
 plain `redis://` connections to each host, so TLS to Valkey is available only in the
 single-server `rediss://` form.
 
+### TLS and certificate authentication
+
+`rediss://` alone verifies the server against the system roots and authenticates
+with the password in the URL. Two settings go further, for the single-server form:
+
+- `REDIS_TLS_CA_FILE`: PEM roots to trust instead of the system's, for a Valkey
+  behind a private CA (cert-manager, the OpenShift service CA). It applies to the
+  Valkey connection only; outbound HTTPS keeps the system roots.
+- `REDIS_TLS_CERT_FILE` and `REDIS_TLS_KEY_FILE`: a client certificate and its key,
+  both PEM. Valkey can then authenticate the connection by the certificate instead of
+  a password: with `tls-auth-clients yes` it accepts only certificates from its
+  `tls-ca-cert-file`, and with `tls-auth-clients-user CN` it logs each connection in
+  as the ACL user the certificate's CN names. That user needs no password at all,
+  which also keeps Valkey's own password hashing out of the picture (the
+  [FIPS build](fips.md) wants this):
+
+  ```text
+  tls-port 6380
+  tls-cert-file /etc/valkey/tls/server.crt
+  tls-key-file /etc/valkey/tls/server.key
+  tls-ca-cert-file /etc/valkey/tls/ca.crt
+  tls-auth-clients yes
+  tls-auth-clients-user CN
+  user default off
+  user ridm on nopass ~ridm:* &* +@all -@admin
+  ```
+
+  with `REDIS_URL=rediss://valkey.internal:6380` (no credentials) and a certificate
+  whose subject is `CN=ridm`.
+
+The files are read when a connection is made and read again whenever one of them
+changes, so a certificate renewed in place is picked up without a restart; a renewal
+that cannot be read yet keeps the previous certificate until it can. Each region's
+Valkey has the same settings with its suffix (`REDIS_TLS_CA_FILE_EU`). On Kubernetes
+the chart's `redis.tls` mounts the Secrets and sets the variables
+([Kubernetes](kubernetes.md#tls-to-postgres-with-client-certificates)).
+
 Cache invalidation between nodes uses pub/sub on one channel. Under Sentinel the
 subscriber resolves the current master when it connects, and reconnects with backoff
 after a failover.

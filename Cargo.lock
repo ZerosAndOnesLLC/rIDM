@@ -4512,6 +4512,7 @@ dependencies = [
  "chrono",
  "cryptoki",
  "csv",
+ "deadpool",
  "deadpool-redis",
  "dotenvy",
  "flate2",
