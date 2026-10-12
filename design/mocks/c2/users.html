@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Users · acme · rIDM (C2)</title>
+<link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="../shared/mock.css">
+<script src="../shared/data.js"></script><script src="../shared/theme.js"></script><script src="../shared/mock.js"></script>
+</head>
+<body data-page="Users">
+<main>
+  <header class="ph">
+    <div><h1>Users <span class="cnt">120</span></h1><p>Everyone who can sign in to Acme Corporation. 116 active, 3 invitations waiting.</p></div>
+    <div class="actions" id="acts"></div>
+  </header>
+  <div class="filters" id="filters"></div>
+  <div class="table-wrap">
+  <table class="table" aria-label="Users">
+    <thead><tr>
+      <th class="sel"><input type="checkbox" aria-label="Select all"></th>
+      <th aria-sort="ascending"><button>User <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 15l4 4 4-4"/></svg></button></th>
+      <th><button>Email</button></th>
+      <th><button>Department</button></th>
+      <th><button>Status</button></th>
+      <th><button>Last sign-in</button></th>
+      <th><button>Second step</button></th>
+      <th class="act"><span class="sr">Actions</span></th>
+    </tr></thead>
+    <tbody data-rows></tbody>
+  </table>
+  </div>
+  <div class="tfoot"><span>24 of 120 loaded · scroll for more</span><span>sorted by username</span></div>
+  <div class="bulk" role="region" aria-label="Selected users"><span class="n">2</span><span>selected</span><button class="btn sm">Add to group</button><button class="btn sm">Disable</button><button class="btn sm danger">Delete</button><button class="btn sm icon" aria-label="Clear selection">${I("x")}</button></div>
+</main>
+<script>const I = MOCK.icon;</script>
+<script>
+document.getElementById("acts").innerHTML = `<button class="btn">${I("download")}Export</button><button class="btn">${I("upload")}Import</button><button class="btn">${I("mail")}Invite</button><button class="btn primary">${I("plus")}New user</button>`;
+document.getElementById("filters").innerHTML = `<input class="input search-in" placeholder="Filter by name, username or email" aria-label="Search users"><button class="chipbtn on">${I("filter")}Status: any</button><button class="chipbtn">${I("plus")}Group</button><button class="chipbtn">${I("plus")}Department</button><button class="chipbtn">${I("plus")}Second step</button><label class="chipbtn" style="cursor:pointer"><input type="checkbox"> deleted</label><span class="count">24 / 120</span>`;
+document.querySelector(".bulk .btn.icon").innerHTML = I("x");
+const SEL = new Set(["ada.knuth", "claude.allen"]);
+window.ROW = (u, e, s, v, last, dept) => {
+  const disp = u.split(".").map((p) => p[0].toUpperCase() + p.slice(1)).join(" ");
+  const fresh = /Today|Yesterday/.test(last);
+  const mfa = MFA.includes(u) ? `<span class="mfa"><span class="yes" title="Passkey">${I("passkey")}</span></span>` : TOTP.includes(u) ? `<span class="mfa"><span class="yes" title="Authenticator app">${I("phone")}</span></span>` : `<span class="mfa" title="None">—</span>`;
+  return `<tr ${SEL.has(u) ? 'aria-selected="true"' : ""}>
+  <td class="sel"><input type="checkbox" aria-label="Select ${u}" ${SEL.has(u) ? "checked" : ""}></td>
+  <td><a class="who" href="user">${avatar(u)}<span><span class="u">${disp}</span><small>${u}</small></span></a></td>
+  <td class="muted">${e}${v ? "" : '<span class="unv">unverified</span>'}</td>
+  <td><span class="dept">${dept}</span></td>
+  <td><span class="status ${s}">${MOCK.statusLabel[s]}</span></td>
+  <td><span class="when ${fresh ? "fresh" : ""}"><i></i>${last}</span></td>
+  <td>${mfa}</td>
+  <td class="act"><button class="btn sm icon quiet" aria-label="Actions for ${u}">${I("more")}</button></td></tr>`;
+};
+</script>
+<script src="chrome.js"></script>
+</body>
+</html>

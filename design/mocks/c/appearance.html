@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Appearance · Settings · acme · rIDM (C)</title>
+<link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="../shared/mock.css">
+<script src="../shared/data.js"></script><script src="../shared/theme.js"></script><script src="../shared/mock.js"></script>
+</head>
+<body data-page="Settings">
+<div class="frame">
+  <div class="top">
+    <div class="brand"><button class="btn icon quiet burger" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg></i><span>rIDM</span></div>
+    <div class="cmd">
+      <button class="tenant" aria-label="Tenant: Acme Corporation"><span class="glyph">A</span><b>acme</b><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg></button>
+      <button class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4"/></svg><span>Search users, clients, pages… or type a command</span><kbd>⌘K</kbd></button>
+    </div>
+    <div class="tools">
+      <div class="seg" role="group" aria-label="Theme" id="userSeg"><button data-v="" aria-label="Tenant default"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 4h18v12H3zM8 20h8M12 16v4"/></svg></button><button data-v="light" aria-label="Light"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM12 2v2M12 20v2M2 12h2M20 12h2"/></svg></button><button data-v="dark" aria-label="Dark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10z"/></svg></button></div>
+      <div class="me" title="admin · Global administrator"><span class="av">A</span></div>
+    </div>
+  </div>
+  <aside class="rail"><nav class="nav" data-nav aria-label="Console"></nav></aside>
+  <div class="content">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="#">Settings</a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg><span class="here">Appearance</span></nav>
+    <main>
+      <header class="ph"><div><h1>Appearance</h1><p>How Acme Corporation looks to administrators and to people signing in. Changes save as you go.</p></div><span class="saved"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12l5 5L20 7"/></svg>saved</span></header>
+      <div class="settings">
+        <nav class="snav" aria-label="Settings sections"><a href="#">General</a><a href="#">Sign-in</a><a href="#">Passwords</a><a href="#">Sessions</a><a href="#" aria-current="page">Appearance</a><a href="#">Locale</a><a href="#">Risk</a><a href="#">Rate limits</a><a href="#">Advanced</a><a href="#">Danger zone</a></nav>
+        <div class="sbody">
+          <section class="block">
+            <h2>Colour theme</h2>
+            <p class="hint">A primary colour for actions and navigation, and a contrast colour for selection and the tenant mark. rIDM derives ten shades from each so both modes stay readable.</p>
+            <div class="presets" role="radiogroup" aria-label="Colour theme" id="presets"></div>
+            <div class="ramps">
+              <div class="ramp"><span>Primary</span><div class="steps" id="rampA"></div></div>
+              <div class="ramp"><span>Contrast</span><div class="steps" id="rampB"></div></div>
+            </div>
+            <div class="checks" id="checks"></div>
+          </section>
+          <section class="block">
+            <h2>Light and dark</h2>
+            <p class="hint">Applies to the admin console, the account console and the sign-in pages.</p>
+            <div class="radios" id="policy">
+              <label><input type="radio" name="policy" value="system"><span>Follow each person's device<small>Light or dark as their system prefers.</small></span></label>
+              <label><input type="radio" name="policy" value="light"><span>Always light<small>Best when the brand is built for light surfaces.</small></span></label>
+              <label><input type="radio" name="policy" value="dark"><span>Always dark</span></label>
+            </div>
+            <div class="field inline" style="margin-top:12px"><div><label>People can switch between light and dark</label><p class="help">Shows a switch in every console and on sign-in pages. Their choice is remembered on that device.</p></div><button class="switch" role="switch" id="allow" aria-checked="true" aria-label="People can switch"></button></div>
+          </section>
+          <section class="block">
+            <h2>Preview</h2>
+            <p class="hint">Live, in the mode you are looking at now.</p>
+            <div class="previews">
+              <div class="pv"><div class="pcard"><div><span class="pmark">A</span> &nbsp;<span class="pnav">Users</span> &nbsp;Groups &nbsp;Roles</div><div><span class="psel">ada.knuth — selected</span></div><div>Read the <span class="plink">audit log</span> for details.</div><div><span class="pbtn">New user</span></div></div></div>
+              <div class="pv"><div class="pcard"><div style="font-weight:700;font-size:13px">Sign in</div><div class="pin"></div><div class="pin"></div><div><span class="pbtn" style="display:block;text-align:center">Continue</span></div><div><span class="plink">Forgot your password?</span></div></div></div>
+            </div>
+          </section>
+          <section class="block">
+            <h2>Logo and name</h2>
+            <p class="hint">Shown above the sign-in card and in the account console.</p>
+            <div class="fields"><div class="two"><div class="field"><label for="dn">Display name</label><input id="dn" class="input" value="Acme Corporation"></div><div class="field"><label for="lg">Logo</label><input id="lg" class="input" type="file"></div></div></div>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="../shared/console.js"></script>
+<script>
+(function () {
+  const ok = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12l5 5L20 7"/></svg>';
+  const no = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  function draw() {
+    const cur = MOCKCTL.get("theme.preset", "indigo");
+    const P = document.getElementById("presets");
+    P.innerHTML = THEME.PRESETS.map((p) => `<button class="preset" role="radio" aria-checked="${cur === p.id}" data-id="${p.id}"><span class="sw"><i style="background:${p.primary}"></i><i style="background:${p.contrast}"></i></span><span>${p.name}</span></button>`).join("") +
+      `<div class="preset custom" role="radio" aria-checked="${cur === "custom"}"><span>Custom</span><span class="row"><input type="color" id="cp" value="${MOCKCTL.get("theme.primary", "#3451b2")}" aria-label="Primary colour"> <input type="color" id="cc" value="${MOCKCTL.get("theme.contrast", "#b45309")}" aria-label="Contrast colour"><span style="color:var(--muted)">primary · contrast</span></span></div>`;
+    P.querySelectorAll("button.preset").forEach((b) => b.addEventListener("click", () => { MOCKCTL.set("theme.preset", b.dataset.id); draw(); }));
+    P.querySelector("#cp").addEventListener("input", (e) => { localStorage.setItem("mock.theme.primary", e.target.value); MOCKCTL.set("theme.preset", "custom"); draw(); });
+    P.querySelector("#cc").addEventListener("input", (e) => { localStorage.setItem("mock.theme.contrast", e.target.value); MOCKCTL.set("theme.preset", "custom"); draw(); });
+    const t = MOCKCTL.tenantTheme(), dark = MOCKCTL.mode() === "dark";
+    const paper = getComputedStyle(document.documentElement).getPropertyValue("--paper").trim();
+    const rows = [["rampA", t.primary], ["rampB", t.contrast]];
+    for (const [id, hex] of rows) { const r = THEME.ramp(hex); document.getElementById(id).innerHTML = Object.entries(r).map(([k, v]) => `<i style="background:${v}" title="${k} ${v}">${k}</i>`).join(""); }
+    const sa = THEME.slots(t.primary, dark), sc = THEME.slots(t.contrast, dark);
+    const checks = [["Primary text on page", THEME.ratio(sa.text, paper)], ["White on primary button", THEME.ratio(sa.ink, sa.solid)], ["Contrast text on page", THEME.ratio(sc.text, paper)], ["Text on selected row", THEME.ratio(sc.text, sc.soft)], ["Primary vs contrast hues apart", (() => { const d = Math.abs(THEME.hexToOklch(t.primary).h - THEME.hexToOklch(t.contrast).h) % 360; return d > 180 ? 360 - d : d; })()]];
+    document.getElementById("checks").innerHTML = checks.map(([l, v], i) => i < 4 ? `<span class="${v >= 4.5 ? "pass" : "fail"}">${v >= 4.5 ? ok : no}<b>${v.toFixed(1)}:1</b> ${l}</span>` : `<span class="${v >= 60 ? "pass" : "fail"}">${v >= 60 ? ok : no}<b>${Math.round(v)}°</b> ${l}</span>`).join("");
+    document.querySelectorAll("#policy input").forEach((r) => { r.checked = r.value === MOCKCTL.get("mode.policy", "system"); r.onchange = () => { MOCKCTL.set("mode.policy", r.value); draw(); }; });
+    const allow = document.getElementById("allow"); allow.setAttribute("aria-checked", MOCKCTL.get("mode.allow", "1") === "1"); allow.onclick = () => { MOCKCTL.set("mode.allow", MOCKCTL.get("mode.allow", "1") === "1" ? "0" : "1"); draw(); };
+    const seg = document.getElementById("userSeg"); seg.hidden = MOCKCTL.get("mode.allow", "1") !== "1";
+    seg.querySelectorAll("button").forEach((b) => { b.setAttribute("aria-pressed", b.dataset.v === MOCKCTL.get("mode.user", "")); b.onclick = () => { MOCKCTL.set("mode.user", b.dataset.v); draw(); }; });
+  }
+  draw();
+  document.addEventListener("mock:theme", draw);
+})();
+</script>
+</body>
+</html>

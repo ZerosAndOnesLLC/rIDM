@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview · acme · rIDM (C2)</title>
+<link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="../shared/mock.css">
+<script src="../shared/data.js"></script><script src="../shared/theme.js"></script><script src="../shared/mock.js"></script>
+</head>
+<body data-page="Overview">
+<main>
+  <header class="ph">
+    <div><h1>Good morning, admin</h1><p>Acme Corporation · Friday, October 10 · last 30 days</p></div>
+    <div class="actions"><select class="input" aria-label="Window"><option>Last 7 days</option><option selected>Last 30 days</option><option>Last 90 days</option></select></div>
+  </header>
+  <div class="tiles">
+    <div class="tile"><div class="t"><div class="l">Sign-ins</div><div class="v">4,812</div><div class="d up">▲ 12% vs previous 30 days</div></div><svg class="spark" viewBox="0 0 92 34" preserveAspectRatio="none"><path d="M0 26 L9 24 L18 27 L27 20 L36 22 L46 15 L55 17 L64 12 L73 14 L82 8 L92 6" fill="none" stroke="var(--accent-500)" stroke-width="2"/><path d="M0 26 L9 24 L18 27 L27 20 L36 22 L46 15 L55 17 L64 12 L73 14 L82 8 L92 6 V34 H0z" fill="var(--accent-500)" opacity=".12"/></svg></div>
+    <div class="tile warn"><div class="t"><div class="l">Failed sign-ins</div><div class="v">231</div><div class="d down">▲ 38% · 2 locked</div></div><svg class="spark" viewBox="0 0 92 34" preserveAspectRatio="none"><path d="M0 28 L9 27 L18 26 L27 28 L36 24 L46 25 L55 20 L64 22 L73 14 L82 16 L92 9" fill="none" stroke="var(--warn)" stroke-width="2"/></svg></div>
+    <div class="tile"><div class="t"><div class="l">Live sessions</div><div class="v">87</div><div class="d">across 6 clients</div></div><svg class="spark" viewBox="0 0 92 34" preserveAspectRatio="none"><path d="M0 20 L9 18 L18 22 L27 16 L36 19 L46 14 L55 18 L64 13 L73 15 L82 12 L92 14" fill="none" stroke="var(--accent-500)" stroke-width="2"/></svg></div>
+    <div class="tile"><div class="t"><div class="l">Two-step adoption</div><div class="v">61%</div><div class="d up">71 of 116 · ▲ 4 this week</div></div><svg class="spark" viewBox="0 0 92 34" preserveAspectRatio="none"><path d="M0 30 L9 29 L18 27 L27 26 L36 24 L46 22 L55 19 L64 17 L73 14 L82 12 L92 10" fill="none" stroke="var(--contrast-500)" stroke-width="2"/></svg></div>
+  </div>
+  <div class="cols">
+    <section class="card">
+      <header><h2>Sign-ins per day</h2><div class="legend"><span><i style="background:var(--accent-500)"></i>Succeeded</span><span><i style="background:var(--contrast-500)"></i>Failed</span></div></header>
+      <div class="b"><svg class="chart" id="chart" viewBox="0 0 600 190" preserveAspectRatio="none" role="img" aria-label="Sign-ins and failed sign-ins per day over 30 days"></svg></div>
+    </section>
+    <section class="card">
+      <header><h2>Needs attention</h2><span class="pill contrast">3</span></header>
+      <ul class="attn">
+        <li><span class="ic warn" data-icon="lock"></span><span><b>2 accounts locked</b><small>alan.johnson, grace.sutherland · too many failed attempts</small></span><button class="btn sm">Review</button></li>
+        <li><span class="ic" data-icon="mail"></span><span><b>3 invitations waiting</b><small>oldest sent 6 days ago</small></span><button class="btn sm">Resend</button></li>
+        <li><span class="ic" data-icon="key"></span><span><b>Signing key rotates in 12 days</b><small>RS256 · kid 7f3a… · rotation is automatic</small></span><button class="btn sm quiet">Keys</button></li>
+      </ul>
+    </section>
+  </div>
+  <div class="cols" style="margin-top:12px">
+    <section class="card">
+      <header><h2>Recent activity</h2><a href="#" class="btn sm quiet">Audit log</a></header>
+      <ul class="feed" id="feed"></ul>
+    </section>
+    <section class="card">
+      <header><h2>Most used clients</h2></header>
+      <div class="b" id="clients"></div>
+    </section>
+  </div>
+</main>
+<script>const I = MOCK.icon;</script>
+<script src="chrome.js"></script>
+<script>
+// deterministic fake series
+const days = 30, ok = [], bad = [];
+for (let i = 0; i < days; i++) { const w = (i % 7 === 5 || i % 7 === 6) ? 0.45 : 1; ok.push(Math.round((120 + 50 * Math.sin(i / 3) + i * 1.8) * w)); bad.push(Math.round((4 + 3 * Math.sin(i / 2.5) + (i > 24 ? (i - 24) * 4 : 0)) * w)); }
+const max = Math.max(...ok) * 1.08, W = 600, H = 190, pad = 18, bw = (W - pad * 2) / days;
+let s = "";
+[40, 80, 120, 160].forEach((y) => { s += `<line x1="${pad}" x2="${W - pad}" y1="${H - 14 - y}" y2="${H - 14 - y}" stroke="var(--line)" />`; });
+ok.forEach((v, i) => { const x = pad + i * bw, h = (v / max) * (H - 24), hb = (bad[i] / max) * (H - 24); s += `<rect x="${x + 2}" y="${H - 14 - h}" width="${bw - 4}" height="${h}" rx="2" fill="var(--accent-500)" opacity=".85"/><rect x="${x + 2}" y="${H - 14 - hb}" width="${bw - 4}" height="${hb}" rx="2" fill="var(--contrast-500)"/>`; });
+["Sep 11", "Sep 20", "Sep 30", "Oct 10"].forEach((l, i) => { s += `<text x="${pad + (i * (days - 1) / 3) * bw + bw / 2}" y="${H - 2}" font-size="10" text-anchor="middle" fill="var(--muted)" font-family="JetBrains Mono, monospace">${l}</text>`; });
+document.getElementById("chart").innerHTML = s;
+const ev = [["ada.lovelace", "signed in with a passkey", "Acme customer portal", "2 min"], ["alan.johnson", "was locked after 5 failed attempts", "", "14 min"], ["admin", "rotated the client secret of", "acme-reporting", "1 h"], ["barbara.hamilton", "approved a sign-in request from", "Acme for iOS", "2 h"], ["claude.turing", "enrolled an authenticator app", "", "3 h"], ["admin", "invited", "grace.hopper@acme.test", "6 h"]];
+document.getElementById("feed").innerHTML = ev.map(([u, m, o, t]) => `<li>${avatar(u)}<span><b>${u}</b> <span class="m">${m}</span> ${o ? `<span class="chip">${o}</span>` : ""}</span><time>${t} ago</time></li>`).join("");
+const cl = [["Acme customer portal", 2890], ["Acme for iOS and Android", 1204], ["rIDM Admin Console", 402], ["Acme dashboard for TVs", 188], ["Nightly reporting job", 128]];
+document.getElementById("clients").innerHTML = cl.map(([n, v]) => `<div style="display:grid;grid-template-columns:1fr auto;gap:4px 10px;font-size:var(--t-sm);margin-bottom:10px"><span>${n}</span><span class="mono" style="color:var(--muted)">${v.toLocaleString()}</span><div style="grid-column:1/-1;height:6px;border-radius:3px;background:var(--ground)"><div style="width:${(v / 2890) * 100}%;height:6px;border-radius:3px;background:var(--accent-500)"></div></div></div>`).join("");
+</script>
+
+</body>
+</html>

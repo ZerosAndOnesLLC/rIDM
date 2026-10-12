@@ -1,0 +1,9 @@
+.mockbar { position: fixed; inset-inline-end: 12px; bottom: 12px; z-index: 1000; display: flex; flex-wrap: wrap; gap: 3px; align-items: center; max-width: calc(100vw - 24px); padding: 6px 8px; border-radius: 14px; background: #111; color: #ddd; font: 500 11px/1 system-ui, sans-serif; box-shadow: 0 6px 24px rgba(0,0,0,.35); }
+.mockbar span { opacity: .6; margin: 0 2px 0 6px; }
+.mockbar em { opacity: .6; font-style: normal; }
+.mockbar button { all: unset; cursor: pointer; padding: 5px 8px; border-radius: 999px; display: inline-flex; gap: 3px; align-items: center; }
+.mockbar button.on { background: #fff; color: #111; }
+.mockbar button i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.mockbar button i + i { margin-right: 3px; }
+.mockbar a { color: #9cf; margin-inline-start: 8px; }
+@media print { .mockbar { display: none; } }

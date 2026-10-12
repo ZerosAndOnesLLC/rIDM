@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Users · acme · rIDM (C2) · ada.lovelace</title>
+<link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="../shared/mock.css">
+<script src="../shared/data.js"></script><script src="../shared/theme.js"></script><script src="../shared/mock.js"></script>
+</head>
+<body data-page="Users">
+<main>
+  <header class="ph">
+    <div><h1>Users <span class="cnt">120</span></h1><p>Everyone who can sign in to Acme Corporation. 116 active, 3 invitations waiting.</p></div>
+    <div class="actions" id="acts"></div>
+  </header>
+  <div class="filters" id="filters"></div>
+  <div class="table-wrap">
+  <table class="table" aria-label="Users">
+    <thead><tr>
+      <th class="sel"><input type="checkbox" aria-label="Select all"></th>
+      <th aria-sort="ascending"><button>User <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 15l4 4 4-4"/></svg></button></th>
+      <th><button>Email</button></th>
+      <th><button>Department</button></th>
+      <th><button>Status</button></th>
+      <th><button>Last sign-in</button></th>
+      <th><button>Second step</button></th>
+      <th class="act"><span class="sr">Actions</span></th>
+    </tr></thead>
+    <tbody data-rows></tbody>
+  </table>
+  </div>
+  <div class="tfoot"><span>24 of 120 loaded · scroll for more</span><span>sorted by username</span></div>
+  <div hidden class="bulk" role="region" aria-label="Selected users"><span class="n">2</span><span>selected</span><button class="btn sm">Add to group</button><button class="btn sm">Disable</button><button class="btn sm danger">Delete</button><button class="btn sm icon" aria-label="Clear selection">${I("x")}</button></div>
+</main>
+<script>const I = MOCK.icon;</script>
+<script>
+document.getElementById("acts").innerHTML = `<button class="btn">${I("download")}Export</button><button class="btn">${I("upload")}Import</button><button class="btn">${I("mail")}Invite</button><button class="btn primary">${I("plus")}New user</button>`;
+document.getElementById("filters").innerHTML = `<input class="input search-in" placeholder="Filter by name, username or email" aria-label="Search users"><button class="chipbtn on">${I("filter")}Status: any</button><button class="chipbtn">${I("plus")}Group</button><button class="chipbtn">${I("plus")}Department</button><button class="chipbtn">${I("plus")}Second step</button><label class="chipbtn" style="cursor:pointer"><input type="checkbox"> deleted</label><span class="count">24 / 120</span>`;
+document.querySelector(".bulk .btn.icon").innerHTML = I("x");
+const SEL = new Set(["ada.lovelace"]);
+window.ROW = (u, e, s, v, last, dept) => {
+  const disp = u.split(".").map((p) => p[0].toUpperCase() + p.slice(1)).join(" ");
+  const fresh = /Today|Yesterday/.test(last);
+  const mfa = MFA.includes(u) ? `<span class="mfa"><span class="yes" title="Passkey">${I("passkey")}</span></span>` : TOTP.includes(u) ? `<span class="mfa"><span class="yes" title="Authenticator app">${I("phone")}</span></span>` : `<span class="mfa" title="None">—</span>`;
+  return `<tr ${SEL.has(u) ? 'aria-selected="true"' : ""}>
+  <td class="sel"><input type="checkbox" aria-label="Select ${u}" ${SEL.has(u) ? "checked" : ""}></td>
+  <td><a class="who" href="user">${avatar(u)}<span><span class="u">${disp}</span><small>${u}</small></span></a></td>
+  <td class="muted">${e}${v ? "" : '<span class="unv">unverified</span>'}</td>
+  <td><span class="dept">${dept}</span></td>
+  <td><span class="status ${s}">${MOCK.statusLabel[s]}</span></td>
+  <td><span class="when ${fresh ? "fresh" : ""}"><i></i>${last}</span></td>
+  <td>${mfa}</td>
+  <td class="act"><button class="btn sm icon quiet" aria-label="Actions for ${u}">${I("more")}</button></td></tr>`;
+};
+</script>
+<script src="chrome.js"></script>
+<div class="scrim"></div>
+<aside class="panel-d" role="dialog" aria-labelledby="pt">
+  <div class="dhead">
+    <button class="btn icon quiet" aria-label="Back to users" id="pb"></button>
+    <span id="pav"></span>
+    <div class="grow"><h1 id="pt">Ada Lovelace <span class="status active">Active</span></h1><div class="sub">ada.lovelace · ada.lovelace@acme.test · member since Oct 10, 2026</div></div>
+    <button class="btn sm">Sign in as</button>
+    <button class="btn sm icon quiet" aria-label="More actions" id="pm"></button>
+    <button class="btn sm icon quiet" aria-label="Close" id="px"></button>
+  </div>
+  <dl class="stats">
+    <div><dt>Last sign-in</dt><dd>Today, 08:02</dd></div>
+    <div><dt>Second step</dt><dd><span class="pill ok">Passkey</span></dd></div>
+    <div><dt>Sessions</dt><dd>2 active</dd></div>
+    <div><dt>Groups · roles</dt><dd>3 · 2</dd></div>
+  </dl>
+  <nav class="tabs" aria-label="User sections"><a href="#" aria-current="page">Profile</a><a href="#">Security</a><a href="#">Sessions</a><a href="#">Roles</a><a href="#">Groups</a><a href="#">Consents</a><a href="#">Audit</a></nav>
+  <div class="body">
+    <section class="section">
+      <h2>Account</h2><p class="hint">Changes save as you type.</p>
+      <div class="fields">
+        <div class="two"><div class="field"><label for="un">Username</label><input id="un" class="input" value="ada.lovelace"></div><div class="field"><label for="dn">Display name</label><input id="dn" class="input" value="Ada Lovelace"></div></div>
+        <div class="field"><label for="em">Email</label><input id="em" class="input" value="ada.lovelace@acme.test"><p class="help">Verified Oct 10, 2026.</p></div>
+        <div class="field inline"><div><label>Must change password at next sign-in</label></div><button class="switch" role="switch" aria-checked="false" aria-label="Must change password"></button></div>
+      </div>
+    </section>
+    <section class="section">
+      <h2>Profile</h2><p class="hint">From the tenant's profile schema; department and employee ID go into the ID token.</p>
+      <div class="fields">
+        <div class="two"><div class="field"><label for="dept">Department</label><select id="dept" class="input"><option>Engineering</option><option>Sales</option></select></div><div class="field"><label for="eid">Employee ID</label><input id="eid" class="input mono" value="E00042"></div></div>
+        <div class="two"><div class="field"><label for="sd">Start date</label><input id="sd" class="input" type="date" value="2021-03-15"></div><div class="field"><label for="nn">What should we call you?</label><input id="nn" class="input" value="Ada"></div></div>
+      </div>
+    </section>
+    <section class="section">
+      <h2>Memberships</h2><p class="hint">Groups carry roles; roles carry permissions.</p>
+      <dl class="kv"><dt>Groups</dt><dd><div class="chips"><span class="chip mono">staff/engineering/platform</span><span class="chip mono">staff/engineering</span><span class="chip mono">staff</span><button class="btn sm quiet">+ Add</button></div></dd><dt>Roles</dt><dd><div class="chips"><span class="chip">engineer <span class="mono" style="color:var(--muted)">via platform</span></span><span class="chip">employee <span class="mono" style="color:var(--muted)">via staff</span></span></div></dd></dl>
+    </section>
+  </div>
+  <div class="foot-d"><span class="saved" id="psv">saved 2s ago</span><div class="actions"><button class="btn sm">Disable</button><button class="btn sm danger">Delete</button></div></div>
+</aside>
+<script>document.getElementById("pb").innerHTML=I("back");document.getElementById("pm").innerHTML=I("more");document.getElementById("px").innerHTML=I("x");document.getElementById("pav").outerHTML=avatar("ada.lovelace");document.getElementById("psv").innerHTML=I("check")+"saved 2s ago";</script>
+
+</body>
+</html>

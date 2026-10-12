@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security · Example Orders Co. (C2)</title>
+<link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="../shared/mock.css">
+<script src="../shared/data.js"></script><script src="../shared/theme.js"></script><script src="../shared/mock.js"></script>
+</head>
+<body>
+<header class="acct-head">
+  <div class="in">
+    <div class="row">
+      <div class="who2"><i id="lg"></i>Example Orders Co.</div>
+      <div class="me2"><span>dana@example.com</span><div class="seg" role="group" aria-label="Theme" id="userSeg"><button data-v="" aria-label="Tenant default"></button><button data-v="light" aria-label="Light"></button><button data-v="dark" aria-label="Dark"></button></div><button class="btn sm">Sign out</button></div>
+    </div>
+    <nav class="acct-tabs" aria-label="Account"><a href="#">Profile</a><a href="#" aria-current="page">Security</a><a href="#">Organizations</a><a href="#">Applications</a><a href="#">Requests</a><a href="#">Your data</a></nav>
+  </div>
+</header>
+<main class="acct">
+  <h1>Security</h1>
+  <div class="score"><div class="ring"><span>70</span></div><div><b>Your account is well protected</b><small>A passkey and a strong password. Add an authenticator app as a backup second step to reach 100.</small></div></div>
+  <section class="panel">
+    <header><h2>How you sign in</h2><button class="btn sm">Add a passkey</button></header>
+    <div class="body">
+      <div class="meth"><span class="dev" id="i1"></span><span><b>Password</b><small>Last changed Oct 7, 2026 · strong</small></span><button class="btn sm">Change</button></div>
+      <div class="meth"><span class="dev" id="i2"></span><span><b>MacBook Pro passkey</b><small>Added Sep 18, 2026 · last used yesterday</small></span><button class="btn sm quiet">Remove</button></div>
+    </div>
+  </section>
+  <section class="panel">
+    <header><h2>Two-step verification</h2><span class="pill warn">Not set up</span></header>
+    <div class="body"><p>A second step protects your account even if your password leaks. An authenticator app works offline; recovery codes get you back in if you lose it.</p><button class="btn primary">Add an authenticator app</button></div>
+  </section>
+  <section class="panel">
+    <header><h2>Where you're signed in</h2><button class="btn sm danger">Sign out everywhere else</button></header>
+    <div class="body">
+      <div class="sess"><span class="dev" id="i3"></span><span><b>Chrome on Linux <span class="pill contrast">This browser</span></b><small>Signed in Oct 7, 1:14 PM · 127.0.0.1 · active now</small></span><span></span></div>
+      <div class="sess"><span class="dev" id="i4"></span><span><b>Safari on iPhone</b><small>Signed in Oct 3, 8:40 AM · 203.0.113.9 · last seen 2 days ago</small></span><button class="btn sm quiet">End session</button></div>
+    </div>
+  </section>
+  <section class="panel">
+    <header><h2>Trusted devices</h2></header>
+    <div class="body"><p>Browsers where you chose not to be asked for your second step again. None yet.</p></div>
+  </section>
+</main>
+<script>
+const I = MOCK.icon; document.getElementById("lg").innerHTML = I("shield"); document.getElementById("i1").innerHTML = I("lock"); document.getElementById("i2").innerHTML = I("passkey"); document.getElementById("i3").innerHTML = I("monitor"); document.getElementById("i4").innerHTML = I("phone");
+const seg = document.getElementById("userSeg"), bs = [...seg.querySelectorAll("button")]; bs[0].innerHTML = I("monitor"); bs[1].innerHTML = I("sun"); bs[2].innerHTML = I("moon");
+function d() { seg.hidden = MOCKCTL.get("mode.allow", "1") !== "1"; bs.forEach((b) => b.setAttribute("aria-pressed", b.dataset.v === MOCKCTL.get("mode.user", ""))); }
+bs.forEach((b) => (b.onclick = () => { MOCKCTL.set("mode.user", b.dataset.v); d(); })); d(); document.addEventListener("mock:theme", d);
+</script>
+</body>
+</html>
