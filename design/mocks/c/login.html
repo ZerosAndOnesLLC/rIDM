@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en" data-tenant-accent="#b8431e" data-tenant-contrast="#334e68">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · Acme Corporation (C)</title>
+<link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="../shared/mock.css">
+<script src="../shared/data.js"></script><script src="../shared/theme.js"></script><script src="../shared/mock.js"></script>
+</head>
+<body>
+<div class="auth">
+  <div class="wrap">
+    <div class="tenant-head"><i>A</i>Acme Corporation</div>
+    <main class="card">
+      <h1>Sign in</h1>
+      <p class="to">to continue to Acme customer portal</p>
+      <div class="field"><label for="id">Email or username</label><input id="id" class="input" autocomplete="username"></div>
+      <div class="field"><label for="pw">Password</label><div class="pw"><input id="pw" class="input" type="password" autocomplete="current-password"><button aria-label="Show password"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 12m-3 0a3 3 0 1 0 6 0 3 3 0 1 0-6 0"/></svg></button></div></div>
+      <label class="field" style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:var(--t-sm)"><input type="checkbox"> Remember this device</label>
+      <button class="btn primary">Continue</button>
+      <div class="links"><a href="#">Forgot your password?</a><span>New here? <a href="#">Create an account</a></span></div>
+      <div class="or">or</div>
+      <div class="alt">
+        <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM2 21v-2a5 5 0 0 1 5-5h4M17 11a3 3 0 1 1 0 6v4l2-2-2-2"/></svg>Sign in with a passkey</button>
+        <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h18v14H3zM3 7l9 6 9-6"/></svg>Email me a sign-in link</button>
+      </div>
+      <a class="cancel" href="#">Cancel</a>
+    </main>
+  </div>
+  <footer class="foot">
+    <a href="#">Status</a><a href="#">Help</a><a href="#">Privacy</a>
+    <div class="right">
+      <select aria-label="Language"><option>English</option><option>Deutsch</option><option>Français</option></select>
+      <div class="seg" role="group" aria-label="Theme"><button aria-pressed="true" aria-label="Tenant default"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 4h18v12H3zM8 20h8M12 16v4"/></svg></button><button aria-label="Light"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM12 2v2M12 20v2M2 12h2M20 12h2"/></svg></button><button aria-label="Dark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10z"/></svg></button></div>
+      <span>Secured by rIDM</span>
+    </div>
+  </footer>
+</div>
+<script>
+(function(){const seg=document.querySelector('.tools .seg, .me2 .seg, .foot .seg'); if(!seg) return; const bs=[...seg.querySelectorAll('button')]; const vals=["","light","dark"];
+function d(){seg.hidden=MOCKCTL.get("mode.allow","1")!=="1"; bs.forEach((b,i)=>b.setAttribute("aria-pressed", vals[i]===MOCKCTL.get("mode.user","")));}
+bs.forEach((b,i)=>b.onclick=()=>{MOCKCTL.set("mode.user",vals[i]);d();}); d(); document.addEventListener("mock:theme",d);})();
+</script>
+</body>
+</html>

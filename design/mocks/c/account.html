@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security · Example Orders Co. (C)</title>
+<link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="../shared/mock.css">
+<script src="../shared/data.js"></script><script src="../shared/theme.js"></script><script src="../shared/mock.js"></script>
+</head>
+<body>
+<header class="acct-head">
+  <div class="in">
+    <div class="row">
+      <div class="who"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg></i>Example Orders Co.</div>
+      <div class="me2"><span>dana@example.com</span><div class="seg" role="group" aria-label="Theme"><button aria-pressed="true" aria-label="Tenant default"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 4h18v12H3zM8 20h8M12 16v4"/></svg></button><button aria-label="Light"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM12 2v2M12 20v2M2 12h2M20 12h2"/></svg></button><button aria-label="Dark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10z"/></svg></button></div><button class="btn sm">Sign out</button></div>
+    </div>
+    <nav class="acct-tabs" aria-label="Account"><a href="#">Profile</a><a href="#" aria-current="page">Security</a><a href="#">Organizations</a><a href="#">Applications</a><a href="#">Requests</a><a href="#">Your data</a></nav>
+  </div>
+</header>
+<main class="acct">
+  <h1>Security</h1>
+
+  <section class="panel">
+    <header><h2>How you sign in</h2><button class="btn sm">Add a passkey</button></header>
+    <div class="body">
+      <div class="meth"><span class="dev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4"/></svg></span><span><b>Password</b><small>Last changed Oct 7, 2026</small></span><button class="btn sm">Change</button></div>
+      <div class="meth"><span class="dev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM2 21v-2a5 5 0 0 1 5-5h4M17 11a3 3 0 1 1 0 6v4l2-2-2-2"/></svg></span><span><b>MacBook Pro passkey</b><small>Added Sep 18, 2026 · last used yesterday</small></span><button class="btn sm quiet">Remove</button></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <header><h2>Two-step verification</h2><span class="pill warn">Not set up</span></header>
+    <div class="body">
+      <p>A second step protects your account even if your password leaks. An authenticator app works offline; recovery codes get you back in if you lose it.</p>
+      <button class="btn primary">Add an authenticator app</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <header><h2>Where you're signed in</h2><button class="btn sm danger">Sign out everywhere else</button></header>
+    <div class="body">
+      <div class="sess"><span class="dev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 4h18v12H3zM8 20h8M12 16v4"/></svg></span><span><b>Chrome on Linux <span class="pill contrast">This browser</span></b><small>Signed in Oct 7, 1:14 PM · 127.0.0.1 · active now</small></span><span></span></div>
+      <div class="sess"><span class="dev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2h10v20H7zM11 18h2"/></svg></span><span><b>Safari on iPhone</b><small>Signed in Oct 3, 8:40 AM · 203.0.113.9 · last seen 2 days ago</small></span><button class="btn sm quiet">End session</button></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <header><h2>Trusted devices</h2></header>
+    <div class="body"><p>Browsers where you chose not to be asked for your second step again. None yet.</p></div>
+  </section>
+</main>
+<script>
+(function(){const seg=document.querySelector('.tools .seg, .me2 .seg, .foot .seg'); if(!seg) return; const bs=[...seg.querySelectorAll('button')]; const vals=["","light","dark"];
+function d(){seg.hidden=MOCKCTL.get("mode.allow","1")!=="1"; bs.forEach((b,i)=>b.setAttribute("aria-pressed", vals[i]===MOCKCTL.get("mode.user","")));}
+bs.forEach((b,i)=>b.onclick=()=>{MOCKCTL.set("mode.user",vals[i]);d();}); d(); document.addEventListener("mock:theme",d);})();
+</script>
+</body>
+</html>

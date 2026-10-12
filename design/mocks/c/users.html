@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Users · acme · rIDM (C)</title>
+<link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="../shared/mock.css">
+<script src="../shared/data.js"></script><script src="../shared/theme.js"></script><script src="../shared/mock.js"></script>
+</head>
+<body data-page="Users">
+<div class="frame">
+  <div class="top">
+    <div class="brand"><button class="btn icon quiet burger" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg></i><span>rIDM</span></div>
+    <div class="cmd">
+      <button class="tenant" aria-label="Tenant: Acme Corporation"><span class="glyph">A</span><b>acme</b><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg></button>
+      <button class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4"/></svg><span>Search users, clients, pages… or type a command</span><kbd>⌘K</kbd></button>
+    </div>
+    <div class="tools">
+      <div class="seg" role="group" aria-label="Theme"><button aria-pressed="true" aria-label="Tenant default"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 4h18v12H3zM8 20h8M12 16v4"/></svg></button><button aria-label="Light"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM12 2v2M12 20v2M2 12h2M20 12h2"/></svg></button><button aria-label="Dark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10z"/></svg></button></div>
+      <div class="me" title="admin · Global administrator"><span class="av">A</span></div>
+    </div>
+  </div>
+  <aside class="rail"><nav class="nav" data-nav aria-label="Console"></nav></aside>
+  <div class="content">
+    <main>
+      <header class="ph">
+        <div><h1>Users <small>120</small></h1></div>
+        <div class="actions">
+          <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12M6 11l6 6 6-6M4 21h16"/></svg>Export</button>
+          <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 21V9M6 13l6-6 6 6M4 3h16"/></svg>Import</button>
+          <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h18v14H3zM3 7l9 6 9-6"/></svg>Invite</button>
+          <button class="btn primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New user</button>
+        </div>
+      </header>
+      <div class="filters">
+        <input class="input search-in" placeholder="Filter by username or email" aria-label="Search users">
+        <select class="input" aria-label="Status"><option>Status: any</option><option>Active</option><option>Disabled</option><option>Locked</option></select>
+        <select class="input" aria-label="Group"><option>Group: any</option></select>
+        <select class="input" aria-label="Department"><option>Department: any</option></select>
+        <label class="chk"><input type="checkbox"> Deleted</label>
+        <span class="count">24 / 120</span>
+      </div>
+      <div class="table-wrap">
+      <table class="table" aria-label="Users">
+        <thead><tr>
+          <th class="sel"><input type="checkbox" aria-label="Select all"></th>
+          <th aria-sort="ascending"><button>Username <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 15l4 4 4-4"/></svg></button></th>
+          <th><button>Email</button></th>
+          <th><button>Department</button></th>
+          <th><button>Status</button></th>
+          <th><button>Last sign-in</button></th>
+          <th><button>MFA</button></th>
+          <th class="act"><span class="sr"></span></th>
+        </tr></thead>
+        <tbody data-rows="c"></tbody>
+      </table>
+      </div>
+      <div class="tfoot"><span>24 of 120 loaded · scroll for more</span><span>sorted by username</span></div>
+      <div class="bulk" role="region" aria-label="Selected users"><span class="n">2</span><span>selected</span><button class="btn sm">Add to group</button><button class="btn sm">Disable</button><button class="btn sm danger">Delete</button><button class="btn sm icon" aria-label="Clear selection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    </main>
+  </div>
+</div>
+<script>
+const SEL = new Set(["ada.knuth", "claude.allen"]);
+window.ROW = (u, e, s, v, last, dept) => `<tr ${SEL.has(u) ? 'aria-selected="true"' : ""}>
+  <td class="sel"><input type="checkbox" aria-label="Select ${u}" ${SEL.has(u) ? "checked" : ""}></td>
+  <td><a class="u" href="user.html">${u}</a></td>
+  <td class="muted">${e}${v ? "" : '<span class="unv">unverified</span>'}</td>
+  <td class="muted">${dept}</td>
+  <td><span class="status ${s}">${MOCK.statusLabel[s]}</span></td>
+  <td class="mono">${last}</td>
+  <td class="muted">${["ada.lovelace","alan.hopper","barbara.hamilton","claude.turing","ada.dijkstra","claude.shannon"].includes(u) ? "Passkey" : "—"}</td>
+  <td class="act"><button class="btn sm icon quiet" aria-label="Actions for ${u}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg></button></td></tr>`;
+</script>
+<script src="../shared/console.js"></script>
+<script>
+(function(){const seg=document.querySelector('.tools .seg, .me2 .seg, .foot .seg'); if(!seg) return; const bs=[...seg.querySelectorAll('button')]; const vals=["","light","dark"];
+function d(){seg.hidden=MOCKCTL.get("mode.allow","1")!=="1"; bs.forEach((b,i)=>b.setAttribute("aria-pressed", vals[i]===MOCKCTL.get("mode.user","")));}
+bs.forEach((b,i)=>b.onclick=()=>{MOCKCTL.set("mode.user",vals[i]);d();}); d(); document.addEventListener("mock:theme",d);})();
+</script>
+</body>
+</html>

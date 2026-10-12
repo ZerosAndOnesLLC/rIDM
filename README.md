@@ -181,6 +181,7 @@ To work on rIDM itself, see [CONTRIBUTING.md](CONTRIBUTING.md) and
 | `deploy/` | docker-compose for evaluation (`docker-compose.yml`), the production compose stack (`deploy/production`, smoke test in `deploy/production/smoke`), reverse-proxy configurations for nginx, Caddy and Traefik (`deploy/proxy`), the Helm chart (`deploy/helm/ridm`, smoke test in `deploy/helm/smoke`) |
 | `docs/` | the documentation site (mdBook): concepts, quickstarts, admin guide, reference, deployment, migration |
 | `site/` | the project website (static HTML), published with the docs to GitHub Pages by `scripts/pages/build.sh` |
+| `design/` | the UI design reference for Phase 15: the token sheet (`design/README.md`) and the static mocks it was chosen from (`npx serve design/mocks -l 3120`) |
 | `api/fuzz/` | cargo-fuzz targets and their seed corpora |
 | `perf/` | k6 load tests: the PR smoke and the release baseline |
 | `conformance/` | the OpenID Foundation conformance rig |

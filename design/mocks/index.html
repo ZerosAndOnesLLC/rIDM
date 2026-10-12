@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rIDM Phase 15 · design mocks</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; font: 14px/1.5 system-ui, sans-serif; background: #e9eaee; color: #16191f; }
+  .bar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 16px; background: #fff; border-bottom: 1px solid #d3d7df; }
+  .bar h1 { font-size: 15px; margin: 0 8px 0 0; }
+  .bar label { display: inline-flex; align-items: center; gap: 6px; }
+  .bar select, .bar button { font: inherit; height: 28px; border: 1px solid #c9cfd9; border-radius: 6px; background: #fff; color: #16191f; padding: 0 8px; cursor: pointer; }
+  .bar button[aria-pressed="true"] { background: #16191f; color: #fff; border-color: #16191f; }
+  .bar button i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 2px; vertical-align: -1px; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0e1014; color: #e7eaf0; }
+    .bar { background: #15181e; border-color: #252a33; color: #e7eaf0; }
+    .bar select, .bar button { background: #1b1f27; color: #e7eaf0; border-color: #343b47; }
+    .bar button[aria-pressed="true"] { background: #e7eaf0; color: #111318; border-color: #e7eaf0; }
+    .shot { border-color: #343b47; }
+  }
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; padding: 14px 16px 40px; }
+  .grid.one { grid-template-columns: 1fr; }
+  .grid.two { grid-template-columns: 1fr 1fr; }
+  .grid:not(.one):not(.two):not(.phone) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid.phone { grid-template-columns: repeat(4, 390px); justify-content: center; }
+  .cell { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .cell h2 { font-size: 13px; margin: 0; display: flex; justify-content: space-between; align-items: baseline; }
+  .cell h2 small { font-weight: 400; opacity: .7; }
+  .cell h2 a { color: inherit; }
+  [hidden] { display: none !important; }
+  .shot { position: relative; width: 100%; aspect-ratio: 1440 / 900; overflow: hidden; border: 1px solid #c9cfd9; border-radius: 8px; background: #fff; }
+  .shot iframe { position: absolute; top: 0; left: 0; width: 1440px; height: 900px; border: 0; transform-origin: 0 0; }
+  .grid.phone .shot { aspect-ratio: 390 / 844; }
+  .grid.phone .shot iframe { width: 390px; height: 844px; }
+  .notes { padding: 0 16px 24px; max-width: 70rem; }
+  .notes details { margin-bottom: 8px; }
+  .notes summary { cursor: pointer; font-weight: 600; }
+  .notes ul { margin: 6px 0 0; padding-left: 18px; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1>rIDM · Phase 15 mocks</h1>
+  <label>Screen <select id="screen"><option value="users">Console · Users</option><option value="user">Console · User detail</option><option value="login">Sign-in (Acme)</option><option value="account">Account · Security</option><option value="overview">Console · Overview (C2 only)</option><option value="appearance">Settings · Appearance (C, C2)</option></select></label>
+  <label>Tenant theme <span id="theme.preset"></span></label>
+  <label>Mode policy <span id="mode.policy"><button data-v="system">device</button><button data-v="light">light</button><button data-v="dark">dark</button></span></label>
+  <label>Person <span id="mode.user"><button data-v="">default</button><button data-v="light">light</button><button data-v="dark">dark</button></span></label>
+  <label>Layout <span id="layout"><button data-v="three">3 across</button><button data-v="one">one at a time</button><button data-v="phone">phones</button></span></label>
+  <label id="which" hidden>Direction <select id="dir"><option value="a">A · Vault</option><option value="b">B · Registry</option><option value="c">C · Signal</option><option value="c2">C2 · Signal v2</option></select></label>
+</div>
+<div class="grid" id="grid"></div>
+<div class="notes">
+  <details open><summary>C2 · Signal v2 — the current direction</summary><ul><li>Everything from C, plus: tenant-tinted ground with the content as an elevated sheet; a dark command bar in both modes; Bricolage Grotesque for titles and numbers; rows with gradient initials, stacked identity, freshness dots and second-step glyphs; a stat strip in the detail panel; a split-panel sign-in; an Overview dashboard with sparklines, attention list and activity feed; an account security score.</li></ul></details>
+  <details><summary>A · Vault — custody, instrument</summary><ul><li>IBM Plex Sans + Plex Mono. Dark navigation rail with the tenant as the anchoring object; content on quiet ground. Tables in a single bordered sheet, status as dot + word. Primary button takes the tenant accent.</li></ul></details>
+  <details><summary>B · Registry — editorial, calm</summary><ul><li>Source Serif 4 titles, Source Sans 3 UI. Light text-only sidebar with shortcut hints, hairline tables with no box, warm-neutral ground. Primary button is ink (accent on hover and links), so any tenant colour sits quietly.</li></ul></details>
+  <details><summary>C · Signal — dense, keyboard-first</summary><ul><li>Hanken Grotesk + JetBrains Mono. Command bar across the top (tenant, search/commands), slim sidebar, 38 px rows with row actions, bulk-selection bar, user detail as a panel over the list. Auth/account pages are looser than the console.</li></ul></details>
+  <p>The tenant theme (a primary + contrast pair), the tenant's light/dark policy and the person's own switch are shared with every open mock through localStorage; the Acme sign-in keeps Acme's own pair. The Appearance screen (C) is where a tenant admin would set all of this.</p>
+</div>
+<script src="shared/theme.js"></script>
+<script>
+  const KEY = { screen: "mock.screen", layout: "mock.layout", dir: "mock.dir" };
+  document.getElementById("theme.preset").innerHTML = THEME.PRESETS.map((p) => `<button data-v="${p.id}" title="${p.name}"><i style="background:${p.primary}"></i><i style="background:${p.contrast}"></i>${p.name.split(" ")[0]}</button>`).join("");
+  const DIRS = { a: "A · Vault", b: "B · Registry", c: "C · Signal", c2: "C2 · Signal v2" };
+  const g = document.getElementById("grid"), scr = document.getElementById("screen"), dirSel = document.getElementById("dir");
+  function state(k, d) { return localStorage.getItem(KEY[k]) || d; }
+  function render() {
+    const screen = state("screen", "users"), layout = state("layout", "three"), dir = state("dir", "a");
+    scr.value = screen; dirSel.value = dir;
+    g.className = "grid " + (layout === "one" || screen === "overview" ? "one" : screen === "appearance" ? "two" : layout === "phone" ? "phone" : "");
+    document.getElementById("which").hidden = layout !== "one";
+    const dirs = screen === "overview" ? ["c2"] : screen === "appearance" ? ["c", "c2"] : layout === "one" ? [dir] : ["c2", "c", "a", "b"];
+    g.innerHTML = dirs.map((d) => `<div class="cell"><h2><span>${DIRS[d]}</span><small><a href="${d}/${screen}" target="_blank">open ↗</a></small></h2><div class="shot"><iframe title="${DIRS[d]} · ${screen}" src="${d}/${screen}?bare" loading="lazy"></iframe></div></div>`).join("");
+    document.querySelectorAll("#layout button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.v === state("layout", "three")));
+    const D = { "theme.preset": "indigo", "mode.policy": "system", "mode.user": "" };
+    for (const k in D) document.querySelectorAll(`[id="${k}"] button`).forEach((b) => b.setAttribute("aria-pressed", b.dataset.v === (localStorage.getItem("mock." + k) ?? D[k])));
+  }
+  document.getElementById("layout").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; localStorage.setItem(KEY.layout, b.dataset.v); render(); });
+  for (const k of ["theme.preset", "mode.policy", "mode.user"]) document.querySelector(`[id="${k}"]`).addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; localStorage.setItem("mock." + k, b.dataset.v); render(); });
+  scr.addEventListener("change", () => { localStorage.setItem(KEY.screen, scr.value); render(); });
+  dirSel.addEventListener("change", () => { localStorage.setItem(KEY.dir, dirSel.value); render(); });
+  function fit() { document.querySelectorAll(".shot").forEach((w) => { const f = w.firstElementChild; f.style.transform = `scale(${w.clientWidth / f.offsetWidth})`; }); }
+  new ResizeObserver(fit).observe(g);
+  const _render = render; render = () => { _render(); fit(); };
+  render();
+</script>
+</body>
+</html>
