@@ -13,6 +13,7 @@ Each tenant chooses, on Settings › Appearance (`mocks/c2/appearance.html`):
 
 | Setting | Values | Default |
 |---|---|---|
+| `skin` | `signal-v2`, `signal`, `vault`, `registry` | `signal-v2` |
 | `primary` | hex | `#3451b2` (Indigo) |
 | `contrast` | hex | `#b45309` (amber) |
 | `mode` | `system` (follow each person's device), `light`, `dark` | `system` |
@@ -24,6 +25,33 @@ ochre, Ember & slate, Plum & lime, Graphite & sky; custom pairs are allowed. The
 tenant's choice applies to the admin console, the account console and the
 sign-in pages. The sign-in pages keep the tenant's own pair even when an
 administrator is viewing another tenant.
+
+## Skins
+
+All four mock directions ship as selectable skins (owner decision, 2026-10-12),
+Signal v2 the default. A skin is **not** a separate code base: every page is built
+once on the shared primitives, and a skin is
+
+1. a token set (`[data-skin="…"]` on `<html>`): neutrals, bar colours, radii,
+   shadows, type faces and scale, ground tint; the tenant colour ramps are shared;
+2. a handful of structural switches read by the shell and a few primitives:
+
+| Switch | signal-v2 | signal | vault | registry |
+|---|---|---|---|---|
+| console chrome | dark command bar + sidebar on ground, page as sheet | light command bar + sidebar | dark rail, top strip | light text-only sidebar, top strip |
+| sidebar icons | yes | yes | yes | no |
+| detail pages | floating panel over the list | panel | full page | full page |
+| list density | 50 px rows, avatars | 38 px rows | 46 px rows | 44 px rows, no box |
+| filters | chips | selects | selects | selects |
+| status | dot + halo | outlined pill | dot + word | dot + word |
+| sign-in | split (brand panel) when a headline is set, else card | card | card | card |
+| display face | Bricolage Grotesque | Hanken Grotesk | IBM Plex Sans | Source Serif 4 |
+
+Anything a skin does not override falls through to Signal v2. New pages are
+designed for Signal v2 first and must look acceptable in the other three with
+tokens alone; a structural switch is added only when tokens cannot do it. The
+a11y sweep runs every console page in every skin at least in light mode, and
+Signal v2 in light, dark and at 390 px.
 
 ## Colour
 
