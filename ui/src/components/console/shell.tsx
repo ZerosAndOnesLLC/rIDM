@@ -1,16 +1,16 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { Briefcase, Building2, ChevronsUpDown, LogOut, Menu, Monitor, Moon, Search, ShieldCheck, Sun, X } from "lucide-react";
+import { Briefcase, Building2, ChevronsUpDown, LogOut, Menu, Search, ShieldCheck, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
+import { ThemeSwitch } from "@/components/base/theme-switch";
 import { Spinner } from "@/components/ui";
 import { NAV, PAGE_TITLES, allNavItems, consoleHref, navVisible } from "@/lib/console/nav";
 import { useConsole } from "@/lib/console/session";
 import { modKey, useShortcuts } from "@/lib/console/shortcuts";
 import { useConsoleTenant } from "@/lib/console/tenant";
-import { useTheme, type Theme } from "@/lib/console/theme";
 import { useTenantAppearance } from "@/lib/theme/use-tenant-appearance";
 import { CommandPalette, TenantSwitcher } from "./palette";
 import { SignIn } from "./sign-in";
@@ -248,37 +248,6 @@ function Sidebar({
         </div>
       </div>
     </>
-  );
-}
-
-const THEMES: { value: Theme; label: string; icon: typeof Sun }[] = [
-  { value: "system", label: "Follow system theme", icon: Monitor },
-  { value: "light", label: "Light theme", icon: Sun },
-  { value: "dark", label: "Dark theme", icon: Moon },
-];
-
-function ThemeSwitch() {
-  const { theme, setTheme, policy } = useTheme();
-  // The tenant decides whether people may override its light/dark mode.
-  if (!policy.allowSwitch) return null;
-  return (
-    <div role="group" aria-label="Theme" className="flex items-center gap-0.5 rounded-[var(--radius)] border border-line bg-ground p-0.5">
-      {THEMES.map((t) => (
-        <button
-          key={t.value}
-          type="button"
-          aria-label={t.label}
-          title={t.label}
-          aria-pressed={theme === t.value}
-          onClick={() => setTheme(t.value)}
-          className={`flex size-8 items-center justify-center rounded-[calc(var(--radius)-2px)] ${
-            theme === t.value ? "bg-paper text-ink shadow-sm" : "text-muted hover:text-ink"
-          }`}
-        >
-          <t.icon className="size-4" aria-hidden />
-        </button>
-      ))}
-    </div>
   );
 }
 

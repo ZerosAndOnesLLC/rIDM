@@ -3,6 +3,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { buttonClass, iconButtonClass } from "@/components/base/button";
 
 export function Card({ title, children, className = "", actions }: { title?: ReactNode; children: ReactNode; className?: string; actions?: ReactNode }) {
   return (
@@ -50,7 +51,7 @@ export function IconButton({ label, className = "", children, ...rest }: ButtonH
       type="button"
       aria-label={label}
       title={label}
-      className={`inline-flex size-9 items-center justify-center rounded-[var(--radius)] text-muted hover:bg-ground hover:text-ink ${className}`}
+      className={iconButtonClass("md", className)}
       {...rest}
     >
       {children}
@@ -60,17 +61,8 @@ export function IconButton({ label, className = "", children, ...rest }: ButtonH
 
 /** Small button for toolbars; `primary` for the one main action. */
 export function Button({ variant = "secondary", className = "", children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" }) {
-  const cls = {
-    primary: "bg-accent text-accent-ink hover:brightness-110",
-    secondary: "border border-line bg-paper text-ink hover:bg-ground",
-    danger: "border border-line bg-paper text-danger hover:bg-danger-soft",
-  }[variant];
   return (
-    <button
-      type="button"
-      className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-[var(--radius)] px-3.5 text-body font-medium disabled:cursor-not-allowed disabled:opacity-60 ${cls} ${className}`}
-      {...rest}
-    >
+    <button type="button" className={buttonClass(variant, "md", className)} {...rest}>
       {children}
     </button>
   );
