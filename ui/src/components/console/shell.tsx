@@ -11,6 +11,7 @@ import { useConsole } from "@/lib/console/session";
 import { modKey, useShortcuts } from "@/lib/console/shortcuts";
 import { useConsoleTenant } from "@/lib/console/tenant";
 import { useTheme, type Theme } from "@/lib/console/theme";
+import { useTenantAppearance } from "@/lib/theme/use-tenant-appearance";
 import { CommandPalette, TenantSwitcher } from "./palette";
 import { SignIn } from "./sign-in";
 import { IconButton, Kbd, Modal } from "./ui";
@@ -38,6 +39,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
 function Frame({ children }: { children: ReactNode }) {
   const { me, signOut, can, canInOrg } = useConsole();
   const tenant = useConsoleTenant();
+  useTenantAppearance(tenant);
   const router = useRouter();
   const pathname = usePathname();
   const [palette, setPalette] = useState(false);
@@ -256,7 +258,9 @@ const THEMES: { value: Theme; label: string; icon: typeof Sun }[] = [
 ];
 
 function ThemeSwitch() {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, policy } = useTheme();
+  // The tenant decides whether people may override its light/dark mode.
+  if (!policy.allowSwitch) return null;
   return (
     <div role="group" aria-label="Theme" className="flex items-center gap-0.5 rounded-[var(--radius)] border border-line bg-ground p-0.5">
       {THEMES.map((t) => (

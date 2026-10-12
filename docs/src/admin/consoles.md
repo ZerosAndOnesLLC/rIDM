@@ -58,7 +58,7 @@ console says "This account has no administrator permissions".
 - **Search** (`Ctrl K` / `⌘ K`, or `/`): console pages you may open, plus users and
   clients of the current tenant whose username, email, client ID or name starts with
   what you type (two characters or more).
-- **Theme**: system, light or dark, kept per browser.
+- **Theme**: system, light or dark, kept per browser. The tenant being administered decides whether the switch is offered and what applies otherwise (Settings → Appearance: skin, the two theme colours, the light/dark policy).
 
 ### Keyboard shortcuts
 

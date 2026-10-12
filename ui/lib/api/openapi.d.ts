@@ -3272,9 +3272,27 @@ export interface components {
          * @enum {string}
          */
         BackchannelDeliveryMode: "poll" | "ping";
+        /**
+         * @description How the tenant looks: the sign-in pages, the account console and the admin
+         *     console while it administers this tenant. The two theme colours feed the
+         *     UI's ramp engine (`ui/src/lib/theme/ramp.ts`), which derives every shade
+         *     for light and dark mode from them.
+         */
         Branding: {
+            /**
+             * @description People may override `mode` on their own device.
+             * @default true
+             */
+            allow_theme_switch: boolean;
             /** @default null */
             background_color: string | null;
+            /**
+             * @description The theme's second colour, for what must read as different from the
+             *     primary (selection, the tenant mark). Hex; derived from the primary by
+             *     hue rotation when `null`.
+             * @default null
+             */
+            contrast_color: string | null;
             /** @default null */
             custom_css: string | null;
             /** @default null */
@@ -3283,8 +3301,17 @@ export interface components {
             links: components["schemas"]["BrandingLink"][];
             /** @default null */
             logo_url: string | null;
-            /** @default null */
+            /** @default system */
+            mode: components["schemas"]["ThemeMode"];
+            /**
+             * @description The theme's primary colour: actions, navigation, links, focus. A hex
+             *     colour drives the full tonal ramp; other CSS colour literals set the
+             *     plain accent only.
+             * @default null
+             */
             primary_color: string | null;
+            /** @default signal-v2 */
+            skin: components["schemas"]["Skin"];
             /** @default null */
             support_url: string | null;
         };
@@ -6634,6 +6661,11 @@ export interface components {
             updated_at: string;
         };
         /**
+         * @description The visual skins the UI ships; `design/README.md` describes them.
+         * @enum {string}
+         */
+        Skin: "signal-v2" | "signal" | "vault" | "registry";
+        /**
          * @description Binding rIDM uses to send an SP its logout messages.
          * @enum {string}
          */
@@ -6863,12 +6895,16 @@ export interface components {
             auth: components["schemas"]["AuthMethods"];
             /**
              * @default {
+             *       "allow_theme_switch": true,
              *       "background_color": null,
+             *       "contrast_color": null,
              *       "custom_css": null,
              *       "favicon_url": null,
              *       "links": [],
              *       "logo_url": null,
+             *       "mode": "system",
              *       "primary_color": null,
+             *       "skin": "signal-v2",
              *       "support_url": null
              *     }
              */
@@ -7080,6 +7116,11 @@ export interface components {
             subject?: string | null;
             username?: string | null;
         };
+        /**
+         * @description Light/dark policy: follow each person's device, or always one of them.
+         * @enum {string}
+         */
+        ThemeMode: "system" | "light" | "dark";
         /** @enum {string} */
         TokenEndpointAuthMethod: "none" | "client_secret_basic" | "client_secret_post" | "private_key_jwt" | "tls_client_auth" | "self_signed_tls_client_auth";
         /** @description The user's tokens and the scopes a new one may carry. */

@@ -175,10 +175,14 @@ export interface PublicTenant {
     logo_url: string | null;
     favicon_url: string | null;
     primary_color: string | null;
+    contrast_color: string | null;
     background_color: string | null;
     support_url: string | null;
     custom_css: string | null;
     links: BrandingLink[];
+    skin: "signal-v2" | "signal" | "vault" | "registry";
+    mode: "system" | "light" | "dark";
+    allow_theme_switch: boolean;
   };
   locale: { default: string; supported: string[] };
   methods: Method[];

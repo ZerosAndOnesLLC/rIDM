@@ -9,9 +9,12 @@ export const metadata: Metadata = {
   description: "Identity management",
 };
 
-// Restores an explicit light/dark choice before the first paint. The
-// attribute is set on <html> ahead of hydration, hence the suppression.
-const THEME_BOOT = `try{var t=localStorage.getItem("ridm.theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}`;
+// Restores the tenant's skin and the effective light/dark choice before the
+// first paint: the tenant's cached policy (written by src/lib/theme/appearance.ts
+// under the slug in the query string) decides whether the person's own choice
+// applies. The attributes are set on <html> ahead of hydration, hence the
+// suppression. Mirrors `effectiveTheme` in src/lib/theme/appearance.ts.
+const THEME_BOOT = `try{var d=document.documentElement,q=new URLSearchParams(location.search).get("tenant"),a=q?JSON.parse(localStorage.getItem("ridm.appearance:"+q)||"null"):null,t=localStorage.getItem("ridm.theme"),m=(a&&(a.mode==="light"||a.mode==="dark"))?a.mode:"system",w=!a||a.allow!==false,u=(t==="light"||t==="dark")?t:"system",e=(w&&u!=="system")?u:m;if(a&&a.skin)d.dataset.skin=a.skin;if(e!=="system")d.dataset.theme=e}catch(e){}`;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

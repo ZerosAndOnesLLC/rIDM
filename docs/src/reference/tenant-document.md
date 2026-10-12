@@ -76,7 +76,7 @@ The tenant's status (active or disabled) is not part of the document.
 | `auth` | first-factor methods: `password` (`true`), `magic_link`, `email_otp`, `sms_otp`, `passkey` (all `false`) |
 | `registration` | `enabled` (`false`), `require_email_verification` (`true`), `require_terms` (`false`), `terms_url`, `privacy_url` (`null`), `allowed_email_domains` (`[]`, any). A leftover `captcha` key from older exports is ignored; the setting is `captcha.on_registration` |
 | `locale` | `default` (`"en"`), `supported` (`["en"]`) |
-| `branding` | `logo_url`, `favicon_url`, `primary_color`, `background_color`, `support_url`, `custom_css` (all `null`), `links` (`[]` of `{label, url}`) |
+| `branding` | `logo_url`, `favicon_url`, `primary_color`, `contrast_color`, `background_color`, `support_url`, `custom_css` (all `null`), `links` (`[]` of `{label, url}`), `skin` (`"signal-v2"`; also `signal`, `vault`, `registry`), `mode` (`"system"`; also `light`, `dark`), `allow_theme_switch` (`true`) |
 | `keys` | `default_alg` (`"RS256"`; also `RS384`, `RS512`, `ES256`, `EdDSA`), `rsa_bits` (`"B2048"`; also `B3072`, `B4096`), `rotation_interval_days` (90, 0 = never), `retire_overlap_hours` (24) |
 | `discovery` | `email_domains` (`[]`): WebFinger `acct:` domains that resolve to this tenant |
 | `dcr` | `mode` (`"disabled"`; also `open`, `initial_access_token`), `allowed_grants` (`[]`), `require_pkce` (`true`) |

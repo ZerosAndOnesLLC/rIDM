@@ -21278,12 +21278,26 @@
       },
       "Branding": {
         "type": "object",
+        "description": "How the tenant looks: the sign-in pages, the account console and the admin\nconsole while it administers this tenant. The two theme colours feed the\nUI's ramp engine (`ui/src/lib/theme/ramp.ts`), which derives every shade\nfor light and dark mode from them.",
         "properties": {
+          "allow_theme_switch": {
+            "type": "boolean",
+            "description": "People may override `mode` on their own device.",
+            "default": true
+          },
           "background_color": {
             "type": [
               "string",
               "null"
             ],
+            "default": null
+          },
+          "contrast_color": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The theme's second colour, for what must read as different from the\nprimary (selection, the tenant mark). Hex; derived from the primary by\nhue rotation when `null`.",
             "default": null
           },
           "custom_css": {
@@ -21314,12 +21328,31 @@
             ],
             "default": null
           },
+          "mode": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ThemeMode",
+                "description": "Light/dark policy for every surface of the tenant."
+              }
+            ],
+            "default": "system"
+          },
           "primary_color": {
             "type": [
               "string",
               "null"
             ],
+            "description": "The theme's primary colour: actions, navigation, links, focus. A hex\ncolour drives the full tonal ramp; other CSS colour literals set the\nplain accent only.",
             "default": null
+          },
+          "skin": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Skin",
+                "description": "The visual skin (Phase 15): token set and layout family."
+              }
+            ],
+            "default": "signal-v2"
           },
           "support_url": {
             "type": [
@@ -30007,6 +30040,16 @@
           }
         }
       },
+      "Skin": {
+        "type": "string",
+        "description": "The visual skins the UI ships; `design/README.md` describes them.",
+        "enum": [
+          "signal-v2",
+          "signal",
+          "vault",
+          "registry"
+        ]
+      },
       "SloBinding": {
         "type": "string",
         "description": "Binding rIDM uses to send an SP its logout messages.",
@@ -30701,12 +30744,16 @@
               }
             ],
             "default": {
+              "allow_theme_switch": true,
               "background_color": null,
+              "contrast_color": null,
               "custom_css": null,
               "favicon_url": null,
               "links": [],
               "logo_url": null,
+              "mode": "system",
               "primary_color": null,
+              "skin": "signal-v2",
               "support_url": null
             }
           },
@@ -31101,6 +31148,15 @@
             ]
           }
         }
+      },
+      "ThemeMode": {
+        "type": "string",
+        "description": "Light/dark policy: follow each person's device, or always one of them.",
+        "enum": [
+          "system",
+          "light",
+          "dark"
+        ]
       },
       "TokenEndpointAuthMethod": {
         "type": "string",

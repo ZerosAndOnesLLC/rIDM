@@ -207,6 +207,80 @@ async fn global_owner_manages_the_tenant_lifecycle() {
 }
 
 #[tokio::test]
+async fn appearance_fields_round_trip_and_bad_colours_are_refused() {
+    let app = TestApp::spawn().await;
+    let t = admin_token(&app, MASTER_TENANT_ID, OWNER_ROLE).await;
+    let slug = new_slug();
+    let (status, created, _) = call(
+        &app,
+        Method::POST,
+        "/admin/tenants",
+        Some(&t),
+        Some(&json!({"slug": slug, "display_name": "Looks"})),
+    )
+    .await;
+    assert_eq!(status, 201, "{created}");
+    let b = &created["settings"]["branding"];
+    assert_eq!(b["skin"], "signal-v2");
+    assert_eq!(b["mode"], "system");
+    assert_eq!(b["allow_theme_switch"], true);
+
+    let path = format!("/admin/tenants/{slug}");
+    let (status, patched, _) = call(
+        &app,
+        Method::PATCH,
+        &path,
+        Some(&t),
+        Some(&json!({"settings": {"branding": {
+            "skin": "registry", "mode": "dark", "allow_theme_switch": false,
+            "primary_color": "#0f766e", "contrast_color": "#c2410c"
+        }}})),
+    )
+    .await;
+    assert_eq!(status, 200, "{patched}");
+    let b = &patched["settings"]["branding"];
+    assert_eq!(b["skin"], "registry");
+    assert_eq!(b["mode"], "dark");
+    assert_eq!(b["allow_theme_switch"], false);
+    assert_eq!(b["contrast_color"], "#c2410c");
+    // The public document carries them too.
+    let public: Value = app
+        .http
+        .get(app.url(&format!("/t/{slug}/branding")))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(public["branding"]["skin"], "registry");
+    assert_eq!(public["branding"]["mode"], "dark");
+    assert_eq!(public["branding"]["contrast_color"], "#c2410c");
+
+    for bad in [
+        json!({"primary_color": "red"}),
+        json!({"primary_color": "rgb(1;2;3)"}),
+        json!({"background_color": "url(https://evil)"}),
+        json!({"contrast_color": "rgb(1, 2, 3)"}),
+        json!({"skin": "neon"}),
+        json!({"mode": "sepia"}),
+    ] {
+        let (status, body, _) = call(
+            &app,
+            Method::PATCH,
+            &path,
+            Some(&t),
+            Some(&json!({"settings": {"branding": bad}})),
+        )
+        .await;
+        assert_eq!(status, 400, "{bad}: {body}");
+    }
+    // Nothing of the refused patches stuck.
+    let (_, got, _) = get_json(&app, &path, Some(&t)).await;
+    assert_eq!(got["settings"]["branding"]["contrast_color"], "#c2410c");
+}
+
+#[tokio::test]
 async fn listing_is_cursor_paginated_for_global_admins() {
     let app = TestApp::spawn().await;
     let t = admin_token(&app, MASTER_TENANT_ID, VIEWER_ROLE).await;

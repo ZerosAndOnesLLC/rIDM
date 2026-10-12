@@ -58,6 +58,11 @@ async fn branding_document_is_public_and_cacheable() {
     assert_eq!(body["branding"]["primary_color"], "#0f6e6e");
     assert_eq!(body["branding"]["custom_css"], ".card{border-radius:0}");
     assert_eq!(body["branding"]["links"][0]["label"], "Help");
+    // Appearance fields (Phase 15.3) ship with their defaults.
+    assert_eq!(body["branding"]["skin"], "signal-v2");
+    assert_eq!(body["branding"]["mode"], "system");
+    assert_eq!(body["branding"]["allow_theme_switch"], true);
+    assert!(body["branding"]["contrast_color"].is_null());
     assert_eq!(
         body["locale"],
         json!({"default": "de", "supported": ["de", "en"]})
