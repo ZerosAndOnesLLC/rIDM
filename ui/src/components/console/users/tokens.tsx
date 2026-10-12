@@ -28,19 +28,19 @@ export function PersonalTokens({ tenant, id, editable }: { tenant: string; id: s
   const live = (list.data ?? []).filter((k) => !k.revoked_at);
   return (
     <div className="mt-4 border-t border-line pt-3">
-      <h3 className="text-[0.875rem] font-semibold text-ink">Personal access tokens</h3>
+      <h3 className="text-body font-semibold text-ink">Personal access tokens</h3>
       {list.isPending ? (
         <Spinner label="Loading…" />
       ) : list.isError ? (
-        <p role="alert" className="mt-1 text-[0.875rem] text-danger">
+        <p role="alert" className="mt-1 text-body text-danger">
           {list.error.message}
         </p>
       ) : live.length === 0 ? (
-        <p className="mt-1 text-[0.8125rem] text-muted">No live personal access tokens.</p>
+        <p className="mt-1 text-small text-muted">No live personal access tokens.</p>
       ) : (
         <ul aria-label="Personal access tokens" className="mt-1 divide-y divide-line">
           {live.map((k) => (
-            <li key={k.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-[0.875rem]">
+            <li key={k.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-body">
               <span className="flex min-w-0 flex-col">
                 <span className="flex flex-wrap items-center gap-2 text-ink">
                   <span className="font-medium">{k.name}</span>
@@ -48,14 +48,14 @@ export function PersonalTokens({ tenant, id, editable }: { tenant: string; id: s
                     <Badge key={s}>{s}</Badge>
                   ))}
                 </span>
-                <span className="text-[0.8125rem] text-muted">
+                <span className="text-small text-muted">
                   Created {formatDate("en", k.created_at)}
                   {k.expires_at ? ` · expires ${formatDate("en", k.expires_at)}` : " · never expires"}
                   {k.last_used_at ? ` · last used ${formatDate("en", k.last_used_at)}` : " · never used"}
                 </span>
               </span>
               {editable && (
-                <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={revoke.isPending} onClick={() => revoke.mutate(k.id)}>
+                <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={revoke.isPending} onClick={() => revoke.mutate(k.id)}>
                   Revoke
                 </Button>
               )}
@@ -64,7 +64,7 @@ export function PersonalTokens({ tenant, id, editable }: { tenant: string; id: s
         </ul>
       )}
       {revoke.isError && (
-        <p role="alert" className="mt-2 text-[0.875rem] text-danger">
+        <p role="alert" className="mt-2 text-body text-danger">
           {revoke.error.message}
         </p>
       )}

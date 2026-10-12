@@ -95,7 +95,7 @@ export function SecurityTab({ tenant, u, editable, onReveal, onChanged, onForce 
             <Toggle label="Notify the user by email" checked={notify} onChange={setNotify} />
             <Toggle label="Sign the user out everywhere" checked={revoke} onChange={setRevoke} />
             {setPw.isError && (
-              <p role="alert" className="text-[0.875rem] text-danger">
+              <p role="alert" className="text-body text-danger">
                 {setPw.error.message}
               </p>
             )}
@@ -115,25 +115,25 @@ export function SecurityTab({ tenant, u, editable, onReveal, onChanged, onForce 
         {creds.isPending ? (
           <Spinner label="Loading…" />
         ) : creds.isError ? (
-          <p role="alert" className="text-[0.875rem] text-danger">
+          <p role="alert" className="text-body text-danger">
             {creds.error.message}
           </p>
         ) : creds.data.credentials.length === 0 ? (
-          <p className="text-[0.875rem] text-muted">None enrolled. Users add an authenticator app or a passkey when the sign-in policy asks for one.</p>
+          <p className="text-body text-muted">None enrolled. Users add an authenticator app or a passkey when the sign-in policy asks for one.</p>
         ) : (
           <ul className="divide-y divide-line">
             {creds.data.credentials.map((c) => (
-              <li key={c.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
+              <li key={c.id} className="flex items-center justify-between gap-3 py-2 text-body">
                 <span>
                   <span className="font-medium text-ink">{CREDENTIAL_KINDS[c.kind] ?? c.kind}</span>
                   {c.label && <span className="ms-2 text-muted">{c.label}</span>}
-                  <span className="block text-[0.8125rem] text-muted">
+                  <span className="block text-small text-muted">
                     Added {formatDate("en", c.created_at)}
                     {c.last_used_at ? ` · used ${formatDate("en", c.last_used_at)}` : ""}
                   </span>
                 </span>
                 {editable && (
-                  <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={removeCred.isPending} onClick={() => removeCred.mutate(c.id)}>
+                  <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={removeCred.isPending} onClick={() => removeCred.mutate(c.id)}>
                     Remove
                   </Button>
                 )}
@@ -142,7 +142,7 @@ export function SecurityTab({ tenant, u, editable, onReveal, onChanged, onForce 
           </ul>
         )}
         {removeCred.isError && (
-          <p role="alert" className="mt-2 text-[0.875rem] text-danger">
+          <p role="alert" className="mt-2 text-body text-danger">
             {removeCred.error.message}
           </p>
         )}

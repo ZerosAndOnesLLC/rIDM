@@ -88,7 +88,7 @@ function ProfileForm({ profile }: { profile: AccountProfile }) {
   const fields = profile.schema;
   return (
     <Card title={t("account.profile_title")} actions={<SaveIndicator status={save.status} error={save.error} />}>
-      <p className="text-[0.875rem] text-muted">{t("account.profile_description")}</p>
+      <p className="text-body text-muted">{t("account.profile_description")}</p>
       <div className="mt-4 grid gap-5 sm:grid-cols-2">
         <Field label={t("account.username")} hint={t("account.username_hint")}>
           {(id, by) => <TextInput id={id} aria-describedby={by} value={profile.username} readOnly disabled />}
@@ -109,7 +109,7 @@ function ProfileForm({ profile }: { profile: AccountProfile }) {
           <AttributeField key={def.name} def={def} value={draft.attributes[def.name] ?? null} disabled={def.editable_by !== "user"} onChange={(v) => setAttribute(def.name, v)} />
         ))}
       </div>
-      {fields.length === 0 && <p className="mt-4 text-[0.875rem] text-muted">{t("account.profile_no_fields")}</p>}
+      {fields.length === 0 && <p className="mt-4 text-body text-muted">{t("account.profile_no_fields")}</p>}
     </Card>
   );
 }

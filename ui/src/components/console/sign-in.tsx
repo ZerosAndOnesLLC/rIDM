@@ -41,11 +41,11 @@ export function SignIn({ error }: { error?: string | null }) {
         <span aria-hidden className="flex size-9 items-center justify-center rounded-lg bg-accent text-accent-ink">
           <ShieldCheck className="size-5" />
         </span>
-        <span className="text-[1.0625rem] font-semibold text-ink">rIDM Console</span>
+        <span className="text-md font-semibold text-ink">rIDM Console</span>
       </div>
       <main className="card-in w-full max-w-[24rem] rounded-[calc(var(--radius)+4px)] border border-line bg-paper p-6 sm:p-8">
-        <h1 className="text-[1.5rem] font-semibold leading-tight tracking-[-0.01em] text-ink">Sign in to the console</h1>
-        <p className="mt-1.5 text-[0.9375rem] text-muted">You will sign in through your tenant&apos;s own login page.</p>
+        <h1 className="text-2xl font-semibold leading-tight tracking-[-0.01em] text-ink">Sign in to the console</h1>
+        <p className="mt-1.5 text-lead text-muted">You will sign in through your tenant&apos;s own login page.</p>
         <form onSubmit={submit} className="mt-6 flex flex-col gap-4" noValidate>
           {message && <Alert tone="error">{message}</Alert>}
           <TextField
@@ -63,7 +63,7 @@ export function SignIn({ error }: { error?: string | null }) {
           </Button>
         </form>
       </main>
-      <p className="mt-6 text-[0.8125rem] text-muted">Secured by rIDM</p>
+      <p className="mt-6 text-small text-muted">Secured by rIDM</p>
     </div>
   );
 }

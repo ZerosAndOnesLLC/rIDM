@@ -21,7 +21,7 @@ Each tenant chooses, on Settings › Appearance (`mocks/c2/appearance.html`):
 | `display_name`, `logo` | as today | |
 
 Presets ship as primary + contrast pairs: Indigo & amber, Ocean & coral, Forest &
-ochre, Ember & slate, Plum & lime, Graphite & sky; custom pairs are allowed. The
+ochre, Ember & slate, Plum & lime, Graphite & rose; custom pairs are allowed. The
 tenant's choice applies to the admin console, the account console and the
 sign-in pages. The sign-in pages keep the tenant's own pair even when an
 administrator is viewing another tenant.
@@ -90,12 +90,12 @@ focus ring, links, hover tints, chart series 1. **Contrast** = things that must
 read as different from primary: the tenant mark (gradient 500 → contrast 500),
 selected rows and the bulk-selection count, "this browser", attention badges,
 chart series 2. Status colours are fixed and never come from the tenant:
-`ok #2f7a4f / #62c98b`, `warn #9a6200 / #dfa63f`, `danger #b13a2e / #f08c80`
+`ok #276d45 / #62c98b`, `warn #8a5700 / #dfa63f`, `danger #b13a2e / #f08c80`
 (light / dark), each with a `-soft` fill.
 
 Neutrals (light / dark): `paper #ffffff / #15181f`, `raised #ffffff / #1b1f28`,
-`ink #0f1218 / #eaedf2`, `ink-2 #343a46 / #c6ccd6`, `muted #626b7a / #8f99a8`,
-`faint #9aa3b2 / #5f6878`, `line #e3e6ec / #262b35`, `line-strong #c9ced8 / #353c49`.
+`ink #0f1218 / #eaedf2`, `ink-2 #343a46 / #c6ccd6`, `muted #596271 / #8f99a8`,
+`faint #9aa3b2 / #5f6878` (non-text marks only), `line #e3e6ec / #262b35`, `line-strong #c9ced8 / #353c49`.
 The ground is tinted by the tenant: `color-mix(in oklab, accent-50 55%, #eceef2)`
 light and `color-mix(in oklab, accent-soft 45%, #0b0d12)` dark. The command bar is
 dark in both modes: `bar #0f1117 / #0a0c10`, `bar-ink #f1f3f7`, `bar-muted #8b93a3`.

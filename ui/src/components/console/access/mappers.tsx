@@ -51,7 +51,7 @@ export function MappersPage({ tenant, selected }: { tenant: string; selected: st
             ) : mappers.isError ? (
               <ErrorLine error={mappers.error} />
             ) : rows.length === 0 ? (
-              <p className="text-[0.875rem] text-muted">No mappers yet.</p>
+              <p className="text-body text-muted">No mappers yet.</p>
             ) : (
               <ul className="flex flex-col gap-0.5">
                 {rows.map((m) => (
@@ -59,11 +59,11 @@ export function MappersPage({ tenant, selected }: { tenant: string; selected: st
                     <Link
                       href={href("claim-mappers", tenant, { mapper: m.id })}
                       aria-current={m.id === selected ? "page" : undefined}
-                      className={`flex items-center justify-between gap-2 rounded-[var(--radius)] px-2 py-1.5 text-[0.875rem] ${m.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
+                      className={`flex items-center justify-between gap-2 rounded-[var(--radius)] px-2 py-1.5 text-body ${m.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
                     >
                       <span className="min-w-0">
                         <span className="block truncate">{m.name}</span>
-                        <span className="block truncate text-[0.75rem] text-muted">{m.client_id ? (names.data?.[m.client_id] ?? "one client") : "tenant-wide"} · {(m.config as MapperConfig | null)?.type}</span>
+                        <span className="block truncate text-caption text-muted">{m.client_id ? (names.data?.[m.client_id] ?? "one client") : "tenant-wide"} · {(m.config as MapperConfig | null)?.type}</span>
                       </span>
                     </Link>
                   </li>
@@ -72,7 +72,7 @@ export function MappersPage({ tenant, selected }: { tenant: string; selected: st
             )}
           </Card>
         }
-        detail={selected ? <MapperView key={selected} tenant={tenant} id={selected} clientNames={names.data ?? {}} /> : <p className="text-[0.9rem] text-muted">Choose a mapper.</p>}
+        detail={selected ? <MapperView key={selected} tenant={tenant} id={selected} clientNames={names.data ?? {}} /> : <p className="text-lead text-muted">Choose a mapper.</p>}
       />
       <CreateMapper tenant={tenant} open={creating} onOpenChange={setCreating} clientNames={names.data ?? {}} />
     </>
@@ -142,7 +142,7 @@ function MapperFields({ config, onChange, editable }: { config: MapperConfig; on
   );
   return (
     <>
-      <p className="text-[0.8125rem] text-muted">{MAPPER_TYPES.find((t) => t.value === config.type)?.blurb}</p>
+      <p className="text-small text-muted">{MAPPER_TYPES.find((t) => t.value === config.type)?.blurb}</p>
       {config.type === "user_attribute" && (
         <>
           <Field label="Source" hint="A user field (username, email, phone, locale) or attributes.<name>.">
@@ -258,7 +258,7 @@ function MapperView({ tenant, id, clientNames }: { tenant: string; id: string; c
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-[1.125rem] font-semibold text-ink">
+        <h2 className="text-title font-semibold text-ink">
           {draft.name} <Badge>{draft.client_id ? (clientNames[draft.client_id] ?? "one client") : "tenant-wide"}</Badge>
         </h2>
         <SaveIndicator status={status} error={error} />

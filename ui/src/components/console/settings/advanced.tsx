@@ -68,9 +68,9 @@ export function AdvancedSection() {
         )}
       </Field>
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="mb-1.5 text-[0.8125rem] font-medium text-ink">Grants a registered client may request</legend>
+        <legend className="mb-1.5 text-small font-medium text-ink">Grants a registered client may request</legend>
         {GRANTS.map((g) => (
-          <label key={g.value} className="flex items-center gap-2 text-[0.875rem] text-ink">
+          <label key={g.value} className="flex items-center gap-2 text-body text-ink">
             <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={dcr.allowed_grants.includes(g.value)} disabled={!editable} onChange={(e) => toggleGrant(g.value, e.target.checked)} />
             {g.label}
           </label>
@@ -146,7 +146,7 @@ function InitialAccessTokens({ slug }: { slug: string }) {
   if (!can("ridm:clients:read")) return null;
   return (
     <div className="flex flex-col gap-3 sm:col-span-2">
-      <h3 className="text-[0.8125rem] font-medium text-ink">Initial access tokens</h3>
+      <h3 className="text-small font-medium text-ink">Initial access tokens</h3>
       <RevealModal revealed={revealed} onClose={() => setRevealed(null)} />
       <ErrorLine error={issue.error ?? revoke.error} />
       {editable && (
@@ -157,15 +157,15 @@ function InitialAccessTokens({ slug }: { slug: string }) {
             issue.mutate();
           }}
         >
-          <label className="flex flex-col gap-1 text-[0.8125rem] text-muted">
+          <label className="flex flex-col gap-1 text-small text-muted">
             Description
             <TextInput value={description} onChange={(e) => setDescription(e.target.value)} placeholder="CI pipeline" maxLength={200} />
           </label>
-          <label className="flex flex-col gap-1 text-[0.8125rem] text-muted">
+          <label className="flex flex-col gap-1 text-small text-muted">
             Expires in
             <NumberInput id="dcr-token-hours" value={hours} min={1} nullable onValue={setHours} unit="h" />
           </label>
-          <label className="flex flex-col gap-1 text-[0.8125rem] text-muted">
+          <label className="flex flex-col gap-1 text-small text-muted">
             Registrations
             <NumberInput id="dcr-token-uses" value={uses} min={1} nullable onValue={setUses} />
           </label>
@@ -179,23 +179,23 @@ function InitialAccessTokens({ slug }: { slug: string }) {
       ) : tokens.isError ? (
         <ErrorLine error={tokens.error} />
       ) : tokens.data.length === 0 ? (
-        <p className="text-[0.875rem] text-muted">No initial access tokens yet; registration is closed until one is issued.</p>
+        <p className="text-body text-muted">No initial access tokens yet; registration is closed until one is issued.</p>
       ) : (
         <ul className="divide-y divide-line">
           {tokens.data.map((t) => {
             const s = state(t);
             return (
-              <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-[0.875rem]">
+              <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-body">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium text-ink">{t.description ?? "Untitled"}</span>
                   <Badge tone={s.tone}>{s.label}</Badge>
-                  <span className="text-[0.8125rem] text-muted">
+                  <span className="text-small text-muted">
                     {t.uses} of {t.max_uses ?? "unlimited"} used · created {formatDate("en", t.created_at)}
                     {t.expires_at ? ` · expires ${formatDate("en", t.expires_at)}` : " · no expiry"}
                   </span>
                 </div>
                 {editable && !t.revoked_at && (
-                  <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={revoke.isPending} onClick={() => revoke.mutate(t.id)}>
+                  <Button className="min-h-8 px-2.5 text-small" disabled={revoke.isPending} onClick={() => revoke.mutate(t.id)}>
                     Revoke
                   </Button>
                 )}

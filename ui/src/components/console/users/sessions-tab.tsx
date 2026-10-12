@@ -47,7 +47,7 @@ export function SessionsTab({ tenant, id, editable }: { tenant: string; id: stri
   return (
     <div className="flex flex-col gap-4">
       {revoke.isError && (
-        <p role="alert" className="text-[0.875rem] text-danger">
+        <p role="alert" className="text-body text-danger">
           {revoke.error.message}
         </p>
       )}
@@ -55,7 +55,7 @@ export function SessionsTab({ tenant, id, editable }: { tenant: string; id: stri
         title="Sessions"
         actions={
           editable && (sessions.data?.length ?? 0) > 0 ? (
-            <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={revoke.isPending} onClick={() => revoke.mutate({ kind: "session" })}>
+            <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={revoke.isPending} onClick={() => revoke.mutate({ kind: "session" })}>
               Sign out everywhere
             </Button>
           ) : undefined
@@ -64,15 +64,15 @@ export function SessionsTab({ tenant, id, editable }: { tenant: string; id: stri
         {sessions.isPending ? (
           <Spinner label="Loading…" />
         ) : sessions.isError ? (
-          <p role="alert" className="text-[0.875rem] text-danger">
+          <p role="alert" className="text-body text-danger">
             {sessions.error.message}
           </p>
         ) : sessions.data.length === 0 ? (
-          <p className="text-[0.875rem] text-muted">No live sessions.</p>
+          <p className="text-body text-muted">No live sessions.</p>
         ) : (
           <ul className="divide-y divide-line">
             {sessions.data.map((s) => (
-              <li key={s.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
+              <li key={s.id} className="flex items-center justify-between gap-3 py-2 text-body">
                 <span>
                   <span className="font-medium text-ink">{describeAgent(s.user_agent)}</span>
                   <span className="ms-2 text-muted">{s.ip ?? ""}</span>
@@ -81,12 +81,12 @@ export function SessionsTab({ tenant, id, editable }: { tenant: string; id: stri
                       <Badge tone="accent">Impersonated by {s.impersonator.username}</Badge>
                     </span>
                   )}
-                  <span className="block text-[0.8125rem] text-muted">
+                  <span className="block text-small text-muted">
                     Signed in {formatDate("en", s.auth_time)} · {s.amr.join(", ")} · last seen {formatDate("en", s.last_seen_at)} · ends {formatDate("en", s.expires_at)}
                   </span>
                 </span>
                 {editable && (
-                  <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={revoke.isPending} onClick={() => revoke.mutate({ kind: "session", id: s.id })}>
+                  <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={revoke.isPending} onClick={() => revoke.mutate({ kind: "session", id: s.id })}>
                     Revoke
                   </Button>
                 )}
@@ -99,7 +99,7 @@ export function SessionsTab({ tenant, id, editable }: { tenant: string; id: stri
         title="Trusted devices"
         actions={
           editable && (devices.data?.length ?? 0) > 0 ? (
-            <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={revoke.isPending} onClick={() => revoke.mutate({ kind: "device" })}>
+            <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={revoke.isPending} onClick={() => revoke.mutate({ kind: "device" })}>
               Forget all
             </Button>
           ) : undefined
@@ -108,24 +108,24 @@ export function SessionsTab({ tenant, id, editable }: { tenant: string; id: stri
         {devices.isPending ? (
           <Spinner label="Loading…" />
         ) : devices.isError ? (
-          <p role="alert" className="text-[0.875rem] text-danger">
+          <p role="alert" className="text-body text-danger">
             {devices.error.message}
           </p>
         ) : devices.data.length === 0 ? (
-          <p className="text-[0.875rem] text-muted">No remembered devices.</p>
+          <p className="text-body text-muted">No remembered devices.</p>
         ) : (
           <ul className="divide-y divide-line">
             {devices.data.map((d) => (
-              <li key={d.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
+              <li key={d.id} className="flex items-center justify-between gap-3 py-2 text-body">
                 <span>
                   <span className="font-medium text-ink">{d.name ?? describeAgent(d.user_agent)}</span>
                   <span className="ms-2 text-muted">{d.ip ?? ""}</span>
-                  <span className="block text-[0.8125rem] text-muted">
+                  <span className="block text-small text-muted">
                     Remembered {formatDate("en", d.created_at)} · last seen {formatDate("en", d.last_seen_at)} · until {formatDate("en", d.expires_at)}
                   </span>
                 </span>
                 {editable && (
-                  <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={revoke.isPending} onClick={() => revoke.mutate({ kind: "device", id: d.id })}>
+                  <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={revoke.isPending} onClick={() => revoke.mutate({ kind: "device", id: d.id })}>
                     Forget
                   </Button>
                 )}

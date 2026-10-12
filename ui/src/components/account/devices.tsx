@@ -50,17 +50,17 @@ export function Devices() {
         ) : undefined
       }
     >
-      <p className="text-[0.875rem] text-muted">{t("account.devices_description")}</p>
+      <p className="text-body text-muted">{t("account.devices_description")}</p>
       {error && <Alert tone="error">{error}</Alert>}
       {devices.isError && <Alert tone="error">{t("account.error_generic")}</Alert>}
-      {devices.data && devices.data.length === 0 && <p className="mt-3 text-[0.875rem] text-ink">{t("account.devices_none")}</p>}
+      {devices.data && devices.data.length === 0 && <p className="mt-3 text-body text-ink">{t("account.devices_none")}</p>}
       {devices.data && devices.data.length > 0 && (
         <ul className="mt-3 divide-y divide-line">
           {devices.data.map((d) => (
             <li key={d.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
               <div className="min-w-0">
-                <p className="truncate text-[0.9375rem] font-medium text-ink">{d.name ?? d.user_agent ?? t("account.device_unnamed")}</p>
-                <p className="text-[0.8125rem] text-muted">
+                <p className="truncate text-lead font-medium text-ink">{d.name ?? d.user_agent ?? t("account.device_unnamed")}</p>
+                <p className="text-small text-muted">
                   {t("account.device_last_used", { when: when(d.last_seen_at) })}
                   {d.ip ? ` · ${d.ip}` : ""}
                 </p>

@@ -63,7 +63,7 @@ function RegisterForm({ flow, post, reload, tenant }: { flow: PublicFlow; post: 
       <>
         <Title>{t("register.title")}</Title>
         <Alert tone="error">{t("register.disabled")}</Alert>
-        <p className="mt-4 text-center text-[0.875rem]">
+        <p className="mt-4 text-center text-body">
           <a href={pageUrl("login", { tenant, flow: flow.id })} className="text-link hover:underline underline-offset-4">
             {t("register.sign_in")}
           </a>
@@ -115,7 +115,7 @@ function RegisterForm({ flow, post, reload, tenant }: { flow: PublicFlow; post: 
       <Button type="submit" busy={busy} disabled={(needsTerms && !accepted) || (flow.captcha ? !captcha : false)}>
         {t("register.title")}
       </Button>
-      <p className="text-center text-[0.875rem] text-muted">
+      <p className="text-center text-body text-muted">
         {t("register.have_account")}{" "}
         <a href={pageUrl("login", { tenant, flow: flow.id })} className="text-link hover:underline underline-offset-4">
           {t("register.sign_in")}

@@ -88,7 +88,7 @@ export function OrganizationDetailView({ tenant, id }: { tenant: string; id: str
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-[1.125rem] font-semibold text-ink">{draft.display_name}</h2>
+        <h2 className="text-title font-semibold text-ink">{draft.display_name}</h2>
         <SaveIndicator status={status} error={error} />
       </div>
       <Section

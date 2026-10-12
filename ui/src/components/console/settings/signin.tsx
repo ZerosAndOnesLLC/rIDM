@@ -18,7 +18,7 @@ export function SignInSection() {
   return (
     <Section id="signin" title="Sign-in" description="First factors, second-factor policy and self-registration.">
       <div className="flex flex-col gap-1 sm:col-span-2">
-        <h3 className="text-[0.8125rem] font-medium text-ink">Methods</h3>
+        <h3 className="text-small font-medium text-ink">Methods</h3>
         <Toggle label="Password" checked={auth.password} disabled={!editable} onChange={(v) => update({ auth: { password: v } })} />
         <Toggle label="Magic link" hint="A sign-in link by email." checked={auth.magic_link} disabled={!editable} onChange={(v) => update({ auth: { magic_link: v } })} />
         <Toggle label="Email code" checked={auth.email_otp} disabled={!editable} onChange={(v) => update({ auth: { email_otp: v } })} />
@@ -27,7 +27,7 @@ export function SignInSection() {
       </div>
 
       <div className="flex flex-col gap-1 sm:col-span-2">
-        <h3 className="text-[0.8125rem] font-medium text-ink">Second-step methods</h3>
+        <h3 className="text-small font-medium text-ink">Second-step methods</h3>
         <Toggle label="Authenticator app" hint="Time-based codes from an app (TOTP)." checked={mfa_methods.totp} disabled={!editable} onChange={(v) => update({ mfa_methods: { totp: v } })} />
         <Toggle label="Email code" hint="A one-time code to the account's email address." checked={mfa_methods.email_otp} disabled={!editable} onChange={(v) => update({ mfa_methods: { email_otp: v } })} />
         <Toggle label="SMS code" hint="A one-time code to a verified phone number; needs an SMS provider under Messaging." checked={mfa_methods.sms_otp} disabled={!editable} onChange={(v) => update({ mfa_methods: { sms_otp: v } })} />
@@ -51,7 +51,7 @@ export function SignInSection() {
       )}
 
       <div className="flex flex-col gap-1 sm:col-span-2">
-        <h3 className="text-[0.8125rem] font-medium text-ink">Self-registration</h3>
+        <h3 className="text-small font-medium text-ink">Self-registration</h3>
         <Toggle label="Allow people to create accounts" checked={registration.enabled} disabled={!editable} onChange={(v) => update({ registration: { enabled: v } })} />
         <Toggle label="Require email verification" checked={registration.require_email_verification} disabled={!editable} onChange={(v) => update({ registration: { require_email_verification: v } })} />
         <Toggle label="Require accepting the terms" checked={registration.require_terms} disabled={!editable} onChange={(v) => update({ registration: { require_terms: v } })} />

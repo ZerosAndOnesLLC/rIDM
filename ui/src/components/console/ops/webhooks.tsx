@@ -52,7 +52,7 @@ export function WebhooksPage({ tenant, selected }: { tenant: string; selected: s
             ) : hooks.isError ? (
               <ErrorLine error={hooks.error} />
             ) : hooks.data.length === 0 ? (
-              <p className="text-[0.875rem] text-muted">No webhooks yet.</p>
+              <p className="text-body text-muted">No webhooks yet.</p>
             ) : (
               <ul className="flex flex-col gap-0.5">
                 {hooks.data.map((w) => (
@@ -60,11 +60,11 @@ export function WebhooksPage({ tenant, selected }: { tenant: string; selected: s
                     <Link
                       href={href("webhooks", tenant, { webhook: w.id })}
                       aria-current={w.id === selected ? "page" : undefined}
-                      className={`flex items-center justify-between gap-2 rounded-[var(--radius)] px-2 py-1.5 text-[0.875rem] ${w.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
+                      className={`flex items-center justify-between gap-2 rounded-[var(--radius)] px-2 py-1.5 text-body ${w.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
                     >
                       <span className="min-w-0">
                         <span className="block truncate">{w.name}</span>
-                        <span className="block truncate text-[0.75rem] text-muted">{w.url}</span>
+                        <span className="block truncate text-caption text-muted">{w.url}</span>
                       </span>
                       {!w.enabled && <Badge>off</Badge>}
                     </Link>
@@ -74,7 +74,7 @@ export function WebhooksPage({ tenant, selected }: { tenant: string; selected: s
             )}
           </Card>
         }
-        detail={selected ? <WebhookView key={selected} tenant={tenant} id={selected} onReveal={setRevealed} /> : <p className="text-[0.9rem] text-muted">Choose a webhook.</p>}
+        detail={selected ? <WebhookView key={selected} tenant={tenant} id={selected} onReveal={setRevealed} /> : <p className="text-lead text-muted">Choose a webhook.</p>}
       />
       <CreateWebhook tenant={tenant} open={creating} onOpenChange={setCreating} onReveal={setRevealed} />
       <RevealModal revealed={revealed} onClose={() => setRevealed(null)} />
@@ -202,16 +202,16 @@ function WebhookView({ tenant, id, onReveal }: { tenant: string; id: string; onR
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-[1.125rem] font-semibold text-ink">{draft.name}</h2>
+        <h2 className="text-title font-semibold text-ink">{draft.name}</h2>
         <span className="flex flex-wrap items-center gap-2">
           <SaveIndicator status={status} error={error} />
           {editable && (
             <>
-              <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={test.isPending} onClick={() => test.mutate()}>
+              <Button className="min-h-8 px-2.5 text-small" disabled={test.isPending} onClick={() => test.mutate()}>
                 <Send className="size-3.5" aria-hidden />
                 Send test ping
               </Button>
-              <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={rotate.isPending} onClick={() => rotate.mutate()}>
+              <Button className="min-h-8 px-2.5 text-small" disabled={rotate.isPending} onClick={() => rotate.mutate()}>
                 <RotateCw className="size-3.5" aria-hidden />
                 Rotate secret
               </Button>
@@ -221,7 +221,7 @@ function WebhookView({ tenant, id, onReveal }: { tenant: string; id: string; onR
       </div>
       <ErrorLine error={test.error ?? rotate.error} />
       {test.data && (
-        <p role="status" className="text-[0.8125rem] text-muted">
+        <p role="status" className="text-small text-muted">
           Test delivery queued: {test.data.status} (attempt {test.data.attempts} of {test.data.max_attempts}).
         </p>
       )}
@@ -281,11 +281,11 @@ function Deliveries({ tenant, id, editable }: { tenant: string; id: string; edit
       actions={
         <div className="flex flex-wrap items-center gap-2">
           {editable && (
-            <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={redeliverDead.isPending} onClick={() => redeliverDead.mutate()}>
+            <Button className="min-h-8 px-2.5 text-small" disabled={redeliverDead.isPending} onClick={() => redeliverDead.mutate()}>
               Redeliver dead
             </Button>
           )}
-          <SelectInput aria-label="Delivery status" value={status} onChange={(e) => setStatus(e.target.value as WebhookDelivery["status"] | "")} className="min-h-8 w-auto text-[0.8125rem]">
+          <SelectInput aria-label="Delivery status" value={status} onChange={(e) => setStatus(e.target.value as WebhookDelivery["status"] | "")} className="min-h-8 w-auto text-small">
             <option value="">Any status</option>
             {(["pending", "sending", "delivered", "failed", "dead"] as const).map((s) => (
               <option key={s} value={s}>
@@ -298,7 +298,7 @@ function Deliveries({ tenant, id, editable }: { tenant: string; id: string; edit
     >
       <ErrorLine error={redeliver.error ?? redeliverDead.error} />
       {redeliverDead.data && (
-        <p className="mb-2 text-[0.8125rem] text-muted" role="status">
+        <p className="mb-2 text-small text-muted" role="status">
           {redeliverDead.data.requeued} dead {redeliverDead.data.requeued === 1 ? "delivery" : "deliveries"} sent again.
         </p>
       )}
@@ -307,28 +307,28 @@ function Deliveries({ tenant, id, editable }: { tenant: string; id: string; edit
       ) : list.isError ? (
         <ErrorLine error={list.error} />
       ) : list.data.length === 0 ? (
-        <p className="text-[0.875rem] text-muted">Nothing delivered yet.</p>
+        <p className="text-body text-muted">Nothing delivered yet.</p>
       ) : (
         <ul className="divide-y divide-line">
           {list.data.map((d) => (
-            <li key={d.id} className="py-2 text-[0.875rem]">
+            <li key={d.id} className="py-2 text-body">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <button type="button" onClick={() => setOpen(open === d.id ? null : d.id)} aria-expanded={open === d.id} className="inline-flex flex-wrap items-center gap-2 text-start">
-                  <span className="font-mono text-[0.8125rem] font-medium text-ink">{d.event_name}</span>
+                  <span className="font-mono text-small font-medium text-ink">{d.event_name}</span>
                   <Badge tone={TONE[d.status]}>{d.status}</Badge>
-                  <span className="text-[0.8125rem] text-muted">
+                  <span className="text-small text-muted">
                     attempt {d.attempts}/{d.max_attempts}
                     {d.last_status ? ` · HTTP ${d.last_status}` : ""} · {formatDate("en", d.created_at)}
                   </span>
                 </button>
                 {editable && (d.status === "dead" || d.status === "delivered" || d.status === "failed") && (
-                  <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={redeliver.isPending} onClick={() => redeliver.mutate(d.id)}>
+                  <Button className="min-h-8 px-2.5 text-small" disabled={redeliver.isPending} onClick={() => redeliver.mutate(d.id)}>
                     Redeliver
                   </Button>
                 )}
               </div>
               {open === d.id && (
-                <pre tabIndex={0} aria-label="Delivery details" className="mt-2 max-h-72 overflow-auto rounded-[var(--radius)] bg-ground px-3 py-2 font-mono text-[0.75rem] text-ink">
+                <pre tabIndex={0} aria-label="Delivery details" className="mt-2 max-h-72 overflow-auto rounded-[var(--radius)] bg-ground px-3 py-2 font-mono text-caption text-ink">
                   {JSON.stringify({ last_error: d.last_error, response: d.response_snippet, next_attempt_at: d.next_attempt_at, payload: d.payload }, null, 2)}
                 </pre>
               )}

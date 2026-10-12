@@ -71,7 +71,7 @@ export function OrganizationMembers({
       title="Members"
       actions={
         editable && !confined ? (
-          <Button className="min-h-8 px-2.5 text-[0.8125rem]" onClick={() => setAdding(true)}>
+          <Button className="min-h-8 px-2.5 text-small" onClick={() => setAdding(true)}>
             <UserRoundPlus className="size-3.5" aria-hidden />
             Add member
           </Button>
@@ -82,12 +82,12 @@ export function OrganizationMembers({
         tenant={tenant}
         of={{ kind: "organization", id }}
         empty={
-          <p className="text-[0.875rem] text-muted">
+          <p className="text-body text-muted">
             No members. An invitation or a verified auto-join domain adds them.
           </p>
         }
         row={(u) => (
-          <li key={u.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
+          <li key={u.id} className="flex items-center justify-between gap-3 py-2 text-body">
             <Link href={userHref(tenant, u.id)} className="text-ink hover:underline underline-offset-4">
               {u.username}
               {u.org_id === id && <Badge>primary</Badge>}
@@ -95,7 +95,7 @@ export function OrganizationMembers({
             {editable && (
               <Button
                 variant="danger"
-                className="min-h-8 px-2.5 text-[0.8125rem]"
+                className="min-h-8 px-2.5 text-small"
                 disabled={change.isPending}
                 onClick={() => change.mutate({ remove: u.id })}
               >
@@ -168,17 +168,17 @@ export function OrganizationInvitations({ tenant, id }: { tenant: string; id: st
   if (!mayRead) return null;
   const items = list.data?.items ?? [];
   return (
-    <Card title="Invitations" actions={<span className="text-[0.8125rem] text-muted">Open invitations</span>}>
+    <Card title="Invitations" actions={<span className="text-small text-muted">Open invitations</span>}>
       {list.isPending ? (
         <Spinner label="Loading invitations…" />
       ) : list.isError ? (
         <ErrorLine error={list.error} />
       ) : items.length === 0 ? (
-        <p className="text-[0.875rem] text-muted">No open invitations.</p>
+        <p className="text-body text-muted">No open invitations.</p>
       ) : (
         <ul className="divide-y divide-line">
           {items.map((i) => (
-            <li key={i.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
+            <li key={i.id} className="flex items-center justify-between gap-3 py-2 text-body">
               <span className="min-w-0 truncate text-ink">
                 {i.email}
                 <span className="ml-2 text-muted">
@@ -188,7 +188,7 @@ export function OrganizationInvitations({ tenant, id }: { tenant: string; id: st
               {mayWrite && (
                 <Button
                   variant="danger"
-                  className="min-h-8 px-2.5 text-[0.8125rem]"
+                  className="min-h-8 px-2.5 text-small"
                   disabled={change.isPending}
                   onClick={() => change.mutate({ revoke: i.id })}
                 >

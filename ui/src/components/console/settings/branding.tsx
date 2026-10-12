@@ -52,7 +52,7 @@ export function BrandingSection() {
           {(id, by) => <TextInput id={id} aria-describedby={by} type="url" value={b.support_url ?? ""} disabled={!editable} onChange={(e) => update({ branding: { support_url: e.target.value || null } })} />}
         </Field>
         <div className="sm:col-span-2">
-          <h3 className="text-[0.8125rem] font-medium text-ink">Footer links</h3>
+          <h3 className="text-small font-medium text-ink">Footer links</h3>
           <div className="mt-2 flex flex-col gap-2">
             {b.links.map((l, i) => (
               <div key={links.keys[i]} className="flex flex-wrap items-center gap-2">
@@ -110,7 +110,7 @@ function LoginPreview({ slug, message }: { slug: string; message: PreviewMessage
   return (
     <aside className="lg:sticky lg:top-20 lg:self-start">
       <div className="overflow-hidden rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
-        <div className="flex items-center justify-between border-b border-line px-4 py-2.5 text-[0.8125rem] text-muted">
+        <div className="flex items-center justify-between border-b border-line px-4 py-2.5 text-small text-muted">
           <span>Login page preview</span>
           <span className="flex gap-1" aria-hidden>
             <span className="size-2.5 rounded-full bg-line" />

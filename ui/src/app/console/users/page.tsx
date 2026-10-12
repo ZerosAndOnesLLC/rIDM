@@ -39,7 +39,7 @@ export default function UsersPage() {
           sub="Open invitations to this tenant."
           actions={
             <>
-              <Link href={`/console/users/?tenant=${encodeURIComponent(tenant)}`} className="inline-flex min-h-9 items-center rounded-[var(--radius)] border border-line bg-paper px-3.5 text-[0.875rem] font-medium text-ink hover:bg-ground">
+              <Link href={`/console/users/?tenant=${encodeURIComponent(tenant)}`} className="inline-flex min-h-9 items-center rounded-[var(--radius)] border border-line bg-paper px-3.5 text-body font-medium text-ink hover:bg-ground">
                 Users
               </Link>
               <Button variant="primary" onClick={() => setDialog("invite")}>
@@ -56,7 +56,7 @@ export default function UsersPage() {
   return (
     <>
       <UsersTable tenant={tenant} onCreate={() => setDialog("create")} onInvite={() => setDialog("invite")} onImport={() => setDialog("import")} onExport={() => setDialog("export")} />
-      <p className="mt-3 text-[0.8125rem] text-muted">
+      <p className="mt-3 text-small text-muted">
         <Link href={`/console/users/?tenant=${encodeURIComponent(tenant)}&view=invitations`} className="text-link underline underline-offset-4">
           Open invitations
         </Link>

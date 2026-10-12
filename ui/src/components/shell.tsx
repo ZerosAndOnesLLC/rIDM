@@ -70,13 +70,13 @@ function Frame({
           tenant && (
             <span
               aria-hidden
-              className="flex size-9 items-center justify-center rounded-lg bg-accent text-[0.9375rem] font-semibold text-accent-ink"
+              className="flex size-9 items-center justify-center rounded-lg bg-accent text-lead font-semibold text-accent-ink"
             >
               {tenant.display_name.slice(0, 1).toUpperCase()}
             </span>
           )
         )}
-        <span className="text-[1.0625rem] font-semibold text-ink">{tenant?.display_name ?? ""}</span>
+        <span className="text-md font-semibold text-ink">{tenant?.display_name ?? ""}</span>
       </header>
 
       <main className="card-in w-full max-w-[26rem] rounded-[calc(var(--radius)+4px)] border border-line bg-paper p-6 sm:p-8">
@@ -93,7 +93,7 @@ function Frame({
         )}
       </main>
 
-      <footer className="mt-6 flex w-full max-w-[26rem] flex-wrap items-center gap-x-4 gap-y-2 text-[0.8125rem] text-muted">
+      <footer className="mt-6 flex w-full max-w-[26rem] flex-wrap items-center gap-x-4 gap-y-2 text-small text-muted">
         {tenant?.branding.links.map((l) => (
           <a key={l.url} href={l.url} className="hover:text-ink hover:underline underline-offset-4">
             {l.label}
@@ -111,7 +111,7 @@ function Frame({
               <select
                 value={i18n.locale}
                 onChange={(e) => setLocale(e.target.value)}
-                className="rounded-md border border-line bg-paper px-2 py-1 text-[1rem] text-ink sm:text-[0.8125rem]"
+                className="rounded-md border border-line bg-paper px-2 py-1 text-md text-ink sm:text-small"
               >
                 {choices.map((c) => (
                   <option key={c} value={c}>

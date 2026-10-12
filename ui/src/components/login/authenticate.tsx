@@ -155,7 +155,7 @@ export function Authenticate({
 
   const subtitle = t("login.subtitle", { client: flow.client.name });
   const cancelLink = (
-    <button type="button" onClick={() => void cancel()} className="self-center text-[0.8125rem] text-muted hover:text-ink hover:underline underline-offset-4">
+    <button type="button" onClick={() => void cancel()} className="self-center text-small text-muted hover:text-ink hover:underline underline-offset-4">
       {t("common.cancel")}
     </button>
   );
@@ -244,7 +244,7 @@ export function Authenticate({
           <Button id="login-submit" type="submit" busy={busy} disabled={flow.captcha ? !captcha : false}>
             {t("common.continue")}
           </Button>
-          <div className="flex flex-wrap justify-between gap-3 text-[0.875rem]">
+          <div className="flex flex-wrap justify-between gap-3 text-body">
             <a href={pageUrl("recover", { tenant, identifier })} className="text-link hover:underline underline-offset-4">
               {t("login.forgot_password")}
             </a>
@@ -397,7 +397,7 @@ function CodeSent({
           </Button>
         </>
       )}
-      <div className="flex flex-wrap justify-between gap-3 text-[0.875rem]">
+      <div className="flex flex-wrap justify-between gap-3 text-body">
         <button type="button" className="text-link hover:underline underline-offset-4" onClick={onResend} disabled={busy}>
           {t("login.resend")}
         </button>

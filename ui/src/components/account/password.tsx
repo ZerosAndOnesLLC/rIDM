@@ -40,7 +40,7 @@ export function Password() {
       >
         {status.isError && <Alert tone="error">{t("account.error_generic")}</Alert>}
         {s && (
-          <p className="text-[0.875rem] text-muted">
+          <p className="text-body text-muted">
             {!s.set ? t("account.password_none") : changed ? t("account.password_changed_at", { when: changed }) : t("account.password_set_hint")}
             {expires ? ` ${t("account.password_expires", { when: expires })}` : ""}
             {s.must_change ? ` ${t("account.password_must_change")}` : ""}

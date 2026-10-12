@@ -43,10 +43,10 @@ export function GroupsPage({ tenant, selected }: { tenant: string; selected: str
       <Split
         list={
           <Card title="Tree">
-            {groups.isPending ? <Spinner label="Loading…" /> : groups.isError ? <ErrorLine error={groups.error} /> : all.length === 0 ? <p className="text-[0.875rem] text-muted">No groups yet.</p> : <GroupTree tree={tree} parent={null} depth={0} tenant={tenant} selected={selected} />}
+            {groups.isPending ? <Spinner label="Loading…" /> : groups.isError ? <ErrorLine error={groups.error} /> : all.length === 0 ? <p className="text-body text-muted">No groups yet.</p> : <GroupTree tree={tree} parent={null} depth={0} tenant={tenant} selected={selected} />}
           </Card>
         }
-        detail={selected ? <GroupDetailView key={selected} tenant={tenant} id={selected} all={all} onCreateChild={() => setCreating({ parent: selected })} /> : <p className="text-[0.9rem] text-muted">Choose a group.</p>}
+        detail={selected ? <GroupDetailView key={selected} tenant={tenant} id={selected} all={all} onCreateChild={() => setCreating({ parent: selected })} /> : <p className="text-lead text-muted">Choose a group.</p>}
       />
       <CreateGroup tenant={tenant} all={all} open={creating !== null} parent={creating?.parent ?? null} onOpenChange={(o) => !o && setCreating(null)} />
     </>
@@ -91,7 +91,7 @@ function GroupTree({ tree, parent, depth, tenant, selected }: { tree: Map<string
             <Link
               href={href("groups", tenant, { group: g.id })}
               aria-current={g.id === selected ? "page" : undefined}
-              className={`flex items-center gap-1.5 rounded-[var(--radius)] px-2 py-1.5 text-[0.875rem] ${g.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
+              className={`flex items-center gap-1.5 rounded-[var(--radius)] px-2 py-1.5 text-body ${g.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
             >
               <ChevronRight className={`size-3.5 shrink-0 text-muted ${kids ? "" : "invisible"}`} aria-hidden />
               <span className="truncate">{g.name}</span>
@@ -206,7 +206,7 @@ function GroupDetailView({ tenant, id, all, onCreateChild }: { tenant: string; i
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-[1.125rem] font-semibold text-ink">{paths.get(id) ?? draft.name}</h2>
+        <h2 className="text-title font-semibold text-ink">{paths.get(id) ?? draft.name}</h2>
         <span className="flex items-center gap-2">
           <SaveIndicator status={status} error={error} />
           {editable && (
@@ -267,15 +267,15 @@ function GroupRoles({ tenant, id, roles, editable, onChanged }: { tenant: string
   const have = new Set(roles.map((r) => r.id));
   return (
     <Card title="Roles of this group">
-      {roles.length === 0 && <p className="text-[0.875rem] text-muted">No roles; members inherit only from ancestors.</p>}
+      {roles.length === 0 && <p className="text-body text-muted">No roles; members inherit only from ancestors.</p>}
       <ul className="divide-y divide-line">
         {roles.map((r) => (
-          <li key={r.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
+          <li key={r.id} className="flex items-center justify-between gap-3 py-2 text-body">
             <span className="font-medium text-ink">
               {roleName(r)} {r.built_in && <Badge>built-in</Badge>}
             </span>
             {editable && (
-              <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={change.isPending} onClick={() => change.mutate({ remove: r.id })}>
+              <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={change.isPending} onClick={() => change.mutate({ remove: r.id })}>
                 Remove
               </Button>
             )}
@@ -343,7 +343,7 @@ function GroupMembers({ tenant, id, editable }: { tenant: string; id: string; ed
       title="Members"
       actions={
         editable ? (
-          <Button className="min-h-8 px-2.5 text-[0.8125rem]" onClick={() => setAdding(true)}>
+          <Button className="min-h-8 px-2.5 text-small" onClick={() => setAdding(true)}>
             <UserRoundPlus className="size-3.5" aria-hidden />
             Add member
           </Button>
@@ -353,14 +353,14 @@ function GroupMembers({ tenant, id, editable }: { tenant: string; id: string; ed
       <MemberList
         tenant={tenant}
         of={{ kind: "group", id }}
-        empty={<p className="text-[0.875rem] text-muted">No direct members.</p>}
+        empty={<p className="text-body text-muted">No direct members.</p>}
         row={(u) => (
-          <li key={u.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
+          <li key={u.id} className="flex items-center justify-between gap-3 py-2 text-body">
             <Link href={userHref(tenant, u.id, "groups")} className="font-medium text-ink hover:underline underline-offset-4">
               {u.username}
             </Link>
             {editable && (
-              <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={change.isPending} onClick={() => change.mutate({ remove: u.id })}>
+              <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={change.isPending} onClick={() => change.mutate({ remove: u.id })}>
                 Remove
               </Button>
             )}

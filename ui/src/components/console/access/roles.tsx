@@ -56,7 +56,7 @@ export function RolesPage({ tenant, selected }: { tenant: string; selected: stri
                     <Link
                       href={href("roles", tenant, { role: r.id })}
                       aria-current={r.id === selected ? "page" : undefined}
-                      className={`flex items-center justify-between gap-2 rounded-[var(--radius)] px-2 py-1.5 text-[0.875rem] ${r.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
+                      className={`flex items-center justify-between gap-2 rounded-[var(--radius)] px-2 py-1.5 text-body ${r.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
                     >
                       <span className="truncate">
                         {r.client_id && <span className="text-muted">{names[r.client_id] ?? "client"} / </span>}
@@ -70,7 +70,7 @@ export function RolesPage({ tenant, selected }: { tenant: string; selected: stri
             )}
           </Card>
         }
-        detail={selected ? <RoleDetailView key={selected} tenant={tenant} id={selected} clientNames={names} /> : <p className="text-[0.9rem] text-muted">Choose a role.</p>}
+        detail={selected ? <RoleDetailView key={selected} tenant={tenant} id={selected} clientNames={names} /> : <p className="text-lead text-muted">Choose a role.</p>}
       />
       <CreateRole tenant={tenant} open={creating} onOpenChange={setCreating} clientNames={names} />
     </>
@@ -175,7 +175,7 @@ function RoleDetailView({ tenant, id, clientNames }: { tenant: string; id: strin
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-[1.125rem] font-semibold text-ink">
+        <h2 className="text-title font-semibold text-ink">
           {draft.client_id && <span className="text-muted">{clientNames[draft.client_id] ?? "client"} / </span>}
           {draft.name} {draft.built_in && <Badge>built-in</Badge>}
         </h2>
@@ -213,14 +213,14 @@ function Composites({ tenant, id, composites, editable, clientNames, onChanged }
   const label = (r: Role) => (r.client_id ? `${clientNames[r.client_id] ?? "client"} / ${r.name}` : r.name);
   return (
     <Card title="Composite roles">
-      <p className="mb-2 text-[0.8125rem] text-muted">Holders of this role also hold these.</p>
-      {composites.length === 0 && <p className="text-[0.875rem] text-muted">None.</p>}
+      <p className="mb-2 text-small text-muted">Holders of this role also hold these.</p>
+      {composites.length === 0 && <p className="text-body text-muted">None.</p>}
       <ul className="divide-y divide-line">
         {composites.map((r) => (
-          <li key={r.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
+          <li key={r.id} className="flex items-center justify-between gap-3 py-2 text-body">
             <span className="font-medium text-ink">{label(r)}</span>
             {editable && (
-              <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={change.isPending} onClick={() => change.mutate({ remove: r.id })}>
+              <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={change.isPending} onClick={() => change.mutate({ remove: r.id })}>
                 Remove
               </Button>
             )}
@@ -290,17 +290,17 @@ function RolePermissions({ tenant, id, permissions, editable, onChanged }: { ten
   const serverName = (rsId: string) => servers.data?.find((r) => r.id === rsId)?.name ?? "";
   return (
     <Card title="Permissions">
-      <p className="mb-2 text-[0.8125rem] text-muted">Carried into access tokens for the matching audience. Admin-catalogue permissions can only be granted by someone who holds them.</p>
-      {permissions.length === 0 && <p className="text-[0.875rem] text-muted">None.</p>}
+      <p className="mb-2 text-small text-muted">Carried into access tokens for the matching audience. Admin-catalogue permissions can only be granted by someone who holds them.</p>
+      {permissions.length === 0 && <p className="text-body text-muted">None.</p>}
       <ul className="divide-y divide-line">
         {permissions.map((p) => (
-          <li key={p.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
+          <li key={p.id} className="flex items-center justify-between gap-3 py-2 text-body">
             <span>
-              <span className="font-mono text-[0.8125rem] font-medium text-ink">{p.name}</span>
+              <span className="font-mono text-small font-medium text-ink">{p.name}</span>
               <span className="ms-2 text-muted">{serverName(p.resource_server_id)}</span>
             </span>
             {editable && (
-              <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={change.isPending} onClick={() => change.mutate({ remove: p.id })}>
+              <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={change.isPending} onClick={() => change.mutate({ remove: p.id })}>
                 Revoke
               </Button>
             )}
@@ -359,16 +359,16 @@ function Holders({ tenant, id }: { tenant: string; id: string }) {
       ) : holders.isError ? (
         <ErrorLine error={holders.error} />
       ) : assignments.length === 0 ? (
-        <p className="text-[0.875rem] text-muted">Nobody holds this role directly.</p>
+        <p className="text-body text-muted">Nobody holds this role directly.</p>
       ) : (
         <ul className="flex flex-wrap gap-1.5">
           {assignments.map((a) =>
             a.user_id ? (
-              <Link key={a.id} href={userHref(tenant, a.user_id, "roles")} className="inline-flex items-center rounded-full bg-ground px-2 py-0.5 text-[0.8125rem] text-ink hover:underline underline-offset-4">
+              <Link key={a.id} href={userHref(tenant, a.user_id, "roles")} className="inline-flex items-center rounded-full bg-ground px-2 py-0.5 text-small text-ink hover:underline underline-offset-4">
                 {a.username ?? a.user_id}
               </Link>
             ) : (
-              <Link key={a.id} href={href("groups", tenant, { group: a.group_id! })} className="inline-flex items-center rounded-full bg-[color-mix(in_oklab,var(--accent)_14%,transparent)] px-2 py-0.5 text-[0.8125rem] text-link hover:underline underline-offset-4">
+              <Link key={a.id} href={href("groups", tenant, { group: a.group_id! })} className="inline-flex items-center rounded-full bg-[color-mix(in_oklab,var(--accent)_14%,transparent)] px-2 py-0.5 text-small text-link hover:underline underline-offset-4">
                 group: {groupName(a.group_id!)}
               </Link>
             ),

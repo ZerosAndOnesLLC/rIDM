@@ -42,22 +42,22 @@ export function RolesTab({ tenant, id, editable }: { tenant: string; id: string;
         {mine.isPending ? (
           <Spinner label="Loading…" />
         ) : mine.isError ? (
-          <p role="alert" className="text-[0.875rem] text-danger">
+          <p role="alert" className="text-body text-danger">
             {mine.error.message}
           </p>
         ) : (
           <>
-            {mine.data.direct.length === 0 && <p className="text-[0.875rem] text-muted">No direct roles.</p>}
+            {mine.data.direct.length === 0 && <p className="text-body text-muted">No direct roles.</p>}
             <ul className="divide-y divide-line">
               {mine.data.direct.map((r) => (
-                <li key={r.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
+                <li key={r.id} className="flex items-center justify-between gap-3 py-2 text-body">
                   <span>
                     <span className="font-medium text-ink">{roleName(r)}</span>
                     {r.built_in && <Badge>built-in</Badge>}
-                    {r.description && <span className="block text-[0.8125rem] text-muted">{r.description}</span>}
+                    {r.description && <span className="block text-small text-muted">{r.description}</span>}
                   </span>
                   {editable && (
-                    <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={change.isPending} onClick={() => change.mutate({ remove: r.id })}>
+                    <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={change.isPending} onClick={() => change.mutate({ remove: r.id })}>
                       Remove
                     </Button>
                   )}
@@ -86,7 +86,7 @@ export function RolesTab({ tenant, id, editable }: { tenant: string; id: string;
               </form>
             )}
             {change.isError && (
-              <p role="alert" className="mt-2 text-[0.875rem] text-danger">
+              <p role="alert" className="mt-2 text-body text-danger">
                 {change.error.message}
               </p>
             )}
@@ -94,14 +94,14 @@ export function RolesTab({ tenant, id, editable }: { tenant: string; id: string;
         )}
       </Card>
       <Card title="Effective roles">
-        <p className="mb-2 text-[0.8125rem] text-muted">Direct roles plus those inherited through groups and composites.</p>
+        <p className="mb-2 text-small text-muted">Direct roles plus those inherited through groups and composites.</p>
         <div className="flex flex-wrap gap-1.5">
           {mine.data?.effective.map((r) => (
             <Badge key={r.id} tone={directIds.has(r.id) ? "accent" : "neutral"}>
               {roleName(r)}
             </Badge>
           ))}
-          {mine.data?.effective.length === 0 && <span className="text-[0.875rem] text-muted">None.</span>}
+          {mine.data?.effective.length === 0 && <span className="text-body text-muted">None.</span>}
         </div>
       </Card>
     </div>
@@ -147,18 +147,18 @@ export function GroupsTab({ tenant, id, editable }: { tenant: string; id: string
         {mine.isPending ? (
           <Spinner label="Loading…" />
         ) : mine.isError ? (
-          <p role="alert" className="text-[0.875rem] text-danger">
+          <p role="alert" className="text-body text-danger">
             {mine.error.message}
           </p>
         ) : (
           <>
-            {mine.data.direct.length === 0 && <p className="text-[0.875rem] text-muted">No groups.</p>}
+            {mine.data.direct.length === 0 && <p className="text-body text-muted">No groups.</p>}
             <ul className="divide-y divide-line">
               {mine.data.direct.map((g) => (
-                <li key={g.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
+                <li key={g.id} className="flex items-center justify-between gap-3 py-2 text-body">
                   <span className="font-medium text-ink">{pathOf(g.id)}</span>
                   {editable && (
-                    <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={change.isPending} onClick={() => change.mutate({ remove: g.id })}>
+                    <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={change.isPending} onClick={() => change.mutate({ remove: g.id })}>
                       Leave
                     </Button>
                   )}
@@ -187,7 +187,7 @@ export function GroupsTab({ tenant, id, editable }: { tenant: string; id: string
               </form>
             )}
             {change.isError && (
-              <p role="alert" className="mt-2 text-[0.875rem] text-danger">
+              <p role="alert" className="mt-2 text-body text-danger">
                 {change.error.message}
               </p>
             )}
@@ -195,14 +195,14 @@ export function GroupsTab({ tenant, id, editable }: { tenant: string; id: string
         )}
       </Card>
       <Card title="Effective groups">
-        <p className="mb-2 text-[0.8125rem] text-muted">Direct memberships plus their ancestors.</p>
+        <p className="mb-2 text-small text-muted">Direct memberships plus their ancestors.</p>
         <div className="flex flex-wrap gap-1.5">
           {mine.data?.effective.map((g) => (
             <Badge key={g.id} tone={directIds.has(g.id) ? "accent" : "neutral"}>
               {pathOf(g.id)}
             </Badge>
           ))}
-          {mine.data?.effective.length === 0 && <span className="text-[0.875rem] text-muted">None.</span>}
+          {mine.data?.effective.length === 0 && <span className="text-body text-muted">None.</span>}
         </div>
       </Card>
     </div>

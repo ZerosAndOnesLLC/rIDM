@@ -80,7 +80,7 @@ export function KerberosUpstreamSection({
     <>
       {!krb.supported && (
         <Card title="Not available in this build">
-          <p className="text-[0.875rem] text-muted">
+          <p className="text-body text-muted">
             This rIDM was built without the <code className="font-mono">kerberos</code> feature: the provider can be configured, but nobody can sign in with it. The released image and binaries include it.
           </p>
         </Card>
@@ -89,7 +89,7 @@ export function KerberosUpstreamSection({
         title="Keytab"
         actions={
           editable ? (
-            <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius)] border border-line bg-paper px-3.5 text-[0.875rem] font-medium text-ink hover:bg-ground focus-within:outline-2 focus-within:outline-accent">
+            <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius)] border border-line bg-paper px-3.5 text-body font-medium text-ink hover:bg-ground focus-within:outline-2 focus-within:outline-accent">
               <input type="file" accept=".keytab,application/octet-stream" className="sr-only" onChange={onFile} disabled={setKeytab.isPending} />
               <Upload className="size-4" aria-hidden />
               {krb.keytab_set ? "Replace keytab" : "Upload keytab"}
@@ -100,7 +100,7 @@ export function KerberosUpstreamSection({
         {krb.keytab_set ? (
           <ul className="flex flex-col gap-1.5">
             {krb.keytab_entries.map((e, i) => (
-              <li key={`${e.principal}-${e.kvno}-${e.etype}-${i}`} className="flex flex-wrap items-center gap-2 text-[0.8125rem]">
+              <li key={`${e.principal}-${e.kvno}-${e.etype}-${i}`} className="flex flex-wrap items-center gap-2 text-small">
                 <code className="break-all font-mono text-ink">{e.principal}</code>
                 <span className="text-muted">
                   kvno {e.kvno} · {e.etype_name}
@@ -110,9 +110,9 @@ export function KerberosUpstreamSection({
             ))}
           </ul>
         ) : (
-          <p className="text-[0.875rem] text-danger">No keytab is stored: nobody can sign in until one is uploaded.</p>
+          <p className="text-body text-danger">No keytab is stored: nobody can sign in until one is uploaded.</p>
         )}
-        <p className="mt-2 text-[0.8125rem] text-muted">Stored encrypted; keys are never shown. rIDM accepts AES tickets (aes256-cts-hmac-sha1-96, aes128-cts-hmac-sha1-96) only.</p>
+        <p className="mt-2 text-small text-muted">Stored encrypted; keys are never shown. rIDM accepts AES tickets (aes256-cts-hmac-sha1-96, aes128-cts-hmac-sha1-96) only.</p>
         {editable && krb.keytab_set && (
           <Button className="mt-2" disabled={setKeytab.isPending} onClick={() => setKeytab.mutate("")}>
             Remove keytab

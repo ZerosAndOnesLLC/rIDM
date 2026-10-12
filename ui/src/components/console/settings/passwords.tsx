@@ -33,7 +33,7 @@ export function PasswordsSection() {
       </Field>
 
       <div className="sm:col-span-2">
-        <h3 className="text-[0.8125rem] font-medium text-ink">Lockout</h3>
+        <h3 className="text-small font-medium text-ink">Lockout</h3>
       </div>
       <Field label="Failures before a user is locked" hint="Consecutive failed sign-ins (0 = never lock).">
         {(id, by) => <NumberInput id={id} describedBy={by} value={lockout.max_failures} min={0} onValue={(v) => v !== null && update({ lockout: { max_failures: v } })} />}
@@ -49,7 +49,7 @@ export function PasswordsSection() {
       </Field>
 
       <div className="sm:col-span-2">
-        <h3 className="text-[0.8125rem] font-medium text-ink">CAPTCHA</h3>
+        <h3 className="text-small font-medium text-ink">CAPTCHA</h3>
       </div>
       <Field label="Demand a challenge after" hint="Failed attempts in one flow (0 = never).">
         {(id, by) => <NumberInput id={id} describedBy={by} value={captcha.after_failures} min={0} onValue={(v) => v !== null && update({ captcha: { after_failures: v } })} unit="failures" />}
@@ -127,10 +127,10 @@ function CaptchaProvider({ slug, editable }: { slug: string; editable: boolean }
   return (
     <div className="grid gap-5 sm:col-span-2 sm:grid-cols-2">
       <div className="flex items-center gap-2 sm:col-span-2">
-        <h4 className="text-[0.8125rem] font-medium text-ink">Provider</h4>
+        <h4 className="text-small font-medium text-ink">Provider</h4>
         {configured ? <Badge tone="ok">Configured</Badge> : <Badge>Not configured</Badge>}
         {(save.isError || remove.isError) && (
-          <span role="alert" className="text-[0.8125rem] text-danger">
+          <span role="alert" className="text-small text-danger">
             {(save.error ?? remove.error)?.message}
           </span>
         )}

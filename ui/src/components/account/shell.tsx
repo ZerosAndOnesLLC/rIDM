@@ -54,7 +54,7 @@ function Nav() {
               <Link
                 href={p.href}
                 aria-current={active ? "page" : undefined}
-                className={`inline-flex min-h-10 items-center border-b-2 px-3 text-[0.875rem] font-medium transition-colors ${
+                className={`inline-flex min-h-10 items-center border-b-2 px-3 text-body font-medium transition-colors ${
                   active ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"
                 }`}
               >
@@ -81,12 +81,12 @@ function ImpersonationBanner() {
   return (
     <div role="status" className="border-b border-line bg-[color-mix(in_oklab,var(--accent)_14%,var(--paper))]">
       <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
-        <p className="flex min-w-0 items-center gap-2 text-[0.875rem] text-ink">
+        <p className="flex min-w-0 items-center gap-2 text-body text-ink">
           <UserRoundCog className="size-4 shrink-0 text-link" aria-hidden />
           <span>{t("account.impersonation_banner", { admin: me.impersonation.impersonator, user: me.email ?? me.username, when })}</span>
         </p>
         <form method="post" action={`${tenantBase(slug)}/impersonation/end`} onSubmit={() => accountStore.end(null)}>
-          <button type="submit" className="inline-flex min-h-9 items-center rounded-[var(--radius)] bg-accent px-3 text-[0.8125rem] font-medium text-accent-ink hover:brightness-110">
+          <button type="submit" className="inline-flex min-h-9 items-center rounded-[var(--radius)] bg-accent px-3 text-small font-medium text-accent-ink hover:brightness-110">
             {t("account.impersonation_end")}
           </button>
         </form>
@@ -107,14 +107,14 @@ function Frame({ children }: { children: ReactNode }) {
             <span aria-hidden className="flex size-8 items-center justify-center rounded-lg bg-accent text-accent-ink">
               <ShieldCheck className="size-4" />
             </span>
-            <span className="text-[0.9375rem] font-semibold text-ink">{me?.tenant.display_name}</span>
+            <span className="text-lead font-semibold text-ink">{me?.tenant.display_name}</span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden text-[0.875rem] text-muted sm:inline">{me?.email ?? me?.username}</span>
+            <span className="hidden text-body text-muted sm:inline">{me?.email ?? me?.username}</span>
             <button
               type="button"
               onClick={signOut}
-              className="inline-flex min-h-9 items-center gap-1.5 rounded-[var(--radius)] border border-line px-3 text-[0.8125rem] font-medium text-ink hover:bg-ground"
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-[var(--radius)] border border-line px-3 text-small font-medium text-ink hover:bg-ground"
             >
               <LogOut className="size-3.5" aria-hidden />
               {t("account.sign_out")}
@@ -124,7 +124,7 @@ function Frame({ children }: { children: ReactNode }) {
         <Nav />
       </header>
       <main className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">{children}</main>
-      <p className="pb-6 text-center text-[0.8125rem] text-muted">{t("common.powered_by")}</p>
+      <p className="pb-6 text-center text-small text-muted">{t("common.powered_by")}</p>
     </div>
   );
 }
@@ -172,8 +172,8 @@ function SignIn() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
       <main className="card-in w-full max-w-[24rem] rounded-[calc(var(--radius)+4px)] border border-line bg-paper p-6 sm:p-8">
-        <h1 className="text-[1.5rem] font-semibold leading-tight tracking-[-0.01em] text-ink">{t("account.sign_in_title")}</h1>
-        <p className="mt-1.5 text-[0.9375rem] text-muted">{t("account.sign_in_description")}</p>
+        <h1 className="text-2xl font-semibold leading-tight tracking-[-0.01em] text-ink">{t("account.sign_in_title")}</h1>
+        <p className="mt-1.5 text-lead text-muted">{t("account.sign_in_description")}</p>
         <form onSubmit={submit} className="mt-6 flex flex-col gap-4" noValidate>
           {(problem ?? notice) && <Alert tone="error">{problem ?? notice}</Alert>}
           <TextField label={t("account.tenant")} value={tenant} onChange={(e) => setTenant(e.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} required />
@@ -182,7 +182,7 @@ function SignIn() {
           </Button>
         </form>
       </main>
-      <p className="mt-6 text-[0.8125rem] text-muted">{t("common.powered_by")}</p>
+      <p className="mt-6 text-small text-muted">{t("common.powered_by")}</p>
     </div>
   );
 }

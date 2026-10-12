@@ -34,7 +34,7 @@ export default function PlaygroundPage() {
     return (
       <>
         <PageHeader title="Playground" />
-        <p className="text-[0.9rem] text-muted">Open the playground from a client&apos;s page.</p>
+        <p className="text-lead text-muted">Open the playground from a client&apos;s page.</p>
       </>
     );
   }
@@ -69,7 +69,7 @@ function Callback() {
   return (
     <>
       <PageHeader title="Playground" />
-      <p className="text-[0.9rem] text-muted">This sign-in has no playground to return to. Start the run again from the client&apos;s playground.</p>
+      <p className="text-lead text-muted">This sign-in has no playground to return to. Start the run again from the client&apos;s playground.</p>
     </>
   );
 }
@@ -120,7 +120,7 @@ function Playground({ tenant, id, res, setRes, error, setError }: { tenant: stri
   });
   if (query.isError) {
     return (
-      <p role="alert" className="text-[0.9rem] text-danger">
+      <p role="alert" className="text-lead text-danger">
         {query.error.message}
       </p>
     );
@@ -133,7 +133,7 @@ function Playground({ tenant, id, res, setRes, error, setError }: { tenant: stri
         title="Playground"
         sub={
           <span className="inline-flex flex-wrap items-center gap-2">
-            {c.name} <code className="font-mono text-[0.8125rem]">{c.client_id}</code>
+            {c.name} <code className="font-mono text-small">{c.client_id}</code>
             <Link href={clientHref(tenant, c.id)} className="text-link underline underline-offset-4">
               Client settings
             </Link>
@@ -158,11 +158,11 @@ function Playground({ tenant, id, res, setRes, error, setError }: { tenant: stri
         />
         <div className="flex min-w-0 flex-col gap-4">
           {error && (
-            <p role="alert" className="rounded-[var(--radius)] bg-danger-soft px-4 py-3 text-[0.875rem] text-danger">
+            <p role="alert" className="rounded-[var(--radius)] bg-danger-soft px-4 py-3 text-body text-danger">
               {error}
             </p>
           )}
-          {res ? <Results res={res} onUpdate={setRes} onError={setError} /> : <p className="text-[0.9rem] text-muted">No tokens yet. Start a run on the left.</p>}
+          {res ? <Results res={res} onUpdate={setRes} onError={setError} /> : <p className="text-lead text-muted">No tokens yet. Start a run on the left.</p>}
         </div>
       </div>
     </>
@@ -248,9 +248,9 @@ function Runner({ tenant, c, canEdit, onRegistered, onStart, onResult, onError }
   return (
     <Card title="Run">
       <div className="flex flex-col gap-4">
-        {!interactive && !machine && <p className="text-[0.875rem] text-muted">This client uses neither the authorization code nor the client credentials grant; the device flow playground arrives with Phase 8.</p>}
+        {!interactive && !machine && <p className="text-body text-muted">This client uses neither the authorization code nor the client credentials grant; the device flow playground arrives with Phase 8.</p>}
         {interactive && !registered && (
-          <div className="rounded-[var(--radius)] bg-ground px-3.5 py-3 text-[0.8125rem] text-ink">
+          <div className="rounded-[var(--radius)] bg-ground px-3.5 py-3 text-small text-ink">
             <p>
               The playground returns to <code className="font-mono">{uri}</code>, which is not one of this client&apos;s redirect URIs.
             </p>
@@ -301,7 +301,7 @@ function Runner({ tenant, c, canEdit, onRegistered, onStart, onResult, onError }
             {(fid, by) => <TextInput id={fid} aria-describedby={by} type="password" autoComplete="off" value={secret} onChange={(e) => setSecret(e.target.value)} />}
           </Field>
         )}
-        {c.token_endpoint_auth_method === "private_key_jwt" && <p className="text-[0.8125rem] text-muted">The playground cannot sign private_key_jwt assertions.</p>}
+        {c.token_endpoint_auth_method === "private_key_jwt" && <p className="text-small text-muted">The playground cannot sign private_key_jwt assertions.</p>}
         <div className="flex flex-wrap gap-2">
           {interactive && (
             <Button variant="primary" disabled={!registered || scopes.length === 0 || c.token_endpoint_auth_method === "private_key_jwt"} onClick={() => void start()}>
@@ -340,12 +340,12 @@ function Results({ res, onUpdate, onError }: { res: PlaygroundResult; onUpdate: 
         title="Token response"
         actions={
           <span className="flex flex-wrap gap-2">
-            <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={userinfo.isPending} onClick={() => userinfo.mutate()}>
+            <Button className="min-h-8 px-2.5 text-small" disabled={userinfo.isPending} onClick={() => userinfo.mutate()}>
               <UserRound className="size-3.5" aria-hidden />
               Call userinfo
             </Button>
             {res.tokens.refresh_token && (
-              <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
+              <Button className="min-h-8 px-2.5 text-small" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
                 <RotateCw className="size-3.5" aria-hidden />
                 Refresh
               </Button>
@@ -363,14 +363,14 @@ function Results({ res, onUpdate, onError }: { res: PlaygroundResult; onUpdate: 
       </Card>
       {at ? (
         <Card title="Access token">
-          <p className="mb-2 text-[0.8125rem] text-muted">Header</p>
+          <p className="mb-2 text-small text-muted">Header</p>
           <Json value={at.header} label="Access token header" />
-          <p className="mb-2 mt-3 text-[0.8125rem] text-muted">Claims</p>
+          <p className="mb-2 mt-3 text-small text-muted">Claims</p>
           <Json value={at.claims} label="Access token claims" />
         </Card>
       ) : (
         <Card title="Access token">
-          <p className="text-[0.875rem] text-muted">Opaque token; inspect it through introspection.</p>
+          <p className="text-body text-muted">Opaque token; inspect it through introspection.</p>
         </Card>
       )}
       {idt && (
@@ -390,7 +390,7 @@ function Results({ res, onUpdate, onError }: { res: PlaygroundResult; onUpdate: 
 function Json({ value, label = "JSON" }: { value: unknown; label?: string }) {
   // Scrollable, so it must be reachable from the keyboard.
   return (
-    <pre tabIndex={0} aria-label={label} className="max-h-96 overflow-auto rounded-[var(--radius)] bg-ground px-3 py-2 font-mono text-[0.8125rem] text-ink">
+    <pre tabIndex={0} aria-label={label} className="max-h-96 overflow-auto rounded-[var(--radius)] bg-ground px-3 py-2 font-mono text-small text-ink">
       {JSON.stringify(value, null, 2)}
     </pre>
   );

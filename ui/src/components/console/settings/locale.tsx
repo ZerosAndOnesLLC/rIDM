@@ -37,7 +37,7 @@ export function LocaleSection() {
         )}
       </Field>
       <div className="flex flex-col gap-1 sm:col-span-2">
-        <h3 className="text-[0.8125rem] font-medium text-ink">Security notices</h3>
+        <h3 className="text-small font-medium text-ink">Security notices</h3>
         <Toggle label="Sign-in from a new device" checked={notifications.new_device} disabled={!editable} onChange={(v) => update({ notifications: { new_device: v } })} />
         <Toggle label="Password changed" checked={notifications.password_changed} disabled={!editable} onChange={(v) => update({ notifications: { password_changed: v } })} />
         <Toggle label="Two-step verification changed" checked={notifications.mfa_changed} disabled={!editable} onChange={(v) => update({ notifications: { mfa_changed: v } })} />

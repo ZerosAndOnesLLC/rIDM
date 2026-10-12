@@ -109,12 +109,12 @@ function Frame({ children }: { children: ReactNode }) {
               </Dialog.Content>
             </Dialog.Portal>
           </Dialog.Root>
-          <p className="min-w-0 flex-1 truncate text-[0.9375rem] font-medium text-ink">{current?.label ?? PAGE_TITLES[pathname] ?? "Console"}</p>
+          <p className="min-w-0 flex-1 truncate text-lead font-medium text-ink">{current?.label ?? PAGE_TITLES[pathname] ?? "Console"}</p>
           <button
             type="button"
             aria-label="Search"
             onClick={() => setPalette(true)}
-            className="flex min-h-9 items-center gap-2 rounded-[var(--radius)] border border-line bg-ground px-3 text-[0.875rem] text-muted hover:text-ink"
+            className="flex min-h-9 items-center gap-2 rounded-[var(--radius)] border border-line bg-ground px-3 text-body text-muted hover:text-ink"
           >
             <Search className="size-4" aria-hidden />
             <span className="hidden sm:inline">Search…</span>
@@ -161,7 +161,7 @@ function Sidebar({
         <span aria-hidden className="flex size-8 items-center justify-center rounded-lg bg-accent text-accent-ink">
           <ShieldCheck className="size-[1.125rem]" />
         </span>
-        <span className="text-[1rem] font-semibold text-ink">rIDM</span>
+        <span className="text-md font-semibold text-ink">rIDM</span>
       </div>
 
       <div className="px-3 pb-2">
@@ -174,8 +174,8 @@ function Sidebar({
           >
             <Building2 className="size-4 shrink-0 text-muted" aria-hidden />
             <span className="min-w-0 flex-1">
-              <span className="block text-[0.6875rem] uppercase tracking-wide text-muted">Tenant</span>
-              <span className="block truncate text-[0.875rem] font-medium text-ink">{tenant ?? "—"}</span>
+              <span className="block text-tiny uppercase tracking-wide text-muted">Tenant</span>
+              <span className="block truncate text-body font-medium text-ink">{tenant ?? "—"}</span>
             </span>
             <ChevronsUpDown className="size-4 shrink-0 text-muted" aria-hidden />
           </button>
@@ -183,8 +183,8 @@ function Sidebar({
           <div className="flex items-center gap-2.5 rounded-[var(--radius)] border border-line bg-ground px-3 py-2">
             <Building2 className="size-4 shrink-0 text-muted" aria-hidden />
             <span className="min-w-0 flex-1">
-              <span className="block text-[0.6875rem] uppercase tracking-wide text-muted">Tenant</span>
-              <span className="block truncate text-[0.875rem] font-medium text-ink">{tenant ?? "—"}</span>
+              <span className="block text-tiny uppercase tracking-wide text-muted">Tenant</span>
+              <span className="block truncate text-body font-medium text-ink">{tenant ?? "—"}</span>
             </span>
           </div>
         )}
@@ -192,8 +192,8 @@ function Sidebar({
           <div className="mt-2 flex items-center gap-2.5 rounded-[var(--radius)] border border-line bg-ground px-3 py-2">
             <Briefcase className="size-4 shrink-0 text-muted" aria-hidden />
             <span className="min-w-0 flex-1">
-              <span className="block text-[0.6875rem] uppercase tracking-wide text-muted">Organization</span>
-              <span className="block truncate text-[0.875rem] font-medium text-ink">{org.display_name}</span>
+              <span className="block text-tiny uppercase tracking-wide text-muted">Organization</span>
+              <span className="block truncate text-body font-medium text-ink">{org.display_name}</span>
             </span>
           </div>
         )}
@@ -205,7 +205,7 @@ function Sidebar({
           if (visible.length === 0) return null;
           return (
             <div key={group.title ?? gi} className="mb-3">
-              {group.title && <div className="px-3 pb-1 pt-2 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted">{group.title}</div>}
+              {group.title && <div className="px-3 pb-1 pt-2 text-tiny font-semibold uppercase tracking-wide text-muted">{group.title}</div>}
               <ul className="flex flex-col gap-0.5">
                 {visible.map((n) => {
                   const active = pathname === n.href;
@@ -215,7 +215,7 @@ function Sidebar({
                         href={consoleHref(n.href, tenant)}
                         aria-current={active ? "page" : undefined}
                         onClick={onNavigate}
-                        className="flex items-center gap-2.5 rounded-[var(--radius)] px-3 py-2 text-[0.875rem] text-muted hover:bg-ground hover:text-ink"
+                        className="flex items-center gap-2.5 rounded-[var(--radius)] px-3 py-2 text-body text-muted hover:bg-ground hover:text-ink"
                       >
                         <n.icon className="size-4 shrink-0" aria-hidden />
                         <span className="flex-1 truncate">{n.label}</span>
@@ -231,14 +231,14 @@ function Sidebar({
 
       <div className="border-t border-line p-3">
         <div className="flex items-center gap-2.5 px-1">
-          <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-ground text-[0.8125rem] font-semibold text-ink">
+          <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-ground text-small font-semibold text-ink">
             {(me?.username ?? "?").slice(0, 1).toUpperCase()}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[0.875rem] font-medium text-ink" data-testid="me-username">
+            <span className="block truncate text-body font-medium text-ink" data-testid="me-username">
               {me?.username}
             </span>
-            <span className="block truncate text-[0.75rem] text-muted">{global ? "Global administrator" : `Administrator of ${me?.tenant_slug ?? ""}`}</span>
+            <span className="block truncate text-caption text-muted">{global ? "Global administrator" : `Administrator of ${me?.tenant_slug ?? ""}`}</span>
           </span>
           <IconButton label="Sign out" onClick={onSignOut}>
             <LogOut className="size-4" aria-hidden />
@@ -294,7 +294,7 @@ function ShortcutsHelp({ open, onOpenChange, global }: { open: boolean; onOpenCh
     <Modal open={open} onOpenChange={onOpenChange} title="Keyboard shortcuts" description="Single keys work when no field has focus.">
       <dl className="px-5 pb-5 pt-3">
         {rows.map((r) => (
-          <div key={r.what} className="flex items-center justify-between gap-4 py-2 text-[0.875rem] not-last:border-b not-last:border-line">
+          <div key={r.what} className="flex items-center justify-between gap-4 py-2 text-body not-last:border-b not-last:border-line">
             <dt className="text-ink">{r.what}</dt>
             <dd className="flex gap-1">
               {r.keys.map((k) => (

@@ -101,7 +101,7 @@ export default function SettingsPage() {
     return (
       <>
         <PageHeader title="Settings" />
-        <p role="alert" className="text-[0.9rem] text-danger">
+        <p role="alert" className="text-lead text-danger">
           {query.error.message}
         </p>
       </>
@@ -113,7 +113,7 @@ export default function SettingsPage() {
     <SettingsContext.Provider value={editor}>
       <PageHeader title="Settings" sub={`${editor.draft.display_name} · ${editor.draft.slug}`} actions={<SaveIndicator status={status} error={error} />} />
       {!editable && (
-        <p className="mb-4 rounded-[var(--radius)] bg-ground px-4 py-2.5 text-[0.875rem] text-muted" role="status">
+        <p className="mb-4 rounded-[var(--radius)] bg-ground px-4 py-2.5 text-body text-muted" role="status">
           You can view these settings but not change them.
         </p>
       )}
@@ -122,7 +122,7 @@ export default function SettingsPage() {
           <ul className="flex flex-wrap gap-1 lg:flex-col">
             {SECTIONS.map((s) => (
               <li key={s.id}>
-                <a href={`#${s.id}`} className="block rounded-[var(--radius)] px-3 py-1.5 text-[0.875rem] text-muted hover:bg-paper hover:text-ink">
+                <a href={`#${s.id}`} className="block rounded-[var(--radius)] px-3 py-1.5 text-body text-muted hover:bg-paper hover:text-ink">
                   {s.label}
                 </a>
               </li>

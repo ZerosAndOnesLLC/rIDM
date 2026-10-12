@@ -84,7 +84,7 @@ export function AuditPage({ tenant }: { tenant: string }) {
       />
       <ErrorLine error={exp.error ?? verify.error} />
       {verify.data && (
-        <p role="status" className={`mb-4 rounded-[var(--radius)] px-4 py-2.5 text-[0.875rem] ${verify.data.valid ? "bg-ok-soft text-ok" : "bg-danger-soft text-danger"}`}>
+        <p role="status" className={`mb-4 rounded-[var(--radius)] px-4 py-2.5 text-body ${verify.data.valid ? "bg-ok-soft text-ok" : "bg-danger-soft text-danger"}`}>
           {verify.data.valid ? `Chain intact: ${verify.data.checked} rows checked (${verify.data.first_seq ?? "—"} → ${verify.data.last_seq ?? "—"}).` : `Chain broken at position ${verify.data.broken_at_seq}: ${verify.data.reason ?? "hash mismatch"}.`}
         </p>
       )}
@@ -150,7 +150,7 @@ export function AuditPage({ tenant }: { tenant: string }) {
         ) : page.isError ? (
           <ErrorLine error={page.error} />
         ) : page.data.items.length === 0 ? (
-          <p className="text-[0.875rem] text-muted">No events match.</p>
+          <p className="text-body text-muted">No events match.</p>
         ) : (
           <ul className="divide-y divide-line">
             {page.data.items.map((e) => (
@@ -173,19 +173,19 @@ export function AuditPage({ tenant }: { tenant: string }) {
 
 function EventRow({ e, open, onToggle }: { e: AuditEvent; open: boolean; onToggle: () => void }) {
   return (
-    <li className="py-2 text-[0.875rem]">
+    <li className="py-2 text-body">
       <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full flex-wrap items-center justify-between gap-2 text-start">
         <span className="inline-flex flex-wrap items-center gap-2">
-          <span className="font-mono text-[0.8125rem] font-medium text-ink">{e.name}</span>
+          <span className="font-mono text-small font-medium text-ink">{e.name}</span>
           <Badge>{e.actor_type}</Badge>
-          {e.ip && <span className="text-[0.8125rem] text-muted">{e.ip}</span>}
+          {e.ip && <span className="text-small text-muted">{e.ip}</span>}
         </span>
-        <span className="text-[0.8125rem] text-muted">
+        <span className="text-small text-muted">
           #{e.seq} · {formatDate("en", e.occurred_at)}
         </span>
       </button>
       {open && (
-        <pre tabIndex={0} aria-label="Event details" className="mt-2 max-h-72 overflow-auto rounded-[var(--radius)] bg-ground px-3 py-2 font-mono text-[0.75rem] text-ink">
+        <pre tabIndex={0} aria-label="Event details" className="mt-2 max-h-72 overflow-auto rounded-[var(--radius)] bg-ground px-3 py-2 font-mono text-caption text-ink">
           {JSON.stringify({ id: e.id, actor_id: e.actor_id, subject_id: e.subject_id, user_agent: e.user_agent, payload: e.payload, hash: e.hash, prev_hash: e.prev_hash }, null, 2)}
         </pre>
       )}

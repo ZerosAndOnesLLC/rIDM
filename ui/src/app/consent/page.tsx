@@ -48,7 +48,7 @@ function ConsentPage() {
       ) : (
         <div className="flex flex-col gap-5">
           <Title sub={t("consent.description", { client: flow.client.name })}>{t("consent.title")}</Title>
-          {flow.user && <p className="-mt-3 text-[0.875rem] text-muted">{t("consent.signed_in_as", { username: flow.user.username })}</p>}
+          {flow.user && <p className="-mt-3 text-body text-muted">{t("consent.signed_in_as", { username: flow.user.username })}</p>}
           {error && <Alert tone="error">{error}</Alert>}
           <ul className="flex flex-col divide-y divide-line rounded-[var(--radius)] border border-line">
             {flow.pending_scopes.map((s) => (
@@ -67,7 +67,7 @@ function ConsentPage() {
                   label={
                     <span className="flex flex-col">
                       <span className="font-medium">{s.description ?? s.name}</span>
-                      {s.description && <span className="text-[0.8125rem] text-muted">{s.name}</span>}
+                      {s.description && <span className="text-small text-muted">{s.name}</span>}
                     </span>
                   }
                 />
@@ -83,7 +83,7 @@ function ConsentPage() {
             </Button>
           </div>
           {(flow.client.tos_uri || flow.client.policy_uri) && (
-            <p className="text-center text-[0.8125rem] text-muted">
+            <p className="text-center text-small text-muted">
               {flow.client.tos_uri && (
                 <a href={flow.client.tos_uri} target="_blank" rel="noreferrer" className="hover:underline underline-offset-4">
                   {t("register.terms")}

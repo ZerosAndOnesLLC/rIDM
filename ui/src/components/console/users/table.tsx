@@ -87,25 +87,25 @@ export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: {
               </option>
             ))}
         </SelectInput>
-        <label className="flex items-center gap-2 text-[0.875rem] text-ink">
+        <label className="flex items-center gap-2 text-body text-ink">
           <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={deleted} onChange={(e) => setDeleted(e.target.checked)} />
           Include deleted
         </label>
-        <span className="ms-auto text-[0.8125rem] text-muted" aria-live="polite">
+        <span className="ms-auto text-small text-muted" aria-live="polite">
           {rows.length}
           {users.hasNextPage ? "+" : ""} shown
         </span>
       </div>
       {users.isError ? (
-        <p role="alert" className="text-[0.9rem] text-danger">
+        <p role="alert" className="text-lead text-danger">
           {users.error.message}
         </p>
       ) : users.isPending ? (
         <Spinner label="Loading users…" />
       ) : (
         <div className="overflow-x-auto rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
-          <div role="table" aria-label="Users" aria-rowcount={rows.length} className="min-w-[38rem] text-[0.875rem]">
-            <div role="row" className="grid grid-cols-[minmax(10rem,2fr)_minmax(10rem,2fr)_7rem_9rem] gap-3 border-b border-line px-4 py-2.5 text-[0.75rem] uppercase tracking-wide text-muted">
+          <div role="table" aria-label="Users" aria-rowcount={rows.length} className="min-w-[38rem] text-body">
+            <div role="row" className="grid grid-cols-[minmax(10rem,2fr)_minmax(10rem,2fr)_7rem_9rem] gap-3 border-b border-line px-4 py-2.5 text-caption uppercase tracking-wide text-muted">
               <span role="columnheader">Username</span>
               <span role="columnheader">Email</span>
               <span role="columnheader">Status</span>
@@ -133,7 +133,7 @@ export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: {
                         </span>
                         <span role="cell" className="min-w-0 truncate text-muted">
                           {u.email ?? "—"}
-                          {u.email && !u.email_verified && <span className="ms-1 text-[0.75rem]">(unverified)</span>}
+                          {u.email && !u.email_verified && <span className="ms-1 text-caption">(unverified)</span>}
                         </span>
                         <span role="cell">
                           <Badge tone={statusTone(u.status)}>{STATUS_LABELS[u.status]}</Badge>
@@ -145,7 +145,7 @@ export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: {
                     );
                   })}
                 </div>
-                {users.isFetchingNextPage && <p className="py-2 text-center text-[0.8125rem] text-muted">Loading more…</p>}
+                {users.isFetchingNextPage && <p className="py-2 text-center text-small text-muted">Loading more…</p>}
               </div>
             )}
           </div>

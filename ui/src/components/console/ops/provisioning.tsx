@@ -65,13 +65,13 @@ export function ProvisioningPage({ tenant }: { tenant: string }) {
       ) : (
         <div className="flex flex-col gap-6">
           <Card title="Endpoint">
-            <div className="flex flex-wrap items-center gap-2 text-[0.875rem]">
-              <code className="rounded-[var(--radius)] bg-ground px-2 py-1 font-mono text-[0.8125rem] text-ink" aria-label="SCIM base URL">
+            <div className="flex flex-wrap items-center gap-2 text-body">
+              <code className="rounded-[var(--radius)] bg-ground px-2 py-1 font-mono text-small text-ink" aria-label="SCIM base URL">
                 {tokens.data.base_url}
               </code>
               <CopyButton value={tokens.data.base_url} label="Copy the SCIM base URL" />
             </div>
-            <p className="mt-2 text-[0.8125rem] text-muted">
+            <p className="mt-2 text-small text-muted">
               Users map onto userName, externalId, emails, phoneNumbers, active and locale; givenName, familyName and displayName are stored when the profile schema declares given_name, family_name and display_name. Groups map onto displayName, externalId and members.
             </p>
           </Card>
@@ -84,11 +84,11 @@ export function ProvisioningPage({ tenant }: { tenant: string }) {
                   if (name.trim()) create.mutate();
                 }}
               >
-                <label className="flex flex-col gap-1 text-[0.8125rem] text-muted">
+                <label className="flex flex-col gap-1 text-small text-muted">
                   Name
                   <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Entra ID" required />
                 </label>
-                <label className="flex flex-col gap-1 text-[0.8125rem] text-muted">
+                <label className="flex flex-col gap-1 text-small text-muted">
                   Expires in
                   <NumberInput id="scim-token-days" value={days} min={1} max={3650} nullable onValue={setDays} unit="days" />
                 </label>
@@ -100,24 +100,24 @@ export function ProvisioningPage({ tenant }: { tenant: string }) {
           )}
           <Card title="Tokens">
             {tokens.data.tokens.length === 0 ? (
-              <p className="text-[0.875rem] text-muted">No provisioning tokens yet.</p>
+              <p className="text-body text-muted">No provisioning tokens yet.</p>
             ) : (
               <ul className="divide-y divide-line">
                 {tokens.data.tokens.map((t) => {
                   const s = state(t);
                   return (
-                    <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-[0.875rem]">
+                    <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-body">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium text-ink">{t.name}</span>
                         <Badge tone={s.tone}>{s.label}</Badge>
-                        <span className="text-[0.8125rem] text-muted">
+                        <span className="text-small text-muted">
                           created {formatDate("en", t.created_at)}
                           {t.expires_at ? ` · expires ${formatDate("en", t.expires_at)}` : " · no expiry"}
                           {t.last_used_at ? ` · last used ${formatDate("en", t.last_used_at)}` : " · never used"}
                         </span>
                       </div>
                       {editable && !t.revoked_at && (
-                        <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={revoke.isPending} onClick={() => revoke.mutate(t.id)}>
+                        <Button className="min-h-8 px-2.5 text-small" disabled={revoke.isPending} onClick={() => revoke.mutate(t.id)}>
                           Revoke
                         </Button>
                       )}

@@ -21,7 +21,7 @@ export function CodeInput({
   const id = useId();
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-[0.8125rem] font-medium text-ink">
+      <label htmlFor={id} className="text-small font-medium text-ink">
         {label}
       </label>
       <input
@@ -34,12 +34,12 @@ export function CodeInput({
         maxLength={length}
         autoFocus={autoFocus}
         aria-invalid={error ? true : undefined}
-        className={`min-h-12 w-full rounded-[var(--radius)] border bg-paper px-3.5 text-center font-mono text-[1.375rem] tracking-[0.4em] text-ink ${
+        className={`min-h-12 w-full rounded-[var(--radius)] border bg-paper px-3.5 text-center font-mono text-xl tracking-[0.4em] text-ink ${
           error ? "border-danger" : "border-line"
         }`}
       />
       {error && (
-        <p className="text-[0.8125rem] text-danger" role="alert">
+        <p className="text-small text-danger" role="alert">
           {error}
         </p>
       )}

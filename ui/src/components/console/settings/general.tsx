@@ -40,8 +40,8 @@ export function GeneralSection() {
         )}
       </Field>
       <div className="sm:col-span-2">
-        <h3 className="text-[0.8125rem] font-medium text-ink">Feature flags</h3>
-        <p className="text-[0.8125rem] text-muted">
+        <h3 className="text-small font-medium text-ink">Feature flags</h3>
+        <p className="text-small text-muted">
           {flags === 0 ? "None yet. " : `${flags} flag${flags === 1 ? "" : "s"}. `}
           <Link href={`/console/features/?tenant=${encodeURIComponent(draft.slug)}`} className="text-link underline underline-offset-4">
             Manage feature flags

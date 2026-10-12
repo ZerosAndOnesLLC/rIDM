@@ -34,7 +34,7 @@ function Callback() {
         {error ? (
           <div className="flex flex-col gap-4">
             <Alert tone="error">{error}</Alert>
-            <Link href="/console/" className="text-[0.9rem] text-link underline underline-offset-4">
+            <Link href="/console/" className="text-lead text-link underline underline-offset-4">
               Back to sign-in
             </Link>
           </div>

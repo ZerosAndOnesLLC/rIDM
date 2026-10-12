@@ -30,24 +30,24 @@ export function ConsentsTab({ tenant, id, editable }: { tenant: string; id: stri
       {consents.isPending ? (
         <Spinner label="Loading…" />
       ) : consents.isError ? (
-        <p role="alert" className="text-[0.875rem] text-danger">
+        <p role="alert" className="text-body text-danger">
           {consents.error.message}
         </p>
       ) : consents.data.length === 0 ? (
-        <p className="text-[0.875rem] text-muted">No consents recorded.</p>
+        <p className="text-body text-muted">No consents recorded.</p>
       ) : (
         <ul className="divide-y divide-line">
           {consents.data.map((c) => (
-            <li key={c.client_id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
+            <li key={c.client_id} className="flex items-center justify-between gap-3 py-2 text-body">
               <span>
                 <span className="font-medium text-ink">{c.client_name} ({c.client})</span>
-                <span className="block text-[0.8125rem] text-muted">
+                <span className="block text-small text-muted">
                   {c.scopes.join(" ")} · granted {formatDate("en", c.granted_at)}
                   {c.revoked_at ? ` · revoked ${formatDate("en", c.revoked_at)}` : ""}
                 </span>
               </span>
               {editable && !c.revoked_at && (
-                <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={revoke.isPending} onClick={() => revoke.mutate(c.client_id)}>
+                <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={revoke.isPending} onClick={() => revoke.mutate(c.client_id)}>
                   Revoke
                 </Button>
               )}
@@ -56,7 +56,7 @@ export function ConsentsTab({ tenant, id, editable }: { tenant: string; id: stri
         </ul>
       )}
       {revoke.isError && (
-        <p role="alert" className="mt-2 text-[0.875rem] text-danger">
+        <p role="alert" className="mt-2 text-body text-danger">
           {revoke.error.message}
         </p>
       )}
@@ -77,30 +77,30 @@ export function AuditTab({ tenant, id }: { tenant: string; id: string }) {
       return data;
     },
   });
-  if (!can("ridm:audit:read")) return <p className="text-[0.875rem] text-muted">You need audit access to see this.</p>;
+  if (!can("ridm:audit:read")) return <p className="text-body text-muted">You need audit access to see this.</p>;
   return (
     <Card title="Audit trail">
       {page.isPending ? (
         <Spinner label="Loading…" />
       ) : page.isError ? (
-        <p role="alert" className="text-[0.875rem] text-danger">
+        <p role="alert" className="text-body text-danger">
           {page.error.message}
         </p>
       ) : page.data.items.length === 0 ? (
-        <p className="text-[0.875rem] text-muted">Nothing recorded yet.</p>
+        <p className="text-body text-muted">Nothing recorded yet.</p>
       ) : (
         <ul className="divide-y divide-line">
           {page.data.items.map((e) => (
-            <li key={e.id} className="py-2 text-[0.875rem]">
+            <li key={e.id} className="py-2 text-body">
               <button type="button" onClick={() => setOpen(open === e.id ? null : e.id)} aria-expanded={open === e.id} className="flex w-full items-center justify-between gap-3 text-start">
                 <span>
-                  <span className="font-mono text-[0.8125rem] font-medium text-ink">{e.name}</span>
+                  <span className="font-mono text-small font-medium text-ink">{e.name}</span>
                   <span className="ms-2 text-muted">by {e.actor_type}</span>
                 </span>
-                <span className="shrink-0 text-[0.8125rem] text-muted">{formatDate("en", e.occurred_at)}</span>
+                <span className="shrink-0 text-small text-muted">{formatDate("en", e.occurred_at)}</span>
               </button>
               {open === e.id && (
-                <pre tabIndex={0} aria-label="Event payload" className="mt-2 max-h-64 overflow-auto rounded-[var(--radius)] bg-ground px-3 py-2 font-mono text-[0.8125rem] text-ink">
+                <pre tabIndex={0} aria-label="Event payload" className="mt-2 max-h-64 overflow-auto rounded-[var(--radius)] bg-ground px-3 py-2 font-mono text-small text-ink">
                   {JSON.stringify({ ip: e.ip, user_agent: e.user_agent, payload: e.payload }, null, 2)}
                 </pre>
               )}

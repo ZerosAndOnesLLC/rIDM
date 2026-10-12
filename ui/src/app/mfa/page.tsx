@@ -109,7 +109,7 @@ function CancelLink({ post }: { post: Post }) {
       <button
         type="button"
         onClick={() => void post("cancel", {}).catch((e: unknown) => setError(errorText(e)))}
-        className="self-center text-[0.8125rem] text-muted hover:text-ink hover:underline underline-offset-4"
+        className="self-center text-small text-muted hover:text-ink hover:underline underline-offset-4"
       >
         {t("common.cancel")}
       </button>
@@ -119,7 +119,7 @@ function CancelLink({ post }: { post: Post }) {
 
 function SwitchLink({ onClick, children }: { onClick: () => void; children: string }) {
   return (
-    <button type="button" onClick={onClick} className="self-center text-[0.8125rem] text-link hover:underline underline-offset-4">
+    <button type="button" onClick={onClick} className="self-center text-small text-link hover:underline underline-offset-4">
       {children}
     </button>
   );
@@ -128,7 +128,7 @@ function SwitchLink({ onClick, children }: { onClick: () => void; children: stri
 function SignedInAs({ flow }: { flow: PublicFlow }) {
   const { t } = useI18n();
   if (!flow.user) return null;
-  return <p className="-mt-3 text-[0.875rem] text-muted">{t("common.signed_in_as", { username: flow.user.username })}</p>;
+  return <p className="-mt-3 text-body text-muted">{t("common.signed_in_as", { username: flow.user.username })}</p>;
 }
 
 type VerifyMode = "app" | "recovery" | "passkey" | OtpChannel;
@@ -293,8 +293,8 @@ function Choose({ flow, post, choices, onChoose }: { flow: PublicFlow; post: Pos
             onClick={() => onChoose(choice)}
             className="flex flex-col items-start gap-1 rounded-[var(--radius)] border border-line bg-paper px-4 py-3 text-start hover:bg-ground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
-            <span className="text-[0.9375rem] font-medium text-ink">{t(CHOICE_TEXT[choice].label)}</span>
-            <span className="text-[0.8125rem] text-muted">{t(CHOICE_TEXT[choice].hint)}</span>
+            <span className="text-lead font-medium text-ink">{t(CHOICE_TEXT[choice].label)}</span>
+            <span className="text-small text-muted">{t(CHOICE_TEXT[choice].hint)}</span>
           </button>
         ))}
       </div>

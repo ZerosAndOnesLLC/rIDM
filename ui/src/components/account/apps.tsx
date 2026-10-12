@@ -46,14 +46,14 @@ export function Apps() {
   return (
     <>
       <Card title={t("account.apps_title")}>
-        <p className="text-[0.875rem] text-muted">{t("account.apps_description")}</p>
+        <p className="text-body text-muted">{t("account.apps_description")}</p>
         {error && (
           <div className="mt-3">
             <Alert tone="error">{error}</Alert>
           </div>
         )}
         {apps.isError && <Alert tone="error">{t("account.error_generic")}</Alert>}
-        {apps.data && apps.data.length === 0 && <p className="mt-3 text-[0.875rem] text-ink">{t("account.apps_none")}</p>}
+        {apps.data && apps.data.length === 0 && <p className="mt-3 text-body text-ink">{t("account.apps_none")}</p>}
         {apps.data && apps.data.length > 0 && (
           <ul aria-label={t("account.apps_title")} className="mt-3 divide-y divide-line">
             {apps.data.map((a) => (
@@ -63,20 +63,20 @@ export function Apps() {
                     // eslint-disable-next-line @next/next/no-img-element -- a third party's logo at its own URL
                     <img src={a.logo_uri} alt="" className="size-9 shrink-0 rounded-md border border-line object-cover" />
                   ) : (
-                    <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-md bg-ground text-[0.9375rem] font-semibold text-muted">
+                    <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-md bg-ground text-lead font-semibold text-muted">
                       {a.name.slice(0, 1).toUpperCase()}
                     </span>
                   )}
                   <div className="min-w-0">
-                    <p className="truncate text-[0.9375rem] font-medium text-ink">{a.name}</p>
-                    <p className="flex flex-wrap items-center gap-1.5 text-[0.8125rem] text-muted">
+                    <p className="truncate text-lead font-medium text-ink">{a.name}</p>
+                    <p className="flex flex-wrap items-center gap-1.5 text-small text-muted">
                       <span>{t("account.app_granted", { when: when(a.granted_at) })}</span>
                       {a.scopes.map((s) => (
                         <Badge key={s}>{s}</Badge>
                       ))}
                     </p>
                     {(a.policy_uri || a.tos_uri) && (
-                      <p className="mt-0.5 flex gap-3 text-[0.8125rem]">
+                      <p className="mt-0.5 flex gap-3 text-small">
                         {a.policy_uri && (
                           <a href={a.policy_uri} target="_blank" rel="noreferrer" className="text-link hover:underline underline-offset-4">
                             {t("account.app_privacy")}
@@ -101,7 +101,7 @@ export function Apps() {
       </Card>
       <Modal open={removing !== null} onOpenChange={(o) => !o && setRemoving(null)} title={t("account.app_remove_title", { name: removing?.name ?? "" })}>
         <div className="flex flex-col gap-4 px-5 pb-5 pt-3">
-          <p className="text-[0.9375rem] text-ink">{t("account.app_remove_hint")}</p>
+          <p className="text-lead text-ink">{t("account.app_remove_hint")}</p>
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setRemoving(null)}>
               {t("common.cancel")}

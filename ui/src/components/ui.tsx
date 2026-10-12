@@ -26,7 +26,7 @@ export function Button({
       {...rest}
       disabled={disabled || busy}
       aria-busy={busy || undefined}
-      className={`relative inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[var(--radius)] px-4 text-[0.9375rem] font-medium transition-[filter,background-color] disabled:cursor-not-allowed disabled:opacity-60 ${variantClass[variant]} ${className}`}
+      className={`relative inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[var(--radius)] px-4 text-lead font-medium transition-[filter,background-color] disabled:cursor-not-allowed disabled:opacity-60 ${variantClass[variant]} ${className}`}
     >
       {busy && <Loader2 className="size-4 animate-spin" aria-hidden />}
       {children}
@@ -54,7 +54,7 @@ export const TextField = forwardRef<HTMLInputElement, FieldProps>(function TextF
     .join(" ");
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
-      <label htmlFor={inputId} className="text-[0.8125rem] font-medium text-ink">
+      <label htmlFor={inputId} className="text-small font-medium text-ink">
         {label}
       </label>
       <div className="relative">
@@ -63,7 +63,7 @@ export const TextField = forwardRef<HTMLInputElement, FieldProps>(function TextF
           id={inputId}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy || undefined}
-          className={`min-h-11 w-full rounded-[var(--radius)] border bg-paper px-3.5 text-[1rem] text-ink placeholder:text-muted/70 sm:text-[0.9375rem] ${
+          className={`min-h-11 w-full rounded-[var(--radius)] border bg-paper px-3.5 text-md text-ink placeholder:text-muted/70 sm:text-lead ${
             trailing ? "pe-11" : ""
           } ${error ? "border-danger" : "border-line hover:border-muted/60"}`}
           {...rest}
@@ -71,11 +71,11 @@ export const TextField = forwardRef<HTMLInputElement, FieldProps>(function TextF
         {trailing && <div className="absolute inset-y-0 end-1 flex items-center">{trailing}</div>}
       </div>
       {error ? (
-        <p id={`${inputId}-err`} className="text-[0.8125rem] text-danger" role="alert">
+        <p id={`${inputId}-err`} className="text-small text-danger" role="alert">
           {error}
         </p>
       ) : hint ? (
-        <p id={`${inputId}-hint`} className="text-[0.8125rem] text-muted">
+        <p id={`${inputId}-hint`} className="text-small text-muted">
           {hint}
         </p>
       ) : null}
@@ -112,7 +112,7 @@ export function Checkbox({
 }: InputHTMLAttributes<HTMLInputElement> & { label: ReactNode }) {
   const id = useId();
   return (
-    <label htmlFor={id} className={`flex cursor-pointer items-start gap-2.5 text-[0.9375rem] ${className}`}>
+    <label htmlFor={id} className={`flex cursor-pointer items-start gap-2.5 text-lead ${className}`}>
       <input id={id} type="checkbox" className="mt-1 size-4 shrink-0 accent-[var(--accent)]" {...rest} />
       <span>{label}</span>
     </label>
@@ -127,7 +127,7 @@ export function Alert({ tone, children }: { tone: "error" | "ok" | "info"; child
         ? "bg-ok-soft text-ok"
         : "bg-ground text-ink";
   return (
-    <div role={tone === "error" ? "alert" : "status"} className={`rounded-[var(--radius)] px-3.5 py-3 text-[0.9rem] ${cls}`}>
+    <div role={tone === "error" ? "alert" : "status"} className={`rounded-[var(--radius)] px-3.5 py-3 text-lead ${cls}`}>
       {children}
     </div>
   );
@@ -135,7 +135,7 @@ export function Alert({ tone, children }: { tone: "error" | "ok" | "info"; child
 
 export function Divider({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-3 text-[0.8125rem] text-muted" aria-hidden>
+    <div className="flex items-center gap-3 text-small text-muted" aria-hidden>
       <span className="h-px flex-1 bg-line" />
       {label}
       <span className="h-px flex-1 bg-line" />
@@ -155,8 +155,8 @@ export function Spinner({ label }: { label: string }) {
 export function Title({ children, sub }: { children: ReactNode; sub?: ReactNode }) {
   return (
     <header className="mb-6">
-      <h1 className="text-[1.75rem] font-semibold leading-tight tracking-[-0.01em] text-ink">{children}</h1>
-      {sub && <p className="mt-1.5 text-[0.9375rem] text-muted">{sub}</p>}
+      <h1 className="text-num font-semibold leading-tight tracking-[-0.01em] text-ink">{children}</h1>
+      {sub && <p className="mt-1.5 text-lead text-muted">{sub}</p>}
     </header>
   );
 }

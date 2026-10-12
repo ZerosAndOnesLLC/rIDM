@@ -70,7 +70,7 @@ export function InviteUser({ tenant, open, onOpenChange }: { tenant: string; ope
     <Modal open={open} onOpenChange={onOpenChange} title="Invite someone" description="They receive an email with a link to set up their account.">
       <form onSubmit={submit} className="flex flex-col gap-4 overflow-y-auto px-5 pb-5 pt-3" noValidate>
         {sent && (
-          <p role="status" className="rounded-[var(--radius)] bg-ok-soft px-3.5 py-2.5 text-[0.875rem] text-ok">
+          <p role="status" className="rounded-[var(--radius)] bg-ok-soft px-3.5 py-2.5 text-body text-ok">
             Invitation sent to {sent}.
           </p>
         )}
@@ -79,7 +79,7 @@ export function InviteUser({ tenant, open, onOpenChange }: { tenant: string; ope
         <CheckList legend="Roles" options={(roles.data ?? []).map((r) => ({ value: r.id, label: roleName(r), hint: r.description ?? undefined }))} value={roleIds} onChange={setRoleIds} />
         <CheckList legend="Groups" options={(groups.data ?? []).map((g) => ({ value: g.id, label: g.name }))} value={groupIds} onChange={setGroupIds} />
         {invite.isError && (
-          <p role="alert" className="text-[0.875rem] text-danger">
+          <p role="alert" className="text-body text-danger">
             {invite.error.message}
           </p>
         )}
@@ -123,7 +123,7 @@ export function InvitationsList({ tenant }: { tenant: string }) {
   if (list.isPending) return <Spinner label="Loading invitations…" />;
   if (list.isError)
     return (
-      <p role="alert" className="text-[0.9rem] text-danger">
+      <p role="alert" className="text-lead text-danger">
         {list.error.message}
       </p>
     );
@@ -132,12 +132,12 @@ export function InvitationsList({ tenant }: { tenant: string }) {
   return (
     <div className="rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
       {err && (
-        <p role="alert" className="px-4 pt-3 text-[0.875rem] text-danger">
+        <p role="alert" className="px-4 pt-3 text-body text-danger">
           {err.message}
         </p>
       )}
-      <table className="w-full text-[0.875rem]">
-        <thead className="text-[0.75rem] uppercase tracking-wide text-muted">
+      <table className="w-full text-body">
+        <thead className="text-caption uppercase tracking-wide text-muted">
           <tr className="border-b border-line">
             <th scope="col" className="px-4 py-2.5 text-start font-medium">Email</th>
             <th scope="col" className="px-4 py-2.5 text-start font-medium">Sent</th>
@@ -163,10 +163,10 @@ export function InvitationsList({ tenant }: { tenant: string }) {
               <td className="px-4 py-2.5 text-end">
                 {writer && (
                   <span className="inline-flex gap-1.5">
-                    <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={resend.isPending} onClick={() => resend.mutate(i.id)}>
+                    <Button className="min-h-8 px-2.5 text-small" disabled={resend.isPending} onClick={() => resend.mutate(i.id)}>
                       Resend
                     </Button>
-                    <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={revoke.isPending} onClick={() => revoke.mutate(i.id)}>
+                    <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={revoke.isPending} onClick={() => revoke.mutate(i.id)}>
                       Revoke
                     </Button>
                   </span>

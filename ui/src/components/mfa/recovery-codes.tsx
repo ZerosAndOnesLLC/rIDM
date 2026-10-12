@@ -21,7 +21,7 @@ export function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () =
   return (
     <div className="flex flex-col gap-5">
       <Title sub={t("mfa.codes_description")}>{t("mfa.codes_title")}</Title>
-      <ul aria-label={t("mfa.codes_title")} className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-[var(--radius)] border border-line bg-paper p-4 font-mono text-[0.9375rem] text-ink">
+      <ul aria-label={t("mfa.codes_title")} className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-[var(--radius)] border border-line bg-paper p-4 font-mono text-lead text-ink">
         {codes.map((c) => (
           <li key={c} className="select-all">
             {c}
@@ -35,12 +35,12 @@ export function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () =
         <a
           href={href}
           download="recovery-codes.txt"
-          className="inline-flex min-h-11 flex-1 items-center justify-center rounded-[var(--radius)] border border-line px-4 text-[0.9375rem] font-medium text-ink hover:bg-ground"
+          className="inline-flex min-h-11 flex-1 items-center justify-center rounded-[var(--radius)] border border-line px-4 text-lead font-medium text-ink hover:bg-ground"
         >
           {t("mfa.codes_download")}
         </a>
       </div>
-      <p className="text-[0.8125rem] text-muted">{t("mfa.codes_download_hint")}</p>
+      <p className="text-small text-muted">{t("mfa.codes_download_hint")}</p>
       <Button type="button" onClick={onDone}>
         {t("mfa.codes_saved")}
       </Button>

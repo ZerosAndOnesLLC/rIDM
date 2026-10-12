@@ -38,7 +38,7 @@ export function FeatureFlagsPage({ tenant }: { tenant: string }) {
     return (
       <>
         <PageHeader title="Feature flags" />
-        <p role="alert" className="text-[0.9rem] text-danger">
+        <p role="alert" className="text-lead text-danger">
           {query.error.message}
         </p>
       </>
@@ -99,9 +99,9 @@ function Editor({ tenant, initial, onReload }: { tenant: string; initial: Flags;
   return (
     <>
       <PageHeader title="Feature flags" sub="Switches your applications read, for everyone or per organization." actions={<SaveIndicator status={status} error={error} />} />
-      <p className="mb-5 max-w-3xl text-[0.875rem] text-muted">
-        An application asks for the <code className="font-mono text-[0.8125rem] text-ink">features</code> scope to get a <code className="font-mono text-[0.8125rem] text-ink">features</code> claim listing the flags that are on for the signed-in user, or calls{" "}
-        <code className="font-mono text-[0.8125rem] text-ink">GET /t/{tenant}/features</code> with any access token of this tenant to read them live. A flag that doesn&apos;t exist reads as off.
+      <p className="mb-5 max-w-3xl text-body text-muted">
+        An application asks for the <code className="font-mono text-small text-ink">features</code> scope to get a <code className="font-mono text-small text-ink">features</code> claim listing the flags that are on for the signed-in user, or calls{" "}
+        <code className="font-mono text-small text-ink">GET /t/{tenant}/features</code> with any access token of this tenant to read them live. A flag that doesn&apos;t exist reads as off.
       </p>
       {editable && <AddFlag existing={flags} onAdd={(key, description) => change(key, { enabled: false, description: description || undefined }, { enabled: false, description: description || null })} />}
       {Object.keys(flags).length > 6 && (
@@ -113,10 +113,10 @@ function Editor({ tenant, initial, onReload }: { tenant: string; initial: Flags;
       )}
       {Object.keys(flags).length === 0 ? (
         <Card>
-          <p className="text-[0.875rem] text-muted">No feature flags yet.{editable ? " Add one above; it starts off." : ""}</p>
+          <p className="text-body text-muted">No feature flags yet.{editable ? " Add one above; it starts off." : ""}</p>
         </Card>
       ) : shown.length === 0 ? (
-        <p className="text-[0.875rem] text-muted">No flag matches “{filter}”.</p>
+        <p className="text-body text-muted">No flag matches “{filter}”.</p>
       ) : (
         <ul className="flex flex-col gap-3">
           {shown.map(([key, flag]) => (
@@ -152,18 +152,18 @@ function AddFlag({ existing, onAdd }: { existing: Flags; onAdd: (key: string, de
   return (
     <form onSubmit={submit} className="mb-5 flex flex-col gap-2 rounded-[calc(var(--radius)+2px)] border border-line bg-paper p-4 sm:flex-row sm:items-start">
       <div className="flex min-w-0 flex-col gap-1 sm:w-64">
-        <label htmlFor="new-flag-key" className="text-[0.8125rem] font-medium text-ink">
+        <label htmlFor="new-flag-key" className="text-small font-medium text-ink">
           New flag
         </label>
         <TextInput id="new-flag-key" value={key} onChange={(e) => setKey(e.target.value)} placeholder="checkout.v2" autoComplete="off" spellCheck={false} aria-invalid={problem ? true : undefined} aria-describedby={problem ? "new-flag-problem" : undefined} className="font-mono" />
         {problem && (
-          <p id="new-flag-problem" className="text-[0.8125rem] text-danger">
+          <p id="new-flag-problem" className="text-small text-danger">
             {problem}
           </p>
         )}
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <label htmlFor="new-flag-description" className="text-[0.8125rem] font-medium text-ink">
+        <label htmlFor="new-flag-description" className="text-small font-medium text-ink">
           Description <span className="font-normal text-muted">(optional)</span>
         </label>
         <TextInput id="new-flag-description" value={description} maxLength={DESCRIPTION_MAX} onChange={(e) => setDescription(e.target.value)} placeholder="What turning it on changes" />
@@ -207,7 +207,7 @@ function FlagCard({
     <Card
       title={
         <span className="inline-flex flex-wrap items-center gap-2">
-          <span className="font-mono text-[0.9375rem]">{name}</span>
+          <span className="font-mono text-lead">{name}</span>
           <Badge tone={flag.enabled ? "ok" : "neutral"}>{flag.enabled ? "On" : "Off"}</Badge>
           {overrides.length > 0 && <Badge tone="accent">{overrides.length} organization{overrides.length === 1 ? "" : "s"}</Badge>}
         </span>
@@ -223,7 +223,7 @@ function FlagCard({
       <div className="flex flex-col gap-4">
         <Toggle label="On for everyone" hint="Unless an organization below says otherwise." checked={flag.enabled} disabled={!editable} onChange={(v) => onChange({ ...flag, enabled: v }, { enabled: v })} />
         <div className="flex flex-col gap-1">
-          <label htmlFor={`desc-${name}`} className="text-[0.8125rem] font-medium text-ink">
+          <label htmlFor={`desc-${name}`} className="text-small font-medium text-ink">
             Description
           </label>
           <TextInput
@@ -239,8 +239,8 @@ function FlagCard({
           />
         </div>
         <div className="flex flex-col gap-2">
-          <h3 className="text-[0.8125rem] font-medium text-ink">Per organization</h3>
-          {overrides.length === 0 && <p className="text-[0.8125rem] text-muted">Every organization follows the value above.</p>}
+          <h3 className="text-small font-medium text-ink">Per organization</h3>
+          {overrides.length === 0 && <p className="text-small text-muted">Every organization follows the value above.</p>}
           {overrides.length > 0 && (
             <ul className="flex flex-col divide-y divide-line rounded-[var(--radius)] border border-line px-3">
               {overrides.map(([s, on]) => (

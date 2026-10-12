@@ -98,15 +98,15 @@ export function Picker({
             }
           }}
           placeholder={placeholder}
-          className="min-h-12 w-full bg-transparent text-[1rem] text-ink outline-none placeholder:text-muted/70 sm:text-[0.9375rem]"
+          className="min-h-12 w-full bg-transparent text-md text-ink outline-none placeholder:text-muted/70 sm:text-lead"
         />
         {loading && <Loader2 className="size-4 animate-spin text-muted" aria-hidden />}
       </div>
       <ul ref={listRef} id={listId} role="listbox" aria-label={title} className="overflow-y-auto p-2">
-        {items.length === 0 && !loading && <li className="px-3 py-6 text-center text-[0.875rem] text-muted">{empty}</li>}
+        {items.length === 0 && !loading && <li className="px-3 py-6 text-center text-body text-muted">{empty}</li>}
         {groups.map((g) => (
           <li key={g.name} role="presentation">
-            <div className="px-3 pb-1 pt-2 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted" aria-hidden>
+            <div className="px-3 pb-1 pt-2 text-tiny font-semibold uppercase tracking-wide text-muted" aria-hidden>
               {g.name}
             </div>
             <ul role="group" aria-label={g.name}>
@@ -120,14 +120,14 @@ export function Picker({
                   onMouseEnter={() => setActive(index)}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => pick(index)}
-                  className={`flex cursor-pointer items-center gap-3 rounded-[var(--radius)] px-3 py-2 text-[0.9rem] ${
+                  className={`flex cursor-pointer items-center gap-3 rounded-[var(--radius)] px-3 py-2 text-lead ${
                     index === cursor ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink"
                   }`}
                 >
                   {item.icon && <span className="flex size-5 shrink-0 items-center justify-center text-muted">{item.icon}</span>}
                   <span className="min-w-0 flex-1 truncate">
                     {item.label}
-                    {item.hint && <span className="ms-2 text-[0.8125rem] text-muted">{item.hint}</span>}
+                    {item.hint && <span className="ms-2 text-small text-muted">{item.hint}</span>}
                   </span>
                   {item.trailing && <span className="shrink-0 text-muted">{item.trailing}</span>}
                 </li>
