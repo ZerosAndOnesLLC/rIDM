@@ -4,8 +4,12 @@ import { fmtDateTime } from "@/lib/console/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Mail } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { BulkBar, bulkButtonClass } from "@/components/base/bulk-bar";
+import { ConfirmDialog } from "@/components/base/confirm-dialog";
 import { DataTable, type Column } from "@/components/base/data-table";
 import { EmptyState } from "@/components/base/empty-state";
+import { useToast } from "@/components/base/toast";
+import { bulkToast, runBulk } from "@/lib/console/bulk";
 import { Field, NumberInput, TextInput } from "@/components/console/form";
 import { Badge, Button, Modal } from "@/components/console/ui";
 import { useConsole } from "@/lib/console/session";
@@ -100,6 +104,9 @@ export function InviteUser({ tenant, open, onOpenChange }: { tenant: string; ope
 export function InvitationsList({ tenant }: { tenant: string }) {
   const { client, can } = useConsole();
   const qc = useQueryClient();
+  const { toast } = useToast();
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [confirm, setConfirm] = useState<{ ids: string[]; label: string } | null>(null);
   const list = useQuery({
     queryKey: ["invitations", tenant],
     queryFn: async () => {
@@ -131,6 +138,15 @@ export function InvitationsList({ tenant }: { tenant: string }) {
   const writer = can("ridm:invitations:write");
   const err = resend.error ?? revoke.error;
   type Row = NonNullable<typeof list.data>[number];
+  const revokeAll = async (ids: string[]) => {
+    const result = await runBulk(ids, async (id) => {
+      const { error } = await client.DELETE("/admin/tenants/{slug}/invitations/{invitation}", { params: { path: { slug: tenant, invitation: id } } });
+      if (error) throw new Error(error.detail ?? error.title);
+    });
+    toast(bulkToast(result, "revoked", ["invitation", "invitations"]));
+    setSelected(new Set());
+    await qc.invalidateQueries({ queryKey: ["invitations", tenant] });
+  };
   const columns: Column<Row>[] = [
     { key: "email", header: "Email", width: "minmax(12rem, 2fr)", cell: (i) => <span className="truncate font-medium text-ink">{i.email}</span> },
     { key: "sent", header: "Sent", width: "minmax(8rem, 1fr)", cell: (i) => <span className="text-muted">{fmtDateTime(i.created_at)}</span> },
@@ -157,7 +173,7 @@ export function InvitationsList({ tenant }: { tenant: string }) {
             <Button className="min-h-7 px-2.5 text-caption" disabled={resend.isPending} onClick={() => resend.mutate(i.id)}>
               Resend
             </Button>
-            <Button variant="danger" className="min-h-7 px-2.5 text-caption" disabled={revoke.isPending} onClick={() => revoke.mutate(i.id)}>
+            <Button variant="danger" className="min-h-7 px-2.5 text-caption" disabled={revoke.isPending} onClick={() => setConfirm({ ids: [i.id], label: i.email })}>
               Revoke
             </Button>
           </span>
@@ -178,7 +194,21 @@ export function InvitationsList({ tenant }: { tenant: string }) {
         rowKey={(i) => i.id}
         loading={list.isPending}
         minWidth="44rem"
+        selection={writer ? { selected, onChange: setSelected, name: (i) => i.email } : undefined}
         empty={<EmptyState icon={Mail} title="No open invitations" description="Invitations that were accepted, revoked or expired are not listed." />}
+      />
+      <BulkBar count={selected.size} label="Selected invitations" onClear={() => setSelected(new Set())}>
+        <button type="button" className={bulkButtonClass(true)} onClick={() => setConfirm({ ids: [...selected], label: `${selected.size} ${selected.size === 1 ? "invitation" : "invitations"}` })}>
+          Revoke
+        </button>
+      </BulkBar>
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(o) => !o && setConfirm(null)}
+        title={`Revoke ${confirm?.label ?? ""}?`}
+        description="The link in the email stops working; the person can be invited again."
+        confirmLabel="Revoke"
+        onConfirm={() => revokeAll(confirm?.ids ?? [])}
       />
     </>
   );

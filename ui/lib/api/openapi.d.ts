@@ -8946,6 +8946,10 @@ export interface operations {
         parameters: {
             query?: {
                 search?: string;
+                /** @description Order: `created` (default), `name` or `type`. */
+                sort?: "created" | "name" | "type";
+                /** @description `asc` (default) or `desc`. */
+                dir?: "asc" | "desc";
                 cursor?: string;
                 limit?: number;
             };
@@ -17048,6 +17052,10 @@ export interface operations {
                  */
                 password_algo?: string;
                 include_deleted?: boolean;
+                /** @description Order: `created` (default), `username`, `email`, `status` or `last_login`. */
+                sort?: "created" | "username" | "email" | "status" | "last_login";
+                /** @description `asc` (default) or `desc`. */
+                dir?: "asc" | "desc";
                 cursor?: string;
                 limit?: number;
             };

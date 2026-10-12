@@ -2233,6 +2233,35 @@
             }
           },
           {
+            "name": "sort",
+            "in": "query",
+            "description": "Order: `created` (default), `name` or `type`.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "What the clients list can be sorted by (the console's column headers).",
+              "enum": [
+                "created",
+                "name",
+                "type"
+              ]
+            }
+          },
+          {
+            "name": "dir",
+            "in": "query",
+            "description": "`asc` (default) or `desc`.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Which way a sorted list runs.",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          },
+          {
             "name": "cursor",
             "in": "query",
             "required": false,
@@ -13991,6 +14020,37 @@
             "required": false,
             "schema": {
               "type": "boolean"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Order: `created` (default), `username`, `email`, `status` or `last_login`.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "What the users list can be sorted by (the console's column headers).",
+              "enum": [
+                "created",
+                "username",
+                "email",
+                "status",
+                "last_login"
+              ]
+            }
+          },
+          {
+            "name": "dir",
+            "in": "query",
+            "description": "`asc` (default) or `desc`.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Which way a sorted list runs.",
+              "enum": [
+                "asc",
+                "desc"
+              ]
             }
           },
           {

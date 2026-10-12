@@ -10,11 +10,12 @@ use uuid::Uuid;
 use crate::cache::keys as cache_keys;
 use crate::db;
 use crate::error::{AppError, AppResult};
+use crate::models::UserSort;
 use crate::models::{NewUser, User, UserFilter, UserStatus, UserUpdate};
 use crate::repos;
 use crate::services::profile_schema;
 use crate::state::AppState;
-use crate::util::cursor::{Cursor, Page, page_size};
+use crate::util::cursor::{Cursor, Page, SortCursor, SortDir, page_size};
 
 /// Lower-case and trim a username; reject characters that cannot appear in one.
 pub fn normalize_username(raw: &str) -> AppResult<String> {
@@ -325,6 +326,34 @@ pub async fn list(
     tx.commit().await?;
     Ok(Page::from_rows(rows, limit, |u| Cursor {
         created_at: u.created_at,
+        id: u.id,
+    }))
+}
+
+/// The list sorted as the console asks (username, email, status, last
+/// sign-in or creation), with a keyset cursor over that key.
+pub async fn list_sorted(
+    state: &AppState,
+    tenant_id: Uuid,
+    filter: &UserFilter,
+    cursor: Option<&str>,
+    limit: Option<u32>,
+    sort: UserSort,
+    dir: SortDir,
+) -> AppResult<Page<User>> {
+    let after = cursor.map(SortCursor::decode).transpose()?;
+    if let Some(c) = &after
+        && sort.is_time()
+    {
+        c.time()?;
+    }
+    let limit = page_size(limit);
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
+    let rows =
+        repos::users::list_sorted(&mut *tx, tenant_id, filter, after, limit, sort, dir).await?;
+    tx.commit().await?;
+    Ok(Page::from_rows_sorted(rows, limit, |u| SortCursor {
+        key: sort.key(u),
         id: u.id,
     }))
 }

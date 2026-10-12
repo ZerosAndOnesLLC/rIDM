@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { consoleLogin, expectAccessible, loadState, TENANT } from "./helpers";
+import { confirmDialog, consoleLogin, expectAccessible, loadState, TENANT } from "./helpers";
 
 /**
  * Users: the windowed table with search and filters, creating a user with
@@ -129,6 +129,7 @@ test.describe("users", () => {
     await page.getByRole("link", { name: "Open invitations" }).click();
     await expect(page.getByRole("row", { name: new RegExp(`invite-${suffix}`) })).toBeVisible({ timeout: 10_000 });
     await page.getByRole("row", { name: new RegExp(`invite-${suffix}`) }).getByRole("button", { name: "Revoke" }).click();
+    await confirmDialog(page);
     await expect(page.getByRole("row", { name: new RegExp(`invite-${suffix}`) })).toBeHidden({ timeout: 10_000 });
 
     await page.locator("#main").getByRole("link", { name: "Users", exact: true }).click();

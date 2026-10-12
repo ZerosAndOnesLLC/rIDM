@@ -3,8 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Network, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { BulkBar, bulkButtonClass } from "@/components/base/bulk-bar";
+import { ConfirmDialog } from "@/components/base/confirm-dialog";
 import { DataTable, type Column } from "@/components/base/data-table";
 import { EmptyState } from "@/components/base/empty-state";
+import { useToast } from "@/components/base/toast";
+import { bulkToast, runBulk } from "@/lib/console/bulk";
 import { SelectInput, TextInput } from "@/components/console/form";
 import { Badge, Button, IconButton, PageHeader } from "@/components/console/ui";
 import { useClientNames } from "@/lib/console/hooks";
@@ -16,7 +20,10 @@ import { ErrorLine } from "../access/common";
 export function IpRulesPage({ tenant }: { tenant: string }) {
   const { client, can } = useConsole();
   const qc = useQueryClient();
+  const { toast } = useToast();
   const editable = can("ridm:tenants:write");
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [confirm, setConfirm] = useState<{ ids: string[]; label: string } | null>(null);
   const rules = useQuery({
     queryKey: ["ip-rules", tenant],
     queryFn: async () => {
@@ -50,14 +57,16 @@ export function IpRulesPage({ tenant }: { tenant: string }) {
     },
     onSuccess: invalidate,
   });
-  const remove = useMutation({
-    mutationFn: async (id: string) => {
+  const names = clients.data ?? {};
+  const removeAll = async (ids: string[]) => {
+    const result = await runBulk(ids, async (id) => {
       const { error } = await client.DELETE("/admin/tenants/{slug}/ip-rules/{rule}", { params: { path: { slug: tenant, rule: id } } });
       if (error) throw new Error(error.detail ?? error.title);
-    },
-    onSuccess: invalidate,
-  });
-  const names = clients.data ?? {};
+    });
+    toast(bulkToast(result, "deleted", ["rule", "rules"]));
+    setSelected(new Set());
+    invalidate();
+  };
 
   const columns: Column<IpRule>[] = [
     { key: "cidr", header: "Network", width: "minmax(9rem, 1fr)", cell: (r) => <span className="font-mono text-small text-ink">{r.cidr}</span> },
@@ -90,7 +99,7 @@ export function IpRulesPage({ tenant }: { tenant: string }) {
       align: "end",
       cell: (r) =>
         editable ? (
-          <IconButton label={`Delete rule ${r.cidr}`} onClick={() => remove.mutate(r.id)} className="text-danger hover:bg-danger-soft">
+          <IconButton label={`Delete rule ${r.cidr}`} onClick={() => setConfirm({ ids: [r.id], label: `the rule for ${r.cidr}` })} className="text-danger hover:bg-danger-soft">
             <Trash2 className="size-4" aria-hidden />
           </IconButton>
         ) : null,
@@ -100,7 +109,7 @@ export function IpRulesPage({ tenant }: { tenant: string }) {
   return (
     <>
       <PageHeader title="IP rules" sub="Allow and deny networks for the whole tenant or one client, enforced on sign-in, authorization and token requests. The most specific matching network decides; once a scope has an allow rule, every other address is refused." />
-      <ErrorLine error={add.error ?? patch.error ?? remove.error} />
+      <ErrorLine error={add.error ?? patch.error} />
       {rules.isError ? (
         <ErrorLine error={rules.error} />
       ) : (
@@ -110,6 +119,7 @@ export function IpRulesPage({ tenant }: { tenant: string }) {
           rows={rules.data ?? []}
           rowKey={(r) => r.id}
           loading={rules.isPending}
+          selection={editable ? { selected, onChange: setSelected, name: (r) => r.cidr } : undefined}
           empty={<EmptyState icon={Network} title="No rules yet" description={editable ? "Every address is allowed until a rule says otherwise. Add the first one below." : "Every address is allowed until a rule says otherwise."} />}
         />
       )}
@@ -143,6 +153,19 @@ export function IpRulesPage({ tenant }: { tenant: string }) {
           </Button>
         </form>
       )}
+      <BulkBar count={selected.size} label="Selected rules" onClear={() => setSelected(new Set())}>
+        <button type="button" className={bulkButtonClass(true)} onClick={() => setConfirm({ ids: [...selected], label: `${selected.size} ${selected.size === 1 ? "rule" : "rules"}` })}>
+          Delete
+        </button>
+      </BulkBar>
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(o) => !o && setConfirm(null)}
+        title={`Delete ${confirm?.label ?? ""}?`}
+        description="Addresses the rule covered are judged by the remaining rules from now on."
+        confirmLabel="Delete"
+        onConfirm={() => removeAll(confirm?.ids ?? [])}
+      />
     </>
   );
 }

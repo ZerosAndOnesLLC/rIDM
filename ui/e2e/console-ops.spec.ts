@@ -62,8 +62,9 @@ test.describe("operations", () => {
     await page.goto(`/console/audit/?tenant=${TENANT}`);
     await expect(page.getByRole("heading", { name: "Audit log", level: 1 })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("button", { name: /signing_key/ }).first()).toBeVisible({ timeout: 15_000 });
+    // Filters apply as they change (debounced) and land in the URL.
     await page.getByLabel("Event").selectOption("signing_key.created");
-    await page.getByRole("button", { name: "Apply filters" }).click();
+    await page.waitForURL(/event=signing_key\.created/, { timeout: 10_000 });
     await expect(page.getByRole("button", { name: /^signing_key\.created/ }).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("button", { name: /^user\./ })).toHaveCount(0);
     await page.getByRole("button", { name: /^signing_key\.created/ }).first().click();
@@ -124,6 +125,7 @@ test.describe("operations", () => {
     await page.reload();
     await expect(page.getByRole("row").filter({ hasText: "203.0.113.0/24" }).getByLabel("Action for 203.0.113.0/24")).toHaveValue("allow", { timeout: 15_000 });
     await page.getByRole("button", { name: "Delete rule 203.0.113.0/24" }).click();
+    await confirmDialog(page);
     await expect(page.getByRole("row").filter({ hasText: "203.0.113.0/24" })).toBeHidden({ timeout: 10_000 });
   });
 
