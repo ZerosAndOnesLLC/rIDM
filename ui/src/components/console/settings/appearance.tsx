@@ -52,7 +52,7 @@ export function AppearanceSection() {
       <Section id="appearance-fields" title="Appearance" description="How the sign-in pages, the account console and this console look for the tenant. The preview on the right follows every change.">
         <fieldset className="sm:col-span-2">
           <legend className="text-small font-medium text-ink">Skin</legend>
-          <p className="mt-1 text-small text-muted">The layout family and token set. Signal v2 is what ships today; the other three arrive with the console restyle and fall back to it until then.</p>
+          <p className="mt-1 text-small text-muted">The layout family and token set. Every page works in all four; Signal v2 is the default.</p>
           <div role="radiogroup" aria-label="Skin" className="mt-2 grid gap-2 sm:grid-cols-2">
             {SKINS.map((s) => (
               <button

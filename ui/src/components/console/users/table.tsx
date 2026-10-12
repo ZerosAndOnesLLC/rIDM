@@ -12,6 +12,7 @@ import { useToast } from "@/components/base/toast";
 import { ChipSelect, ChipToggle, TextInput } from "@/components/console/form";
 import { Avatar, Button, PageHeader, Status } from "@/components/console/ui";
 import { bulkToast, runBulk } from "@/lib/console/bulk";
+import { useNavCounts } from "@/lib/console/counts";
 import { fmtWhen, isFresh } from "@/lib/console/format";
 import { useDebounced } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
@@ -31,6 +32,7 @@ export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: {
   const { client, can } = useConsole();
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { counts, attention } = useNavCounts(tenant);
   const params = useQueryParams();
   const [search, setSearch] = useState(params.get("q"));
   const q = useDebounced(search.trim(), 250);
@@ -84,16 +86,19 @@ export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: {
       header: "User",
       width: "minmax(12rem, 2fr)",
       sortable: true,
+      link: false,
       cell: (u) => {
         const name = displayName(u);
         return (
-          <>
+          <span className="flex min-w-0 items-center gap-2.5">
             <Avatar name={u.username} />
             <span className="min-w-0">
-              <span className="block truncate font-semibold leading-tight text-ink">{name ?? u.username}</span>
+              <Link href={userHref(tenant, u.id)} className="block truncate font-semibold leading-tight text-ink no-underline hover:underline underline-offset-4">
+                {name ?? u.username}
+              </Link>
               {name && <span className="block truncate text-caption leading-snug text-muted">{u.username}</span>}
             </span>
-          </>
+          </span>
         );
       },
     },
@@ -141,7 +146,8 @@ export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: {
     <>
       <PageHeader
         title="Users"
-        sub="Everyone who can sign in to this tenant."
+        count={counts.users}
+        sub={`Everyone who can sign in to this tenant.${attention.users ? ` ${attention.users} ${attention.users === 1 ? "invitation" : "invitations"} waiting.` : ""}`}
         actions={
           <>
             <Button onClick={onExport}>

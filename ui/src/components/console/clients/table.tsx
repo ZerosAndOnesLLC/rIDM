@@ -11,6 +11,7 @@ import { Avatar, Button, PageHeader, Status } from "@/components/console/ui";
 import { AUTH_METHODS, clientHref, samlHref, typeLabel } from "@/lib/console/clients";
 import { fmtWhen } from "@/lib/console/format";
 import { useDebounced } from "@/lib/console/hooks";
+import { useNavCounts } from "@/lib/console/counts";
 import { useConsole } from "@/lib/console/session";
 import { useQueryParams } from "@/lib/params";
 
@@ -19,6 +20,7 @@ type Sort = (typeof SORTS)[number];
 
 export function ClientsTable({ tenant, onCreate }: { tenant: string; onCreate: () => void }) {
   const { client, can } = useConsole();
+  const { counts } = useNavCounts(tenant);
   const params = useQueryParams();
   const [search, setSearch] = useState(params.get("q"));
   const q = useDebounced(search.trim(), 250);
@@ -46,14 +48,17 @@ export function ClientsTable({ tenant, onCreate }: { tenant: string; onCreate: (
       header: "Client",
       width: "minmax(14rem, 2fr)",
       sortable: true,
+      link: false,
       cell: (c) => (
-        <>
+        <span className="flex min-w-0 items-center gap-2.5">
           <Avatar name={c.name} />
           <span className="min-w-0">
-            <span className="block truncate font-semibold leading-tight text-ink">{c.name}</span>
+            <Link href={href(c)} className="block truncate font-semibold leading-tight text-ink no-underline hover:underline underline-offset-4">
+              {c.name}
+            </Link>
             <span className="block truncate font-mono text-caption leading-snug text-muted">{c.client_id}</span>
           </span>
-        </>
+        </span>
       ),
     },
     { key: "type", header: "Type", width: "minmax(7rem, 1fr)", sortable: true, cell: (c) => <span className="truncate text-muted">{typeLabel(c.client_type)}</span> },
@@ -78,6 +83,7 @@ export function ClientsTable({ tenant, onCreate }: { tenant: string; onCreate: (
     <>
       <PageHeader
         title="Clients"
+        count={counts.clients}
         sub="Applications and services that obtain tokens from this tenant."
         actions={
           can("ridm:clients:write") ? (

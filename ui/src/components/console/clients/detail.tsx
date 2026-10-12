@@ -614,31 +614,30 @@ function SecretsSection({ tenant, c, editable, onReveal, onChanged }: { tenant: 
           )}
         </div>
       )}
-      {confirm && (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => {
-            if (!o) setConfirm(null);
-          }}
-          title={confirm.kind === "rotate" ? "Rotate the client secret?" : "Revoke this secret?"}
-          description={
-            confirm.kind === "rotate"
-              ? `A new secret is generated and shown once. ${GRACE_OPTIONS.find((g) => g.value === grace)?.label ?? "The grace period you chose applies"}.`
-              : "Anything still authenticating with it is refused from now on."
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(o) => {
+          if (!o) setConfirm(null);
+        }}
+        title={confirm?.kind === "rotate" ? "Rotate the client secret?" : "Revoke this secret?"}
+        description={
+          confirm?.kind === "rotate"
+            ? `A new secret is generated and shown once. ${GRACE_OPTIONS.find((g) => g.value === grace)?.label ?? "The grace period you chose applies"}.`
+            : "Anything still authenticating with it is refused from now on."
+        }
+        confirmLabel={confirm?.kind === "rotate" ? "Rotate secret" : "Revoke"}
+        tone={confirm?.kind === "rotate" ? "primary" : "danger"}
+        onConfirm={async () => {
+          if (!confirm) return;
+          if (confirm.kind === "rotate") {
+            await rotate.mutateAsync();
+            toast({ title: "Secret rotated", description: "The new secret is shown once." });
+          } else {
+            await revoke.mutateAsync(confirm.id);
+            toast({ title: "Secret revoked" });
           }
-          confirmLabel={confirm.kind === "rotate" ? "Rotate secret" : "Revoke"}
-          tone={confirm.kind === "rotate" ? "primary" : "danger"}
-          onConfirm={async () => {
-            if (confirm.kind === "rotate") {
-              await rotate.mutateAsync();
-              toast({ title: "Secret rotated", description: "The new secret is shown once." });
-            } else {
-              await revoke.mutateAsync(confirm.id);
-              toast({ title: "Secret revoked" });
-            }
-          }}
-        />
-      )}
+        }}
+      />
     </Section>
   );
 }

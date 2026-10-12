@@ -61,7 +61,8 @@ test.describe("clients", () => {
     await reveal.getByRole("button", { name: "I have stored it" }).click();
 
     await expect(page.getByRole("heading", { name: webName, level: 1 })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText("Web application")).toBeVisible();
+    // The type shows in the panel's stat strip (and in the list row behind it).
+    await expect(page.getByRole("dialog").getByText("Web application")).toBeVisible();
     await expect(page.getByRole("checkbox", { name: "Client credentials" })).toBeChecked();
     await expect(page.getByRole("checkbox", { name: /urn:ridm:admin/ })).toBeChecked();
     await expect(page.getByRole("row", { name: /Current/ })).toBeVisible();

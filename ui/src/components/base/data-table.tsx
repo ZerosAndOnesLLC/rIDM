@@ -18,6 +18,8 @@ export interface Column<T> {
   sortable?: boolean;
   /** The header text is for assistive tech only (an actions column). */
   hideHeader?: boolean;
+  /** The first column renders its own link (so the link's name is just the name, not every line of the cell). */
+  link?: false;
   className?: string;
 }
 
@@ -32,7 +34,7 @@ export interface DataTableProps<T> {
   rowKey: (row: T) => string;
   /** The table's accessible name ("Users"). */
   label: string;
-  /** The first column links to the row's own page. */
+  /** The first column links to the row's own page (unless that column sets `link: false` and links itself). */
   rowHref?: (row: T) => string;
   /** Shown instead of the table when there are no rows and nothing loading. */
   empty: ReactNode;
@@ -153,7 +155,7 @@ export function DataTable<T>({
           const content = c.cell(row);
           return (
             <span key={c.key} role="cell" className={`${CELL} ${c.align === "end" ? "justify-end text-end" : ""} ${c.className ?? ""}`}>
-              {ci === 0 && rowHref ? (
+              {ci === 0 && rowHref && c.link !== false ? (
                 <Link href={rowHref(row)} className="flex min-w-0 items-center gap-2.5 no-underline hover:underline underline-offset-4">
                   {content}
                 </Link>
@@ -214,8 +216,8 @@ export function DataTable<T>({
   );
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="data-table overflow-x-auto rounded-[var(--radius)] border border-line bg-paper">
+    <div className="flex min-w-0 max-w-full flex-col gap-2">
+      <div className="data-table relative max-w-full overflow-x-auto rounded-[var(--radius)] border border-line bg-paper">
         <div role="table" aria-label={label} aria-rowcount={total !== undefined ? total + 1 : rows.length + 1} style={{ minWidth }} className="text-body">
           {header}
           {virtualize ? (

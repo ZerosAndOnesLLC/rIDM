@@ -107,7 +107,7 @@ export function AuditPage({ tenant }: { tenant: string }) {
       )}
       <form
         role="search"
-        aria-label="Filter events"
+        aria-label="Filters"
         className="sticky top-[3.25rem] z-10 -mx-4 mb-4 grid gap-x-3 gap-y-2 border-b border-line bg-paper/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:grid-cols-2 sm:px-6 lg:grid-cols-4"
         onSubmit={(e) => e.preventDefault()}
       >

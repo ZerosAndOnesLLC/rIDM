@@ -42,8 +42,9 @@ test.describe("operations", () => {
     await expect(card.getByText("active", { exact: true })).toBeVisible({ timeout: 10_000 });
     await card.getByRole("button", { name: "Retire" }).click();
     await confirmDialog(page);
-    await expect(card.getByText("retiring", { exact: true })).toBeVisible({ timeout: 10_000 });
+    // The toast is raised as the dialog confirms (and lasts five seconds); the card follows the refetch.
     await expect(page.getByRole("status").filter({ hasText: "Key retiring" })).toBeVisible();
+    await expect(card.getByText("retiring", { exact: true })).toBeVisible({ timeout: 10_000 });
     // Nothing is active now. Rotation makes a key and leaves exactly one
     // active per algorithm, and only then is the retired key revoked, so the
     // tenant never has to sign without an active key.

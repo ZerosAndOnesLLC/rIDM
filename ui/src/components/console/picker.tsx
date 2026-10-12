@@ -106,7 +106,7 @@ export function Picker({
         {items.length === 0 && !loading && <li className="px-3 py-6 text-center text-body text-muted">{empty}</li>}
         {groups.map((g) => (
           <li key={g.name} role="presentation">
-            <div className="px-3 pb-1 pt-2 text-tiny font-semibold text-faint" aria-hidden>
+            <div className="px-3 pb-1 pt-2 text-tiny font-semibold text-muted" aria-hidden>
               {g.name}
             </div>
             <ul role="group" aria-label={g.name}>

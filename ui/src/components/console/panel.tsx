@@ -80,7 +80,7 @@ export function DetailPanel({
             </dl>
           )}
           {tabs}
-          <div className="flex-1 overflow-y-auto px-4 pb-6 pt-4">{children}</div>
+          <div className="panel-body flex-1 overflow-y-auto px-4 pb-6 pt-2">{children}</div>
           {footer && <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-ground px-4 py-2.5">{footer}</footer>}
         </Dialog.Content>
       </Dialog.Portal>

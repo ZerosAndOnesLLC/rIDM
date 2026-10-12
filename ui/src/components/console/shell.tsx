@@ -14,7 +14,7 @@ import { NAV, PAGE_TITLES, allNavItems, consoleHref, navVisible } from "@/lib/co
 import { useConsole } from "@/lib/console/session";
 import { modKey, useShortcuts } from "@/lib/console/shortcuts";
 import { useConsoleTenant } from "@/lib/console/tenant";
-import { useTenantAppearance } from "@/lib/theme/use-tenant-appearance";
+import { useTenantAppearance, useTenantPublic } from "@/lib/theme/use-tenant-appearance";
 import { CommandPalette, TenantSwitcher } from "./palette";
 import { SignIn } from "./sign-in";
 import { Avatar, IconButton, Kbd, Modal } from "./ui";
@@ -63,6 +63,7 @@ function Frame({ children }: { children: ReactNode }) {
   const group = current ? NAV.find((g) => g.items.includes(current)) : undefined;
   const title = current?.label ?? PAGE_TITLES[pathname] ?? "Console";
   const { attentionTotal } = useNavCounts(tenant);
+  const tenantName = useTenantPublic(tenant)?.display_name ?? null;
 
   useShortcuts({
     palette: () => setPalette(true),
@@ -99,7 +100,7 @@ function Frame({ children }: { children: ReactNode }) {
           </Dialog.Trigger>
           <Dialog.Portal>
             <Dialog.Overlay className="fixed inset-0 z-40 bg-[rgba(8,10,14,0.45)] md:hidden" />
-            <Dialog.Content className="console-rail fixed inset-y-0 start-0 z-50 flex w-[17rem] max-w-[85vw] flex-col bg-paper md:hidden">
+            <Dialog.Content className="console-rail console-drawer fixed inset-y-0 start-0 z-50 flex w-[17rem] max-w-[85vw] flex-col md:hidden">
               <Dialog.Title className="sr-only">Navigation</Dialog.Title>
               <Dialog.Description className="sr-only">Console sections</Dialog.Description>
               <Dialog.Close asChild>
@@ -127,15 +128,21 @@ function Frame({ children }: { children: ReactNode }) {
               aria-label={`Tenant: ${tenant ?? "none"}. Switch tenant`}
               className="flex h-[2.125rem] shrink-0 items-center gap-2 rounded-full border border-[var(--bar-line)] bg-[var(--bar-field)] ps-1 pe-2.5 text-bar-ink hover:brightness-125"
             >
-              <TenantMark name={tenant ?? "?"} />
-              <span className="hidden truncate text-small font-semibold sm:inline">{tenant ?? "—"}</span>
+              <TenantMark name={tenantName ?? tenant ?? "?"} />
+              <span className="hidden min-w-0 items-baseline gap-1.5 sm:flex">
+                <span className="truncate text-small font-semibold">{tenantName ?? tenant ?? "—"}</span>
+                {tenantName && <span className="font-mono text-caption text-bar-muted">{tenant}</span>}
+              </span>
               <ChevronsUpDown className="size-3.5 shrink-0 text-bar-muted" aria-hidden />
             </button>
           ) : (
             <span className="flex h-[2.125rem] shrink-0 items-center gap-2 rounded-full border border-[var(--bar-line)] bg-[var(--bar-field)] ps-1 pe-2.5 text-bar-ink">
-              <TenantMark name={tenant ?? "?"} />
+              <TenantMark name={tenantName ?? tenant ?? "?"} />
               <span className="sr-only">Tenant:</span>
-              <span className="hidden truncate text-small font-semibold sm:inline">{tenant ?? "—"}</span>
+              <span className="hidden min-w-0 items-baseline gap-1.5 sm:flex">
+                <span className="truncate text-small font-semibold">{tenantName ?? tenant ?? "—"}</span>
+                {tenantName && <span className="font-mono text-caption text-bar-muted">{tenant}</span>}
+              </span>
             </span>
           )}
           <button
@@ -298,7 +305,7 @@ function ShortcutsHelp({ open, onOpenChange, global }: { open: boolean; onOpenCh
   ];
   return (
     <Modal open={open} onOpenChange={onOpenChange} title="Keyboard shortcuts" description="Single keys work when no field has focus.">
-      <dl className="overflow-y-auto px-5 pb-5 pt-3">
+      <dl className="px-5 pb-5 pt-3">
         {rows.map((r) => (
           <div key={r.what} className="flex items-center justify-between gap-4 py-2 text-body not-last:border-b not-last:border-line">
             <dt className="text-ink">{r.what}</dt>

@@ -140,14 +140,15 @@ export function KeysPage({ tenant }: { tenant: string }) {
       )}
       {me?.scope === "global" && can("ridm:keys:read") && <MasterKey />}
       <CreateKey tenant={tenant} open={creating} onOpenChange={setCreating} />
-      {confirm && confirmed && (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => {
-            if (!o) setConfirm(null);
-          }}
-          title={confirmed.title}
-          description={
+      {/* Stays mounted and closes through `open`, so the dialog restores what it hid from assistive tech (the toast among it). */}
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(o) => {
+          if (!o) setConfirm(null);
+        }}
+        title={confirmed?.title ?? ""}
+        description={
+          confirm && confirmed ? (
             "rotate" in confirm ? (
               confirmed.description
             ) : (
@@ -155,15 +156,16 @@ export function KeysPage({ tenant }: { tenant: string }) {
                 <span className="font-mono text-ink">{confirm.kid}</span>: {confirmed.description}
               </>
             )
-          }
-          confirmLabel={confirmed.label}
-          tone={"rotate" in confirm ? "primary" : "danger"}
-          onConfirm={async () => {
-            await act.mutateAsync(confirm);
-            toast({ title: confirmed.done, description: "rotate" in confirm ? undefined : confirm.kid });
-          }}
-        />
-      )}
+          ) : undefined
+        }
+        confirmLabel={confirmed?.label ?? "Confirm"}
+        tone={confirm && "rotate" in confirm ? "primary" : "danger"}
+        onConfirm={async () => {
+          if (!confirm || !confirmed) return;
+          await act.mutateAsync(confirm);
+          toast({ title: confirmed.done, description: "rotate" in confirm ? undefined : confirm.kid });
+        }}
+      />
     </>
   );
 }

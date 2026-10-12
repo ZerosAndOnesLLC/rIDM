@@ -15,8 +15,10 @@ const BASE =
   "inline-flex items-center justify-center whitespace-nowrap rounded-[var(--radius)] font-medium transition-[filter,background-color,border-color] disabled:cursor-not-allowed disabled:opacity-60 [&>svg]:shrink-0";
 
 const VARIANT: Record<ButtonVariant, string> = {
+  // The tenant's primary itself (a non-hex colour sets nothing else), with a
+  // translucent top-to-bottom sheen for the reference's gradient.
   primary:
-    "border border-accent-solid-hover bg-[linear-gradient(180deg,var(--accent-solid),var(--accent-solid-hover))] text-accent-ink shadow-[0_1px_2px_rgba(15,18,24,0.2),inset_0_0_0_1px_rgba(255,255,255,0.12)] hover:brightness-[1.06] active:brightness-95",
+    "border border-accent-solid-hover bg-accent bg-[linear-gradient(180deg,rgba(255,255,255,0.1),rgba(0,0,0,0.12))] text-accent-ink shadow-[0_1px_2px_rgba(15,18,24,0.2),inset_0_0_0_1px_rgba(255,255,255,0.12)] hover:brightness-[1.06] active:brightness-95",
   secondary: "border border-line-strong bg-paper text-ink shadow-[0_1px_1px_rgba(15,18,24,0.04)] hover:bg-ground",
   quiet: "border border-transparent bg-transparent text-ink-2 hover:bg-ground hover:text-ink",
   danger: "border border-line-strong bg-paper text-danger shadow-[0_1px_1px_rgba(15,18,24,0.04)] hover:bg-danger-soft",

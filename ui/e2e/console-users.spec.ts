@@ -28,8 +28,12 @@ test.describe("users", () => {
     await consoleLogin(page, loadState());
     await page.goto(`/console/settings/?tenant=${TENANT}#profile`);
     await expect(page.getByRole("heading", { name: "Profile attributes" })).toBeVisible({ timeout: 15_000 });
-    // Remove leftovers from an earlier run, then add a required enum.
-    for (const btn of await page.getByRole("button", { name: /^Remove attribute/ }).all()) await btn.click();
+    // Remove leftovers from an earlier run and let that save, then add a
+    // required enum (added in the same patch, the re-add would equal what is
+    // stored and nothing would be sent).
+    const leftovers = await page.getByRole("button", { name: /^Remove attribute/ }).all();
+    for (const btn of leftovers) await btn.click();
+    if (leftovers.length > 0) await expect(page.getByRole("status").filter({ hasText: /^Saved$/ }).first()).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: "Add attribute" }).click();
     const row = page.getByTestId("attribute-row").last();
     await row.getByLabel("Name").fill("department");

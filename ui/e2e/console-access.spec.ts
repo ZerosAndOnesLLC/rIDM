@@ -49,7 +49,7 @@ test.describe("access model", () => {
     await page.getByLabel("Role to include").selectOption({ label: "ridm:viewer" });
     await page.getByRole("button", { name: "Include" }).click();
     await expect(page.getByRole("listitem").filter({ hasText: "ridm:viewer" })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("Nobody holds this role directly.")).toBeVisible();
+    await expect(page.getByText("Nobody holds this role directly")).toBeVisible();
     await expectAccessible(page);
     // Built-in roles are read-only.
     await page.getByRole("link", { name: /^ridm:owner/ }).click();

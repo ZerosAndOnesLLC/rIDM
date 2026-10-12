@@ -82,7 +82,7 @@
   /* the command bar is dark in both modes */
   --bar: light-dark(#0f1117, #0a0c10);
   --bar-ink: #f1f3f7;
-  --bar-muted: light-dark(#8b93a3, #7d8696);
+  --bar-muted: #8b93a3;
   --bar-field: rgba(255, 255, 255, 0.08);
   --bar-line: rgba(255, 255, 255, 0.1);
 
@@ -166,7 +166,7 @@
   --rail-bg: transparent;
   --rail-ink: var(--ink-2);
   --rail-muted: var(--muted);
-  --rail-hint: var(--faint);
+  --rail-hint: var(--muted);
   --rail-line: transparent;
   --rail-hover: color-mix(in oklab, var(--paper) 60%, transparent);
   --rail-active-bg: var(--paper);
@@ -292,9 +292,9 @@ h2,
   font-variation-settings: "opsz" 40;
 }
 
-/* Links inside running text are always underlined; colour alone is not enough. */
-main a,
-footer a {
+/* Links inside running text are always underlined; colour alone is not enough. Navigation, rows and crumbs opt out. */
+main a:not(.no-underline),
+footer a:not(.no-underline) {
   text-decoration-line: underline;
   text-underline-offset: 3px;
 }
@@ -385,8 +385,8 @@ footer a {
 :root[data-skin="vault"] {
   --rail-bg: light-dark(#141821, #0c0e13);
   --rail-ink: #c8cfdb;
-  --rail-muted: #7f8898;
-  --rail-hint: #5b6474;
+  --rail-muted: #9aa3b1;
+  --rail-hint: #9aa3b1;
   --rail-line: rgba(255, 255, 255, 0.08);
   --rail-hover: rgba(255, 255, 255, 0.06);
   --rail-active-bg: rgba(255, 255, 255, 0.1);
@@ -477,6 +477,14 @@ footer a {
   color: var(--rail-ink);
   border-inline-end: 1px solid var(--rail-line);
 }
+/* The phone drawer is the rail on its own: solid, whatever the rail is on the desktop. */
+.console-drawer {
+  background: var(--paper);
+  border-inline-end: 1px solid var(--line);
+}
+:root[data-skin="vault"] .console-drawer {
+  background: var(--rail-bg);
+}
 .console-sheet {
   background: var(--sheet-bg);
   border: 1px solid var(--sheet-line);
@@ -540,6 +548,25 @@ footer a {
 .account-cards > div > section {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sheet);
+}
+
+/* Inside the detail panel, sections are flat: a title, a hint, the fields, a hairline. */
+.panel-body section {
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  box-shadow: none;
+}
+.panel-body section > header {
+  border-bottom: 0;
+  padding: 1rem 0 0.25rem;
+}
+.panel-body section > header h2 {
+  font-size: var(--text-md);
+}
+.panel-body section > div {
+  padding: 0.25rem 0 1rem;
 }
 
 /* Row actions show on hover or keyboard focus; always on touch screens. */
