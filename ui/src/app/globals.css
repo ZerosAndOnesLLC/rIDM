@@ -533,6 +533,22 @@ footer a {
   color: var(--contrast-300);
 }
 
+/* Row actions show on hover or keyboard focus; always on touch screens. */
+.row-action {
+  opacity: 0;
+  transition: opacity 120ms;
+}
+[role="row"]:hover .row-action,
+[role="row"]:focus-within .row-action,
+.row-action:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .row-action {
+    opacity: 1;
+  }
+}
+
 /* Status: dot with a halo (Signal v2), outlined pill (Signal), dot + word (Vault, Registry). */
 .status {
   display: inline-flex;
@@ -631,6 +647,22 @@ footer a {
   border-color: var(--line-strong);
   background: var(--paper);
   color: var(--ink);
+}
+
+/* The detail panel slides in from the end; nothing else moves on its own. */
+@keyframes panel-in {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes panel-in-rtl {
+  from { opacity: 0; transform: translateX(-24px); }
+  to { opacity: 1; transform: none; }
+}
+.panel-in {
+  animation: panel-in 200ms ease-out both;
+}
+[dir="rtl"] .panel-in {
+  animation-name: panel-in-rtl;
 }
 
 /* One-time entrance for the card; nothing else moves on its own. */

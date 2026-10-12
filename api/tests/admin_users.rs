@@ -310,6 +310,9 @@ async fn user_manager_runs_the_user_lifecycle() {
     )
     .await;
     assert_eq!(page["items"][0]["status"], "deleted");
+    // Listed rows carry the strongest second step enrolled; alice has none.
+    assert!(page["items"][0].get("second_step").is_some(), "{page}");
+    assert!(page["items"][0]["second_step"].is_null());
 }
 
 #[tokio::test]

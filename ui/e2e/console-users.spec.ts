@@ -79,7 +79,7 @@ test.describe("users", () => {
     await page.getByLabel("Search users").fill(username);
     await expect(page.getByRole("row", { name: new RegExp(username) })).toBeVisible({ timeout: 10_000 });
     await page.getByLabel("Status").selectOption("disabled");
-    await expect(page.getByText("No user matches.")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("No user matches")).toBeVisible({ timeout: 10_000 });
     await page.getByLabel("Status").selectOption("");
     await expect(page.getByRole("row", { name: new RegExp(username) })).toBeVisible({ timeout: 10_000 });
   });
@@ -158,6 +158,6 @@ test.describe("users", () => {
     await page.getByRole("dialog", { name: `Delete ${username}?` }).getByRole("button", { name: "Delete user" }).click();
     await page.waitForURL(/\/console\/users\/\?tenant=master$/, { timeout: 15_000 });
     await page.getByLabel("Search users").fill(username);
-    await expect(page.getByText("No user matches.")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("No user matches")).toBeVisible({ timeout: 10_000 });
   });
 });

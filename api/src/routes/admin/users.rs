@@ -112,13 +112,23 @@ struct ListQuery {
     limit: Option<u32>,
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/users", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ListQuery), responses((status = 200, body = Page<User>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+/// A listed user: the record plus the strongest second step enrolled, so a
+/// list can show it without a request per row.
+#[derive(Serialize, utoipa::ToSchema)]
+pub struct UserListItem {
+    #[serde(flatten)]
+    pub user: User,
+    /// `passkey`, `totp` or `otp` (email or SMS codes); `null` when none is enrolled.
+    pub second_step: Option<&'static str>,
+}
+
+#[utoipa::path(get, path = "/admin/tenants/{slug}/users", tag = "users", params(("slug" = String, Path, description = "Tenant slug"), ListQuery), responses((status = 200, body = Page<UserListItem>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     State(state): State<AppState>,
     admin: AdminCtx,
     AdminTenantPath(tenant): AdminTenantPath,
     Query(q): Query<ListQuery>,
-) -> AppResult<Json<Page<User>>> {
+) -> AppResult<Json<Page<UserListItem>>> {
     admin.require(tenant.id, P_READ)?;
     let filter = UserFilter {
         search: q.search,
@@ -127,9 +137,19 @@ async fn list(
         password_algo: q.password_algo,
         include_deleted: q.include_deleted,
     };
-    Ok(Json(
-        users::list(&state, tenant.id, &filter, q.cursor.as_deref(), q.limit).await?,
-    ))
+    let page = users::list(&state, tenant.id, &filter, q.cursor.as_deref(), q.limit).await?;
+    let steps = users::second_steps(&state, tenant.id, page.items.iter().map(|u| u.id)).await?;
+    Ok(Json(Page {
+        items: page
+            .items
+            .into_iter()
+            .map(|user| UserListItem {
+                second_step: steps.get(&user.id).copied(),
+                user,
+            })
+            .collect(),
+        next_cursor: page.next_cursor,
+    }))
 }
 
 /// Password fields accepted alongside the user on creation.

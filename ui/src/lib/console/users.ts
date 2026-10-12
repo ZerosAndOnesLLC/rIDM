@@ -52,6 +52,19 @@ export const TAB_LABELS: Record<Tab, string> = {
   audit: "Audit",
 };
 
+/**
+ * What a person is called, from the profile attributes a tenant's schema
+ * commonly carries (`name`, or given and family names); null when none.
+ */
+export function displayName(u: Pick<User, "attributes">): string | null {
+  const a = (u.attributes ?? {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const name = str(a.name) ?? str(a.display_name) ?? str(a.full_name);
+  if (name) return name;
+  const parts = [str(a.given_name) ?? str(a.first_name), str(a.family_name) ?? str(a.last_name)].filter(Boolean);
+  return parts.length ? parts.join(" ") : null;
+}
+
 /** A role's display name: `client/name` for client-scoped roles. */
 export function roleName(r: Role, clientNames: Record<string, string> = {}): string {
   return r.client_id ? `${clientNames[r.client_id] ?? "client"}/${r.name}` : r.name;

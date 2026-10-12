@@ -6,9 +6,9 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { buttonClass, iconButtonClass } from "@/components/base/button";
 import { avatarGradient, fmtNumber, initials } from "@/lib/console/format";
 
-export function Card({ title, children, className = "", actions, padded = true }: { title?: ReactNode; children: ReactNode; className?: string; actions?: ReactNode; padded?: boolean }) {
+export function Card({ title, children, className = "", actions, padded = true, id }: { title?: ReactNode; children: ReactNode; className?: string; actions?: ReactNode; padded?: boolean; id?: string }) {
   return (
-    <section className={`min-w-0 rounded-[var(--radius)] border border-line bg-paper ${className}`}>
+    <section id={id} className={`min-w-0 scroll-mt-20 rounded-[var(--radius)] border border-line bg-paper ${className}`}>
       {(title || actions) && (
         <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line px-4 py-3">
           <h2 className="min-w-0 text-md font-semibold text-ink">{title}</h2>

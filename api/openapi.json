@@ -14018,7 +14018,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Page_User"
+                  "$ref": "#/components/schemas/Page_UserListItem"
                 }
               }
             }
@@ -20979,6 +20979,47 @@
           }
         ]
       },
+      "Attention": {
+        "type": "object",
+        "description": "What is waiting on an administrator.",
+        "required": [
+          "locked_users",
+          "open_invitations",
+          "expiring_keys",
+          "dead_deliveries"
+        ],
+        "properties": {
+          "dead_deliveries": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Webhook deliveries given up on (`dead`) in the last 7 days."
+          },
+          "expiring_keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExpiringKey"
+            },
+            "description": "Active or retiring keys whose publication ends within 14 days."
+          },
+          "locked_users": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Accounts locked by status or by a lockout still running."
+          },
+          "oldest_invitation_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "open_invitations": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Invitations neither accepted, revoked nor expired."
+          }
+        }
+      },
       "AttributeDef": {
         "type": "object",
         "properties": {
@@ -22124,6 +22165,46 @@
           }
         }
       },
+      "Counts": {
+        "type": "object",
+        "description": "How many of each the tenant has (the console sidebar).",
+        "required": [
+          "users",
+          "groups",
+          "clients",
+          "webhooks",
+          "keys",
+          "idps"
+        ],
+        "properties": {
+          "clients": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "groups": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "idps": {
+            "type": "integer",
+            "format": "int64",
+            "description": "OIDC, SAML, LDAP and Kerberos upstream providers together."
+          },
+          "keys": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Pending, active and retiring signing keys."
+          },
+          "users": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "webhooks": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "CreateKey": {
         "type": "object",
         "properties": {
@@ -22697,6 +22778,22 @@
           "secret": {
             "type": "string",
             "description": "Base32 secret for manual entry."
+          }
+        }
+      },
+      "ExpiringKey": {
+        "type": "object",
+        "required": [
+          "kid",
+          "expires_at"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "kid": {
+            "type": "string"
           }
         }
       },
@@ -27268,7 +27365,7 @@
           }
         }
       },
-      "Page_User": {
+      "Page_UserListItem": {
         "type": "object",
         "required": [
           "items"
@@ -27277,132 +27374,24 @@
           "items": {
             "type": "array",
             "items": {
-              "type": "object",
-              "required": [
-                "id",
-                "tenant_id",
-                "username",
-                "email_verified",
-                "phone_verified",
-                "must_change_password",
-                "status",
-                "attributes",
-                "failed_attempts",
-                "created_at",
-                "updated_at"
-              ],
-              "properties": {
-                "attributes": {},
-                "created_at": {
-                  "type": "string",
-                  "format": "date-time"
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/User"
                 },
-                "deleted_at": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time"
-                },
-                "email": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "email_verified": {
-                  "type": "boolean"
-                },
-                "external_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "The provisioning system's identifier (SCIM `externalId`), unique per tenant."
-                },
-                "failed_attempts": {
-                  "type": "integer",
-                  "format": "int32"
-                },
-                "id": {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                "last_login_at": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time"
-                },
-                "locale": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "locked_until": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time"
-                },
-                "must_change_password": {
-                  "type": "boolean"
-                },
-                "org_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "uuid"
-                },
-                "password_changed_at": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time"
-                },
-                "password_expires_at": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time"
-                },
-                "phone": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "phone_verified": {
-                  "type": "boolean"
-                },
-                "status": {
-                  "$ref": "#/components/schemas/UserStatus"
-                },
-                "tenant_id": {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                "terms_accepted_at": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time"
-                },
-                "updated_at": {
-                  "type": "string",
-                  "format": "date-time"
-                },
-                "username": {
-                  "type": "string"
+                {
+                  "type": "object",
+                  "properties": {
+                    "second_step": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "`passkey`, `totp` or `otp` (email or SMS codes); `null` when none is enrolled."
+                    }
+                  }
                 }
-              }
+              ],
+              "description": "A listed user: the record plus the strongest second step enrolled, so a\nlist can show it without a request per row."
             }
           },
           "next_cursor": {
@@ -28236,6 +28225,48 @@
             "description": "Window length in seconds (1..=3600).",
             "default": 60,
             "minimum": 0
+          }
+        }
+      },
+      "RecentEvent": {
+        "type": "object",
+        "description": "One of the newest audit events, with its actor and subject named.",
+        "required": [
+          "id",
+          "name",
+          "occurred_at",
+          "actor_type"
+        ],
+        "properties": {
+          "actor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The actor's username, when the actor is a user of this tenant."
+          },
+          "actor_type": {
+            "type": "string",
+            "description": "`user`, `client`, `admin` or `system`."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "Dotted event name (`user.created`)."
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The subject's username or client name, when it is one of this tenant's."
           }
         }
       },
@@ -30995,14 +31026,30 @@
           "days",
           "logins_total",
           "failed_total",
+          "previous",
           "active_sessions",
           "users",
-          "top_clients"
+          "top_clients",
+          "counts",
+          "attention",
+          "attention_total",
+          "recent"
         ],
         "properties": {
           "active_sessions": {
             "type": "integer",
             "format": "int64"
+          },
+          "attention": {
+            "$ref": "#/components/schemas/Attention"
+          },
+          "attention_total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Things needing attention, counted for a badge."
+          },
+          "counts": {
+            "$ref": "#/components/schemas/Counts"
           },
           "days": {
             "type": "array",
@@ -31022,6 +31069,17 @@
           "logins_total": {
             "type": "integer",
             "format": "int64"
+          },
+          "previous": {
+            "$ref": "#/components/schemas/WindowTotals",
+            "description": "The same totals for the window before this one."
+          },
+          "recent": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecentEvent"
+            },
+            "description": "The eight newest audit events."
           },
           "to": {
             "type": "string",
@@ -31456,6 +31514,26 @@
             "description": "Direct plus their ancestors."
           }
         }
+      },
+      "UserListItem": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/User"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "second_step": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "`passkey`, `totp` or `otp` (email or SMS codes); `null` when none is enrolled."
+              }
+            }
+          }
+        ],
+        "description": "A listed user: the record plus the strongest second step enrolled, so a\nlist can show it without a request per row."
       },
       "UserRoles": {
         "type": "object",
@@ -31897,6 +31975,24 @@
           }
         ],
         "description": "A created or rotated webhook with its secret, shown exactly once."
+      },
+      "WindowTotals": {
+        "type": "object",
+        "description": "The window before this one, for deltas.",
+        "required": [
+          "logins_total",
+          "failed_total"
+        ],
+        "properties": {
+          "failed_total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "logins_total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
       }
     },
     "securitySchemes": {

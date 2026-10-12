@@ -156,7 +156,7 @@ test.describe("clients", () => {
       await page.getByRole("dialog", { name: `Delete ${name}?` }).getByRole("button", { name: "Delete client" }).click();
       await page.waitForURL(/\/console\/clients\/\?tenant=master$/, { timeout: 15_000 });
       await page.getByLabel("Search clients").fill(name);
-      await expect(page.getByText("No client matches.")).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText("No client matches")).toBeVisible({ timeout: 10_000 });
     }
   });
 });

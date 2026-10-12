@@ -329,6 +329,48 @@ pub async fn list(
     }))
 }
 
+/// The strongest second step each of `ids` has enrolled: `passkey` over
+/// `totp` over `otp` (email or SMS codes). One query for a page of rows, on
+/// the credentials (tenant, user, type) index.
+pub async fn second_steps(
+    state: &AppState,
+    tenant_id: Uuid,
+    ids: impl IntoIterator<Item = Uuid>,
+) -> AppResult<std::collections::HashMap<Uuid, &'static str>> {
+    let ids: Vec<Uuid> = ids.into_iter().collect();
+    let mut out = std::collections::HashMap::new();
+    if ids.is_empty() {
+        return Ok(out);
+    }
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
+    let rows: Vec<(Uuid, String)> = sqlx::query_as(
+        "SELECT user_id, type FROM credentials \
+         WHERE tenant_id = $1 AND user_id = ANY($2) AND type IN ('webauthn', 'totp', 'email_otp', 'sms_otp')",
+    )
+    .bind(tenant_id)
+    .bind(&ids)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let rank = |s: &str| match s {
+        "passkey" => 3,
+        "totp" => 2,
+        _ => 1,
+    };
+    for (user_id, kind) in rows {
+        let step = match kind.as_str() {
+            "webauthn" => "passkey",
+            "totp" => "totp",
+            _ => "otp",
+        };
+        let current = out.entry(user_id).or_insert(step);
+        if rank(step) > rank(current) {
+            *current = step;
+        }
+    }
+    Ok(out)
+}
+
 pub async fn unlock(state: &AppState, tenant_id: Uuid, actor: Actor, id: Uuid) -> AppResult<()> {
     let mut tx = db::tenant_tx(&state.db, tenant_id).await?;
     let ok = repos::users::unlock(&mut *tx, tenant_id, id).await?;

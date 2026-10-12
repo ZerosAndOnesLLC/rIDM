@@ -1,16 +1,17 @@
 "use client";
 
-import { fmtDate } from "@/lib/console/format";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { Download, Mail, Plus, Upload, UsersRound } from "lucide-react";
+import { ChevronRight, Download, KeyRound, Mail, MessageSquare, Plus, Smartphone, Upload, UsersRound } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { DataTable, ListFooter, type Column } from "@/components/base/data-table";
 import { EmptyState } from "@/components/base/empty-state";
 import { ChipSelect, ChipToggle, TextInput } from "@/components/console/form";
-import { Badge, Button, PageHeader } from "@/components/console/ui";
+import { Avatar, Button, PageHeader, Status } from "@/components/console/ui";
+import { fmtWhen, isFresh } from "@/lib/console/format";
 import { useDebounced } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
-import { STATUS_LABELS, statusTone, userHref, type UserStatus } from "@/lib/console/users";
+import { STATUS_LABELS, displayName, statusTone, userHref, type UserStatus } from "@/lib/console/users";
 
 export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: { tenant: string; onCreate: () => void; onInvite: () => void; onImport: () => void; onExport: () => void }) {
   const { client, can } = useConsole();
@@ -35,7 +36,23 @@ export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: {
   const writer = can("ridm:users:write");
   type Row = (typeof rows)[number];
   const columns: Column<Row>[] = [
-    { key: "username", header: "Username", width: "minmax(10rem, 2fr)", cell: (u) => <span className="truncate font-medium text-ink">{u.username}</span> },
+    {
+      key: "user",
+      header: "User",
+      width: "minmax(12rem, 2fr)",
+      cell: (u) => {
+        const name = displayName(u);
+        return (
+          <>
+            <Avatar name={u.username} />
+            <span className="min-w-0">
+              <span className="block truncate font-semibold leading-tight text-ink">{name ?? u.username}</span>
+              {name && <span className="block truncate text-caption leading-snug text-muted">{u.username}</span>}
+            </span>
+          </>
+        );
+      },
+    },
     {
       key: "email",
       header: "Email",
@@ -43,12 +60,40 @@ export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: {
       cell: (u) => (
         <span className="truncate text-muted">
           {u.email ?? "—"}
-          {u.email && !u.email_verified && <span className="ms-1 text-caption">(unverified)</span>}
+          {u.email && !u.email_verified && <span className="ms-1.5 text-caption text-warn">unverified</span>}
         </span>
       ),
     },
-    { key: "status", header: "Status", width: "7rem", cell: (u) => <Badge tone={statusTone(u.status)}>{STATUS_LABELS[u.status]}</Badge> },
-    { key: "last_login", header: "Last sign-in", width: "9rem", cell: (u) => <span className="text-muted">{u.last_login_at ? fmtDate(u.last_login_at) : "Never"}</span> },
+    { key: "status", header: "Status", width: "6.5rem", cell: (u) => <Status tone={statusTone(u.status)}>{STATUS_LABELS[u.status]}</Status> },
+    {
+      key: "last_login",
+      header: "Last sign-in",
+      width: "8.5rem",
+      cell: (u) => (
+        <span className={`inline-flex items-center gap-1.5 font-mono text-caption ${isFresh(u.last_login_at) ? "text-ink-2" : "text-muted"}`}>
+          <i aria-hidden className={`size-1.5 rounded-full ${isFresh(u.last_login_at) ? "bg-ok" : "bg-line-strong"}`} />
+          {u.last_login_at ? fmtWhen(u.last_login_at) : "Never"}
+        </span>
+      ),
+    },
+    {
+      key: "second_step",
+      header: "Second step",
+      width: "6.5rem",
+      cell: (u) => <SecondStep step={u.second_step ?? null} />,
+    },
+    {
+      key: "open",
+      header: "Open",
+      hideHeader: true,
+      width: "2.25rem",
+      align: "end",
+      cell: (u) => (
+        <Link href={userHref(tenant, u.id)} aria-label={`Open ${u.username}`} className="row-action flex size-7 items-center justify-center rounded-[var(--radius)] text-muted no-underline hover:bg-ground hover:text-ink">
+          <ChevronRight className="rtl-flip size-4" aria-hidden />
+        </Link>
+      ),
+    },
   ];
 
   return (
@@ -83,7 +128,7 @@ export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: {
           </>
         }
       />
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
         <TextInput aria-label="Search users" placeholder="Filter by username or email…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs flex-1 basis-[15rem]" />
         <ChipSelect label="Status" value={status} onChange={(v) => setStatus(v as UserStatus | "")}>
           <option value="">any</option>
@@ -110,6 +155,7 @@ export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: {
           rowHref={(u) => userHref(tenant, u.id)}
           loading={users.isPending}
           virtualize
+          minWidth="46rem"
           onEndReached={() => {
             if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
           }}
@@ -124,5 +170,17 @@ export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: {
         />
       )}
     </>
+  );
+}
+
+/** The strongest second step enrolled, as a glyph with its name for assistive tech. */
+export function SecondStep({ step }: { step: string | null }) {
+  if (!step) return <span className="text-muted">—</span>;
+  const [Icon, label] = step === "passkey" ? [KeyRound, "Passkey"] : step === "totp" ? [Smartphone, "Authenticator app"] : [MessageSquare, "Emailed or texted codes"];
+  return (
+    <span className="inline-flex items-center gap-1.5 text-accent-text" title={label}>
+      <Icon className="size-[0.9375rem]" aria-hidden />
+      <span className="sr-only">{label}</span>
+    </span>
   );
 }

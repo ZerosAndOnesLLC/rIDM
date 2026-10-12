@@ -3125,6 +3125,28 @@ export interface components {
             errors: components["schemas"]["ApplyError"][];
             secrets?: components["schemas"]["Secrets"];
         };
+        /** @description What is waiting on an administrator. */
+        Attention: {
+            /**
+             * Format: int64
+             * @description Webhook deliveries given up on (`dead`) in the last 7 days.
+             */
+            dead_deliveries: number;
+            /** @description Active or retiring keys whose publication ends within 14 days. */
+            expiring_keys: components["schemas"]["ExpiringKey"][];
+            /**
+             * Format: int64
+             * @description Accounts locked by status or by a lockout still running.
+             */
+            locked_users: number;
+            /** Format: date-time */
+            oldest_invitation_at?: string | null;
+            /**
+             * Format: int64
+             * @description Invitations neither accepted, revoked nor expired.
+             */
+            open_invitations: number;
+        };
         AttributeDef: {
             /** @default null */
             description: string | null;
@@ -3561,6 +3583,27 @@ export interface components {
             scopes: string[];
             tos_uri?: string | null;
         };
+        /** @description How many of each the tenant has (the console sidebar). */
+        Counts: {
+            /** Format: int64 */
+            clients: number;
+            /** Format: int64 */
+            groups: number;
+            /**
+             * Format: int64
+             * @description OIDC, SAML, LDAP and Kerberos upstream providers together.
+             */
+            idps: number;
+            /**
+             * Format: int64
+             * @description Pending, active and retiring signing keys.
+             */
+            keys: number;
+            /** Format: int64 */
+            users: number;
+            /** Format: int64 */
+            webhooks: number;
+        };
         CreateKey: {
             /**
              * @description Publish only (`pending`) unless set, in which case the key starts
@@ -3754,6 +3797,11 @@ export interface components {
             period: number;
             /** @description Base32 secret for manual entry. */
             secret: string;
+        };
+        ExpiringKey: {
+            /** Format: date-time */
+            expires_at: string;
+            kid: string;
         };
         ExportedTenant: {
             display_name: string;
@@ -5530,44 +5578,11 @@ export interface components {
             }[];
             next_cursor?: string | null;
         };
-        Page_User: {
-            items: {
-                attributes: unknown;
-                /** Format: date-time */
-                created_at: string;
-                /** Format: date-time */
-                deleted_at?: string | null;
-                email?: string | null;
-                email_verified: boolean;
-                /** @description The provisioning system's identifier (SCIM `externalId`), unique per tenant. */
-                external_id?: string | null;
-                /** Format: int32 */
-                failed_attempts: number;
-                /** Format: uuid */
-                id: string;
-                /** Format: date-time */
-                last_login_at?: string | null;
-                locale?: string | null;
-                /** Format: date-time */
-                locked_until?: string | null;
-                must_change_password: boolean;
-                /** Format: uuid */
-                org_id?: string | null;
-                /** Format: date-time */
-                password_changed_at?: string | null;
-                /** Format: date-time */
-                password_expires_at?: string | null;
-                phone?: string | null;
-                phone_verified: boolean;
-                status: components["schemas"]["UserStatus"];
-                /** Format: uuid */
-                tenant_id: string;
-                /** Format: date-time */
-                terms_accepted_at?: string | null;
-                /** Format: date-time */
-                updated_at: string;
-                username: string;
-            }[];
+        Page_UserListItem: {
+            items: (components["schemas"]["User"] & {
+                /** @description `passkey`, `totp` or `otp` (email or SMS codes); `null` when none is enrolled. */
+                second_step?: string | null;
+            })[];
             next_cursor?: string | null;
         };
         PasskeyFinishBody: {
@@ -5905,6 +5920,21 @@ export interface components {
              * @default 60
              */
             window_secs: number;
+        };
+        /** @description One of the newest audit events, with its actor and subject named. */
+        RecentEvent: {
+            /** @description The actor's username, when the actor is a user of this tenant. */
+            actor?: string | null;
+            /** @description `user`, `client`, `admin` or `system`. */
+            actor_type: string;
+            /** Format: uuid */
+            id: string;
+            /** @description Dotted event name (`user.created`). */
+            name: string;
+            /** Format: date-time */
+            occurred_at: string;
+            /** @description The subject's username or client name, when it is one of this tenant's. */
+            subject?: string | null;
         };
         RecoveryCodes: {
             recovery_codes: string[];
@@ -7071,6 +7101,13 @@ export interface components {
         TenantStats: {
             /** Format: int64 */
             active_sessions: number;
+            attention: components["schemas"]["Attention"];
+            /**
+             * Format: int64
+             * @description Things needing attention, counted for a badge.
+             */
+            attention_total: number;
+            counts: components["schemas"]["Counts"];
             /** @description One entry per day of the window, oldest first, zeros included. */
             days: components["schemas"]["DayStats"][];
             /** Format: int64 */
@@ -7079,6 +7116,10 @@ export interface components {
             from: string;
             /** Format: int64 */
             logins_total: number;
+            /** @description The same totals for the window before this one. */
+            previous: components["schemas"]["WindowTotals"];
+            /** @description The eight newest audit events. */
+            recent: components["schemas"]["RecentEvent"][];
             /** Format: date-time */
             to: string;
             top_clients: components["schemas"]["ClientStats"][];
@@ -7204,6 +7245,14 @@ export interface components {
             direct: components["schemas"]["Group"][];
             /** @description Direct plus their ancestors. */
             effective: components["schemas"]["Group"][];
+        };
+        /**
+         * @description A listed user: the record plus the strongest second step enrolled, so a
+         *     list can show it without a request per row.
+         */
+        UserListItem: components["schemas"]["User"] & {
+            /** @description `passkey`, `totp` or `otp` (email or SMS codes); `null` when none is enrolled. */
+            second_step?: string | null;
         };
         UserRoles: {
             /** @description Assigned to the user directly. */
@@ -7360,6 +7409,13 @@ export interface components {
         /** @description A created or rotated webhook with its secret, shown exactly once. */
         WebhookWithSecret: components["schemas"]["Webhook"] & {
             secret: string;
+        };
+        /** @description The window before this one, for deltas. */
+        WindowTotals: {
+            /** Format: int64 */
+            failed_total: number;
+            /** Format: int64 */
+            logins_total: number;
         };
     };
     responses: never;
@@ -16995,7 +17051,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Page_User"];
+                    "application/json": components["schemas"]["Page_UserListItem"];
                 };
             };
             /** @description Bad request */

@@ -11,8 +11,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { Field, NumberInput, SaveIndicator, Section, SelectInput, TagsInput, TextArea, TextInput, Toggle } from "@/components/console/form";
-import { Badge, Button, IconButton, Modal, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
+import { Skeleton } from "@/components/base/skeleton";
+import { DetailPanel } from "@/components/console/panel";
+import { Avatar, Badge, Button, IconButton, Modal, Status } from "@/components/console/ui";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import {
   ALL_GRANTS,
@@ -108,17 +109,24 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
   const sections = useMemo(() => (c ? { c } : null), [c]);
   // `tls_client_auth` is saved together with its subject, which the API requires.
   const [pendingTls, setPendingTls] = useState(false);
+  const listHref = `/console/clients/?tenant=${encodeURIComponent(tenant)}`;
+  const close = () => router.push(listHref);
   if (query.isError) {
     return (
-      <>
-        <PageHeader title="Client" />
+      <DetailPanel open onClose={close} title="Client">
         <p role="alert" className="text-lead text-danger">
           {query.error.message}
         </p>
-      </>
+      </DetailPanel>
     );
   }
-  if (!c || !sections) return <Spinner label="Loading client…" />;
+  if (!c || !sections) {
+    return (
+      <DetailPanel open onClose={close} title="Client">
+        <Skeleton shape="lines" count={8} label="Loading client…" />
+      </DetailPanel>
+    );
+  }
   const grantsOk = !(c.token_endpoint_auth_method === "none" && c.allowed_grants.includes("client_credentials"));
   const fapi = c.security_profile === "fapi2";
   const certBound = c.tls_client_certificate_bound_access_tokens;
@@ -128,32 +136,38 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
 
   return (
     <>
-      <PageHeader
-        title={c.name}
-        sub={
-          <span className="inline-flex flex-wrap items-center gap-2">
-            <code className="font-mono text-small">{c.client_id}</code>
-            <CopyButton value={c.client_id} label="Copy ID" />
-            <Badge>{typeLabel(c.client_type)}</Badge>
-            {c.status === "active" ? <Badge tone="ok">Active</Badge> : <Badge tone="danger">Disabled</Badge>}
-          </span>
-        }
-        actions={
+      <DetailPanel
+        open
+        onClose={close}
+        backLabel="Back to clients"
+        mark={<Avatar name={c.name} size="lg" className="shadow-[0_0_0_3px_var(--paper),0_0_0_4px_var(--accent-border)]" />}
+        title={
           <>
-            <SaveIndicator status={status} error={error} />
-            <Link href={playgroundHref(tenant, c.id)} className="inline-flex min-h-9 items-center gap-2 rounded-[var(--radius)] border border-line bg-paper px-3.5 text-body font-medium text-ink hover:bg-ground">
-              <FlaskConical className="size-4" aria-hidden />
-              Playground
-            </Link>
+            <span className="min-w-0 truncate">{c.name}</span>
+            {c.status === "active" ? <Status tone="ok">Active</Status> : <Status tone="danger">Disabled</Status>}
           </>
         }
-      />
-      <p className="mb-4 text-small text-muted">
-        <Link href={`/console/clients/?tenant=${encodeURIComponent(tenant)}`} className="text-link underline underline-offset-4">
-          All clients
-        </Link>
-      </p>
-      <div className="flex flex-col gap-6">
+        sub={
+          <>
+            <code className="font-mono">{c.client_id}</code>
+            <CopyButton value={c.client_id} label="Copy ID" />
+          </>
+        }
+        actions={
+          <Link href={playgroundHref(tenant, c.id)} className="inline-flex min-h-7 items-center gap-1.5 rounded-[var(--radius)] border border-line-strong bg-paper px-2.5 text-caption font-medium text-ink no-underline hover:bg-ground">
+            <FlaskConical className="size-3.5" aria-hidden />
+            Playground
+          </Link>
+        }
+        stats={[
+          { label: "Type", value: typeLabel(c.client_type) },
+          { label: "Authentication", value: AUTH_METHODS.find((m) => m.value === c.token_endpoint_auth_method)?.label ?? c.token_endpoint_auth_method },
+          { label: "Profile", value: fapi ? <Badge tone="accent">FAPI 2.0</Badge> : "Default" },
+          { label: "Created", value: fmtDateTime(c.created_at) },
+        ]}
+        footer={<SaveIndicator status={status} error={error} />}
+      >
+      <div className="flex flex-col gap-4">
         <Section id="basics" title="Basics" description="What users see on consent and login pages.">
           <Field label="Name">{(fid) => <TextInput id={fid} value={c.name} disabled={!editable} onChange={(e) => update({ name: e.target.value })} />}</Field>
           <Field label="Status" hint="A disabled client is refused at every endpoint.">
@@ -362,8 +376,9 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
           </div>
         </Section>
 
-        {editable && c.client_id !== "ridm-admin-console" && <DeleteClient tenant={tenant} c={c} onDeleted={() => router.push(`/console/clients/?tenant=${encodeURIComponent(tenant)}`)} />}
+        {editable && c.client_id !== "ridm-admin-console" && <DeleteClient tenant={tenant} c={c} onDeleted={close} />}
       </div>
+      </DetailPanel>
       <RevealModal revealed={revealed} onClose={() => setRevealed(null)} />
     </>
   );

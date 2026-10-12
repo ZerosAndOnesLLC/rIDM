@@ -1,7 +1,7 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { Briefcase, Building2, ChevronsUpDown, LogOut, Menu, Search, ShieldCheck, X } from "lucide-react";
+import { Bell, Briefcase, Building2, ChevronsUpDown, LogOut, Menu, Search, ShieldCheck, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
@@ -62,6 +62,7 @@ function Frame({ children }: { children: ReactNode }) {
   const current = items.find((n) => n.href === pathname) ?? items.find((n) => pathname.startsWith(n.href) && n.href !== "/console/");
   const group = current ? NAV.find((g) => g.items.includes(current)) : undefined;
   const title = current?.label ?? PAGE_TITLES[pathname] ?? "Console";
+  const { attentionTotal } = useNavCounts(tenant);
 
   useShortcuts({
     palette: () => setPalette(true),
@@ -152,8 +153,17 @@ function Frame({ children }: { children: ReactNode }) {
           </button>
         </div>
 
-        <div className="ms-auto flex shrink-0 items-center gap-2">
+        <div className="ms-auto flex shrink-0 items-center gap-1.5">
           <ThemeSwitch surface="bar" />
+          <Link
+            href={`${consoleHref("/console/", tenant)}#attention`}
+            aria-label={attentionTotal > 0 ? `${attentionTotal} ${attentionTotal === 1 ? "thing needs" : "things need"} attention` : "Nothing needs attention"}
+            title={attentionTotal > 0 ? `${attentionTotal} ${attentionTotal === 1 ? "thing needs" : "things need"} attention` : "Nothing needs attention"}
+            className="relative hidden size-8 items-center justify-center rounded-full text-bar-muted no-underline hover:bg-[var(--bar-field)] hover:text-bar-ink sm:flex"
+          >
+            <Bell className="size-4" aria-hidden />
+            {attentionTotal > 0 && <span aria-hidden className="absolute end-1.5 top-1.5 size-[7px] rounded-full bg-[var(--contrast-500)] shadow-[0_0_0_2px_var(--bar)]" />}
+          </Link>
         </div>
       </header>
 

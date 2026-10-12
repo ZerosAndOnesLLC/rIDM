@@ -15,7 +15,7 @@ import { useConsoleTenant } from "@/lib/console/tenant";
 import { TABS, type Tab } from "@/lib/console/users";
 import Link from "next/link";
 
-/** `/console/users/`: the table, `?view=invitations`, or one user when `?user=` is set. */
+/** `/console/users/`: the table (with one user's panel over it when `?user=` is set), or `?view=invitations`. */
 export default function UsersPage() {
   const tenant = useConsoleTenant();
   const sp = useSearchParams();
@@ -30,7 +30,6 @@ export default function UsersPage() {
   const [goTo, setGoTo] = useState<string | null>(null);
 
   if (!tenant) return <Spinner label="Loading…" />;
-  if (id) return <UserDetail tenant={tenant} id={id} tab={tab} />;
   if (view === "invitations") {
     return (
       <>
@@ -56,6 +55,7 @@ export default function UsersPage() {
   return (
     <>
       <UsersTable tenant={tenant} onCreate={() => setDialog("create")} onInvite={() => setDialog("invite")} onImport={() => setDialog("import")} onExport={() => setDialog("export")} />
+      {id && <UserDetail key={id} tenant={tenant} id={id} tab={tab} />}
       <p className="mt-3 text-small text-muted">
         <Link href={`/console/users/?tenant=${encodeURIComponent(tenant)}&view=invitations`} className="text-link underline underline-offset-4">
           Open invitations
