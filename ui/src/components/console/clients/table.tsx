@@ -1,12 +1,12 @@
 "use client";
 
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
-import Link from "next/link";
+import { AppWindow, Plus } from "lucide-react";
 import { useState } from "react";
+import { DataTable, ListFooter, type Column } from "@/components/base/data-table";
+import { EmptyState } from "@/components/base/empty-state";
 import { TextInput } from "@/components/console/form";
 import { Badge, Button, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { formatDate } from "@/i18n";
 import { AUTH_METHODS, clientHref, samlHref, typeLabel } from "@/lib/console/clients";
 import { useDebounced } from "@/lib/console/hooks";
@@ -29,6 +29,15 @@ export function ClientsTable({ tenant, onCreate }: { tenant: string; onCreate: (
     getNextPageParam: (last) => last.next_cursor ?? undefined,
   });
   const rows = clients.data?.pages.flatMap((p) => p.items) ?? [];
+  type Row = (typeof rows)[number];
+  const columns: Column<Row>[] = [
+    { key: "name", header: "Client", width: "minmax(10rem, 2fr)", cell: (c) => <span className="truncate font-medium text-ink">{c.name}</span> },
+    { key: "client_id", header: "Client ID", width: "minmax(8rem, 1.5fr)", cell: (c) => <span className="truncate font-mono text-small text-muted">{c.client_id}</span> },
+    { key: "type", header: "Type", width: "minmax(7rem, 1fr)", cell: (c) => <span className="truncate text-muted">{typeLabel(c.client_type)}</span> },
+    { key: "auth", header: "Authentication", width: "minmax(8rem, 1fr)", cell: (c) => <span className="truncate text-muted">{AUTH_METHODS.find((m) => m.value === c.token_endpoint_auth_method)?.label ?? c.token_endpoint_auth_method}</span> },
+    { key: "status", header: "Status", width: "6rem", cell: (c) => (c.status === "active" ? <Badge tone="ok">Active</Badge> : <Badge tone="danger">Disabled</Badge>) },
+    { key: "created", header: "Created", width: "8rem", cell: (c) => <span className="text-muted">{formatDate("en", c.created_at, { dateStyle: "medium" })}</span> },
+  ];
 
   return (
     <>
@@ -51,53 +60,24 @@ export function ClientsTable({ tenant, onCreate }: { tenant: string; onCreate: (
         <p role="alert" className="text-lead text-danger">
           {clients.error.message}
         </p>
-      ) : clients.isPending ? (
-        <Spinner label="Loading clients…" />
       ) : (
-        <div className="overflow-x-auto rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
-          <table className="w-full text-body">
-            <thead className="text-caption uppercase tracking-wide text-muted">
-              <tr className="border-b border-line">
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Client</th>
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Client ID</th>
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Type</th>
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Authentication</th>
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Status</th>
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted">
-                    {q ? "No client matches." : "No clients yet."}
-                  </td>
-                </tr>
-              )}
-              {rows.map((c) => (
-                <tr key={c.id} className="border-b border-line last:border-b-0 hover:bg-ground/60">
-                  <td className="px-4 py-2.5 font-medium text-ink">
-                    <Link href={c.client_type === "saml" ? samlHref(tenant, c.id) : clientHref(tenant, c.id)} className="hover:underline underline-offset-4">
-                      {c.name}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-2.5 font-mono text-small text-muted">{c.client_id}</td>
-                  <td className="px-4 py-2.5 text-muted">{typeLabel(c.client_type)}</td>
-                  <td className="px-4 py-2.5 text-muted">{AUTH_METHODS.find((m) => m.value === c.token_endpoint_auth_method)?.label ?? c.token_endpoint_auth_method}</td>
-                  <td className="px-4 py-2.5">{c.status === "active" ? <Badge tone="ok">Active</Badge> : <Badge tone="danger">Disabled</Badge>}</td>
-                  <td className="px-4 py-2.5 text-muted">{formatDate("en", c.created_at, { dateStyle: "medium" })}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {clients.hasNextPage && (
-            <div className="border-t border-line p-3 text-center">
-              <Button onClick={() => void clients.fetchNextPage()} disabled={clients.isFetchingNextPage}>
-                {clients.isFetchingNextPage ? "Loading…" : "Load more"}
-              </Button>
-            </div>
-          )}
-        </div>
+        <DataTable
+          label="Clients"
+          columns={columns}
+          rows={rows}
+          rowKey={(c) => c.id}
+          rowHref={(c) => (c.client_type === "saml" ? samlHref(tenant, c.id) : clientHref(tenant, c.id))}
+          loading={clients.isPending}
+          minWidth="48rem"
+          empty={
+            q ? (
+              <EmptyState icon={AppWindow} title="No client matches" description="Try part of the client ID or name." />
+            ) : (
+              <EmptyState icon={AppWindow} title="No clients yet" description="A client is an application or service that obtains tokens from this tenant." action={can("ridm:clients:write") ? <Button variant="primary" onClick={onCreate}>New client</Button> : undefined} />
+            )
+          }
+          footer={<ListFooter mode="more" count={rows.length} hasMore={clients.hasNextPage} loading={clients.isFetchingNextPage} onMore={() => void clients.fetchNextPage()} />}
+        />
       )}
     </>
   );

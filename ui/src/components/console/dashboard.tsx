@@ -1,5 +1,7 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
+import { DataTable } from "@/components/base/data-table";
 import { useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useState } from "react";
@@ -65,24 +67,20 @@ export function Dashboard({ tenant }: { tenant: string }) {
         </div>
         <details className="mt-2 text-small text-muted">
           <summary className="cursor-pointer">Table view</summary>
-          <table className="mt-2 w-full text-small">
-            <thead>
-              <tr className="text-start text-muted">
-                <th scope="col" className="py-1 text-start font-medium">Day</th>
-                <th scope="col" className="py-1 text-end font-medium">Sign-ins</th>
-                <th scope="col" className="py-1 text-end font-medium">Failed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {s.days.map((d) => (
-                <tr key={d.date} className="border-t border-line">
-                  <td className="py-1 text-ink">{d.date}</td>
-                  <td className="py-1 text-end text-ink">{d.logins}</td>
-                  <td className="py-1 text-end text-ink">{d.failed}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="mt-2">
+            <DataTable
+              label="Sign-ins per day"
+              minWidth="16rem"
+              columns={[
+                { key: "day", header: "Day", width: "minmax(7rem, 1fr)", cell: (d: (typeof s.days)[number]) => <span className="font-mono text-small text-ink">{d.date}</span> },
+                { key: "logins", header: "Sign-ins", width: "6rem", align: "end", cell: (d) => <span className="font-mono text-small text-ink">{d.logins}</span> },
+                { key: "failed", header: "Failed", width: "6rem", align: "end", cell: (d) => <span className="font-mono text-small text-ink">{d.failed}</span> },
+              ]}
+              rows={s.days}
+              rowKey={(d) => d.date}
+              empty={<EmptyState compact title="No days in this window" />}
+            />
+          </div>
         </details>
       </Card>
 

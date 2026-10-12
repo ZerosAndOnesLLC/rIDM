@@ -1,5 +1,8 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
+import { Skeleton } from "@/components/base/skeleton";
+import { ListFooter } from "@/components/base/data-table";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import Link from "next/link";
@@ -46,7 +49,7 @@ export function RolesPage({ tenant, selected }: { tenant: string; selected: stri
           <Card title="Roles">
             <TextInput aria-label="Filter roles" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} className="mb-3" />
             {roles.isPending ? (
-              <Spinner label="Loading…" />
+              <Skeleton shape="lines" count={6} />
             ) : roles.isError ? (
               <ErrorLine error={roles.error} />
             ) : (
@@ -355,11 +358,11 @@ function Holders({ tenant, id }: { tenant: string; id: string }) {
   return (
     <Card title="Held by">
       {holders.isPending ? (
-        <Spinner label="Loading…" />
+        <Skeleton shape="lines" count={3} />
       ) : holders.isError ? (
         <ErrorLine error={holders.error} />
       ) : assignments.length === 0 ? (
-        <p className="text-body text-muted">Nobody holds this role directly.</p>
+        <EmptyState compact title="Nobody holds this role directly" description="Assign it to a user or a group from their pages." />
       ) : (
         <ul className="flex flex-wrap gap-1.5">
           {assignments.map((a) =>
@@ -376,10 +379,8 @@ function Holders({ tenant, id }: { tenant: string; id: string }) {
         </ul>
       )}
       {holders.hasNextPage && (
-        <div className="mt-2 text-center">
-          <Button onClick={() => void holders.fetchNextPage()} disabled={holders.isFetchingNextPage}>
-            {holders.isFetchingNextPage ? "Loading…" : "Load more"}
-          </Button>
+        <div className="mt-2">
+          <ListFooter mode="more" count={assignments.length} hasMore={holders.hasNextPage} loading={holders.isFetchingNextPage} onMore={() => void holders.fetchNextPage()} />
         </div>
       )}
     </Card>

@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, RotateCw, Send } from "lucide-react";
 import Link from "next/link";
@@ -52,7 +53,7 @@ export function WebhooksPage({ tenant, selected }: { tenant: string; selected: s
             ) : hooks.isError ? (
               <ErrorLine error={hooks.error} />
             ) : hooks.data.length === 0 ? (
-              <p className="text-body text-muted">No webhooks yet.</p>
+              <EmptyState compact title="No webhooks yet" />
             ) : (
               <ul className="flex flex-col gap-0.5">
                 {hooks.data.map((w) => (

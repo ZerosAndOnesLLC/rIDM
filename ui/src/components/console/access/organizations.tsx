@@ -1,5 +1,8 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
+import { Skeleton } from "@/components/base/skeleton";
+import { ListFooter } from "@/components/base/data-table";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Briefcase, Plus } from "lucide-react";
 import Link from "next/link";
@@ -7,7 +10,6 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Field, TextInput } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { href } from "@/lib/console/access";
 import { useDebounced } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
@@ -73,13 +75,11 @@ export function OrganizationsPage({ tenant, selected }: { tenant: string; select
               onChange={(e) => setSearch(e.target.value)}
             />
             {list.isPending ? (
-              <Spinner label="Loading…" />
+              <Skeleton shape="lines" count={6} />
             ) : list.isError ? (
               <ErrorLine error={list.error} />
             ) : items.length === 0 ? (
-              <p className="mt-3 text-body text-muted">
-                {q ? "Nothing matches." : "No organizations yet."}
-              </p>
+              <EmptyState compact title={q ? "Nothing matches" : "No organizations yet"} />
             ) : (
               <ul className="mt-3 flex flex-col">
                 {items.map((o) => (
@@ -98,10 +98,8 @@ export function OrganizationsPage({ tenant, selected }: { tenant: string; select
               </ul>
             )}
             {list.hasNextPage && (
-              <div className="mt-2 text-center">
-                <Button onClick={() => void list.fetchNextPage()} disabled={list.isFetchingNextPage}>
-                  {list.isFetchingNextPage ? "Loading…" : "Load more"}
-                </Button>
+              <div className="mt-2">
+                <ListFooter mode="more" count={(list.data?.pages.flatMap((p) => p.items) ?? []).length} hasMore={list.hasNextPage} loading={list.isFetchingNextPage} onMore={() => void list.fetchNextPage()} />
               </div>
             )}
           </Card>

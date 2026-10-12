@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { useState } from "react";
@@ -100,7 +101,7 @@ export function ProvisioningPage({ tenant }: { tenant: string }) {
           )}
           <Card title="Tokens">
             {tokens.data.tokens.length === 0 ? (
-              <p className="text-body text-muted">No provisioning tokens yet.</p>
+              <EmptyState compact title="No provisioning tokens yet" />
             ) : (
               <ul className="divide-y divide-line">
                 {tokens.data.tokens.map((t) => {

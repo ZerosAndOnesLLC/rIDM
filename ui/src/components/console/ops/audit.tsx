@@ -1,11 +1,13 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
+import { Skeleton } from "@/components/base/skeleton";
+import { ListFooter } from "@/components/base/data-table";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Download, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { Field, SelectInput, TextInput } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { formatDate } from "@/i18n";
 import { EVENT_NAMES, downloadWithToken, toRfc3339, type AuditEvent } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
@@ -146,11 +148,11 @@ export function AuditPage({ tenant }: { tenant: string }) {
       </form>
       <Card title="Events">
         {page.isPending ? (
-          <Spinner label="Loading…" />
+          <Skeleton shape="lines" count={6} />
         ) : page.isError ? (
           <ErrorLine error={page.error} />
         ) : page.data.items.length === 0 ? (
-          <p className="text-body text-muted">No events match.</p>
+          <EmptyState compact title="No events match" description="Widen the time range or clear a filter." />
         ) : (
           <ul className="divide-y divide-line">
             {page.data.items.map((e) => (
@@ -158,13 +160,16 @@ export function AuditPage({ tenant }: { tenant: string }) {
             ))}
           </ul>
         )}
-        <div className="mt-3 flex justify-between">
-          <Button disabled={cursors.length <= 1} onClick={() => setCursors((c) => c.slice(0, -1))}>
-            Newer
-          </Button>
-          <Button disabled={!page.data?.next_cursor} onClick={() => setCursors((c) => [...c, page.data?.next_cursor ?? undefined])}>
-            Older
-          </Button>
+        <div className="mt-3">
+          <ListFooter
+            mode="cursor"
+            count={page.data?.items.length ?? 0}
+            canNewer={cursors.length > 1}
+            canOlder={Boolean(page.data?.next_cursor)}
+            loading={page.isFetching}
+            onNewer={() => setCursors((c) => c.slice(0, -1))}
+            onOlder={() => setCursors((c) => [...c, page.data?.next_cursor ?? undefined])}
+          />
         </div>
       </Card>
     </>

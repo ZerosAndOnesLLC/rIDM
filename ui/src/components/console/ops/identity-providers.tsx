@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import Link from "next/link";
@@ -57,7 +58,7 @@ export function IdentityProvidersPage({ tenant, selected }: { tenant: string; se
             ) : list.isError ? (
               <ErrorLine error={list.error} />
             ) : list.data.length === 0 ? (
-              <p className="text-body text-muted">No providers yet.</p>
+              <EmptyState compact title="No providers yet" />
             ) : (
               <ul className="flex flex-col gap-0.5">
                 {list.data.map((p) => (

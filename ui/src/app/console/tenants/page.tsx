@@ -1,13 +1,14 @@
 "use client";
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Settings2 } from "lucide-react";
+import { Building2, Plus, Settings2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Field, SelectInput, TextInput } from "@/components/console/form";
+import { DataTable, ListFooter, type Column } from "@/components/base/data-table";
+import { EmptyState } from "@/components/base/empty-state";
 import { Badge, Button, Modal, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { formatDate } from "@/i18n";
 import { useDebounced } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
@@ -35,6 +36,37 @@ export default function TenantsPage() {
   const regional = (regions.data?.length ?? 0) > 1;
   const rows = tenants.data?.pages.flatMap((p) => p.items) ?? [];
   const canCreate = me?.scope === "global" && can("ridm:tenants:create");
+  type Row = (typeof rows)[number];
+  const columns: Column<Row>[] = [
+    {
+      key: "name",
+      header: "Tenant",
+      width: "minmax(10rem, 2fr)",
+      cell: (t) => (
+        <span className="min-w-0 truncate font-medium text-ink">
+          {t.display_name}
+          {t.slug === current && <span className="ms-2 text-caption font-normal text-muted">current</span>}
+        </span>
+      ),
+    },
+    { key: "slug", header: "Slug", width: "minmax(7rem, 1fr)", cell: (t) => <span className="truncate font-mono text-small text-muted">{t.slug}</span> },
+    ...(regional ? [{ key: "region", header: "Region", width: "7rem", cell: (t: Row) => <span className="font-mono text-small text-muted">{t.data_region ?? "home"}</span> }] : []),
+    { key: "status", header: "Status", width: "6.5rem", cell: (t) => (t.relocating ? <Badge tone="accent">Moving</Badge> : t.status === "active" ? <Badge tone="ok">Active</Badge> : <Badge tone="danger">Disabled</Badge>) },
+    { key: "created", header: "Created", width: "8rem", cell: (t) => <span className="text-muted">{formatDate("en", t.created_at, { dateStyle: "medium" })}</span> },
+    {
+      key: "actions",
+      header: "Actions",
+      hideHeader: true,
+      width: "6.5rem",
+      align: "end",
+      cell: (t) => (
+        <Link href={`/console/settings/?tenant=${encodeURIComponent(t.slug)}`} className="inline-flex items-center gap-1.5 rounded-[var(--radius)] px-2.5 py-1.5 text-small text-link no-underline hover:bg-ground hover:underline">
+          <Settings2 className="size-4" aria-hidden />
+          Settings
+        </Link>
+      ),
+    },
+  ];
 
   return (
     <>
@@ -57,57 +89,16 @@ export default function TenantsPage() {
         <p role="alert" className="text-lead text-danger">
           {tenants.error.message}
         </p>
-      ) : tenants.isPending ? (
-        <Spinner label="Loading tenants…" />
       ) : (
-        <div className="overflow-x-auto rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
-          <table className="w-full text-body">
-            <thead className="text-start text-caption uppercase tracking-wide text-muted">
-              <tr className="border-b border-line">
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Tenant</th>
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Slug</th>
-                {regional && <th scope="col" className="px-4 py-2.5 text-start font-medium">Region</th>}
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Status</th>
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Created</th>
-                <th scope="col" className="px-4 py-2.5 text-end font-medium"><span className="sr-only">Actions</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={regional ? 6 : 5} className="px-4 py-8 text-center text-muted">No tenant matches.</td>
-                </tr>
-              )}
-              {rows.map((t) => (
-                <tr key={t.id} className="border-b border-line last:border-b-0 hover:bg-ground/60">
-                  <td className="px-4 py-2.5 font-medium text-ink">
-                    {t.display_name}
-                    {t.slug === current && <span className="ms-2 text-caption font-normal text-muted">current</span>}
-                  </td>
-                  <td className="px-4 py-2.5 font-mono text-small text-muted">{t.slug}</td>
-                  {regional && <td className="px-4 py-2.5 font-mono text-small text-muted">{t.data_region ?? "home"}</td>}
-                  <td className="px-4 py-2.5">
-                    {t.relocating ? <Badge tone="accent">Moving</Badge> : t.status === "active" ? <Badge tone="ok">Active</Badge> : <Badge tone="danger">Disabled</Badge>}
-                  </td>
-                  <td className="px-4 py-2.5 text-muted">{formatDate("en", t.created_at, { dateStyle: "medium" })}</td>
-                  <td className="px-4 py-2.5 text-end">
-                    <Link href={`/console/settings/?tenant=${encodeURIComponent(t.slug)}`} className="inline-flex items-center gap-1.5 rounded-[var(--radius)] px-2.5 py-1.5 text-link hover:bg-ground">
-                      <Settings2 className="size-4" aria-hidden />
-                      Settings
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {tenants.hasNextPage && (
-            <div className="border-t border-line px-4 py-2.5 text-center">
-              <Button onClick={() => void tenants.fetchNextPage()} disabled={tenants.isFetchingNextPage}>
-                {tenants.isFetchingNextPage ? "Loading…" : "Load more"}
-              </Button>
-            </div>
-          )}
-        </div>
+        <DataTable
+          label="Tenants"
+          columns={columns}
+          rows={rows}
+          rowKey={(t) => t.id}
+          loading={tenants.isPending}
+          empty={<EmptyState icon={Building2} title="No tenant matches" description="Try a different slug or name." />}
+          footer={<ListFooter mode="more" count={rows.length} hasMore={tenants.hasNextPage} loading={tenants.isFetchingNextPage} onMore={() => void tenants.fetchNextPage()} />}
+        />
       )}
       {canCreate && <CreateTenant open={creating} onOpenChange={setCreating} regions={regional ? (regions.data ?? []) : []} />}
     </>

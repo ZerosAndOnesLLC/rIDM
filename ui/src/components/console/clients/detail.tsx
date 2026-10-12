@@ -1,5 +1,7 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
+import { DataTable } from "@/components/base/data-table";
 import { ConfirmDialog } from "@/components/base/confirm-dialog";
 import { useToast } from "@/components/base/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -547,37 +549,31 @@ function SecretsSection({ tenant, c, editable, onReveal, onChanged }: { tenant: 
   return (
     <Section id="secrets" title="Secrets" description="Shown once when generated. Rotate with a grace period so a running deployment can switch over.">
       <div className="sm:col-span-2">
-        <table className="w-full text-body">
-          <thead className="text-caption uppercase tracking-wide text-muted">
-            <tr className="border-b border-line">
-              <th scope="col" className="py-2 text-start font-medium">Secret</th>
-              <th scope="col" className="py-2 text-start font-medium">Created</th>
-              <th scope="col" className="py-2 text-start font-medium">Valid until</th>
-              <th scope="col" className="py-2 text-end font-medium"><span className="sr-only">Actions</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {c.secrets.length === 0 && (
-              <tr>
-                <td colSpan={4} className="py-4 text-center text-muted">No secret yet; generate one below.</td>
-              </tr>
-            )}
-            {c.secrets.map((s) => (
-              <tr key={s.id} className="border-b border-line last:border-b-0">
-                <td className="py-2 font-mono text-small text-muted">…{s.id.slice(-8)}</td>
-                <td className="py-2 text-muted">{formatDate("en", s.created_at)}</td>
-                <td className="py-2">{s.expires_at ? <Badge>Retiring {formatDate("en", s.expires_at)}</Badge> : <Badge tone="ok">Current</Badge>}</td>
-                <td className="py-2 text-end">
-                  {editable && c.secrets.length > 1 && (
-                    <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={revoke.isPending} onClick={() => setConfirm({ kind: "revoke", id: s.id })}>
-                      Revoke
-                    </Button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DataTable
+          label="Secrets"
+          minWidth="30rem"
+          columns={[
+            { key: "id", header: "Secret", width: "minmax(6rem, 1fr)", cell: (sec: ClientView["secrets"][number]) => <span className="font-mono text-small text-muted">…{sec.id.slice(-8)}</span> },
+            { key: "created", header: "Created", width: "minmax(9rem, 1fr)", cell: (sec) => <span className="text-muted">{formatDate("en", sec.created_at)}</span> },
+            { key: "until", header: "Valid until", width: "minmax(9rem, 1.2fr)", cell: (sec) => (sec.expires_at ? <Badge>Retiring {formatDate("en", sec.expires_at)}</Badge> : <Badge tone="ok">Current</Badge>) },
+            {
+              key: "actions",
+              header: "Actions",
+              hideHeader: true,
+              width: "5.5rem",
+              align: "end",
+              cell: (sec) =>
+                editable && c.secrets.length > 1 ? (
+                  <Button variant="danger" className="min-h-7 px-2.5 text-caption" disabled={revoke.isPending} onClick={() => setConfirm({ kind: "revoke", id: sec.id })}>
+                    Revoke
+                  </Button>
+                ) : null,
+            },
+          ]}
+          rows={c.secrets}
+          rowKey={(sec) => sec.id}
+          empty={<EmptyState compact title="No secret yet" description={editable ? "Generate one below." : undefined} />}
+        />
       </div>
       {editable && (
         <div className="flex flex-wrap items-end gap-3 sm:col-span-2">

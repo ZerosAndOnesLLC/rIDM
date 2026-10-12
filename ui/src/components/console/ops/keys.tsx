@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Plus, RotateCw } from "lucide-react";
 import { useState } from "react";
@@ -131,7 +132,7 @@ export function KeysPage({ tenant }: { tenant: string }) {
               </span>
             </Card>
           )}
-          {all.length === 0 && <p className="text-body text-muted">No keys yet; rotate to create the first active key.</p>}
+          {all.length === 0 && <EmptyState compact title="No keys yet" description="Rotate to create the first active key." />}
           {all.map((k) => (
             <KeyCard key={k.id} k={k} editable={editable} pending={act.isPending} onAct={(op) => run({ id: k.id, kid: k.kid, op })} />
           ))}

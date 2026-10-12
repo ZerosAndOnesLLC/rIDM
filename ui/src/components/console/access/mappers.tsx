@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import Link from "next/link";
@@ -51,7 +52,7 @@ export function MappersPage({ tenant, selected }: { tenant: string; selected: st
             ) : mappers.isError ? (
               <ErrorLine error={mappers.error} />
             ) : rows.length === 0 ? (
-              <p className="text-body text-muted">No mappers yet.</p>
+              <EmptyState compact title="No mappers yet" />
             ) : (
               <ul className="flex flex-col gap-0.5">
                 {rows.map((m) => (

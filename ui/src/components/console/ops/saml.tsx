@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, KeyRound, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -96,7 +97,7 @@ export function SamlPage({ tenant, selected }: { tenant: string; selected: strin
               ) : list.isError ? (
                 <ErrorLine error={list.error} />
               ) : list.data.length === 0 ? (
-                <p className="text-body text-muted">No service providers yet.</p>
+                <EmptyState compact title="No service providers yet" />
               ) : (
                 <ul className="flex flex-col gap-0.5">
                   {list.data.map((p) => (

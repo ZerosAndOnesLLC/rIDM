@@ -1,5 +1,6 @@
 "use client";
 
+import { ListFooter } from "@/components/base/data-table";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { SelectInput } from "@/components/console/form";
@@ -144,10 +145,8 @@ export function OrganizationRoles({
         </ul>
       )}
       {grants.hasNextPage && (
-        <div className="mt-2 text-center">
-          <Button onClick={() => void grants.fetchNextPage()} disabled={grants.isFetchingNextPage}>
-            {grants.isFetchingNextPage ? "Loading…" : "Load more"}
-          </Button>
+        <div className="mt-2">
+          <ListFooter mode="more" count={(grants.data?.pages.flatMap((p) => p.items) ?? []).length} hasMore={grants.hasNextPage} loading={grants.isFetchingNextPage} onMore={() => void grants.fetchNextPage()} />
         </div>
       )}
       {editable && (

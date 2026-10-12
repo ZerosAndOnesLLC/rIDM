@@ -1,11 +1,12 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { Network, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { DataTable, type Column } from "@/components/base/data-table";
+import { EmptyState } from "@/components/base/empty-state";
 import { SelectInput, TextInput } from "@/components/console/form";
 import { Badge, Button, IconButton, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { useClientNames } from "@/lib/console/hooks";
 import type { IpRule } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
@@ -57,103 +58,105 @@ export function IpRulesPage({ tenant }: { tenant: string }) {
     onSuccess: invalidate,
   });
   const names = clients.data ?? {};
-  return (
-    <>
-      <PageHeader title="IP rules" sub="Allow and deny networks for the whole tenant or one client, enforced on sign-in, authorization and token requests. The most specific matching network decides; once a scope has an allow rule, every other address is refused." />
-      <ErrorLine error={add.error ?? patch.error ?? remove.error} />
-      {rules.isPending ? (
-        <Spinner label="Loading…" />
-      ) : rules.isError ? (
-        <ErrorLine error={rules.error} />
-      ) : (
-        <div className="overflow-x-auto rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
-          <table className="w-full text-body">
-            <thead className="text-caption uppercase tracking-wide text-muted">
-              <tr className="border-b border-line">
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Network</th>
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Action</th>
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Applies to</th>
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Description</th>
-                <th scope="col" className="px-4 py-2.5 text-end font-medium"><span className="sr-only">Actions</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rules.data.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-muted">No rules yet.</td>
-                </tr>
-              )}
-              {rules.data.map((r) => (
-                <RuleRow key={r.id} r={r} clientName={r.client_id ? (names[r.client_id] ?? "one client") : "Whole tenant"} editable={editable} onPatch={(body) => patch.mutate({ id: r.id, body })} onRemove={() => remove.mutate(r.id)} />
-              ))}
-            </tbody>
-          </table>
-          {editable && (
-            <form
-              className="flex flex-wrap items-center gap-2 border-t border-line p-3"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (cidr.trim()) add.mutate();
-              }}
-            >
-              <TextInput aria-label="Network (CIDR)" value={cidr} onChange={(e) => setCidr(e.target.value)} placeholder="203.0.113.0/24" spellCheck={false} className="max-w-[14rem]" />
-              <SelectInput aria-label="Action" value={action} onChange={(e) => setAction(e.target.value as "allow" | "deny")} className="max-w-[8rem]">
-                <option value="deny">Deny</option>
-                <option value="allow">Allow</option>
-              </SelectInput>
-              <SelectInput aria-label="Applies to" value={clientId} onChange={(e) => setClientId(e.target.value)} className="max-w-[14rem]">
-                <option value="">Whole tenant</option>
-                {Object.entries(names)
-                  .sort((a, b) => a[1].localeCompare(b[1]))
-                  .map(([id, n]) => (
-                    <option key={id} value={id}>
-                      {n}
-                    </option>
-                  ))}
-              </SelectInput>
-              <TextInput aria-label="Description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Office network" className="min-w-[10rem] flex-1" />
-              <Button type="submit" variant="primary" disabled={!cidr.trim() || add.isPending}>
-                <Plus className="size-4" aria-hidden />
-                Add rule
-              </Button>
-            </form>
-          )}
-        </div>
-      )}
-    </>
-  );
-}
 
-function RuleRow({ r, clientName, editable, onPatch, onRemove }: { r: IpRule; clientName: string; editable: boolean; onPatch: (b: { action?: "allow" | "deny"; description?: string | null }) => void; onRemove: () => void }) {
-  const [description, setDescription] = useState(r.description ?? "");
-  return (
-    <tr className="border-b border-line last:border-b-0">
-      <td className="px-4 py-2 font-mono text-small text-ink">{r.cidr}</td>
-      <td className="px-4 py-2">
-        {editable ? (
-          <SelectInput aria-label={`Action for ${r.cidr}`} value={r.action} onChange={(e) => onPatch({ action: e.target.value as "allow" | "deny" })} className="max-w-[7rem]">
+  const columns: Column<IpRule>[] = [
+    { key: "cidr", header: "Network", width: "minmax(9rem, 1fr)", cell: (r) => <span className="font-mono text-small text-ink">{r.cidr}</span> },
+    {
+      key: "action",
+      header: "Action",
+      width: "7.5rem",
+      cell: (r) =>
+        editable ? (
+          <SelectInput aria-label={`Action for ${r.cidr}`} value={r.action} onChange={(e) => patch.mutate({ id: r.id, body: { action: e.target.value as "allow" | "deny" } })} className="min-h-8 max-w-[7rem] text-small">
             <option value="deny">Deny</option>
             <option value="allow">Allow</option>
           </SelectInput>
         ) : (
           <Badge tone={r.action === "allow" ? "ok" : "danger"}>{r.action}</Badge>
-        )}
-      </td>
-      <td className="px-4 py-2 text-muted">{clientName}</td>
-      <td className="px-4 py-2">
-        {editable ? (
-          <TextInput aria-label={`Description for ${r.cidr}`} value={description} onChange={(e) => setDescription(e.target.value)} onBlur={() => (description || null) !== (r.description ?? null) && onPatch({ description: description || null })} />
-        ) : (
-          <span className="text-muted">{r.description ?? "—"}</span>
-        )}
-      </td>
-      <td className="px-4 py-2 text-end">
-        {editable && (
-          <IconButton label={`Delete rule ${r.cidr}`} onClick={onRemove} className="text-danger hover:bg-danger-soft">
+        ),
+    },
+    { key: "scope", header: "Applies to", width: "minmax(8rem, 1fr)", cell: (r) => <span className="truncate text-muted">{r.client_id ? (names[r.client_id] ?? "one client") : "Whole tenant"}</span> },
+    {
+      key: "description",
+      header: "Description",
+      width: "minmax(10rem, 2fr)",
+      cell: (r) => (editable ? <DescriptionInput r={r} onPatch={(d) => patch.mutate({ id: r.id, body: { description: d } })} /> : <span className="truncate text-muted">{r.description ?? "—"}</span>),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      hideHeader: true,
+      width: "2.5rem",
+      align: "end",
+      cell: (r) =>
+        editable ? (
+          <IconButton label={`Delete rule ${r.cidr}`} onClick={() => remove.mutate(r.id)} className="text-danger hover:bg-danger-soft">
             <Trash2 className="size-4" aria-hidden />
           </IconButton>
-        )}
-      </td>
-    </tr>
+        ) : null,
+    },
+  ];
+
+  return (
+    <>
+      <PageHeader title="IP rules" sub="Allow and deny networks for the whole tenant or one client, enforced on sign-in, authorization and token requests. The most specific matching network decides; once a scope has an allow rule, every other address is refused." />
+      <ErrorLine error={add.error ?? patch.error ?? remove.error} />
+      {rules.isError ? (
+        <ErrorLine error={rules.error} />
+      ) : (
+        <DataTable
+          label="IP rules"
+          columns={columns}
+          rows={rules.data ?? []}
+          rowKey={(r) => r.id}
+          loading={rules.isPending}
+          empty={<EmptyState icon={Network} title="No rules yet" description={editable ? "Every address is allowed until a rule says otherwise. Add the first one below." : "Every address is allowed until a rule says otherwise."} />}
+        />
+      )}
+      {editable && !rules.isPending && (
+        <form
+          className="mt-3 flex flex-wrap items-center gap-2 rounded-[var(--radius)] border border-line bg-paper p-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (cidr.trim()) add.mutate();
+          }}
+        >
+          <TextInput aria-label="Network (CIDR)" value={cidr} onChange={(e) => setCidr(e.target.value)} placeholder="203.0.113.0/24" spellCheck={false} className="max-w-[14rem]" />
+          <SelectInput aria-label="Action" value={action} onChange={(e) => setAction(e.target.value as "allow" | "deny")} className="max-w-[8rem]">
+            <option value="deny">Deny</option>
+            <option value="allow">Allow</option>
+          </SelectInput>
+          <SelectInput aria-label="Applies to" value={clientId} onChange={(e) => setClientId(e.target.value)} className="max-w-[14rem]">
+            <option value="">Whole tenant</option>
+            {Object.entries(names)
+              .sort((a, b) => a[1].localeCompare(b[1]))
+              .map(([id, n]) => (
+                <option key={id} value={id}>
+                  {n}
+                </option>
+              ))}
+          </SelectInput>
+          <TextInput aria-label="Description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Office network" className="min-w-[10rem] flex-1" />
+          <Button type="submit" variant="primary" disabled={!cidr.trim() || add.isPending}>
+            <Plus className="size-4" aria-hidden />
+            Add rule
+          </Button>
+        </form>
+      )}
+    </>
+  );
+}
+
+/** The rule's description, saved when the field is left. */
+function DescriptionInput({ r, onPatch }: { r: IpRule; onPatch: (d: string | null) => void }) {
+  const [description, setDescription] = useState(r.description ?? "");
+  return (
+    <TextInput
+      aria-label={`Description for ${r.cidr}`}
+      value={description}
+      onChange={(e) => setDescription(e.target.value)}
+      onBlur={() => (description || null) !== (r.description ?? null) && onPatch(description || null)}
+      className="min-h-8 text-small"
+    />
   );
 }

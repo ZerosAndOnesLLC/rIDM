@@ -1,10 +1,12 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Mail } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { DataTable, type Column } from "@/components/base/data-table";
+import { EmptyState } from "@/components/base/empty-state";
 import { Field, NumberInput, TextInput } from "@/components/console/form";
 import { Badge, Button, Modal } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { formatDate } from "@/i18n";
 import { useConsole } from "@/lib/console/session";
 import { roleName } from "@/lib/console/users";
@@ -120,7 +122,6 @@ export function InvitationsList({ tenant }: { tenant: string }) {
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["invitations", tenant] }),
   });
-  if (list.isPending) return <Spinner label="Loading invitations…" />;
   if (list.isError)
     return (
       <p role="alert" className="text-lead text-danger">
@@ -129,53 +130,56 @@ export function InvitationsList({ tenant }: { tenant: string }) {
     );
   const writer = can("ridm:invitations:write");
   const err = resend.error ?? revoke.error;
+  type Row = NonNullable<typeof list.data>[number];
+  const columns: Column<Row>[] = [
+    { key: "email", header: "Email", width: "minmax(12rem, 2fr)", cell: (i) => <span className="truncate font-medium text-ink">{i.email}</span> },
+    { key: "sent", header: "Sent", width: "minmax(8rem, 1fr)", cell: (i) => <span className="text-muted">{formatDate("en", i.created_at)}</span> },
+    { key: "expires", header: "Expires", width: "minmax(8rem, 1fr)", cell: (i) => (new Date(i.expires_at) < new Date() ? <Badge tone="danger">Expired</Badge> : <span className="text-muted">{formatDate("en", i.expires_at)}</span>) },
+    {
+      key: "grants",
+      header: "Roles / groups",
+      width: "7rem",
+      cell: (i) => (
+        <span className="text-muted">
+          {i.roles.length} / {i.groups.length}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      hideHeader: true,
+      width: "10rem",
+      align: "end",
+      cell: (i) =>
+        writer ? (
+          <span className="inline-flex gap-1.5">
+            <Button className="min-h-7 px-2.5 text-caption" disabled={resend.isPending} onClick={() => resend.mutate(i.id)}>
+              Resend
+            </Button>
+            <Button variant="danger" className="min-h-7 px-2.5 text-caption" disabled={revoke.isPending} onClick={() => revoke.mutate(i.id)}>
+              Revoke
+            </Button>
+          </span>
+        ) : null,
+    },
+  ];
   return (
-    <div className="rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
+    <>
       {err && (
-        <p role="alert" className="px-4 pt-3 text-body text-danger">
+        <p role="alert" className="mb-3 text-body text-danger">
           {err.message}
         </p>
       )}
-      <table className="w-full text-body">
-        <thead className="text-caption uppercase tracking-wide text-muted">
-          <tr className="border-b border-line">
-            <th scope="col" className="px-4 py-2.5 text-start font-medium">Email</th>
-            <th scope="col" className="px-4 py-2.5 text-start font-medium">Sent</th>
-            <th scope="col" className="px-4 py-2.5 text-start font-medium">Expires</th>
-            <th scope="col" className="px-4 py-2.5 text-start font-medium">Roles / groups</th>
-            <th scope="col" className="px-4 py-2.5 text-end font-medium"><span className="sr-only">Actions</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {list.data.length === 0 && (
-            <tr>
-              <td colSpan={5} className="px-4 py-8 text-center text-muted">No open invitations.</td>
-            </tr>
-          )}
-          {list.data.map((i) => (
-            <tr key={i.id} className="border-b border-line last:border-b-0">
-              <td className="px-4 py-2.5 font-medium text-ink">{i.email}</td>
-              <td className="px-4 py-2.5 text-muted">{formatDate("en", i.created_at)}</td>
-              <td className="px-4 py-2.5 text-muted">{new Date(i.expires_at) < new Date() ? <Badge tone="danger">Expired</Badge> : formatDate("en", i.expires_at)}</td>
-              <td className="px-4 py-2.5 text-muted">
-                {i.roles.length} / {i.groups.length}
-              </td>
-              <td className="px-4 py-2.5 text-end">
-                {writer && (
-                  <span className="inline-flex gap-1.5">
-                    <Button className="min-h-8 px-2.5 text-small" disabled={resend.isPending} onClick={() => resend.mutate(i.id)}>
-                      Resend
-                    </Button>
-                    <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={revoke.isPending} onClick={() => revoke.mutate(i.id)}>
-                      Revoke
-                    </Button>
-                  </span>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+      <DataTable
+        label="Invitations"
+        columns={columns}
+        rows={list.data ?? []}
+        rowKey={(i) => i.id}
+        loading={list.isPending}
+        minWidth="44rem"
+        empty={<EmptyState icon={Mail} title="No open invitations" description="Invitations that were accepted, revoked or expired are not listed." />}
+      />
+    </>
   );
 }

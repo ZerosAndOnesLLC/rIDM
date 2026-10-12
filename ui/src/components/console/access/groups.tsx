@@ -1,5 +1,7 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Plus, UserRoundPlus } from "lucide-react";
 import Link from "next/link";
@@ -43,7 +45,7 @@ export function GroupsPage({ tenant, selected }: { tenant: string; selected: str
       <Split
         list={
           <Card title="Tree">
-            {groups.isPending ? <Spinner label="Loading…" /> : groups.isError ? <ErrorLine error={groups.error} /> : all.length === 0 ? <p className="text-body text-muted">No groups yet.</p> : <GroupTree tree={tree} parent={null} depth={0} tenant={tenant} selected={selected} />}
+            {groups.isPending ? <Skeleton shape="lines" count={6} /> : groups.isError ? <ErrorLine error={groups.error} /> : all.length === 0 ? <EmptyState compact title="No groups yet" /> : <GroupTree tree={tree} parent={null} depth={0} tenant={tenant} selected={selected} />}
           </Card>
         }
         detail={selected ? <GroupDetailView key={selected} tenant={tenant} id={selected} all={all} onCreateChild={() => setCreating({ parent: selected })} /> : <p className="text-lead text-muted">Choose a group.</p>}

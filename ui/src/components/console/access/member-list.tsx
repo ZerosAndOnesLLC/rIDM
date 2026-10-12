@@ -1,11 +1,12 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
+import { EmptyState } from "@/components/base/empty-state";
+import { ListFooter } from "@/components/base/data-table";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { TextInput } from "@/components/console/form";
-import { Button } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import type { Member } from "@/lib/console/access";
 import { useDebounced } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
@@ -71,19 +72,17 @@ export function MemberList({
         />
       )}
       {pages.isPending ? (
-        <Spinner label="Loading members…" />
+        <Skeleton shape="lines" count={4} />
       ) : pages.isError ? (
         <ErrorLine error={pages.error} />
       ) : members.length === 0 ? (
-        filtering ? <p className="text-body text-muted">No member matches.</p> : empty
+        filtering ? <EmptyState compact title="No member matches" /> : empty
       ) : (
         <ul className="divide-y divide-line">{members.map((m) => row(m))}</ul>
       )}
       {pages.hasNextPage && (
-        <div className="mt-2 text-center">
-          <Button onClick={() => void pages.fetchNextPage()} disabled={pages.isFetchingNextPage}>
-            {pages.isFetchingNextPage ? "Loading…" : "Load more"}
-          </Button>
+        <div className="mt-2">
+          <ListFooter mode="more" count={members.length} hasMore={pages.hasNextPage} loading={pages.isFetchingNextPage} onMore={() => void pages.fetchNextPage()} />
         </div>
       )}
     </>
