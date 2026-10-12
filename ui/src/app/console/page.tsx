@@ -70,10 +70,10 @@ export default function Overview() {
                 <Row label="Tenant">{me?.tenant_slug}</Row>
               </dl>
             ) : (
-              <p className="text-[0.875rem] text-muted">Nothing to show here with these permissions.</p>
+              <p className="text-body text-muted">Nothing to show here with these permissions.</p>
             )
           ) : detail.isError ? (
-            <p className="text-[0.875rem] text-danger">{detail.error.message}</p>
+            <p className="text-body text-danger">{detail.error.message}</p>
           ) : detail.data ? (
             <dl>
               <Row label="Name">{detail.data.display_name}</Row>
@@ -83,13 +83,13 @@ export default function Overview() {
               <Row label="Default locale">{detail.data.settings.locale.default}</Row>
             </dl>
           ) : (
-            <p className="text-[0.875rem] text-muted">Loading…</p>
+            <p className="text-body text-muted">Loading…</p>
           )}
         </Card>
 
         <Card
           title={(me?.permissions?.length ?? 0) > 0 ? "Permissions" : "Permissions in this organization"}
-          actions={<span className="text-[0.8125rem] text-muted">{permissions.length}</span>}
+          actions={<span className="text-small text-muted">{permissions.length}</span>}
         >
           <div className="flex flex-wrap gap-1.5">
             {shown.map((p) => (
@@ -97,14 +97,14 @@ export default function Overview() {
             ))}
           </div>
           {permissions.length > 12 && (
-            <button type="button" onClick={() => setShowAll((s) => !s)} className="mt-3 text-[0.8125rem] text-link underline underline-offset-4">
+            <button type="button" onClick={() => setShowAll((s) => !s)} className="mt-3 text-small text-link underline underline-offset-4">
               {showAll ? "Show fewer" : `Show all ${permissions.length}`}
             </button>
           )}
         </Card>
 
         <Card title="Getting around">
-          <ul className="flex flex-col gap-3 text-[0.875rem] text-ink">
+          <ul className="flex flex-col gap-3 text-body text-ink">
             <li className="flex items-center justify-between gap-3">
               <span className="inline-flex items-center gap-2">
                 <Search className="size-4 text-muted" aria-hidden />

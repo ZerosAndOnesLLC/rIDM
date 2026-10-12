@@ -105,7 +105,7 @@ function SetNewPassword({ tenant, token }: { tenant: string | null; token: strin
       <>
         <Title>{t("recover.title")}</Title>
         <Alert tone="ok">{t("recover.done")}</Alert>
-        <p className="mt-4 text-[0.875rem] text-muted">{t("recover.no_flow_hint")}</p>
+        <p className="mt-4 text-body text-muted">{t("recover.no_flow_hint")}</p>
       </>
     );
   }

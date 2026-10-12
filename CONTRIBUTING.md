@@ -64,7 +64,8 @@ binary (`api/src/routes/ui.rs`), is off by default so a Rust-only checkout build
 Node; a debug build with it reads `ui/out` from disk at run time, so rebuilding the
 export needs no recompile. `npm run build` ends with `scripts/csp.mjs`, which writes each
 page's `Content-Security-Policy` meta tag (inline scripts allowed by SHA-256 hash); it
-has its own tests, `npm run test:scripts`.
+has its own tests, `npm run test:scripts`; the UI's pure TypeScript modules (the
+tenant theme engine in `src/lib/theme/`) have `node --test` tests, `npm run test:unit`.
 
 ## Conventions
 
@@ -126,7 +127,7 @@ matrix. The short version:
 | Integration | `cargo test --workspace --tests` |
 | Coverage | `cargo llvm-cov --workspace --features ridm-api/kerberos,ridm-api/hsm-pkcs11,ridm-api/kms-aws,ridm-api/kms-vault,ridm-api/kms-gcp,ridm-api/kms-azure,ridm-api/test-support --html` (every feature but `fips`) |
 | UI lint / types / build | `npm run lint && npm run typecheck && npm run build` |
-| UI build scripts | `npm run test:scripts` |
+| UI build scripts and unit tests | `npm run test:scripts && npm run test:unit` |
 | UI end-to-end | `npm run e2e` (Playwright, against a running API and Mailpit; see [`ui/e2e/README.md`](ui/e2e/README.md)) |
 | Supply chain | `cargo audit && cargo deny check` |
 | Fuzz (nightly) | `api/fuzz/run.sh 60` (one target: `api/fuzz/run.sh 60 authorize_params`) |
@@ -198,7 +199,7 @@ Every pull request runs the `ci` workflow (`.github/workflows/ci.yml`):
 
 | Job | Checks |
 |-----|--------|
-| `static` | rustfmt, `cargo check`, clippy with warnings denied (default and optional features), `cargo audit`, `cargo deny`, `cargo package -p ridm-auth`, ESLint, `tsc`, `npm run test:scripts`, `npm audit`, the Helm chart's lint and schema |
+| `static` | rustfmt, `cargo check`, clippy with warnings denied (default and optional features), `cargo audit`, `cargo deny`, `cargo package -p ridm-auth`, ESLint, `tsc`, `npm run test:scripts`, `npm run test:unit`, `npm audit`, the Helm chart's lint and schema |
 | `unit`, `integration` | the Rust tests, integration against Postgres and Valkey |
 | `coverage` | `cargo llvm-cov`, with an 80% line floor on each of `services/`, `oidc/` and `middleware/` |
 | `ui-build` | the UI's static export |

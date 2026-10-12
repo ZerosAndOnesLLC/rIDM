@@ -77,7 +77,7 @@ export function OrganizationsPage({ tenant, selected }: { tenant: string; select
             ) : list.isError ? (
               <ErrorLine error={list.error} />
             ) : items.length === 0 ? (
-              <p className="mt-3 text-[0.875rem] text-muted">
+              <p className="mt-3 text-body text-muted">
                 {q ? "Nothing matches." : "No organizations yet."}
               </p>
             ) : (
@@ -87,7 +87,7 @@ export function OrganizationsPage({ tenant, selected }: { tenant: string; select
                     <Link
                       href={href("organizations", tenant, { org: o.id })}
                       aria-current={o.id === selected ? "page" : undefined}
-                      className={`flex items-center gap-2 rounded-[var(--radius)] px-2 py-1.5 text-[0.875rem] ${o.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
+                      className={`flex items-center gap-2 rounded-[var(--radius)] px-2 py-1.5 text-body ${o.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
                     >
                       <Briefcase className="size-3.5 shrink-0 text-muted" aria-hidden />
                       <span className="truncate">{o.display_name}</span>
@@ -110,7 +110,7 @@ export function OrganizationsPage({ tenant, selected }: { tenant: string; select
           selected ? (
             <OrganizationDetailView key={selected} tenant={tenant} id={selected} />
           ) : (
-            <p className="text-[0.9rem] text-muted">Choose an organization.</p>
+            <p className="text-lead text-muted">Choose an organization.</p>
           )
         }
       />

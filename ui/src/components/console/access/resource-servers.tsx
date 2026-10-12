@@ -47,11 +47,11 @@ export function ResourceServersPage({ tenant, selected }: { tenant: string; sele
                     <Link
                       href={href("resource-servers", tenant, { rs: r.id })}
                       aria-current={r.id === selected ? "page" : undefined}
-                      className={`flex items-center justify-between gap-2 rounded-[var(--radius)] px-2 py-1.5 text-[0.875rem] ${r.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
+                      className={`flex items-center justify-between gap-2 rounded-[var(--radius)] px-2 py-1.5 text-body ${r.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
                     >
                       <span className="min-w-0">
                         <span className="block truncate">{r.name}</span>
-                        <span className="block truncate font-mono text-[0.75rem] text-muted">{r.identifier}</span>
+                        <span className="block truncate font-mono text-caption text-muted">{r.identifier}</span>
                       </span>
                       {r.built_in && <Badge>built-in</Badge>}
                     </Link>
@@ -61,7 +61,7 @@ export function ResourceServersPage({ tenant, selected }: { tenant: string; sele
             )}
           </Card>
         }
-        detail={selected ? <ResourceServerView key={selected} tenant={tenant} id={selected} /> : <p className="text-[0.9rem] text-muted">Choose a resource server.</p>}
+        detail={selected ? <ResourceServerView key={selected} tenant={tenant} id={selected} /> : <p className="text-lead text-muted">Choose a resource server.</p>}
       />
       <CreateResourceServer tenant={tenant} open={creating} onOpenChange={setCreating} />
     </>
@@ -152,7 +152,7 @@ function ResourceServerView({ tenant, id }: { tenant: string; id: string }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-[1.125rem] font-semibold text-ink">
+        <h2 className="text-title font-semibold text-ink">
           {draft.name} {draft.built_in && <Badge>built-in</Badge>}
         </h2>
         <SaveIndicator status={status} error={error} />
@@ -214,17 +214,17 @@ function Permissions({ tenant, rs, editable, onChanged }: { tenant: string; rs: 
   });
   return (
     <Card title="Permissions">
-      <p className="mb-2 text-[0.8125rem] text-muted">Named permissions roles can be granted; they appear in the token&apos;s permissions claim.</p>
-      {rs.permissions.length === 0 && <p className="text-[0.875rem] text-muted">None yet.</p>}
+      <p className="mb-2 text-small text-muted">Named permissions roles can be granted; they appear in the token&apos;s permissions claim.</p>
+      {rs.permissions.length === 0 && <p className="text-body text-muted">None yet.</p>}
       <ul className="divide-y divide-line">
         {rs.permissions.map((p) => (
-          <li key={p.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
+          <li key={p.id} className="flex items-center justify-between gap-3 py-2 text-body">
             <span>
-              <span className="font-mono text-[0.8125rem] font-medium text-ink">{p.name}</span>
+              <span className="font-mono text-small font-medium text-ink">{p.name}</span>
               {p.description && <span className="ms-2 text-muted">{p.description}</span>}
             </span>
             {editable && (
-              <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={remove.isPending} onClick={() => remove.mutate(p.id)}>
+              <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={remove.isPending} onClick={() => remove.mutate(p.id)}>
                 Remove
               </Button>
             )}

@@ -79,7 +79,7 @@ export function KeysPage({ tenant }: { tenant: string }) {
                   const start = ((new Date(k.not_before).getTime() - span.from) / (span.to - span.from)) * 100;
                   const end = (((k.expires_at ? new Date(k.expires_at).getTime() : span.to) - span.from) / (span.to - span.from)) * 100;
                   return (
-                    <li key={k.id} className="grid grid-cols-[10rem_minmax(0,1fr)] items-center gap-3 text-[0.8125rem]">
+                    <li key={k.id} className="grid grid-cols-[10rem_minmax(0,1fr)] items-center gap-3 text-small">
                       <span className="truncate font-mono text-muted">{k.kid}</span>
                       <span className="relative h-4 rounded bg-ground" aria-hidden>
                         <span
@@ -91,12 +91,12 @@ export function KeysPage({ tenant }: { tenant: string }) {
                   );
                 })}
               </ol>
-              <span className="mt-2 block text-[0.75rem] text-muted">
+              <span className="mt-2 block text-caption text-muted">
                 {formatDate("en", span.from, { dateStyle: "medium" })} → {formatDate("en", span.to, { dateStyle: "medium" })}
               </span>
             </Card>
           )}
-          {all.length === 0 && <p className="text-[0.875rem] text-muted">No keys yet; rotate to create the first active key.</p>}
+          {all.length === 0 && <p className="text-body text-muted">No keys yet; rotate to create the first active key.</p>}
           {all.map((k) => (
             <KeyCard key={k.id} k={k} editable={editable} pending={act.isPending} onAct={(op) => act.mutate({ id: k.id, op })} />
           ))}
@@ -124,16 +124,16 @@ function KeyCard({ k, editable, pending, onAct }: { k: SigningKey; editable: boo
         editable && k.status !== "revoked" ? (
           <span className="flex gap-1.5">
             {k.status === "pending" && (
-              <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={pending} onClick={() => onAct("activate")}>
+              <Button className="min-h-8 px-2.5 text-small" disabled={pending} onClick={() => onAct("activate")}>
                 Activate
               </Button>
             )}
             {k.status === "active" && (
-              <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={pending} onClick={() => onAct("retire")}>
+              <Button className="min-h-8 px-2.5 text-small" disabled={pending} onClick={() => onAct("retire")}>
                 Retire
               </Button>
             )}
-            <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={pending} onClick={() => onAct("revoke")}>
+            <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={pending} onClick={() => onAct("revoke")}>
               Revoke
             </Button>
           </span>
@@ -146,11 +146,11 @@ function KeyCard({ k, editable, pending, onAct }: { k: SigningKey; editable: boo
         <Row label="Published until">{k.expires_at ? formatDate("en", k.expires_at) : k.status === "revoked" ? "Unpublished" : "Until retired"}</Row>
         <Row label="Master-key generation">{k.key_version}</Row>
       </dl>
-      <button type="button" onClick={() => setShowJwk((s) => !s)} aria-expanded={showJwk} className="mt-2 text-[0.8125rem] text-link underline underline-offset-4">
+      <button type="button" onClick={() => setShowJwk((s) => !s)} aria-expanded={showJwk} className="mt-2 text-small text-link underline underline-offset-4">
         {showJwk ? "Hide public key" : "Show public key (JWK)"}
       </button>
       {showJwk && (
-        <pre tabIndex={0} aria-label="Public JWK" className="mt-2 max-h-64 overflow-auto rounded-[var(--radius)] bg-ground px-3 py-2 font-mono text-[0.75rem] text-ink">
+        <pre tabIndex={0} aria-label="Public JWK" className="mt-2 max-h-64 overflow-auto rounded-[var(--radius)] bg-ground px-3 py-2 font-mono text-caption text-ink">
           {JSON.stringify(k.public_jwk, null, 2)}
         </pre>
       )}
@@ -247,18 +247,18 @@ function MasterKey() {
         editable ? (
           <span className="flex flex-wrap gap-1.5">
             {wrapper && (
-              <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={generate.isPending} onClick={() => generate.mutate()}>
+              <Button className="min-h-8 px-2.5 text-small" disabled={generate.isPending} onClick={() => generate.mutate()}>
                 New generation
               </Button>
             )}
-            <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={rotate.isPending || (status.data?.pending_rows ?? 0) === 0} onClick={() => rotate.mutate()}>
+            <Button className="min-h-8 px-2.5 text-small" disabled={rotate.isPending || (status.data?.pending_rows ?? 0) === 0} onClick={() => rotate.mutate()}>
               Re-encrypt pending rows
             </Button>
           </span>
         ) : undefined
       }
     >
-      <p className="mb-3 text-[0.8125rem] text-muted">
+      <p className="mb-3 text-small text-muted">
         {wrapper
           ? `Every secret at rest is encrypted under a data key that ${wrapper} holds wrapped; this server unwraps it at start-up. After a new generation, re-encrypt what is still under an older one.`
           : "Every secret at rest is encrypted under the server's master key. After rolling a new generation out (MASTER_KEY_VERSION), re-encrypt what is still under the old one."}
@@ -275,13 +275,13 @@ function MasterKey() {
             <Row label="Rows under older generations">{status.data.pending_rows === 0 ? <Badge tone="ok">None</Badge> : <Badge tone="accent">{status.data.pending_rows}</Badge>}</Row>
           </dl>
           {status.data.generations.length > 0 && (
-            <ul aria-label="Master-key generations" className="mt-3 divide-y divide-line rounded-[var(--radius)] border border-line text-[0.8125rem]">
+            <ul aria-label="Master-key generations" className="mt-3 divide-y divide-line rounded-[var(--radius)] border border-line text-small">
               {status.data.generations.map((g) => (
                 <li key={g.version} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
                   <span className="font-medium text-ink">Generation {g.version}</span>
                   <Badge tone={g.version === status.data.current_version ? "ok" : "neutral"}>{g.backend === "env" ? "environment" : g.backend}</Badge>
                   {!g.loaded && <Badge tone="danger">not readable on this server</Badge>}
-                  {g.key_ref && <code className="min-w-0 break-all font-mono text-[0.75rem] text-muted">{g.key_ref}</code>}
+                  {g.key_ref && <code className="min-w-0 break-all font-mono text-caption text-muted">{g.key_ref}</code>}
                   {g.created_at && <span className="text-muted">{formatDate("en", g.created_at)}</span>}
                 </li>
               ))}
@@ -290,12 +290,12 @@ function MasterKey() {
         </>
       )}
       {generate.data && (
-        <p role="status" className="mt-3 text-[0.8125rem] text-muted">
+        <p role="status" className="mt-3 text-small text-muted">
           Generation {generate.data.version} created and current; re-encrypt the pending rows to move them onto it.
         </p>
       )}
       {rotate.data && (
-        <p role="status" className="mt-3 text-[0.8125rem] text-muted">
+        <p role="status" className="mt-3 text-small text-muted">
           Re-encrypted {Object.values(rotate.data.rewritten).reduce((a, b) => a + b, 0)} rows under generation {rotate.data.target_version}
           {Object.keys(rotate.data.failed).length ? `; ${Object.values(rotate.data.failed).reduce((a, b) => a + b, 0)} failed` : ""}.
         </p>

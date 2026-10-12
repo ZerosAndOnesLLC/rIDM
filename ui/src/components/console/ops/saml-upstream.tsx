@@ -21,9 +21,9 @@ function settingsOf(s: SamlUpstream): SamlUpstreamSettings {
 function Url({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[0.8125rem] font-medium text-ink">{label}</span>
+      <span className="text-small font-medium text-ink">{label}</span>
       <div className="flex flex-wrap items-center gap-2">
-        <code className="min-w-0 break-all rounded-[var(--radius)] bg-ground px-2 py-1 font-mono text-[0.8125rem] text-ink">{value}</code>
+        <code className="min-w-0 break-all rounded-[var(--radius)] bg-ground px-2 py-1 font-mono text-small text-ink">{value}</code>
         <CopyButton value={value} label={`Copy ${label.toLowerCase()}`} />
       </div>
     </div>
@@ -36,7 +36,7 @@ export function SamlSpDetails({ provider }: { provider: IdentityProvider }) {
   if (!sp) return null;
   return (
     <Card title="Service provider details">
-      <p className="text-[0.875rem] text-muted">
+      <p className="text-body text-muted">
         Give the identity provider rIDM&rsquo;s metadata, which names everything below and the certificate requests are signed with, or enter these by hand.{" "}
         <a href={sp.metadata_url} target="_blank" rel="noreferrer" className="text-accent underline-offset-4 hover:underline">
           Open the metadata
@@ -151,7 +151,7 @@ export function SamlUpstreamSection({
           {(fid) => <TextInput id={fid} type="url" value={s.metadata_url ?? ""} disabled={!editable} spellCheck={false} onChange={(e) => set({ metadata_url: e.target.value || null })} />}
         </Field>
         <div className="sm:col-span-2 flex flex-col gap-2">
-          <p className="text-[0.8125rem] text-muted" aria-live="polite">
+          <p className="text-small text-muted" aria-live="polite">
             {saml.metadata_error
               ? `Last refresh failed: ${saml.metadata_error}`
               : saml.metadata_refreshed_at

@@ -49,9 +49,9 @@ export function ScopesPage({ tenant, selected }: { tenant: string; selected: str
                       <Link
                         href={href("scopes", tenant, { scope: s.id })}
                         aria-current={s.id === selected ? "page" : undefined}
-                        className={`flex items-center justify-between gap-2 rounded-[var(--radius)] px-2 py-1.5 text-[0.875rem] ${s.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
+                        className={`flex items-center justify-between gap-2 rounded-[var(--radius)] px-2 py-1.5 text-body ${s.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
                       >
-                        <span className="truncate font-mono text-[0.8125rem]">{s.name}</span>
+                        <span className="truncate font-mono text-small">{s.name}</span>
                         {s.is_default && <Badge tone="accent">default</Badge>}
                       </Link>
                     </li>
@@ -60,7 +60,7 @@ export function ScopesPage({ tenant, selected }: { tenant: string; selected: str
             )}
           </Card>
         }
-        detail={selected ? <ScopeView key={selected} tenant={tenant} id={selected} /> : <p className="text-[0.9rem] text-muted">Choose a scope.</p>}
+        detail={selected ? <ScopeView key={selected} tenant={tenant} id={selected} /> : <p className="text-lead text-muted">Choose a scope.</p>}
       />
       <CreateScope tenant={tenant} open={creating} onOpenChange={setCreating} />
     </>
@@ -151,7 +151,7 @@ function ScopeView({ tenant, id }: { tenant: string; id: string }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-mono text-[1.125rem] font-semibold text-ink">
+        <h2 className="font-mono text-title font-semibold text-ink">
           {draft.name} {standard && <Badge>standard</Badge>}
         </h2>
         <SaveIndicator status={status} error={error} />

@@ -108,7 +108,7 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
     return (
       <>
         <PageHeader title="Client" />
-        <p role="alert" className="text-[0.9rem] text-danger">
+        <p role="alert" className="text-lead text-danger">
           {query.error.message}
         </p>
       </>
@@ -128,7 +128,7 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
         title={c.name}
         sub={
           <span className="inline-flex flex-wrap items-center gap-2">
-            <code className="font-mono text-[0.8125rem]">{c.client_id}</code>
+            <code className="font-mono text-small">{c.client_id}</code>
             <CopyButton value={c.client_id} label="Copy ID" />
             <Badge>{typeLabel(c.client_type)}</Badge>
             {c.status === "active" ? <Badge tone="ok">Active</Badge> : <Badge tone="danger">Disabled</Badge>}
@@ -137,14 +137,14 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
         actions={
           <>
             <SaveIndicator status={status} error={error} />
-            <Link href={playgroundHref(tenant, c.id)} className="inline-flex min-h-9 items-center gap-2 rounded-[var(--radius)] border border-line bg-paper px-3.5 text-[0.875rem] font-medium text-ink hover:bg-ground">
+            <Link href={playgroundHref(tenant, c.id)} className="inline-flex min-h-9 items-center gap-2 rounded-[var(--radius)] border border-line bg-paper px-3.5 text-body font-medium text-ink hover:bg-ground">
               <FlaskConical className="size-4" aria-hidden />
               Playground
             </Link>
           </>
         }
       />
-      <p className="mb-4 text-[0.8125rem] text-muted">
+      <p className="mb-4 text-small text-muted">
         <Link href={`/console/clients/?tenant=${encodeURIComponent(tenant)}`} className="text-link underline underline-offset-4">
           All clients
         </Link>
@@ -354,7 +354,7 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
         <Section id="management" title="Client management" description="Let the client's owner manage its own metadata through RFC 7592 without console access.">
           <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
             <RegistrationToken tenant={tenant} id={c.id} editable={editable} onReveal={setRevealed} />
-            <span className="text-[0.8125rem] text-muted">Issuing a token replaces any previous one.</span>
+            <span className="text-small text-muted">Issuing a token replaces any previous one.</span>
           </div>
         </Section>
 
@@ -543,8 +543,8 @@ function SecretsSection({ tenant, c, editable, onReveal, onChanged }: { tenant: 
   return (
     <Section id="secrets" title="Secrets" description="Shown once when generated. Rotate with a grace period so a running deployment can switch over.">
       <div className="sm:col-span-2">
-        <table className="w-full text-[0.875rem]">
-          <thead className="text-[0.75rem] uppercase tracking-wide text-muted">
+        <table className="w-full text-body">
+          <thead className="text-caption uppercase tracking-wide text-muted">
             <tr className="border-b border-line">
               <th scope="col" className="py-2 text-start font-medium">Secret</th>
               <th scope="col" className="py-2 text-start font-medium">Created</th>
@@ -560,12 +560,12 @@ function SecretsSection({ tenant, c, editable, onReveal, onChanged }: { tenant: 
             )}
             {c.secrets.map((s) => (
               <tr key={s.id} className="border-b border-line last:border-b-0">
-                <td className="py-2 font-mono text-[0.8125rem] text-muted">…{s.id.slice(-8)}</td>
+                <td className="py-2 font-mono text-small text-muted">…{s.id.slice(-8)}</td>
                 <td className="py-2 text-muted">{formatDate("en", s.created_at)}</td>
                 <td className="py-2">{s.expires_at ? <Badge>Retiring {formatDate("en", s.expires_at)}</Badge> : <Badge tone="ok">Current</Badge>}</td>
                 <td className="py-2 text-end">
                   {editable && c.secrets.length > 1 && (
-                    <Button variant="danger" className="min-h-8 px-2.5 text-[0.8125rem]" disabled={revoke.isPending} onClick={() => revoke.mutate(s.id)}>
+                    <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={revoke.isPending} onClick={() => revoke.mutate(s.id)}>
                       Revoke
                     </Button>
                   )}
@@ -593,7 +593,7 @@ function SecretsSection({ tenant, c, editable, onReveal, onChanged }: { tenant: 
             {c.secrets.length ? "Rotate secret" : "Generate secret"}
           </Button>
           {err && (
-            <p role="alert" className="text-[0.875rem] text-danger">
+            <p role="alert" className="text-body text-danger">
               {err.message}
             </p>
           )}
@@ -629,7 +629,7 @@ function ServiceAccountSection({ tenant, c, editable, onChanged }: { tenant: str
         {c.service_account_user_id ? (
           <>
             <Badge tone="ok">Enabled</Badge>
-            <Link href={`/console/users/?tenant=${encodeURIComponent(tenant)}&user=${c.service_account_user_id}`} className="text-[0.875rem] text-link underline underline-offset-4">
+            <Link href={`/console/users/?tenant=${encodeURIComponent(tenant)}&user=${c.service_account_user_id}`} className="text-body text-link underline underline-offset-4">
               svc-{c.client_id}
             </Link>
             {editable && (
@@ -646,11 +646,11 @@ function ServiceAccountSection({ tenant, c, editable, onChanged }: { tenant: str
                 Enable service account
               </Button>
             )}
-            {!canHave && <span className="text-[0.8125rem] text-muted">Needs the client credentials grant.</span>}
+            {!canHave && <span className="text-small text-muted">Needs the client credentials grant.</span>}
           </>
         )}
         {err && (
-          <p role="alert" className="text-[0.875rem] text-danger">
+          <p role="alert" className="text-body text-danger">
             {err.message}
           </p>
         )}
@@ -684,7 +684,7 @@ function RegistrationToken({ tenant, id, editable, onReveal }: { tenant: string;
         Issue registration token
       </Button>
       {issue.isError && (
-        <p role="alert" className="text-[0.875rem] text-danger">
+        <p role="alert" className="text-body text-danger">
           {issue.error.message}
         </p>
       )}
@@ -710,10 +710,10 @@ function DeleteClient({ tenant, c, onDeleted }: { tenant: string; c: ClientView;
     <section aria-labelledby="delete-client" className="rounded-[calc(var(--radius)+2px)] border border-danger/40 bg-paper px-5 py-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 id="delete-client" className="text-[1rem] font-semibold text-danger">
+          <h2 id="delete-client" className="text-md font-semibold text-danger">
             Delete this client
           </h2>
-          <p className="text-[0.875rem] text-muted">Revokes its tokens and consents. There is no undo.</p>
+          <p className="text-body text-muted">Revokes its tokens and consents. There is no undo.</p>
         </div>
         <IconButton label="Delete client" onClick={() => setOpen(true)} className="text-danger hover:bg-danger-soft">
           <Trash2 className="size-4" aria-hidden />
@@ -722,7 +722,7 @@ function DeleteClient({ tenant, c, onDeleted }: { tenant: string; c: ClientView;
       <Modal open={open} onOpenChange={setOpen} title={`Delete ${c.name}?`} description="Applications using this client will stop working immediately.">
         <div className="flex flex-col gap-4 px-5 pb-5 pt-3">
           {del.isError && (
-            <p role="alert" className="text-[0.875rem] text-danger">
+            <p role="alert" className="text-body text-danger">
               {del.error.message}
             </p>
           )}

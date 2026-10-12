@@ -78,7 +78,7 @@ export function Identities() {
   return (
     <>
       <Card title={t("account.identities_title")}>
-        <p className="text-[0.875rem] text-muted">{t("account.identities_description")}</p>
+        <p className="text-body text-muted">{t("account.identities_description")}</p>
         {linked && (
           <div className="mt-3">
             <Alert tone="ok">{t("account.identities_linked")}</Alert>
@@ -100,11 +100,11 @@ export function Identities() {
             {d.linked.map((i) => (
               <li key={i.idp_id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                 <div className="min-w-0">
-                  <p className="flex flex-wrap items-center gap-2 text-[0.9375rem] font-medium text-ink">
+                  <p className="flex flex-wrap items-center gap-2 text-lead font-medium text-ink">
                     <span>{i.display_name}</span>
                     {(i.external_email ?? i.external_username) && <Badge>{i.external_email ?? i.external_username}</Badge>}
                   </p>
-                  <p className="text-[0.8125rem] text-muted">
+                  <p className="text-small text-muted">
                     {t("account.identity_linked_at", { when: when(i.linked_at) ?? "" })}
                     {i.last_login_at ? ` · ${t("account.identity_last_used", { when: when(i.last_login_at) ?? "" })}` : ""}
                   </p>
@@ -128,7 +128,7 @@ export function Identities() {
       </Card>
       <Modal open={removing !== null} onOpenChange={(o) => !o && setRemoving(null)} title={t("account.identity_unlink_title", { name: removing?.display_name ?? "" })}>
         <div className="flex flex-col gap-4 px-5 pb-5 pt-3">
-          <p className="text-[0.9375rem] text-ink">{t("account.identity_unlink_hint")}</p>
+          <p className="text-lead text-ink">{t("account.identity_unlink_hint")}</p>
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setRemoving(null)}>
               {t("common.cancel")}

@@ -9,7 +9,7 @@ export function Card({ title, children, className = "", actions }: { title?: Rea
     <section className={`min-w-0 rounded-[calc(var(--radius)+2px)] border border-line bg-paper ${className}`}>
       {(title || actions) && (
         <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
-          <h2 className="text-[0.9375rem] font-semibold text-ink">{title}</h2>
+          <h2 className="text-lead font-semibold text-ink">{title}</h2>
           {actions}
         </header>
       )}
@@ -22,8 +22,8 @@ export function PageHeader({ title, sub, actions }: { title: ReactNode; sub?: Re
   return (
     <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 className="text-[1.5rem] font-semibold leading-tight tracking-[-0.01em] text-ink">{title}</h1>
-        {sub && <p className="mt-1 text-[0.9rem] text-muted">{sub}</p>}
+        <h1 className="text-2xl font-semibold leading-tight tracking-[-0.01em] text-ink">{title}</h1>
+        {sub && <p className="mt-1 text-lead text-muted">{sub}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </header>
@@ -37,7 +37,7 @@ export function Badge({ children, tone = "neutral" }: { children: ReactNode; ton
     ok: "bg-ok-soft text-ok",
     danger: "bg-danger-soft text-danger",
   }[tone];
-  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[0.75rem] font-medium ${cls}`}>{children}</span>;
+  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-caption font-medium ${cls}`}>{children}</span>;
 }
 
 export function Kbd({ children }: { children: ReactNode }) {
@@ -68,7 +68,7 @@ export function Button({ variant = "secondary", className = "", children, ...res
   return (
     <button
       type="button"
-      className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-[var(--radius)] px-3.5 text-[0.875rem] font-medium disabled:cursor-not-allowed disabled:opacity-60 ${cls} ${className}`}
+      className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-[var(--radius)] px-3.5 text-body font-medium disabled:cursor-not-allowed disabled:opacity-60 ${cls} ${className}`}
       {...rest}
     >
       {children}
@@ -79,7 +79,7 @@ export function Button({ variant = "secondary", className = "", children, ...res
 /** Definition list row, for detail cards. */
 export function Row({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 py-2 text-[0.875rem] not-last:border-b not-last:border-line">
+    <div className="flex items-baseline justify-between gap-4 py-2 text-body not-last:border-b not-last:border-line">
       <dt className="shrink-0 text-muted">{label}</dt>
       <dd className="min-w-0 max-w-full truncate text-end text-ink [&>*]:max-w-full [&>*]:truncate">{children}</dd>
     </div>
@@ -117,9 +117,9 @@ export function Modal({
             size === "lg" ? "max-w-2xl" : "max-w-lg"
           }`}
         >
-          <Dialog.Title className={hideTitle ? "sr-only" : "px-5 pt-4 text-[1rem] font-semibold text-ink"}>{title}</Dialog.Title>
+          <Dialog.Title className={hideTitle ? "sr-only" : "px-5 pt-4 text-md font-semibold text-ink"}>{title}</Dialog.Title>
           {description ? (
-            <Dialog.Description className={hideTitle ? "sr-only" : "px-5 pt-1 text-[0.875rem] text-muted"}>{description}</Dialog.Description>
+            <Dialog.Description className={hideTitle ? "sr-only" : "px-5 pt-1 text-body text-muted"}>{description}</Dialog.Description>
           ) : (
             <Dialog.Description className="sr-only">{title}</Dialog.Description>
           )}

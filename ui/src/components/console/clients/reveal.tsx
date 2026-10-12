@@ -10,7 +10,7 @@ export function CopyButton({ value, label = "Copy" }: { value: string; label?: s
   return (
     <Button
       variant="secondary"
-      className="min-h-8 px-2.5 text-[0.8125rem]"
+      className="min-h-8 px-2.5 text-small"
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(value);
@@ -31,9 +31,9 @@ export function CopyButton({ value, label = "Copy" }: { value: string; label?: s
 export function Secret({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-[0.8125rem] font-medium text-ink">{label}</span>
+      <span className="text-small font-medium text-ink">{label}</span>
       <div className="flex items-start gap-2">
-        <code className="min-w-0 flex-1 break-all rounded-[var(--radius)] border border-line bg-ground px-3 py-2 font-mono text-[0.8125rem] text-ink select-all" data-testid="secret-value">
+        <code className="min-w-0 flex-1 break-all rounded-[var(--radius)] border border-line bg-ground px-3 py-2 font-mono text-small text-ink select-all" data-testid="secret-value">
           {value}
         </code>
         <CopyButton value={value} />
@@ -56,7 +56,7 @@ export function RevealModal({ revealed, onClose }: { revealed: Revealed | null; 
         {revealed?.values.map((v) => (
           <Secret key={v.label} label={v.label} value={v.value} />
         ))}
-        <p className="text-[0.8125rem] text-muted">This is the only time it is shown. Store it now; rotate it later if it is lost.</p>
+        <p className="text-small text-muted">This is the only time it is shown. Store it now; rotate it later if it is lost.</p>
         <div className="flex justify-end">
           <Button variant="primary" onClick={onClose}>
             I have stored it

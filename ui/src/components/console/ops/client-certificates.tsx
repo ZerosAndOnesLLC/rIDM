@@ -64,8 +64,8 @@ export function ClientCertificatesPage({ tenant }: { tenant: string }) {
         <ErrorLine error={anchors.error} />
       ) : (
         <div className="overflow-x-auto rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
-          <table className="w-full text-[0.875rem]">
-            <thead className="text-[0.75rem] uppercase tracking-wide text-muted">
+          <table className="w-full text-body">
+            <thead className="text-caption uppercase tracking-wide text-muted">
               <tr className="border-b border-line">
                 <th scope="col" className="px-4 py-2.5 text-start font-medium">Name</th>
                 <th scope="col" className="px-4 py-2.5 text-start font-medium">Subject</th>
@@ -83,11 +83,11 @@ export function ClientCertificatesPage({ tenant }: { tenant: string }) {
               {anchors.data.anchors.map((a) => (
                 <tr key={a.id} className="border-b border-line last:border-b-0">
                   <td className="px-4 py-2 text-ink">{a.name}</td>
-                  <td className="max-w-[22rem] break-words px-4 py-2 font-mono text-[0.8125rem] text-muted">{a.subject}</td>
+                  <td className="max-w-[22rem] break-words px-4 py-2 font-mono text-small text-muted">{a.subject}</td>
                   <td className="whitespace-nowrap px-4 py-2">
                     <Expiry notAfter={a.not_after} now={anchors.data.now} />
                   </td>
-                  <td className="px-4 py-2 font-mono text-[0.75rem] text-muted" title={a.fingerprint}>
+                  <td className="px-4 py-2 font-mono text-caption text-muted" title={a.fingerprint}>
                     {a.fingerprint.slice(0, 16)}…
                   </td>
                   <td className="px-4 py-2 text-end">
@@ -110,7 +110,7 @@ export function ClientCertificatesPage({ tenant }: { tenant: string }) {
               }}
             >
               <TextInput aria-label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Partner issuing CA" className="max-w-[20rem]" />
-              <TextArea aria-label="CA certificate (PEM)" value={pem} onChange={(e) => setPem(e.target.value)} placeholder={"-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----"} rows={6} spellCheck={false} className="font-mono text-[0.8125rem]" />
+              <TextArea aria-label="CA certificate (PEM)" value={pem} onChange={(e) => setPem(e.target.value)} placeholder={"-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----"} rows={6} spellCheck={false} className="font-mono text-small" />
               <div>
                 <Button type="submit" variant="primary" disabled={!name.trim() || !pem.trim() || add.isPending}>
                   <Plus className="size-4" aria-hidden />

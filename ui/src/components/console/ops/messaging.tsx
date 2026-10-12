@@ -23,7 +23,7 @@ export function MessagingPage({ tenant, tab }: { tenant: string; tab: string | n
       <PageHeader title="Messaging" sub="How this tenant sends email and SMS, the templates it uses, and what went out." />
       <nav aria-label="Messaging sections" className="mb-5 flex flex-wrap gap-1 border-b border-line">
         {TABS.map((t) => (
-          <Link key={t} href={href("messaging", tenant, { tab: t })} aria-current={t === current ? "page" : undefined} className={`-mb-px border-b-2 px-3 py-2 text-[0.875rem] ${t === current ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"}`}>
+          <Link key={t} href={href("messaging", tenant, { tab: t })} aria-current={t === current ? "page" : undefined} className={`-mb-px border-b-2 px-3 py-2 text-body ${t === current ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"}`}>
             {LABELS[t]}
           </Link>
         ))}
@@ -61,7 +61,7 @@ function TestSend({ tenant, channel }: { tenant: string; channel: "email" | "sms
         {send.isPending ? "Sending…" : "Send test"}
       </Button>
       {send.data && (
-        <span role="status" className="text-[0.8125rem] text-ok">
+        <span role="status" className="text-small text-ok">
           Sent to {send.data.to} through {send.data.sender}.
         </span>
       )}
@@ -141,7 +141,7 @@ function EmailTab({ tenant }: { tenant: string }) {
   return (
     <div className="flex flex-col gap-4">
       <Card title="Provider" actions={source === "tenant" ? <Badge tone="ok">Tenant settings</Badge> : source === "server_default" ? <Badge>Server default</Badge> : <Badge tone="danger">No email</Badge>}>
-        <p className="mb-4 text-[0.8125rem] text-muted">Without tenant settings the server&apos;s SMTP defaults apply, if any. Secrets are stored encrypted and never shown again.</p>
+        <p className="mb-4 text-small text-muted">Without tenant settings the server&apos;s SMTP defaults apply, if any. Secrets are stored encrypted and never shown again.</p>
         <form
           className="grid gap-4 sm:grid-cols-2"
           onSubmit={(e) => {
@@ -197,7 +197,7 @@ function EmailTab({ tenant }: { tenant: string }) {
             </div>
           )}
           {save.isSuccess && (
-            <p role="status" className="text-[0.8125rem] text-ok sm:col-span-2">
+            <p role="status" className="text-small text-ok sm:col-span-2">
               Saved.
             </p>
           )}
@@ -262,7 +262,7 @@ function SmsTab({ tenant }: { tenant: string }) {
   return (
     <div className="flex flex-col gap-4">
       <Card title="Gateway" actions={settings.data.configured ? <Badge tone="ok">Configured</Badge> : <Badge>Not configured</Badge>}>
-        <p className="mb-4 text-[0.8125rem] text-muted">Any HTTP gateway receiving JSON {"{to, from, text}"}. SMS codes and notices need it.</p>
+        <p className="mb-4 text-small text-muted">Any HTTP gateway receiving JSON {"{to, from, text}"}. SMS codes and notices need it.</p>
         <form
           className="grid gap-4 sm:grid-cols-2"
           onSubmit={(e) => {
@@ -288,7 +288,7 @@ function SmsTab({ tenant }: { tenant: string }) {
             </div>
           )}
           {save.isSuccess && (
-            <p role="status" className="text-[0.8125rem] text-ok sm:col-span-2">
+            <p role="status" className="text-small text-ok sm:col-span-2">
               Saved.
             </p>
           )}
@@ -353,7 +353,7 @@ function TemplatesTab({ tenant }: { tenant: string }) {
           <Field label="Locale" hint="Falls back to the language, then to the built-in English.">
             {(id, by) => <TextInput id={id} aria-describedby={by} value={locale} onChange={(e) => setLocale(e.target.value.trim() || "en")} spellCheck={false} />}
           </Field>
-          <p className="text-[0.75rem] text-muted">• = this tenant overrides the built-in template.</p>
+          <p className="text-caption text-muted">• = this tenant overrides the built-in template.</p>
         </div>
       </Card>
       {ev && <TemplateEditor key={`${channel}/${ev}/${locale}`} tenant={tenant} channel={channel} event={ev} locale={locale} />}
@@ -454,7 +454,7 @@ function TemplateEditor({ tenant, channel, event, locale }: { tenant: string; ch
                 </Button>
               )}
               {save.isSuccess && (
-                <span role="status" className="self-center text-[0.8125rem] text-ok">
+                <span role="status" className="self-center text-small text-ok">
                   Saved.
                 </span>
               )}
@@ -463,24 +463,24 @@ function TemplateEditor({ tenant, channel, event, locale }: { tenant: string; ch
           <ErrorLine error={save.error ?? reset.error} />
         </div>
       </Card>
-      <Card title="Preview" actions={preview.isFetching ? <span className="text-[0.75rem] text-muted">Rendering…</span> : undefined}>
+      <Card title="Preview" actions={preview.isFetching ? <span className="text-caption text-muted">Rendering…</span> : undefined}>
         {preview.isError ? (
           <ErrorLine error={preview.error} />
         ) : preview.data ? (
           <div className="flex flex-col gap-3">
-            {preview.data.subject && <p className="text-[0.9375rem] font-semibold text-ink">{preview.data.subject}</p>}
-            <pre className="whitespace-pre-wrap rounded-[var(--radius)] bg-ground px-3 py-2 font-sans text-[0.875rem] text-ink">{preview.data.body_text}</pre>
+            {preview.data.subject && <p className="text-lead font-semibold text-ink">{preview.data.subject}</p>}
+            <pre className="whitespace-pre-wrap rounded-[var(--radius)] bg-ground px-3 py-2 font-sans text-body text-ink">{preview.data.body_text}</pre>
             {preview.data.body_html && (
               <div>
-                <button type="button" onClick={() => setShowHtml((s) => !s)} aria-expanded={showHtml} className="text-[0.8125rem] text-link underline underline-offset-4">
+                <button type="button" onClick={() => setShowHtml((s) => !s)} aria-expanded={showHtml} className="text-small text-link underline underline-offset-4">
                   {showHtml ? "Hide HTML rendering" : "Show HTML rendering"}
                 </button>
                 {showHtml && <iframe title="HTML preview" sandbox="" srcDoc={preview.data.body_html} className="mt-2 h-64 w-full rounded-[var(--radius)] border border-line bg-white" />}
               </div>
             )}
-            <details className="text-[0.8125rem] text-muted">
+            <details className="text-small text-muted">
               <summary className="cursor-pointer">Sample variables</summary>
-              <pre tabIndex={0} aria-label="Sample variables" className="mt-2 max-h-48 overflow-auto rounded-[var(--radius)] bg-ground px-3 py-2 font-mono text-[0.75rem] text-ink">
+              <pre tabIndex={0} aria-label="Sample variables" className="mt-2 max-h-48 overflow-auto rounded-[var(--radius)] bg-ground px-3 py-2 font-mono text-caption text-ink">
                 {JSON.stringify(preview.data.vars, null, 2)}
               </pre>
             </details>
@@ -519,7 +519,7 @@ function LogTab({ tenant }: { tenant: string }) {
     <Card
       title="Outbound messages"
       actions={
-        <SelectInput aria-label="Message status" value={status} onChange={(e) => setStatus(e.target.value as LogEntry["status"] | "")} className="min-h-8 w-auto text-[0.8125rem]">
+        <SelectInput aria-label="Message status" value={status} onChange={(e) => setStatus(e.target.value as LogEntry["status"] | "")} className="min-h-8 w-auto text-small">
           <option value="">Any status</option>
           {(["queued", "sending", "sent", "dead"] as const).map((s) => (
             <option key={s} value={s}>
@@ -529,29 +529,29 @@ function LogTab({ tenant }: { tenant: string }) {
         </SelectInput>
       }
     >
-      <p className="mb-3 text-[0.8125rem] text-muted">Bodies are not kept: they carry links and codes.</p>
+      <p className="mb-3 text-small text-muted">Bodies are not kept: they carry links and codes.</p>
       <ErrorLine error={redeliver.error} />
       {log.isPending ? (
         <Spinner label="Loading…" />
       ) : log.isError ? (
         <ErrorLine error={log.error} />
       ) : log.data.length === 0 ? (
-        <p className="text-[0.875rem] text-muted">Nothing sent yet.</p>
+        <p className="text-body text-muted">Nothing sent yet.</p>
       ) : (
         <ul className="divide-y divide-line">
           {log.data.map((m) => (
-            <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-[0.875rem]">
+            <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-body">
               <span>
                 <span className="font-medium text-ink">{m.recipient}</span>
                 <Badge tone={tone(m.status)}>{m.status}</Badge>
-                <span className="ms-2 text-[0.8125rem] text-muted">
+                <span className="ms-2 text-small text-muted">
                   {m.channel} · {m.event}
                   {m.subject ? ` · ${m.subject}` : ""} · {formatDate("en", m.created_at)} · attempt {m.attempts}/{m.max_attempts}
                 </span>
-                {m.last_error && <span className="block text-[0.8125rem] text-danger">{m.last_error}</span>}
+                {m.last_error && <span className="block text-small text-danger">{m.last_error}</span>}
               </span>
               {can("ridm:messaging:write") && m.status === "dead" && (
-                <Button className="min-h-8 px-2.5 text-[0.8125rem]" disabled={redeliver.isPending} onClick={() => redeliver.mutate(m.id)}>
+                <Button className="min-h-8 px-2.5 text-small" disabled={redeliver.isPending} onClick={() => redeliver.mutate(m.id)}>
                   Redeliver
                 </Button>
               )}

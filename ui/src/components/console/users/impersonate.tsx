@@ -67,7 +67,7 @@ export function ImpersonateAction({ tenant, userId, username, active }: { tenant
         <div className="flex flex-col gap-4 px-5 pb-5 pt-3">
           {start.data ? (
             <>
-              <p className="text-[0.875rem] text-ink">The link works once, within a minute. In this browser it replaces any session you already have in this tenant until you end the impersonation.</p>
+              <p className="text-body text-ink">The link works once, within a minute. In this browser it replaces any session you already have in this tenant until you end the impersonation.</p>
               <div className="flex flex-wrap justify-end gap-2">
                 <Button onClick={() => close(false)}>Close</Button>
                 <a
@@ -75,7 +75,7 @@ export function ImpersonateAction({ tenant, userId, username, active }: { tenant
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => close(false)}
-                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-[var(--radius)] bg-accent px-3.5 text-[0.875rem] font-medium text-accent-ink hover:brightness-110"
+                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-[var(--radius)] bg-accent px-3.5 text-body font-medium text-accent-ink hover:brightness-110"
                 >
                   <ExternalLink className="size-4" aria-hidden />
                   Open session as {username}
@@ -91,10 +91,10 @@ export function ImpersonateAction({ tenant, userId, username, active }: { tenant
               }}
             >
               <Field label="Reason" hint="Recorded in the audit log with the impersonation, e.g. a support ticket number." error={tooLong ? `Keep it under ${REASON_MAX} characters.` : null}>
-                {(id, by) => <TextArea id={id} aria-describedby={by} value={reason} onChange={(e) => setReason(e.target.value)} required className="font-sans text-[0.875rem]" />}
+                {(id, by) => <TextArea id={id} aria-describedby={by} value={reason} onChange={(e) => setReason(e.target.value)} required className="font-sans text-body" />}
               </Field>
               {start.isError && (
-                <p role="alert" className="text-[0.875rem] text-danger">
+                <p role="alert" className="text-body text-danger">
                   {start.error.message}
                 </p>
               )}

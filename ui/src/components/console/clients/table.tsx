@@ -48,15 +48,15 @@ export function ClientsTable({ tenant, onCreate }: { tenant: string; onCreate: (
         <TextInput aria-label="Search clients" placeholder="Search by client ID or name…" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
       {clients.isError ? (
-        <p role="alert" className="text-[0.9rem] text-danger">
+        <p role="alert" className="text-lead text-danger">
           {clients.error.message}
         </p>
       ) : clients.isPending ? (
         <Spinner label="Loading clients…" />
       ) : (
         <div className="overflow-x-auto rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
-          <table className="w-full text-[0.875rem]">
-            <thead className="text-[0.75rem] uppercase tracking-wide text-muted">
+          <table className="w-full text-body">
+            <thead className="text-caption uppercase tracking-wide text-muted">
               <tr className="border-b border-line">
                 <th scope="col" className="px-4 py-2.5 text-start font-medium">Client</th>
                 <th scope="col" className="px-4 py-2.5 text-start font-medium">Client ID</th>
@@ -81,7 +81,7 @@ export function ClientsTable({ tenant, onCreate }: { tenant: string; onCreate: (
                       {c.name}
                     </Link>
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-[0.8125rem] text-muted">{c.client_id}</td>
+                  <td className="px-4 py-2.5 font-mono text-small text-muted">{c.client_id}</td>
                   <td className="px-4 py-2.5 text-muted">{typeLabel(c.client_type)}</td>
                   <td className="px-4 py-2.5 text-muted">{AUTH_METHODS.find((m) => m.value === c.token_endpoint_auth_method)?.label ?? c.token_endpoint_auth_method}</td>
                   <td className="px-4 py-2.5">{c.status === "active" ? <Badge tone="ok">Active</Badge> : <Badge tone="danger">Disabled</Badge>}</td>

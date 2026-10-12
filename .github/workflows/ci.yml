@@ -75,7 +75,7 @@ jobs:
         run: npm run typecheck
       - name: build scripts
         working-directory: ui
-        run: npm run test:scripts
+        run: npm run test:scripts && npm run test:unit
       - name: npm audit
         working-directory: ui
         # The shipped bundle is what an end user runs; build-only tooling is

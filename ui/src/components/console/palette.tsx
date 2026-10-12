@@ -138,7 +138,7 @@ export function TenantSwitcher({
       group: "Tenants",
       label: t.display_name,
       hint: t.slug,
-      trailing: t.slug === current ? <span className="text-[0.75rem]">current</span> : t.status === "disabled" ? <span className="text-[0.75rem]">disabled</span> : undefined,
+      trailing: t.slug === current ? <span className="text-caption">current</span> : t.status === "disabled" ? <span className="text-caption">disabled</span> : undefined,
       onSelect: () => onPick(t.slug),
     }));
   return (

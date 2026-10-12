@@ -94,13 +94,13 @@ export function ClientWizard({ tenant, open, onOpenChange, onCreated }: { tenant
         {step === 0 && (
           <>
             <fieldset className="grid gap-2 sm:grid-cols-2">
-              <legend className="mb-2 text-[0.8125rem] font-medium text-ink">Kind of client</legend>
+              <legend className="mb-2 text-small font-medium text-ink">Kind of client</legend>
               {CLIENT_TYPES.map((t) => (
                 <label key={t.value} className={`flex cursor-pointer gap-3 rounded-[var(--radius)] border px-3 py-2.5 ${type === t.value ? "border-accent bg-[color-mix(in_oklab,var(--accent)_8%,transparent)]" : "border-line hover:border-muted/60"}`}>
                   <input type="radio" name="client-type" className="mt-1 accent-[var(--accent)]" checked={type === t.value} onChange={() => chooseType(t.value)} />
                   <span>
-                    <span className="block text-[0.9rem] font-medium text-ink">{t.label}</span>
-                    <span className="block text-[0.8125rem] text-muted">{t.blurb}</span>
+                    <span className="block text-lead font-medium text-ink">{t.label}</span>
+                    <span className="block text-small text-muted">{t.blurb}</span>
                   </span>
                 </label>
               ))}
@@ -143,7 +143,7 @@ export function ClientWizard({ tenant, open, onOpenChange, onCreated }: { tenant
                 {(id, by) => <TagsInput id={id} describedBy={by} value={redirects} onChange={setRedirects} placeholder="https://app.example.com/callback" />}
               </Field>
             ) : (
-              <p className="text-[0.875rem] text-muted">This client does not use browser redirects.</p>
+              <p className="text-body text-muted">This client does not use browser redirects.</p>
             )}
             {interactive && (
               <Field label="Post-logout redirect URIs" hint="Where the browser may return after signing out.">
@@ -164,7 +164,7 @@ export function ClientWizard({ tenant, open, onOpenChange, onCreated }: { tenant
           </>
         )}
         {create.isError && (
-          <p role="alert" className="text-[0.875rem] text-danger">
+          <p role="alert" className="text-body text-danger">
             {create.error.message}
           </p>
         )}

@@ -69,7 +69,7 @@ export function ProfileSchemaSection({ tenant, editable }: { tenant: string; edi
 
   if (query.isError)
     return (
-      <p role="alert" className="text-[0.875rem] text-danger">
+      <p role="alert" className="text-body text-danger">
         {query.error.message}
       </p>
     );
@@ -82,15 +82,15 @@ export function ProfileSchemaSection({ tenant, editable }: { tenant: string; edi
     <section id="profile" aria-labelledby="profile-title" className="scroll-mt-20 rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
         <div>
-          <h2 id="profile-title" className="text-[1rem] font-semibold text-ink">
+          <h2 id="profile-title" className="text-md font-semibold text-ink">
             Profile attributes
           </h2>
-          <p className="mt-1 text-[0.875rem] text-muted">What a user profile carries beyond username, email and phone. Names cannot change once values exist.</p>
+          <p className="mt-1 text-body text-muted">What a user profile carries beyond username, email and phone. Names cannot change once values exist.</p>
         </div>
         <span className="flex items-center gap-2">
           <SaveIndicator status={status} error={error} />
           {status === "error" && (
-            <Button className="min-h-8 px-2.5 text-[0.8125rem]" onClick={() => reload.mutate()}>
+            <Button className="min-h-8 px-2.5 text-small" onClick={() => reload.mutate()}>
               Reload
             </Button>
           )}
@@ -98,7 +98,7 @@ export function ProfileSchemaSection({ tenant, editable }: { tenant: string; edi
       </header>
       <div className="flex flex-col gap-4 px-5 py-5">
         <Toggle label="Accept undeclared attributes" hint="Stored verbatim; only administrators, imports and mappers can set them." checked={draft.allow_undeclared} disabled={!editable} onChange={(v) => update({ ...draft, allow_undeclared: v })} />
-        {attrs.length === 0 && <p className="text-[0.875rem] text-muted">No attributes declared.</p>}
+        {attrs.length === 0 && <p className="text-body text-muted">No attributes declared.</p>}
         {attrs.map((a, i) => (
           <div key={rows.keys[i]} className="rounded-[var(--radius)] border border-line p-4" data-testid="attribute-row">
             <div className="grid gap-4 sm:grid-cols-2">

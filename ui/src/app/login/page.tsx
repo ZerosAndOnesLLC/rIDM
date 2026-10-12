@@ -140,7 +140,7 @@ function Organization({ flow, post }: { flow: PublicFlow; post: Post }) {
             />
             <span className="flex flex-col">
               <span className="text-ink">{org.display_name}</span>
-              <span className="text-[0.8125rem] text-muted">{org.slug}</span>
+              <span className="text-small text-muted">{org.slug}</span>
             </span>
           </label>
         ))}
@@ -151,7 +151,7 @@ function Organization({ flow, post }: { flow: PublicFlow; post: Post }) {
       <button
         type="button"
         onClick={() => void post("cancel", {}).catch((e: unknown) => setError(errorText(e)))}
-        className="self-center text-[0.8125rem] text-muted hover:text-ink hover:underline underline-offset-4"
+        className="self-center text-small text-muted hover:text-ink hover:underline underline-offset-4"
       >
         {t("common.cancel")}
       </button>
@@ -183,7 +183,7 @@ function PasswordChange({ flow, post }: { flow: PublicFlow; post: Post }) {
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
       <Title sub={t("password_change.description")}>{t("password_change.title")}</Title>
-      {flow.user && <p className="text-[0.875rem] text-muted">{t("common.signed_in_as", { username: flow.user.username })}</p>}
+      {flow.user && <p className="text-body text-muted">{t("common.signed_in_as", { username: flow.user.username })}</p>}
       {error && <Alert tone="error">{error}</Alert>}
       <PasswordField label={t("password_change.new_password")} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" autoFocus required />
       <PasswordField
@@ -278,13 +278,13 @@ function AttributeInput({
   }
   if (def.type === "enum") {
     return (
-      <label className="flex flex-col gap-1.5 text-[0.8125rem] font-medium">
+      <label className="flex flex-col gap-1.5 text-small font-medium">
         {label}
         <select
           value={String(value ?? "")}
           onChange={(e) => onChange(e.target.value)}
           required={def.required}
-          className="min-h-11 rounded-[var(--radius)] border border-line bg-paper px-3 text-[1rem] font-normal text-ink sm:text-[0.9375rem]"
+          className="min-h-11 rounded-[var(--radius)] border border-line bg-paper px-3 text-md font-normal text-ink sm:text-lead"
         >
           <option value="">—</option>
           {def.validation.values.map((v) => (
@@ -342,7 +342,7 @@ function Terms({ flow, post }: { flow: PublicFlow; post: Post }) {
       <Button type="submit" busy={busy} disabled={!accepted}>
         {t("terms.accept")}
       </Button>
-      <button type="button" onClick={() => void post("cancel", {}).catch((e: unknown) => setError(errorText(e)))} className="self-center text-[0.8125rem] text-muted hover:text-ink hover:underline underline-offset-4">
+      <button type="button" onClick={() => void post("cancel", {}).catch((e: unknown) => setError(errorText(e)))} className="self-center text-small text-muted hover:text-ink hover:underline underline-offset-4">
         {t("common.cancel")}
       </button>
     </form>

@@ -124,7 +124,7 @@ export function ProfileTab({ tenant, u, editable }: { tenant: string; u: Detail;
       </Section>
       <Section id="attributes" title="Profile attributes" description={defs.length ? "As declared in the tenant's profile schema." : "The tenant's profile schema declares no attributes yet."}>
         {schema.isError && (
-          <p role="alert" className="text-[0.875rem] text-danger sm:col-span-2">
+          <p role="alert" className="text-body text-danger sm:col-span-2">
             {schema.error.message}
           </p>
         )}
@@ -156,7 +156,7 @@ export function ProfileTab({ tenant, u, editable }: { tenant: string; u: Detail;
       <Card title="Record">
         <dl>
           <Row label="User ID">
-            <code className="font-mono text-[0.8125rem]">{u.id}</code>
+            <code className="font-mono text-small">{u.id}</code>
           </Row>
           <Row label="Created">{formatDate("en", u.created_at)}</Row>
           <Row label="Last sign-in">{u.last_login_at ? formatDate("en", u.last_login_at) : "Never"}</Row>

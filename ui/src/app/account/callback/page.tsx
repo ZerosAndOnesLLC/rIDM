@@ -38,7 +38,7 @@ function Callback() {
         {error ? (
           <div className="flex flex-col gap-4">
             <Alert tone="error">{error}</Alert>
-            <Link href="/account/" className="text-[0.9rem] text-link underline underline-offset-4">
+            <Link href="/account/" className="text-lead text-link underline underline-offset-4">
               {t("account.back_to_sign_in")}
             </Link>
           </div>

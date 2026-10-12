@@ -49,9 +49,9 @@ export function Dashboard({ tenant }: { tenant: string }) {
           <Tile label="Live sessions" value={s.active_sessions} />
           <Tile label="Two-step adoption" value={`${adoption}%`} sub={`${formatNumber("en", s.users.mfa_enrolled)} of ${formatNumber("en", s.users.active)} active users`} />
         </div>
-        <label className="flex items-center gap-2 text-[0.8125rem] text-muted">
+        <label className="flex items-center gap-2 text-small text-muted">
           Window
-          <SelectInput aria-label="Window" value={days} onChange={(e) => setDays(Number(e.target.value))} className="min-h-8 w-auto text-[0.8125rem]">
+          <SelectInput aria-label="Window" value={days} onChange={(e) => setDays(Number(e.target.value))} className="min-h-8 w-auto text-small">
             <option value={7}>7 days</option>
             <option value={30}>30 days</option>
             <option value={90}>90 days</option>
@@ -63,9 +63,9 @@ export function Dashboard({ tenant }: { tenant: string }) {
         <div className="h-64" role="img" aria-label={`Sign-ins and failed sign-ins per day over ${days} days: ${s.logins_total} sign-ins, ${s.failed_total} failed`}>
           <SignInsChart series={series} />
         </div>
-        <details className="mt-2 text-[0.8125rem] text-muted">
+        <details className="mt-2 text-small text-muted">
           <summary className="cursor-pointer">Table view</summary>
-          <table className="mt-2 w-full text-[0.8125rem]">
+          <table className="mt-2 w-full text-small">
             <thead>
               <tr className="text-start text-muted">
                 <th scope="col" className="py-1 text-start font-medium">Day</th>
@@ -89,7 +89,7 @@ export function Dashboard({ tenant }: { tenant: string }) {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Most authorized clients">
           {top.length === 0 ? (
-            <p className="text-[0.875rem] text-muted">No authorizations in this window.</p>
+            <p className="text-body text-muted">No authorizations in this window.</p>
           ) : (
             <div className="h-56" role="img" aria-label={`Authorizations per client: ${top.map((c) => `${c.name} ${c.Authorizations}`).join(", ")}`}>
               <ClientsChart top={top} />
@@ -99,27 +99,27 @@ export function Dashboard({ tenant }: { tenant: string }) {
         <Card title="Users">
           <dl className="grid grid-cols-3 gap-3 text-center">
             <div>
-              <dt className="text-[0.75rem] uppercase tracking-wide text-muted">Total</dt>
-              <dd className="text-[1.5rem] font-semibold text-ink">{formatNumber("en", s.users.total)}</dd>
+              <dt className="text-caption uppercase tracking-wide text-muted">Total</dt>
+              <dd className="text-2xl font-semibold text-ink">{formatNumber("en", s.users.total)}</dd>
             </div>
             <div>
-              <dt className="text-[0.75rem] uppercase tracking-wide text-muted">Active</dt>
-              <dd className="text-[1.5rem] font-semibold text-ink">{formatNumber("en", s.users.active)}</dd>
+              <dt className="text-caption uppercase tracking-wide text-muted">Active</dt>
+              <dd className="text-2xl font-semibold text-ink">{formatNumber("en", s.users.active)}</dd>
             </div>
             <div>
-              <dt className="text-[0.75rem] uppercase tracking-wide text-muted">With a second factor</dt>
-              <dd className="text-[1.5rem] font-semibold text-ink">{formatNumber("en", s.users.mfa_enrolled)}</dd>
+              <dt className="text-caption uppercase tracking-wide text-muted">With a second factor</dt>
+              <dd className="text-2xl font-semibold text-ink">{formatNumber("en", s.users.mfa_enrolled)}</dd>
             </div>
           </dl>
           <div className="mt-4">
-            <div className="mb-1 flex justify-between text-[0.8125rem] text-muted">
+            <div className="mb-1 flex justify-between text-small text-muted">
               <span>Two-step adoption</span>
               <span>{adoption}%</span>
             </div>
             <div className="h-2 rounded-full bg-ground" role="progressbar" aria-valuenow={adoption} aria-valuemin={0} aria-valuemax={100} aria-label="Two-step adoption">
               <div className="h-2 rounded-full bg-[var(--series-1)]" style={{ width: `${adoption}%` }} />
             </div>
-            <p className="mt-2 text-[0.8125rem] text-muted">Active users with a passkey, an authenticator app or another second step enrolled.</p>
+            <p className="mt-2 text-small text-muted">Active users with a passkey, an authenticator app or another second step enrolled.</p>
           </div>
         </Card>
       </div>
@@ -130,9 +130,9 @@ export function Dashboard({ tenant }: { tenant: string }) {
 function Tile({ label, value, sub, tone }: { label: string; value: number | string; sub?: string; tone?: "warn" }) {
   return (
     <div className="rounded-[calc(var(--radius)+2px)] border border-line bg-paper px-4 py-3">
-      <p className="text-[0.75rem] uppercase tracking-wide text-muted">{label}</p>
-      <p className={`mt-1 text-[1.75rem] font-semibold leading-none ${tone === "warn" ? "text-danger" : "text-ink"}`}>{typeof value === "number" ? formatNumber("en", value) : value}</p>
-      {sub && <p className="mt-1.5 text-[0.75rem] text-muted">{sub}</p>}
+      <p className="text-caption uppercase tracking-wide text-muted">{label}</p>
+      <p className={`mt-1 text-num font-semibold leading-none ${tone === "warn" ? "text-danger" : "text-ink"}`}>{typeof value === "number" ? formatNumber("en", value) : value}</p>
+      {sub && <p className="mt-1.5 text-caption text-muted">{sub}</p>}
     </div>
   );
 }

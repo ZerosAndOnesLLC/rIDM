@@ -117,7 +117,7 @@ export function Security() {
   return (
     <>
       <Card title={t("account.mfa_title")}>
-        <p className="text-[0.875rem] text-muted">{s?.policy === "required" ? t("account.mfa_required_hint") : t("account.mfa_description")}</p>
+        <p className="text-body text-muted">{s?.policy === "required" ? t("account.mfa_required_hint") : t("account.mfa_description")}</p>
         {error && (
           <div className="mt-3">
             <Alert tone="error">{error}</Alert>
@@ -128,17 +128,17 @@ export function Security() {
             <Alert tone="error">{t("account.error_generic")}</Alert>
           </div>
         )}
-        {s && factors.length === 0 && <p className="mt-3 text-[0.875rem] text-ink">{t("account.mfa_none")}</p>}
+        {s && factors.length === 0 && <p className="mt-3 text-body text-ink">{t("account.mfa_none")}</p>}
         {factors.length > 0 && (
           <ul aria-label={t("account.mfa_title")} className="mt-3 divide-y divide-line">
             {factors.map((f) => (
               <li key={f.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                 <div className="min-w-0">
-                  <p className="flex items-center gap-2 text-[0.9375rem] font-medium text-ink">
+                  <p className="flex items-center gap-2 text-lead font-medium text-ink">
                     <span>{kindName(f.kind)}</span>
                     {f.label && f.label !== kindName(f.kind) && <Badge>{f.label}</Badge>}
                   </p>
-                  <p className="text-[0.8125rem] text-muted">
+                  <p className="text-small text-muted">
                     {t("account.factor_added", { when: when(f.created_at) ?? "" })}
                     {f.last_used_at ? ` · ${t("account.factor_used", { when: when(f.last_used_at) ?? "" })}` : ""}
                   </p>
@@ -170,8 +170,8 @@ export function Security() {
             </CButton>
           }
         >
-          <p className="text-[0.875rem] text-muted">{t("account.codes_description")}</p>
-          <p className="mt-2 text-[0.9375rem] text-ink">{t("account.codes_left", { count: s?.recovery_codes ?? 0 })}</p>
+          <p className="text-body text-muted">{t("account.codes_description")}</p>
+          <p className="mt-2 text-lead text-ink">{t("account.codes_left", { count: s?.recovery_codes ?? 0 })}</p>
         </Card>
       )}
 
@@ -187,7 +187,7 @@ export function Security() {
 
       <Modal open={removing !== null} onOpenChange={(o) => !o && setRemoving(null)} title={t("account.remove_title", { kind: removing ? kindName(removing.kind) : "" })}>
         <div className="flex flex-col gap-4 px-5 pb-5 pt-3">
-          <p className="text-[0.9375rem] text-ink">{factors.length === 1 ? t("account.remove_last_hint") : t("account.remove_hint")}</p>
+          <p className="text-lead text-ink">{factors.length === 1 ? t("account.remove_last_hint") : t("account.remove_hint")}</p>
           <div className="flex justify-end gap-2">
             <CButton variant="secondary" onClick={() => setRemoving(null)}>
               {t("common.cancel")}
@@ -201,7 +201,7 @@ export function Security() {
 
       <Modal open={confirmCodes} onOpenChange={setConfirmCodes} title={t("account.codes_renew")}>
         <div className="flex flex-col gap-4 px-5 pb-5 pt-3">
-          <p className="text-[0.9375rem] text-ink">{t("account.codes_renew_hint")}</p>
+          <p className="text-lead text-ink">{t("account.codes_renew_hint")}</p>
           <div className="flex justify-end gap-2">
             <CButton variant="secondary" onClick={() => setConfirmCodes(false)}>
               {t("common.cancel")}
@@ -284,7 +284,7 @@ function AddApp({ onDone, onError }: { onDone: Done; onError: (e: unknown) => vo
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4 overflow-y-auto px-5 pb-5 pt-3">
-      <p className="text-[0.875rem] text-muted">{t("account.app_hint")}</p>
+      <p className="text-body text-muted">{t("account.app_hint")}</p>
       {(error ?? startError) && <Alert tone="error">{error ?? startError}</Alert>}
       <TotpSetup enrolment={enrolment} qr={qr} />
       <CodeInput label={t("common.code")} value={code} onChange={setCode} />
@@ -317,7 +317,7 @@ function AddPasskey({ onDone, onError }: { onDone: Done; onError: (e: unknown) =
 
   return (
     <div className="flex flex-col gap-4 px-5 pb-5 pt-3">
-      <p className="text-[0.875rem] text-muted">{t("mfa.passkey_enroll_description")}</p>
+      <p className="text-body text-muted">{t("mfa.passkey_enroll_description")}</p>
       {error && <Alert tone="error">{error}</Alert>}
       <TextField label={t("mfa.passkey_label")} value={label} onChange={(e) => setLabel(e.target.value)} maxLength={80} autoComplete="off" autoFocus />
       <Button type="button" busy={busy} onClick={() => void create()}>
@@ -372,7 +372,7 @@ function AddOtp({ channel, phone, onDone, onError }: { channel: "email" | "sms";
         }}
         className="flex flex-col gap-4 px-5 pb-5 pt-3"
       >
-        <p className="text-[0.875rem] text-muted">{needsPhone ? t("mfa.sms_enroll_description") : t("mfa.sending")}</p>
+        <p className="text-body text-muted">{needsPhone ? t("mfa.sms_enroll_description") : t("mfa.sending")}</p>
         {error && <Alert tone="error">{error}</Alert>}
         {needsPhone && (
           <>
@@ -387,13 +387,13 @@ function AddOtp({ channel, phone, onDone, onError }: { channel: "email" | "sms";
   }
   return (
     <form onSubmit={confirm} className="flex flex-col gap-4 px-5 pb-5 pt-3">
-      <p className="text-[0.875rem] text-muted">{t("login.code_sent", { destination: sent, minutes: 10 })}</p>
+      <p className="text-body text-muted">{t("login.code_sent", { destination: sent, minutes: 10 })}</p>
       {error && <Alert tone="error">{error}</Alert>}
       <CodeInput label={t("common.code")} value={code} onChange={setCode} autoFocus />
       <Button type="submit" busy={busy} disabled={code.length < 6}>
         {t("mfa.verify_setup")}
       </Button>
-      <button type="button" onClick={() => void send(needsPhone ? number : undefined)} className="self-center text-[0.8125rem] text-link hover:underline underline-offset-4">
+      <button type="button" onClick={() => void send(needsPhone ? number : undefined)} className="self-center text-small text-link hover:underline underline-offset-4">
         {t("login.resend")}
       </button>
     </form>

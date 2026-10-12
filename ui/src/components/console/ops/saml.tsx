@@ -96,7 +96,7 @@ export function SamlPage({ tenant, selected }: { tenant: string; selected: strin
               ) : list.isError ? (
                 <ErrorLine error={list.error} />
               ) : list.data.length === 0 ? (
-                <p className="text-[0.875rem] text-muted">No service providers yet.</p>
+                <p className="text-body text-muted">No service providers yet.</p>
               ) : (
                 <ul className="flex flex-col gap-0.5">
                   {list.data.map((p) => (
@@ -104,11 +104,11 @@ export function SamlPage({ tenant, selected }: { tenant: string; selected: strin
                       <Link
                         href={href("saml", tenant, { sp: p.client.id })}
                         aria-current={p.client.id === selected ? "page" : undefined}
-                        className={`flex items-center justify-between gap-2 rounded-[var(--radius)] px-2 py-1.5 text-[0.875rem] ${p.client.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
+                        className={`flex items-center justify-between gap-2 rounded-[var(--radius)] px-2 py-1.5 text-body ${p.client.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
                       >
                         <span className="min-w-0">
                           <span className="block truncate">{p.client.name}</span>
-                          <span className="block truncate text-[0.75rem] text-muted">{p.saml.entity_id}</span>
+                          <span className="block truncate text-caption text-muted">{p.saml.entity_id}</span>
                         </span>
                         {p.client.status !== "active" && <Badge>off</Badge>}
                       </Link>
@@ -142,9 +142,9 @@ function useIdp(tenant: string) {
 function UrlRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-1 py-2 not-last:border-b not-last:border-line">
-      <dt className="text-[0.8125rem] text-muted">{label}</dt>
+      <dt className="text-small text-muted">{label}</dt>
       <dd className="flex min-w-0 items-center gap-2">
-        <code className="min-w-0 flex-1 break-all font-mono text-[0.8125rem] text-ink">{value}</code>
+        <code className="min-w-0 flex-1 break-all font-mono text-small text-ink">{value}</code>
         <CopyButton value={value} label={`Copy ${label.toLowerCase()}`} />
       </dd>
     </div>
@@ -177,13 +177,13 @@ function IdpView({ tenant }: { tenant: string }) {
       <Card
         title="Identity provider"
         actions={
-          <a href={d.metadata_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-[0.875rem] text-accent hover:underline underline-offset-4">
+          <a href={d.metadata_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-body text-accent hover:underline underline-offset-4">
             <Download className="size-4" aria-hidden />
             Metadata
           </a>
         }
       >
-        <p className="mb-3 text-[0.875rem] text-muted">Give service providers the metadata URL, or these values if they are entered by hand.</p>
+        <p className="mb-3 text-body text-muted">Give service providers the metadata URL, or these values if they are entered by hand.</p>
         <dl className="flex flex-col">
           <UrlRow label="Entity ID" value={d.entity_id} />
           <UrlRow label="Single sign-on" value={d.sso_url} />
@@ -202,7 +202,7 @@ function IdpView({ tenant }: { tenant: string }) {
           ) : undefined
         }
       >
-        <p className="mb-3 text-[0.875rem] text-muted">
+        <p className="mb-3 text-body text-muted">
           Service providers pin these certificates, so they never change on their own. A rollover adds a pending key, published at once; activate it once every service provider has the new metadata, then delete the retired one.
         </p>
         <ul className="flex flex-col gap-3">
@@ -210,12 +210,12 @@ function IdpView({ tenant }: { tenant: string }) {
             <li key={k.id} className="flex flex-col gap-2 rounded-[var(--radius)] border border-line p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Badge tone={KEY_TONE[k.status]}>{k.status}</Badge>
-                <span className="text-[0.8125rem] text-muted">
+                <span className="text-small text-muted">
                   Valid until {formatDate("en", k.not_after, { dateStyle: "medium" })}
                   {k.activated_at ? ` · signing since ${formatDate("en", k.activated_at, { dateStyle: "medium" })}` : ""}
                 </span>
               </div>
-              <code className="break-all font-mono text-[0.75rem] text-muted" title="SHA-256 fingerprint">
+              <code className="break-all font-mono text-caption text-muted" title="SHA-256 fingerprint">
                 {k.sha256_fingerprint}
               </code>
               {editable && k.status !== "active" && (
@@ -307,7 +307,7 @@ function CreateSp({ tenant, open, onOpenChange }: { tenant: string; open: boolea
         <Button disabled={!metadata.trim() || read.isPending} onClick={() => read.mutate(metadata)}>
           {read.isPending ? "Reading…" : "Read metadata"}
         </Button>
-        <label className="inline-flex cursor-pointer items-center gap-2 text-[0.875rem] text-accent hover:underline underline-offset-4">
+        <label className="inline-flex cursor-pointer items-center gap-2 text-body text-accent hover:underline underline-offset-4">
           <input type="file" accept=".xml,application/xml,text/xml,application/samlmetadata+xml" className="sr-only" onChange={onFile} />
           Upload a file
         </label>
@@ -328,8 +328,8 @@ function AttributeRows({ value, disabled, onChange }: { value: SamlAttribute[]; 
   const rows = useRowKeys(value.length);
   return (
     <div className="sm:col-span-2 flex flex-col gap-2">
-      <span className="text-[0.8125rem] font-medium text-ink">Attributes</span>
-      <p className="text-[0.8125rem] text-muted">With no rows, every claim the allowed scopes release goes out under its own name. With rows, only these, under the names the service provider expects. `roles` and `groups` are available too.</p>
+      <span className="text-small font-medium text-ink">Attributes</span>
+      <p className="text-small text-muted">With no rows, every claim the allowed scopes release goes out under its own name. With rows, only these, under the names the service provider expects. `roles` and `groups` are available too.</p>
       {value.map((a, i) => (
         <div key={rows.keys[i]} className="grid gap-2 rounded-[var(--radius)] border border-line p-2 sm:grid-cols-[1fr_1.5fr_8rem_auto]">
           <TextInput aria-label={`Claim ${i + 1}`} value={a.claim} disabled={disabled} spellCheck={false} placeholder="email" onChange={(e) => set(i, { claim: e.target.value })} />
@@ -381,12 +381,12 @@ export function Certificates({
   const [pem, setPem] = useState("");
   return (
     <div className="sm:col-span-2 flex flex-col gap-2">
-      <span className="text-[0.8125rem] font-medium text-ink">{label}</span>
-      <p className="text-[0.8125rem] text-muted">{hint}</p>
-      {value.length === 0 && <p className="text-[0.8125rem] text-muted">{empty}</p>}
+      <span className="text-small font-medium text-ink">{label}</span>
+      <p className="text-small text-muted">{hint}</p>
+      {value.length === 0 && <p className="text-small text-muted">{empty}</p>}
       {value.map((c, i) => (
         <div key={c} className="flex items-center gap-2 rounded-[var(--radius)] border border-line px-2 py-1.5">
-          <code className="min-w-0 flex-1 truncate font-mono text-[0.75rem] text-muted">{c}</code>
+          <code className="min-w-0 flex-1 truncate font-mono text-caption text-muted">{c}</code>
           <IconButton label={`Remove certificate ${i + 1}`} disabled={disabled} onClick={() => onChange(value.filter((_, j) => j !== i))}>
             <Trash2 className="size-4" aria-hidden />
           </IconButton>
@@ -488,7 +488,7 @@ function SpView({ tenant, id }: { tenant: string; id: string }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-[1.125rem] font-semibold text-ink">{draft.name}</h2>
+        <h2 className="text-title font-semibold text-ink">{draft.name}</h2>
         <SaveIndicator status={status} error={error} />
       </div>
       <Section id="saml-app" title="Application">
@@ -589,7 +589,7 @@ function SpView({ tenant, id }: { tenant: string; id: string }) {
           <Field label="Sign-in link">
             {() => (
               <span className="flex min-w-0 items-center gap-2">
-                <code className="min-w-0 break-all font-mono text-[0.8125rem] text-ink">{initUrl}</code>
+                <code className="min-w-0 break-all font-mono text-small text-ink">{initUrl}</code>
                 <CopyButton value={initUrl} label="Copy sign-in link" />
               </span>
             )}

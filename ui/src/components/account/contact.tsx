@@ -63,13 +63,13 @@ export function Contact() {
     return (
       <li className="flex flex-wrap items-center justify-between gap-3 py-3">
         <div className="min-w-0">
-          <p className="text-[0.8125rem] text-muted">{channel === "email" ? t("common.email") : t("common.phone")}</p>
-          <p className="flex flex-wrap items-center gap-2 text-[0.9375rem] font-medium text-ink">
+          <p className="text-small text-muted">{channel === "email" ? t("common.email") : t("common.phone")}</p>
+          <p className="flex flex-wrap items-center gap-2 text-lead font-medium text-ink">
             <span className="truncate">{value ?? t("account.contact_none")}</span>
             {value && <Badge tone={verified ? "ok" : "neutral"}>{verified ? t("account.verified") : t("account.unverified")}</Badge>}
           </p>
           {pending && (
-            <p className="mt-1 text-[0.8125rem] text-muted">
+            <p className="mt-1 text-small text-muted">
               {t("account.contact_pending", { destination: pending })}{" "}
               <button type="button" onClick={() => setChanging(channel)} className="text-link hover:underline underline-offset-4">
                 {t("account.contact_enter_code")}
@@ -98,7 +98,7 @@ export function Contact() {
   return (
     <>
       <Card title={t("account.contact_title")}>
-        <p className="text-[0.875rem] text-muted">{t("account.contact_description")}</p>
+        <p className="text-body text-muted">{t("account.contact_description")}</p>
         {error && (
           <div className="mt-3">
             <Alert tone="error">{error}</Alert>
@@ -128,7 +128,7 @@ export function Contact() {
 
       <Modal open={removing} onOpenChange={setRemoving} title={t("account.remove_phone_title")}>
         <div className="flex flex-col gap-4 px-5 pb-5 pt-3">
-          <p className="text-[0.9375rem] text-ink">{t("account.remove_phone_hint")}</p>
+          <p className="text-lead text-ink">{t("account.remove_phone_hint")}</p>
           <div className="flex justify-end gap-2">
             <CButton variant="secondary" onClick={() => setRemoving(false)}>
               {t("common.cancel")}
@@ -193,7 +193,7 @@ function ChangeContact({ channel, pending, onDone, onReauth }: { channel: Channe
   if (!sent) {
     return (
       <form onSubmit={send} className="flex flex-col gap-4 px-5 pb-5 pt-3" noValidate>
-        <p className="text-[0.875rem] text-muted">{channel === "email" ? t("account.change_email_hint") : t("account.change_phone_hint")}</p>
+        <p className="text-body text-muted">{channel === "email" ? t("account.change_email_hint") : t("account.change_phone_hint")}</p>
         {error && <Alert tone="error">{error}</Alert>}
         {channel === "email" ? (
           <TextField label={t("account.new_email")} type="email" value={value} onChange={(e) => setValue(e.target.value)} autoComplete="email" inputMode="email" autoFocus required />
@@ -208,13 +208,13 @@ function ChangeContact({ channel, pending, onDone, onReauth }: { channel: Channe
   }
   return (
     <form onSubmit={confirm} className="flex flex-col gap-4 px-5 pb-5 pt-3">
-      <p className="text-[0.875rem] text-muted">{t("login.code_sent", { destination: sent, minutes: 10 })}</p>
+      <p className="text-body text-muted">{t("login.code_sent", { destination: sent, minutes: 10 })}</p>
       {error && <Alert tone="error">{error}</Alert>}
       <CodeInput label={t("common.code")} value={code} onChange={setCode} autoFocus />
       <Button type="submit" busy={busy} disabled={code.length < 6}>
         {t("account.contact_confirm")}
       </Button>
-      <button type="button" onClick={() => setSent(null)} className="self-center text-[0.8125rem] text-link hover:underline underline-offset-4">
+      <button type="button" onClick={() => setSent(null)} className="self-center text-small text-link hover:underline underline-offset-4">
         {t("account.contact_other")}
       </button>
     </form>

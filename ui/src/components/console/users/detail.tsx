@@ -58,7 +58,7 @@ export function UserDetail({ tenant, id, tab }: { tenant: string; id: string; ta
     return (
       <>
         <PageHeader title="User" />
-        <p role="alert" className="text-[0.9rem] text-danger">
+        <p role="alert" className="text-lead text-danger">
           {query.error.message}
         </p>
       </>
@@ -103,11 +103,11 @@ export function UserDetail({ tenant, id, tab }: { tenant: string; id: string; ta
         }
       />
       {act.isError && (
-        <p role="alert" className="mb-3 text-[0.875rem] text-danger">
+        <p role="alert" className="mb-3 text-body text-danger">
           {act.error.message}
         </p>
       )}
-      <p className="mb-4 text-[0.8125rem] text-muted">
+      <p className="mb-4 text-small text-muted">
         <Link href={`/console/users/?tenant=${encodeURIComponent(tenant)}`} className="text-link underline underline-offset-4">
           All users
         </Link>
@@ -118,7 +118,7 @@ export function UserDetail({ tenant, id, tab }: { tenant: string; id: string; ta
             key={t}
             href={userHref(tenant, id, t)}
             aria-current={t === tab ? "page" : undefined}
-            className={`-mb-px border-b-2 px-3 py-2 text-[0.875rem] ${t === tab ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"}`}
+            className={`-mb-px border-b-2 px-3 py-2 text-body ${t === tab ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"}`}
           >
             {TAB_LABELS[t]}
           </Link>

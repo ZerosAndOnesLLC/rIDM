@@ -55,7 +55,7 @@ export function Approvals() {
 
   return (
     <Card title={t("account.approvals_title")}>
-      <p className="text-[0.875rem] text-muted">{t("account.approvals_description")}</p>
+      <p className="text-body text-muted">{t("account.approvals_description")}</p>
       {answered && (
         <div className="mt-3">
           <Alert tone={answered.approved ? "ok" : "info"}>
@@ -69,7 +69,7 @@ export function Approvals() {
         </div>
       )}
       {requests.isError && <Alert tone="error">{t("account.error_generic")}</Alert>}
-      {requests.data && list.length === 0 && <p className="mt-3 text-[0.875rem] text-ink">{t("account.approvals_none")}</p>}
+      {requests.data && list.length === 0 && <p className="mt-3 text-body text-ink">{t("account.approvals_none")}</p>}
       {list.length > 0 && (
         <ul aria-label={t("account.approvals_title")} className="mt-3 divide-y divide-line">
           {ordered.map((r) => (
@@ -79,28 +79,28 @@ export function Approvals() {
                   // eslint-disable-next-line @next/next/no-img-element -- a third party's logo at its own URL
                   <img src={r.logo_uri} alt="" className="size-9 shrink-0 rounded-md border border-line object-cover" />
                 ) : (
-                  <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-md bg-paper text-[0.9375rem] font-semibold text-muted">
+                  <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-md bg-paper text-lead font-semibold text-muted">
                     {r.client_name.slice(0, 1).toUpperCase()}
                   </span>
                 )}
                 <div className="min-w-0">
-                  <p className="truncate text-[0.9375rem] font-medium text-ink">{t("account.approval_asks", { name: r.client_name })}</p>
-                  <p className="text-[0.8125rem] text-muted">{t("account.approval_times", { asked: time(r.created_at), expires: time(r.expires_at) })}</p>
+                  <p className="truncate text-lead font-medium text-ink">{t("account.approval_asks", { name: r.client_name })}</p>
+                  <p className="text-small text-muted">{t("account.approval_times", { asked: time(r.created_at), expires: time(r.expires_at) })}</p>
                 </div>
               </div>
               {r.binding_message && (
                 <div className="rounded-md border border-line bg-paper px-3 py-2">
-                  <p className="text-[0.8125rem] text-muted">{t("account.approval_binding")}</p>
-                  <p className="font-mono text-[1.125rem] font-semibold tracking-wide text-ink">{r.binding_message}</p>
+                  <p className="text-small text-muted">{t("account.approval_binding")}</p>
+                  <p className="font-mono text-title font-semibold tracking-wide text-ink">{r.binding_message}</p>
                 </div>
               )}
-              <p className="flex flex-wrap items-center gap-1.5 text-[0.8125rem] text-muted">
+              <p className="flex flex-wrap items-center gap-1.5 text-small text-muted">
                 <span>{t("account.approval_scopes")}</span>
                 {r.scopes.map((s) => (
                   <Badge key={s}>{s}</Badge>
                 ))}
               </p>
-              <p className="text-[0.8125rem] text-muted">{t("account.approval_hint")}</p>
+              <p className="text-small text-muted">{t("account.approval_hint")}</p>
               <div className="flex flex-wrap gap-2">
                 <Button onClick={() => answer.mutate({ r, approve: true })} disabled={answer.isPending}>
                   {t("account.approval_approve")}

@@ -107,18 +107,18 @@ export function OrganizationRoles({
   return (
     <Card
       title="Roles inside this organization"
-      actions={<span className="text-[0.8125rem] text-muted">Only while acting here</span>}
+      actions={<span className="text-small text-muted">Only while acting here</span>}
     >
       {grants.isPending ? (
         <Spinner label="Loading grants…" />
       ) : grants.isError ? (
         <ErrorLine error={grants.error} />
       ) : granted.length === 0 ? (
-        <p className="text-[0.875rem] text-muted">No roles granted inside this organization.</p>
+        <p className="text-body text-muted">No roles granted inside this organization.</p>
       ) : (
         <ul className="divide-y divide-line">
           {granted.map((g) => (
-            <li key={g.id} className="flex items-center justify-between gap-3 py-2 text-[0.875rem]">
+            <li key={g.id} className="flex items-center justify-between gap-3 py-2 text-body">
               <span className="text-ink">
                 {nameOf(g.role_id)} —{" "}
                 {g.group_id ? (
@@ -130,7 +130,7 @@ export function OrganizationRoles({
               {editable && g.user_id && (
                 <Button
                   variant="danger"
-                  className="min-h-8 px-2.5 text-[0.8125rem]"
+                  className="min-h-8 px-2.5 text-small"
                   disabled={change.isPending}
                   onClick={() =>
                     change.mutate({ userId: g.user_id!, roleId: g.role_id, remove: true })

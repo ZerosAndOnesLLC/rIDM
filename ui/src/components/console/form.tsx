@@ -8,17 +8,17 @@ import type { SaveStatus } from "@/lib/console/autosave";
 // leaves it zoomed; on phones every control is 16px, whatever size a caller
 // asks for (`!`), and the compact size from `sm` up.
 const control =
-  "min-h-10 w-full rounded-[var(--radius)] border border-line bg-paper px-3 text-[0.9rem] text-ink placeholder:text-muted/70 hover:border-muted/60 disabled:opacity-60 max-sm:text-[1rem]!";
+  "min-h-10 w-full rounded-[var(--radius)] border border-line bg-paper px-3 text-lead text-ink placeholder:text-muted/70 hover:border-muted/60 disabled:opacity-60 max-sm:text-md!";
 
 /** A titled group of fields on the settings page. */
 export function Section({ id, title, description, children }: { id: string; title: string; description?: ReactNode; children: ReactNode }) {
   return (
     <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-20 rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
       <header className="border-b border-line px-5 py-4">
-        <h2 id={`${id}-title`} className="text-[1rem] font-semibold text-ink">
+        <h2 id={`${id}-title`} className="text-md font-semibold text-ink">
           {title}
         </h2>
-        {description && <p className="mt-1 text-[0.875rem] text-muted">{description}</p>}
+        {description && <p className="mt-1 text-body text-muted">{description}</p>}
       </header>
       <div className="grid gap-5 px-5 py-5 sm:grid-cols-2">{children}</div>
     </section>
@@ -46,16 +46,16 @@ export function Field({
   const describedBy = [error ? `${id}-err` : null, hint ? `${id}-hint` : null].filter(Boolean).join(" ") || undefined;
   return (
     <div className={`flex flex-col gap-1.5 ${wide ? "sm:col-span-2" : ""}`}>
-      <label htmlFor={id} className="text-[0.8125rem] font-medium text-ink">
+      <label htmlFor={id} className="text-small font-medium text-ink">
         {label}
       </label>
       {children(id, describedBy)}
       {error ? (
-        <p id={`${id}-err`} className="text-[0.8125rem] text-danger" role="alert">
+        <p id={`${id}-err`} className="text-small text-danger" role="alert">
           {error}
         </p>
       ) : hint ? (
-        <p id={`${id}-hint`} className="text-[0.8125rem] text-muted">
+        <p id={`${id}-hint`} className="text-small text-muted">
           {hint}
         </p>
       ) : null}
@@ -68,7 +68,7 @@ export function TextInput({ className = "", ...rest }: InputHTMLAttributes<HTMLI
 }
 
 export function TextArea({ className = "", ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={`${control} min-h-24 py-2 font-mono text-[0.8125rem] ${className}`} {...rest} />;
+  return <textarea className={`${control} min-h-24 py-2 font-mono text-small ${className}`} {...rest} />;
 }
 
 export function SelectInput({ className = "", children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
@@ -134,7 +134,7 @@ export function NumberInput({
         }}
         className={`${control} ${unit ? "pe-16" : ""} ${invalid ? "border-danger" : ""}`}
       />
-      {unit && <span className="pointer-events-none absolute inset-y-0 end-3 flex items-center text-[0.8125rem] text-muted">{unit}</span>}
+      {unit && <span className="pointer-events-none absolute inset-y-0 end-3 flex items-center text-small text-muted">{unit}</span>}
     </div>
   );
 }
@@ -145,11 +145,11 @@ export function Toggle({ label, hint, checked, onChange, disabled }: { label: st
   return (
     <div className="flex items-start justify-between gap-4 py-1">
       <span className="flex flex-col">
-        <span id={`${id}-l`} className="text-[0.9rem] text-ink">
+        <span id={`${id}-l`} className="text-lead text-ink">
           {label}
         </span>
         {hint && (
-          <span id={`${id}-h`} className="text-[0.8125rem] text-muted">
+          <span id={`${id}-h`} className="text-small text-muted">
             {hint}
           </span>
         )}
@@ -201,7 +201,7 @@ export function TagsInput({
   return (
     <div className={`${control} flex min-h-10 flex-wrap items-center gap-1.5 py-1.5`}>
       {value.map((v) => (
-        <span key={v} className="inline-flex items-center gap-1 rounded-md bg-ground px-2 py-0.5 text-[0.8125rem] text-ink">
+        <span key={v} className="inline-flex items-center gap-1 rounded-md bg-ground px-2 py-0.5 text-small text-ink">
           {v}
           <button
             type="button"
@@ -228,7 +228,7 @@ export function TagsInput({
         }}
         onBlur={add}
         placeholder={value.length === 0 ? placeholder : undefined}
-        className="min-w-[8rem] flex-1 bg-transparent text-[0.9rem] text-ink outline-none placeholder:text-muted/70"
+        className="min-w-[8rem] flex-1 bg-transparent text-lead text-ink outline-none placeholder:text-muted/70"
       />
       {draft && (
         <button type="button" aria-label="Add" onClick={add} className="rounded p-1 text-muted hover:text-ink">
@@ -266,10 +266,10 @@ export function ColorInput({ id, value, onChange, describedBy }: { id: string; v
 
 /** "Saving… / Saved / Could not save" pill for the page header. */
 export function SaveIndicator({ status, error }: { status: SaveStatus; error: string | null }) {
-  if (status === "idle") return <span className="text-[0.8125rem] text-muted">Changes save automatically</span>;
+  if (status === "idle") return <span className="text-small text-muted">Changes save automatically</span>;
   if (status === "error") {
     return (
-      <span role="alert" className="inline-flex items-center gap-1.5 rounded-full bg-danger-soft px-2.5 py-1 text-[0.8125rem] text-danger">
+      <span role="alert" className="inline-flex items-center gap-1.5 rounded-full bg-danger-soft px-2.5 py-1 text-small text-danger">
         <X className="size-3.5" aria-hidden />
         {error ?? "Could not save"}
       </span>
@@ -277,14 +277,14 @@ export function SaveIndicator({ status, error }: { status: SaveStatus; error: st
   }
   if (status === "saved") {
     return (
-      <span role="status" className="inline-flex items-center gap-1.5 rounded-full bg-ok-soft px-2.5 py-1 text-[0.8125rem] text-ok">
+      <span role="status" className="inline-flex items-center gap-1.5 rounded-full bg-ok-soft px-2.5 py-1 text-small text-ok">
         <Check className="size-3.5" aria-hidden />
         Saved
       </span>
     );
   }
   return (
-    <span role="status" className="inline-flex items-center gap-1.5 text-[0.8125rem] text-muted">
+    <span role="status" className="inline-flex items-center gap-1.5 text-small text-muted">
       <Loader2 className="size-3.5 animate-spin" aria-hidden />
       {status === "saving" ? "Saving…" : "Unsaved changes"}
     </span>

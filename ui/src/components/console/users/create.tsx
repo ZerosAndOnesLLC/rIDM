@@ -77,7 +77,7 @@ export function CreateUser({ tenant, open, onOpenChange, onReveal }: { tenant: s
         </Field>
         {mode === "set" && <Field label="New password">{(id) => <TextInput id={id} type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required />}</Field>}
         {create.isError && (
-          <p role="alert" className="text-[0.875rem] text-danger">
+          <p role="alert" className="text-body text-danger">
             {create.error.message}
           </p>
         )}

@@ -57,7 +57,7 @@ export function IdentityProvidersPage({ tenant, selected }: { tenant: string; se
             ) : list.isError ? (
               <ErrorLine error={list.error} />
             ) : list.data.length === 0 ? (
-              <p className="text-[0.875rem] text-muted">No providers yet.</p>
+              <p className="text-body text-muted">No providers yet.</p>
             ) : (
               <ul className="flex flex-col gap-0.5">
                 {list.data.map((p) => (
@@ -65,11 +65,11 @@ export function IdentityProvidersPage({ tenant, selected }: { tenant: string; se
                     <Link
                       href={href("identity-providers", tenant, { idp: p.id })}
                       aria-current={p.id === selected ? "page" : undefined}
-                      className={`flex items-center justify-between gap-2 rounded-[var(--radius)] px-2 py-1.5 text-[0.875rem] ${p.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
+                      className={`flex items-center justify-between gap-2 rounded-[var(--radius)] px-2 py-1.5 text-body ${p.id === selected ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink hover:bg-ground"}`}
                     >
                       <span className="min-w-0">
                         <span className="block truncate">{p.display_name}</span>
-                        <span className="block truncate text-[0.75rem] text-muted">
+                        <span className="block truncate text-caption text-muted">
                           {p.alias} · {p.preset ?? p.kind}
                         </span>
                       </span>
@@ -81,7 +81,7 @@ export function IdentityProvidersPage({ tenant, selected }: { tenant: string; se
             )}
           </Card>
         }
-        detail={selected ? <ProviderView key={selected} tenant={tenant} id={selected} /> : <p className="text-[0.9rem] text-muted">Choose a provider.</p>}
+        detail={selected ? <ProviderView key={selected} tenant={tenant} id={selected} /> : <p className="text-lead text-muted">Choose a provider.</p>}
       />
       <CreateProvider tenant={tenant} open={creating} onOpenChange={setCreating} />
     </>
@@ -278,11 +278,11 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
       {kerberos ? (
         <>
           <div className="flex flex-col gap-1.5">
-            <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 self-start rounded-[var(--radius)] border border-line bg-paper px-3.5 text-[0.875rem] font-medium text-ink hover:bg-ground focus-within:outline-2 focus-within:outline-accent">
+            <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 self-start rounded-[var(--radius)] border border-line bg-paper px-3.5 text-body font-medium text-ink hover:bg-ground focus-within:outline-2 focus-within:outline-accent">
               <input type="file" accept=".keytab,application/octet-stream" className="sr-only" onChange={onKeytab} />
               {keytab ? "Choose another keytab" : "Choose the service's keytab"}
             </label>
-            <p className="text-[0.8125rem] text-muted" aria-live="polite">
+            <p className="text-small text-muted" aria-live="polite">
               {keytabError ??
                 (keytab
                   ? `${keytab.report.entries.length} key${keytab.report.entries.length === 1 ? "" : "s"}; ${keytab.report.service_principals.length ? `AES keys for ${keytab.report.service_principals.join(", ")}` : "no AES key rIDM can use"}.`
@@ -338,7 +338,7 @@ function CreateProvider({ tenant, open, onOpenChange }: { tenant: string; open: 
           <Field label="Or its metadata" hint="The EntityDescriptor XML, when there is no URL to fetch it from.">
             {(id, by) => <TextArea id={id} aria-describedby={by} value={metadata} disabled={!!metadataUrl.trim()} spellCheck={false} placeholder="<md:EntityDescriptor …>" onChange={(e) => setMetadata(e.target.value)} />}
           </Field>
-          <label className="inline-flex cursor-pointer items-center gap-2 self-start text-[0.875rem] text-accent hover:underline underline-offset-4">
+          <label className="inline-flex cursor-pointer items-center gap-2 self-start text-body text-accent hover:underline underline-offset-4">
             <input type="file" accept=".xml,application/xml,text/xml,application/samlmetadata+xml" className="sr-only" onChange={onFile} />
             Upload a metadata file
           </label>
@@ -454,16 +454,16 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-[1.125rem] font-semibold text-ink">{draft.display_name}</h2>
+        <h2 className="text-title font-semibold text-ink">{draft.display_name}</h2>
         <SaveIndicator status={status} error={error} />
       </div>
       {isLdap || isKerberos ? null : isSaml ? (
         <SamlSpDetails provider={draft} />
       ) : (
         <Card title="Callback URL">
-          <p className="text-[0.875rem] text-muted">Register this redirect URI with the provider.</p>
+          <p className="text-body text-muted">Register this redirect URI with the provider.</p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <code className="break-all rounded-[var(--radius)] bg-ground px-2 py-1 font-mono text-[0.8125rem] text-ink">{draft.callback_url}</code>
+            <code className="break-all rounded-[var(--radius)] bg-ground px-2 py-1 font-mono text-small text-ink">{draft.callback_url}</code>
             <CopyButton value={draft.callback_url} label="Copy callback URL" />
           </div>
         </Card>

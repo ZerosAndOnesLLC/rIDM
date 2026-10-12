@@ -14,7 +14,7 @@ export function CreateDialog({ open, onOpenChange, title, description, submitLab
       <form onSubmit={submit} className="flex flex-col gap-4 overflow-y-auto px-5 pb-5 pt-3" noValidate>
         {children}
         {error && (
-          <p role="alert" className="text-[0.875rem] text-danger">
+          <p role="alert" className="text-body text-danger">
             {error}
           </p>
         )}
@@ -40,7 +40,7 @@ export function DeleteButton({ what, onConfirm, pending, error, description }: {
       <Modal open={open} onOpenChange={setOpen} title={`Delete this ${what}?`} description={description ?? "There is no undo."}>
         <div className="flex flex-col gap-3 px-5 pb-5 pt-3">
           {error && (
-            <p role="alert" className="text-[0.875rem] text-danger">
+            <p role="alert" className="text-body text-danger">
               {error}
             </p>
           )}
@@ -59,7 +59,7 @@ export function DeleteButton({ what, onConfirm, pending, error, description }: {
 export function ErrorLine({ error }: { error: Error | null | undefined }) {
   if (!error) return null;
   return (
-    <p role="alert" className="text-[0.875rem] text-danger">
+    <p role="alert" className="text-body text-danger">
       {error.message}
     </p>
   );

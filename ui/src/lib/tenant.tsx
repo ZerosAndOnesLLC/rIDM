@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, ApiError, tenantBase } from "./api";
+import { applyTheme, clearTheme, deriveContrast, isHex } from "./theme/ramp";
 import type { PublicTenant } from "./types";
 
 interface TenantState {
@@ -15,8 +16,9 @@ interface TenantState {
 const TenantContext = createContext<TenantState | null>(null);
 
 /**
- * Loads the tenant's public branding document and applies its theme:
- * accent and ground colours as CSS variables, favicon, and custom CSS.
+ * Loads the tenant's public branding document and applies its theme: the
+ * primary colour becomes the accent and contrast ramps (src/lib/theme/ramp.ts),
+ * the background colour the ground, plus favicon and custom CSS.
  */
 export function TenantProvider({ slug, preview = false, children }: { slug: string | null; preview?: boolean; children: ReactNode }) {
   const [state, setState] = useState<TenantState>({
@@ -64,8 +66,12 @@ export function TenantProvider({ slug, preview = false, children }: { slug: stri
     const b = state.tenant?.branding;
     if (!b) return;
     const root = document.documentElement;
-    if (b.primary_color && isColor(b.primary_color)) root.style.setProperty("--accent", b.primary_color);
-    else root.style.removeProperty("--accent");
+    // Until the appearance settings land (15.3) the contrast colour is derived
+    // from the primary. A non-hex primary (rgb(), oklch()) cannot feed the ramp
+    // engine, so it only sets the plain accent, as before.
+    clearTheme(root);
+    if (b.primary_color && isHex(b.primary_color)) applyTheme(root, { primary: b.primary_color, contrast: deriveContrast(b.primary_color) });
+    else if (b.primary_color && isColor(b.primary_color)) root.style.setProperty("--accent", b.primary_color);
     if (b.background_color && isColor(b.background_color)) root.style.setProperty("--ground", b.background_color);
     else root.style.removeProperty("--ground");
     if (b.favicon_url) {

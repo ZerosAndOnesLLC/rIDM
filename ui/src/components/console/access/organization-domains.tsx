@@ -77,14 +77,14 @@ export function OrganizationDomains({
   return (
     <Card title="Email domains">
       {domains.length === 0 && (
-        <p className="text-[0.875rem] text-muted">
+        <p className="text-body text-muted">
           No domains. A verified domain with auto-join makes everyone with a verified address there
           a member.
         </p>
       )}
       <ul className="divide-y divide-line">
         {domains.map((d) => (
-          <li key={d.id} className="flex flex-col gap-2 py-3 text-[0.875rem]">
+          <li key={d.id} className="flex flex-col gap-2 py-3 text-body">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="flex items-center gap-2 font-medium text-ink">
                 {d.domain}
@@ -101,7 +101,7 @@ export function OrganizationDomains({
                 <span className="flex gap-2">
                   {!d.verified_at && (
                     <Button
-                      className="min-h-8 px-2.5 text-[0.8125rem]"
+                      className="min-h-8 px-2.5 text-small"
                       disabled={verify.isPending}
                       onClick={() => verify.mutate(d.id)}
                     >
@@ -109,7 +109,7 @@ export function OrganizationDomains({
                     </Button>
                   )}
                   <Button
-                    className="min-h-8 px-2.5 text-[0.8125rem]"
+                    className="min-h-8 px-2.5 text-small"
                     disabled={toggle.isPending}
                     onClick={() => toggle.mutate({ domainId: d.id, auto_join: !d.auto_join })}
                   >
@@ -117,7 +117,7 @@ export function OrganizationDomains({
                   </Button>
                   <Button
                     variant="danger"
-                    className="min-h-8 px-2.5 text-[0.8125rem]"
+                    className="min-h-8 px-2.5 text-small"
                     disabled={remove.isPending}
                     onClick={() => remove.mutate(d.id)}
                   >
@@ -127,7 +127,7 @@ export function OrganizationDomains({
               )}
             </div>
             {!d.verified_at && (
-              <p className="text-[0.8125rem] text-muted">
+              <p className="text-small text-muted">
                 Publish a TXT record at <code className="text-ink">{challengeRecord(d)}</code> with
                 the value <code className="text-ink">{d.verification}</code>, then check it.
               </p>

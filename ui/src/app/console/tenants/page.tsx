@@ -54,15 +54,15 @@ export default function TenantsPage() {
         <TextInput aria-label="Filter tenants" placeholder="Slug or name starts with…" value={filter} onChange={(e) => setFilter(e.target.value)} />
       </div>
       {tenants.isError ? (
-        <p role="alert" className="text-[0.9rem] text-danger">
+        <p role="alert" className="text-lead text-danger">
           {tenants.error.message}
         </p>
       ) : tenants.isPending ? (
         <Spinner label="Loading tenants…" />
       ) : (
         <div className="overflow-x-auto rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
-          <table className="w-full text-[0.875rem]">
-            <thead className="text-start text-[0.75rem] uppercase tracking-wide text-muted">
+          <table className="w-full text-body">
+            <thead className="text-start text-caption uppercase tracking-wide text-muted">
               <tr className="border-b border-line">
                 <th scope="col" className="px-4 py-2.5 text-start font-medium">Tenant</th>
                 <th scope="col" className="px-4 py-2.5 text-start font-medium">Slug</th>
@@ -82,10 +82,10 @@ export default function TenantsPage() {
                 <tr key={t.id} className="border-b border-line last:border-b-0 hover:bg-ground/60">
                   <td className="px-4 py-2.5 font-medium text-ink">
                     {t.display_name}
-                    {t.slug === current && <span className="ms-2 text-[0.75rem] font-normal text-muted">current</span>}
+                    {t.slug === current && <span className="ms-2 text-caption font-normal text-muted">current</span>}
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-[0.8125rem] text-muted">{t.slug}</td>
-                  {regional && <td className="px-4 py-2.5 font-mono text-[0.8125rem] text-muted">{t.data_region ?? "home"}</td>}
+                  <td className="px-4 py-2.5 font-mono text-small text-muted">{t.slug}</td>
+                  {regional && <td className="px-4 py-2.5 font-mono text-small text-muted">{t.data_region ?? "home"}</td>}
                   <td className="px-4 py-2.5">
                     {t.relocating ? <Badge tone="accent">Moving</Badge> : t.status === "active" ? <Badge tone="ok">Active</Badge> : <Badge tone="danger">Disabled</Badge>}
                   </td>
@@ -195,7 +195,7 @@ function CreateTenant({ open, onOpenChange, regions }: { open: boolean; onOpenCh
           </Field>
         )}
         {create.isError && (
-          <p role="alert" className="text-[0.875rem] text-danger">
+          <p role="alert" className="text-body text-danger">
             {create.error.message}
           </p>
         )}

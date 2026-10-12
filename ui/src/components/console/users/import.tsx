@@ -51,14 +51,14 @@ export function ImportUsers({ tenant, open, onOpenChange, onImported }: { tenant
     <Modal open={open} onOpenChange={close} title="Import users" description="JSON (an array of users) or CSV with a header row; attr.<name> columns become profile attributes." size="lg">
       <div className="flex flex-col gap-4 overflow-y-auto px-5 pb-5 pt-3">
         <div className="flex flex-wrap items-center gap-3">
-          <label className="text-[0.875rem] text-ink">
+          <label className="text-body text-ink">
             <span className="sr-only">Choose a file</span>
-            <input type="file" accept=".json,.csv,application/json,text/csv" onChange={(e) => void pick(e.target.files?.[0])} className="text-[0.8125rem] text-muted file:me-3 file:rounded-[var(--radius)] file:border file:border-line file:bg-paper file:px-3 file:py-1.5 file:text-[0.8125rem] file:text-ink" />
+            <input type="file" accept=".json,.csv,application/json,text/csv" onChange={(e) => void pick(e.target.files?.[0])} className="text-small text-muted file:me-3 file:rounded-[var(--radius)] file:border file:border-line file:bg-paper file:px-3 file:py-1.5 file:text-small file:text-ink" />
           </label>
-          <label className="flex items-center gap-2 text-[0.875rem] text-ink">
+          <label className="flex items-center gap-2 text-body text-ink">
             <input type="radio" name="fmt" checked={format === "json"} onChange={() => setFormat("json")} className="accent-[var(--accent)]" /> JSON
           </label>
-          <label className="flex items-center gap-2 text-[0.875rem] text-ink">
+          <label className="flex items-center gap-2 text-body text-ink">
             <input type="radio" name="fmt" checked={format === "csv"} onChange={() => setFormat("csv")} className="accent-[var(--accent)]" /> CSV
           </label>
         </div>
@@ -73,20 +73,20 @@ export function ImportUsers({ tenant, open, onOpenChange, onImported }: { tenant
           className="min-h-40"
         />
         {run.isError && (
-          <p role="alert" className="text-[0.875rem] text-danger">
+          <p role="alert" className="text-body text-danger">
             {run.error.message}
           </p>
         )}
         {report && (
           <div className="rounded-[var(--radius)] border border-line">
-            <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5 text-[0.875rem]" role="status">
+            <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5 text-body" role="status">
               <Badge tone={report.dry_run ? "accent" : "ok"}>{report.dry_run ? "Dry run" : "Imported"}</Badge>
               <span>
                 {report.total} rows · {report.created} {report.dry_run ? "would be created" : "created"} · {report.failed} failed
               </span>
             </div>
             {report.errors.length > 0 && (
-              <ul className="max-h-48 overflow-y-auto px-4 py-2 text-[0.8125rem]">
+              <ul className="max-h-48 overflow-y-auto px-4 py-2 text-small">
                 {report.errors.map((e) => (
                   <li key={`${e.row}-${e.error}`} className="py-1 text-danger">
                     Row {e.row}
@@ -126,15 +126,15 @@ export function ExportUsers({ tenant, open, onOpenChange }: { tenant: string; op
       <div className="flex flex-col gap-4 px-5 pb-5 pt-3">
         <fieldset className="flex gap-4">
           <legend className="sr-only">Format</legend>
-          <label className="flex items-center gap-2 text-[0.875rem] text-ink">
+          <label className="flex items-center gap-2 text-body text-ink">
             <input type="radio" name="export-fmt" checked={format === "json"} onChange={() => setFormat("json")} className="accent-[var(--accent)]" /> JSON
           </label>
-          <label className="flex items-center gap-2 text-[0.875rem] text-ink">
+          <label className="flex items-center gap-2 text-body text-ink">
             <input type="radio" name="export-fmt" checked={format === "csv"} onChange={() => setFormat("csv")} className="accent-[var(--accent)]" /> CSV
           </label>
         </fieldset>
         {download.isError && (
-          <p role="alert" className="text-[0.875rem] text-danger">
+          <p role="alert" className="text-body text-danger">
             {download.error.message}
           </p>
         )}

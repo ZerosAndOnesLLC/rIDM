@@ -13,7 +13,7 @@ export default function Page() {
   const { t } = useI18n();
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-[1.5rem] font-semibold leading-tight tracking-[-0.01em] text-ink">{t("account.security")}</h1>
+      <h1 className="text-2xl font-semibold leading-tight tracking-[-0.01em] text-ink">{t("account.security")}</h1>
       <Password />
       <Security />
       <Identities />

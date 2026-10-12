@@ -67,8 +67,8 @@ export function IpRulesPage({ tenant }: { tenant: string }) {
         <ErrorLine error={rules.error} />
       ) : (
         <div className="overflow-x-auto rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
-          <table className="w-full text-[0.875rem]">
-            <thead className="text-[0.75rem] uppercase tracking-wide text-muted">
+          <table className="w-full text-body">
+            <thead className="text-caption uppercase tracking-wide text-muted">
               <tr className="border-b border-line">
                 <th scope="col" className="px-4 py-2.5 text-start font-medium">Network</th>
                 <th scope="col" className="px-4 py-2.5 text-start font-medium">Action</th>
@@ -128,7 +128,7 @@ function RuleRow({ r, clientName, editable, onPatch, onRemove }: { r: IpRule; cl
   const [description, setDescription] = useState(r.description ?? "");
   return (
     <tr className="border-b border-line last:border-b-0">
-      <td className="px-4 py-2 font-mono text-[0.8125rem] text-ink">{r.cidr}</td>
+      <td className="px-4 py-2 font-mono text-small text-ink">{r.cidr}</td>
       <td className="px-4 py-2">
         {editable ? (
           <SelectInput aria-label={`Action for ${r.cidr}`} value={r.action} onChange={(e) => onPatch({ action: e.target.value as "allow" | "deny" })} className="max-w-[7rem]">

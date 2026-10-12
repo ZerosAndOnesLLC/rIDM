@@ -53,7 +53,7 @@ export function Sessions() {
         ) : undefined
       }
     >
-      <p className="text-[0.875rem] text-muted">{t("account.sessions_description")}</p>
+      <p className="text-body text-muted">{t("account.sessions_description")}</p>
       {error && (
         <div className="mt-3">
           <Alert tone="error">{error}</Alert>
@@ -65,12 +65,12 @@ export function Sessions() {
           {list.map((s) => (
             <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
               <div className="min-w-0">
-                <p className="flex flex-wrap items-center gap-2 text-[0.9375rem] font-medium text-ink">
+                <p className="flex flex-wrap items-center gap-2 text-lead font-medium text-ink">
                   <span className="truncate">{s.user_agent ?? t("account.device_unnamed")}</span>
                   {s.current && <Badge tone="accent">{t("account.session_current")}</Badge>}
                   {s.impersonated_by && <Badge>{t("account.session_impersonated", { name: s.impersonated_by })}</Badge>}
                 </p>
-                <p className="text-[0.8125rem] text-muted">
+                <p className="text-small text-muted">
                   {t("account.session_signed_in", { when: when(s.auth_time) })}
                   {s.ip ? ` · ${s.ip}` : ""}
                   {` · ${t("account.session_last_seen", { when: when(s.last_seen_at) })}`}

@@ -49,7 +49,7 @@ export function Export() {
         </CButton>
       }
     >
-      <p className="text-[0.875rem] text-muted">{t("account.export_description")}</p>
+      <p className="text-body text-muted">{t("account.export_description")}</p>
       {error && (
         <div className="mt-3">
           <Alert tone="error">{error}</Alert>
@@ -97,11 +97,11 @@ export function DeleteAccount() {
           </CButton>
         }
       >
-        <p className="text-[0.875rem] text-muted">{t("account.delete_description")}</p>
+        <p className="text-body text-muted">{t("account.delete_description")}</p>
       </Card>
       <Modal open={open} onOpenChange={setOpen} title={t("account.delete_title")}>
         <form onSubmit={submit} className="flex flex-col gap-4 px-5 pb-5 pt-3" noValidate>
-          <p className="text-[0.9375rem] text-ink">{t("account.delete_hint")}</p>
+          <p className="text-lead text-ink">{t("account.delete_hint")}</p>
           {error && <Alert tone="error">{error}</Alert>}
           <TextField label={t("account.delete_confirm", { username: me?.username ?? "" })} value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} autoFocus required />
           <Button type="submit" variant="danger" busy={busy} disabled={confirm.trim().toLowerCase() !== (me?.username ?? "")}>

@@ -80,16 +80,16 @@ export function ConfigPage({ tenant }: { tenant: string }) {
             <Button disabled={!can("ridm:tenants:export") || load.isPending} onClick={() => load.mutate()}>
               Load into the editor below
             </Button>
-            <span className="text-[0.8125rem] text-muted">Deterministic: sorted collections, natural keys, no ids. Apply it to another tenant to copy its configuration.</span>
+            <span className="text-small text-muted">Deterministic: sorted collections, natural keys, no ids. Apply it to another tenant to copy its configuration.</span>
           </div>
           <ErrorLine error={exp.error ?? load.error} />
         </Card>
         <Card title="Import">
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-3">
-              <label className="text-[0.875rem] text-ink">
+              <label className="text-body text-ink">
                 <span className="sr-only">Choose a document</span>
-                <input type="file" accept=".json,application/json" onChange={(e) => void pick(e.target.files?.[0])} className="text-[0.8125rem] text-muted file:me-3 file:rounded-[var(--radius)] file:border file:border-line file:bg-paper file:px-3 file:py-1.5 file:text-[0.8125rem] file:text-ink" />
+                <input type="file" accept=".json,application/json" onChange={(e) => void pick(e.target.files?.[0])} className="text-small text-muted file:me-3 file:rounded-[var(--radius)] file:border file:border-line file:bg-paper file:px-3 file:py-1.5 file:text-small file:text-ink" />
               </label>
               <Toggle label="Prune" hint="Also delete what the document does not mention (built-ins and standard scopes are never deleted)." checked={prune} onChange={(v) => { setPrune(v); setPlan(null); }} />
             </div>
@@ -121,7 +121,7 @@ export function ConfigPage({ tenant }: { tenant: string }) {
             }
           >
             {plan.errors.length > 0 && (
-              <ul className="mb-3 rounded-[var(--radius)] bg-danger-soft px-4 py-2 text-[0.8125rem] text-danger" role="alert">
+              <ul className="mb-3 rounded-[var(--radius)] bg-danger-soft px-4 py-2 text-small text-danger" role="alert">
                 {plan.errors.map((e) => (
                   <li key={`${e.resource}/${e.key}`}>
                     {e.resource} {e.key}: {e.error}
@@ -130,25 +130,25 @@ export function ConfigPage({ tenant }: { tenant: string }) {
               </ul>
             )}
             {plan.changes.length === 0 ? (
-              <p className="text-[0.875rem] text-muted">The document matches the tenant: nothing to do.</p>
+              <p className="text-body text-muted">The document matches the tenant: nothing to do.</p>
             ) : (
               <div className="flex flex-col gap-4">
                 {[...grouped.entries()].map(([resource, changes]) => (
                   <section key={resource} aria-label={resource}>
-                    <h3 className="mb-1 text-[0.8125rem] font-semibold uppercase tracking-wide text-muted">{resource}</h3>
+                    <h3 className="mb-1 text-small font-semibold uppercase tracking-wide text-muted">{resource}</h3>
                     <ul className="divide-y divide-line rounded-[var(--radius)] border border-line">
                       {changes.map((c) => (
-                        <li key={`${c.op}/${c.key}`} className="px-3 py-2 text-[0.875rem]">
+                        <li key={`${c.op}/${c.key}`} className="px-3 py-2 text-body">
                           <div className="flex items-center gap-2">
                             <Badge tone={OP_TONE[c.op]}>{c.op}</Badge>
-                            <span className="font-mono text-[0.8125rem] text-ink">{c.key}</span>
+                            <span className="font-mono text-small text-ink">{c.key}</span>
                           </div>
                           {c.fields && c.fields.length > 0 && (
                             <dl className="mt-1.5 grid gap-1 sm:grid-cols-[minmax(8rem,auto)_minmax(0,1fr)]">
                               {c.fields.map((f) => (
                                 <div key={f.field} className="contents">
-                                  <dt className="font-mono text-[0.75rem] text-muted">{f.field}</dt>
-                                  <dd className="flex min-w-0 flex-wrap gap-2 font-mono text-[0.75rem]">
+                                  <dt className="font-mono text-caption text-muted">{f.field}</dt>
+                                  <dd className="flex min-w-0 flex-wrap gap-2 font-mono text-caption">
                                     <Val value={f.from} tone="from" />
                                     <Val value={f.to} tone="to" />
                                   </dd>

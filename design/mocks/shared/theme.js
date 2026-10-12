@@ -59,7 +59,7 @@
     { id: "forest", name: "Forest & ochre", primary: "#2f6b3a", contrast: "#a16207" },
     { id: "ember", name: "Ember & slate", primary: "#b8431e", contrast: "#334e68" },
     { id: "plum", name: "Plum & lime", primary: "#6d28d9", contrast: "#4d7c0f" },
-    { id: "graphite", name: "Graphite & sky", primary: "#3b4252", contrast: "#0369a1" },
+    { id: "graphite", name: "Graphite & rose", primary: "#3b4252", contrast: "#be123c" },
   ];
   window.THEME = { ramp, ratio, slots, apply, PRESETS, hexToOklch, oklchToHex };
 })();

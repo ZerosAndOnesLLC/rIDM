@@ -62,7 +62,7 @@ function TestResult({ report }: { report: LdapTestReport }) {
         <Badge tone={report.connected ? "ok" : "danger"}>{report.connected ? "connected" : "no connection"}</Badge>
         {report.connected && <Badge tone={report.bound ? "ok" : "danger"}>{report.bound ? "service account bound" : "bind refused"}</Badge>}
       </div>
-      {report.error && <p className="text-[0.8125rem] text-danger">{report.error}</p>}
+      {report.error && <p className="text-small text-danger">{report.error}</p>}
       {report.connected && report.bound && (
         <dl>
           <Row label="Users found">{report.users.length === 0 ? "none under the base" : report.users.map((u) => u.username ?? u.dn).join(", ")}</Row>
@@ -162,7 +162,7 @@ export function LdapUpstreamSection({
           ) : undefined
         }
       >
-        {test.data ? <TestResult report={test.data} /> : <p className="text-[0.875rem] text-muted">Connects, binds as the service account and reads a few users and groups. Nothing is stored.</p>}
+        {test.data ? <TestResult report={test.data} /> : <p className="text-body text-muted">Connects, binds as the service account and reads a few users and groups. Nothing is stored.</p>}
         <ErrorLine error={test.error} />
       </Card>
       <Section id="idp-ldap-connection" title="Directory" description="rIDM connects to the directory from the server. A directory on a private network needs the operator to open it with OUTBOUND_ALLOW_NETWORKS.">
@@ -303,11 +303,11 @@ export function LdapUpstreamSection({
           {(fid) => <NumberInput id={fid} value={s.full_sync_interval_hours} min={1} max={720} unit="h" disabled={!editable} onValue={(v) => v !== null && set({ full_sync_interval_hours: v })} />}
         </Field>
         <div className="sm:col-span-2 flex flex-col gap-2">
-          <p className="text-[0.8125rem] text-muted" aria-live="polite">
+          <p className="text-small text-muted" aria-live="polite">
             {status}
           </p>
           {(lastSync ?? ldap.last_sync_stats) && (
-            <p className="text-[0.8125rem] text-muted">
+            <p className="text-small text-muted">
               <StatsLine stats={(lastSync ?? ldap.last_sync_stats) as LdapSyncStats} />
             </p>
           )}

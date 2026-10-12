@@ -75,7 +75,7 @@ export function MemberList({
       ) : pages.isError ? (
         <ErrorLine error={pages.error} />
       ) : members.length === 0 ? (
-        filtering ? <p className="text-[0.875rem] text-muted">No member matches.</p> : empty
+        filtering ? <p className="text-body text-muted">No member matches.</p> : empty
       ) : (
         <ul className="divide-y divide-line">{members.map((m) => row(m))}</ul>
       )}

@@ -52,8 +52,8 @@ export function RiskSection() {
       </div>
 
       <div className="flex flex-col gap-1 sm:col-span-2">
-        <h3 className="text-[0.8125rem] font-medium text-ink">Signals</h3>
-        <p className="text-[0.8125rem] text-muted">
+        <h3 className="text-small font-medium text-ink">Signals</h3>
+        <p className="text-small text-muted">
           Each signal a sign-in raises adds its points. Everything together scores {most}.
         </p>
       </div>
@@ -63,7 +63,7 @@ export function RiskSection() {
       {weight("velocity", "Failure velocity", "The address is behind an unusual number of recent failed sign-ins.")}
 
       <div className="flex flex-col gap-1 sm:col-span-2">
-        <h3 className="text-[0.8125rem] font-medium text-ink">Thresholds</h3>
+        <h3 className="text-small font-medium text-ink">Thresholds</h3>
       </div>
       <Field label="Ask for a second factor at" hint="Score at which the sign-in must pass a second step, whatever the two-step policy says and even on a trusted device. 0 never steps up.">
         {(id, by) => (
@@ -77,7 +77,7 @@ export function RiskSection() {
       </Field>
 
       <div className="flex flex-col gap-1 sm:col-span-2">
-        <h3 className="text-[0.8125rem] font-medium text-ink">Signal tuning</h3>
+        <h3 className="text-small font-medium text-ink">Signal tuning</h3>
       </div>
       <Field label="Impossible travel above" hint="Travelling faster than this between two sign-ins is impossible. 0 switches the signal off.">
         {(id, by) => (

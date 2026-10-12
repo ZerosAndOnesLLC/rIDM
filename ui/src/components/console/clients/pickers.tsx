@@ -6,11 +6,11 @@ import { useResourceServers, useScopes } from "@/lib/console/hooks";
 export function CheckList({ legend, hint, options, value, onChange, disabled }: { legend: string; hint?: string; options: { value: string; label: string; hint?: string }[]; value: string[]; onChange: (v: string[]) => void; disabled?: boolean }) {
   return (
     <fieldset className="flex flex-col gap-1.5">
-      <legend className="mb-1 text-[0.8125rem] font-medium text-ink">{legend}</legend>
-      {hint && <p className="mb-1 text-[0.8125rem] text-muted">{hint}</p>}
-      {options.length === 0 && <p className="text-[0.875rem] text-muted">Nothing to choose from.</p>}
+      <legend className="mb-1 text-small font-medium text-ink">{legend}</legend>
+      {hint && <p className="mb-1 text-small text-muted">{hint}</p>}
+      {options.length === 0 && <p className="text-body text-muted">Nothing to choose from.</p>}
       {options.map((o) => (
-        <label key={o.value} className="flex items-start gap-2 text-[0.875rem] text-ink">
+        <label key={o.value} className="flex items-start gap-2 text-body text-ink">
           <input
             type="checkbox"
             className="mt-1 size-4 accent-[var(--accent)]"
@@ -20,7 +20,7 @@ export function CheckList({ legend, hint, options, value, onChange, disabled }: 
           />
           <span>
             {o.label}
-            {o.hint && <span className="ms-2 text-[0.8125rem] text-muted">{o.hint}</span>}
+            {o.hint && <span className="ms-2 text-small text-muted">{o.hint}</span>}
           </span>
         </label>
       ))}
