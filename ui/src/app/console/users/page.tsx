@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { RevealModal, type Revealed } from "@/components/console/clients/reveal";
@@ -9,7 +10,6 @@ import { ExportUsers, ImportUsers } from "@/components/console/users/import";
 import { InvitationsList, InviteUser } from "@/components/console/users/invite";
 import { UsersTable } from "@/components/console/users/table";
 import { Button, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useConsoleTenant } from "@/lib/console/tenant";
 import { TABS, type Tab } from "@/lib/console/users";
@@ -29,7 +29,7 @@ export default function UsersPage() {
   const [revealed, setRevealed] = useState<Revealed | null>(null);
   const [goTo, setGoTo] = useState<string | null>(null);
 
-  if (!tenant) return <Spinner label="Loading…" />;
+  if (!tenant) return <Skeleton shape="lines" count={4} label="Loading…" />;
   if (view === "invitations") {
     return (
       <>

@@ -1,12 +1,12 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
 import { fmtDateTime } from "@/lib/console/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { Field, NumberInput, Section, SelectInput, TagsInput, TextInput, Toggle } from "@/components/console/form";
 import { Badge, Button } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import type { InitialAccessToken } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
 import { GRANTS, RSA_BITS, SIGNING_ALGS } from "@/lib/console/settings";
@@ -175,7 +175,7 @@ function InitialAccessTokens({ slug }: { slug: string }) {
         </form>
       )}
       {tokens.isPending ? (
-        <Spinner label="Loading…" />
+        <Skeleton shape="lines" count={4} label="Loading…" />
       ) : tokens.isError ? (
         <ErrorLine error={tokens.error} />
       ) : tokens.data.length === 0 ? (

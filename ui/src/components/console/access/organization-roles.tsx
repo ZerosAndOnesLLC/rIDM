@@ -1,12 +1,13 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
+import { Skeleton } from "@/components/base/skeleton";
 import { ListFooter } from "@/components/base/data-table";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { SelectInput } from "@/components/console/form";
 import { Picker, type PickerItem } from "@/components/console/picker";
 import { Button, Card } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { useDebounced } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
 import { roleName } from "@/lib/console/users";
@@ -111,11 +112,11 @@ export function OrganizationRoles({
       actions={<span className="text-small text-muted">Only while acting here</span>}
     >
       {grants.isPending ? (
-        <Spinner label="Loading grants…" />
+        <Skeleton shape="lines" count={4} label="Loading grants…" />
       ) : grants.isError ? (
         <ErrorLine error={grants.error} />
       ) : granted.length === 0 ? (
-        <p className="text-body text-muted">No roles granted inside this organization.</p>
+        <EmptyState compact title="No roles granted inside this organization." />
       ) : (
         <ul className="divide-y divide-line">
           {granted.map((g) => (

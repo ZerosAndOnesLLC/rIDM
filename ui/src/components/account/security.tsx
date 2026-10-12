@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import QRCode from "qrcode";
 import { useCallback, useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
@@ -128,7 +129,7 @@ export function Security() {
             <Alert tone="error">{t("account.error_generic")}</Alert>
           </div>
         )}
-        {s && factors.length === 0 && <p className="mt-3 text-body text-ink">{t("account.mfa_none")}</p>}
+        {s && factors.length === 0 && <EmptyState compact title={t("account.mfa_none")} />}
         {factors.length > 0 && (
           <ul aria-label={t("account.mfa_title")} className="mt-3 divide-y divide-line">
             {factors.map((f) => (

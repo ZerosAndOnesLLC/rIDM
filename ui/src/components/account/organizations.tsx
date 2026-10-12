@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
 import { useQuery } from "@tanstack/react-query";
 import { useI18n } from "@/i18n/provider";
 import { Alert } from "@/components/ui";
@@ -27,7 +28,7 @@ export function Organizations() {
     <Card title={t("account.orgs")}>
       <p className="text-body text-muted">{t("account.orgs_description")}</p>
       {orgs.data && orgs.data.length === 0 ? (
-        <p className="mt-3 text-body text-muted">{t("account.orgs_none")}</p>
+        <EmptyState compact title={t("account.orgs_none")} />
       ) : (
         <ul className="mt-3 divide-y divide-line">
           {(orgs.data ?? []).map((o) => (

@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
@@ -69,7 +70,7 @@ export function Approvals() {
         </div>
       )}
       {requests.isError && <Alert tone="error">{t("account.error_generic")}</Alert>}
-      {requests.data && list.length === 0 && <p className="mt-3 text-body text-ink">{t("account.approvals_none")}</p>}
+      {requests.data && list.length === 0 && <EmptyState compact title={t("account.approvals_none")} />}
       {list.length > 0 && (
         <ul aria-label={t("account.approvals_title")} className="mt-3 divide-y divide-line">
           {ordered.map((r) => (

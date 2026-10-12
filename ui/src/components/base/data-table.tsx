@@ -215,7 +215,7 @@ export function DataTable<T>({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="overflow-x-auto rounded-[var(--radius)] border border-line bg-paper">
+      <div className="data-table overflow-x-auto rounded-[var(--radius)] border border-line bg-paper">
         <div role="table" aria-label={label} aria-rowcount={total !== undefined ? total + 1 : rows.length + 1} style={{ minWidth }} className="text-body">
           {header}
           {virtualize ? (

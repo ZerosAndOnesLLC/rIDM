@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useI18n } from "@/i18n/provider";
@@ -54,7 +55,7 @@ export function Devices() {
       <p className="text-body text-muted">{t("account.devices_description")}</p>
       {error && <Alert tone="error">{error}</Alert>}
       {devices.isError && <Alert tone="error">{t("account.error_generic")}</Alert>}
-      {devices.data && devices.data.length === 0 && <p className="mt-3 text-body text-ink">{t("account.devices_none")}</p>}
+      {devices.data && devices.data.length === 0 && <EmptyState compact title={t("account.devices_none")} />}
       {devices.data && devices.data.length > 0 && (
         <ul className="mt-3 divide-y divide-line">
           {devices.data.map((d) => (

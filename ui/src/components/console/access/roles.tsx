@@ -10,7 +10,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { Field, SaveIndicator, Section, SelectInput, TextInput } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { href, type Role, type RoleDetail } from "@/lib/console/access";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import { useClientNames, useResourceServers } from "@/lib/console/hooks";
@@ -174,7 +173,7 @@ function RoleDetailView({ tenant, id, clientNames }: { tenant: string; id: strin
   });
   const refresh = () => void qc.invalidateQueries({ queryKey: ["role", tenant, id] }).then(() => setResetCount((n) => n + 1));
   if (query.isError) return <ErrorLine error={query.error} />;
-  if (!draft) return <Spinner label="Loading role…" />;
+  if (!draft) return <Skeleton shape="lines" count={4} label="Loading role…" />;
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">

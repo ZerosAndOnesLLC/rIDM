@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import Link from "next/link";
@@ -7,7 +8,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { Field, SaveIndicator, Section, SelectInput, TagsInput, TextInput, Toggle } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { href, type Scope } from "@/lib/console/access";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import { STANDARD_SCOPES } from "@/lib/console/clients";
@@ -37,7 +37,7 @@ export function ScopesPage({ tenant, selected }: { tenant: string; selected: str
         list={
           <Card title="Scopes">
             {scopes.isPending ? (
-              <Spinner label="Loading…" />
+              <Skeleton shape="lines" count={4} label="Loading…" />
             ) : scopes.isError ? (
               <ErrorLine error={scopes.error} />
             ) : (
@@ -146,7 +146,7 @@ function ScopeView({ tenant, id }: { tenant: string; id: string }) {
     },
   });
   if (query.isError) return <ErrorLine error={query.error} />;
-  if (!draft) return <Spinner label="Loading…" />;
+  if (!draft) return <Skeleton shape="lines" count={4} label="Loading…" />;
   const standard = STANDARD_SCOPES.includes(draft.name);
   return (
     <div className="flex flex-col gap-4">

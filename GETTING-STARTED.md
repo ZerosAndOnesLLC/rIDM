@@ -252,6 +252,8 @@ orders API allows the two origins in `CORS_ORIGINS`
 - Reload the SPA. Its tokens live in memory, so this is the silent path again.
 - Sign out of one and reload the other: RP-initiated logout ended the SSO
   session, so the silent attempt now fails and the sign-in button comes back.
+- Open Settings → Appearance for `acme`: pick another skin or colour pair and watch
+  the sign-in preview, the account console and this console follow it.
 - Give `sam` the `orders-manager` role in the console, sign in again, and the
   "Place order" form appears — the next access token carries `orders:write`.
 - Revoke `dana`'s session from the console's user page. rIDM revokes the

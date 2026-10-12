@@ -49,16 +49,62 @@ console says "This account has no administrator permissions".
 
 ### Finding your way
 
+- **Command bar**: across the top, with the tenant you are looking at, the search
+  field, the theme switch and a bell that lights up when something needs attention
+  (locked accounts, open invitations, a signing key about to stop publishing, webhook
+  deliveries given up on); it opens the overview's "Needs attention" list.
 - **Sidebar**: grouped as Identity, Applications, Security, Integrations and Tenant,
   and filtered by your permissions from `GET /admin/me`, so it only lists pages you can
-  open. Below the tablet breakpoint it becomes a drawer.
+  open. Entries with a list show how many there are; Users shows how many invitations
+  are waiting. Below the tablet breakpoint it becomes a drawer.
 - **Tenant switcher** (global administrators): pick the tenant every page acts on.
   The choice travels in the URL as `?tenant=acme`, so links deep-link into a tenant.
   Tenant administrators always act on their own tenant.
 - **Search** (`Ctrl K` / `⌘ K`, or `/`): console pages you may open, plus users and
   clients of the current tenant whose username, email, client ID or name starts with
   what you type (two characters or more).
-- **Theme**: system, light or dark, kept per browser. The tenant being administered decides whether the switch is offered and what applies otherwise (Settings → Appearance: skin, the two theme colours, the light/dark policy).
+- **Breadcrumbs** at the top of the page say where you are; a user's or a client's
+  detail opens as a panel over its list, and the address (`?user=…`, `?client=…`)
+  still deep-links to it.
+- **Theme**: system, light or dark, kept per browser. The tenant being administered
+  decides whether the switch is offered and what applies otherwise (see
+  [Appearance](#appearance) below).
+
+### Lists: filters, sorting and bulk actions
+
+Every list is one table: filters sit above it as chips, the rows load as you scroll
+or with "Load more", and the footer says how many are loaded. Filters, sort order and
+search live in the address (`?q=ada&status=locked&sort=username&dir=desc`), so a
+reload, a bookmark and the back button land on the same view. Users and clients sort
+on the server (click a column header); the other lists sort what they have loaded.
+
+Where a list has a checkbox column, selecting rows raises a bar at the bottom with
+the actions that apply to all of them at once: enable, disable or delete users;
+revoke invitations; delete IP rules. Every row is attempted even if one refuses, and
+one message sums the run up ("2 of 3 users deleted; 1 failed: …"). Destructive
+actions, single or bulk, ask first.
+
+### Appearance
+
+Settings → Appearance decides how the sign-in pages, the account console and this
+console (while it administers the tenant) look:
+
+- **Skin**: `signal-v2` (the default: dark command bar, tinted ground, the page as a
+  sheet), `signal`, `vault` or `registry`. A skin is a set of tokens and a few layout
+  switches; every page works in all four.
+- **Primary and contrast colours**: a hex pair (six presets, or your own). The primary
+  drives actions, navigation, links and focus; the contrast marks what must read as
+  different (selection, the tenant mark, attention). The page shows both tonal ramps
+  and the readability checks for light and dark.
+- **Light/dark policy**: follow each person's device, or always light or dark; and
+  whether people may switch on their own device.
+- **Headline and tagline**: with the Signal v2 skin, a headline turns the sign-in page
+  into a split layout with a brand panel; the other skins keep the single card.
+- Logo, favicon, background colour, support link, footer links and custom CSS, as before.
+
+The login-page preview on the right follows every change. The settings are part of
+the tenant document (`settings.branding`), see
+[Tenants and tenant settings](tenants.md#appearance).
 
 ### Keyboard shortcuts
 
@@ -76,13 +122,14 @@ Single keys work when no text field has focus; `?` lists them.
 | `g` then `w` / `e` / `d` / `v` | Webhooks / Messaging / Identity providers / Provisioning |
 | `g` then `t` / `s` / `f` / `x` | Tenants / Settings / Feature flags / Export & import |
 
-The `g` sequence waits one second for its second key.
+The `g` sequence waits one second for its second key; `Esc` cancels it, and a held
+modifier (Shift ahead of `?`) does not count as the second key.
 
 ### Pages
 
 | Page | Path | Needs | Covered in |
 |------|------|-------|-----------|
-| Overview | `/console/` | any admin permission | Sign-ins, failures, live sessions, second-factor adoption and top clients over 7, 30 or 90 days (`GET /admin/tenants/{slug}/stats`, `ridm:tenants:read`) |
+| Overview | `/console/` | any admin permission | Sign-ins, failures, live sessions and second-factor adoption over 7, 30 or 90 days with the change against the window before, what needs attention, the newest audit events and the most authorized clients (`GET /admin/tenants/{slug}/stats`, `ridm:tenants:read`) |
 | Users | `/console/users/` | `ridm:users:read` | [Users, invitations and bulk import](users.md) |
 | Groups, Roles | `/console/groups/`, `/console/roles/` | `ridm:groups:read`, `ridm:roles:read` | [Users, groups and roles](../concepts/users-groups-roles.md) |
 | Organizations | `/console/organizations/` | `ridm:orgs:read` | [Organizations](organizations.md) |
@@ -136,7 +183,7 @@ it, and only while its browser session is alive.
 | Page | What the user can do |
 |------|----------------------|
 | **Profile** | Edit the attributes the tenant's [profile schema](users.md#profile-schema) lets users edit (others are shown read-only), choose a language, change their email address or phone number (proven by a code sent to the new one), remove the phone number |
-| **Security** | Change the password (the current one is required while one is set, with an option to sign out everywhere else); enrol and remove second factors and regenerate recovery codes; link and unlink upstream accounts; list and revoke trusted devices; list sessions and end one or all but this one; mint and revoke personal access tokens |
+| **Security** | See how well the account is protected (a score from the password, the second steps, recovery codes and a verified email, with the next step to take); change the password (the current one is required while one is set, with an option to sign out everywhere else); enrol and remove second factors and regenerate recovery codes; link and unlink upstream accounts; list and revoke trusted devices; list sessions (named by browser and system) and end one or all but this one; mint and revoke personal access tokens |
 | **Applications** | See the applications they consented to, with scopes and the applications' privacy and terms links, and remove access, which also revokes the application's refresh tokens |
 | **Requests** | Approve or deny the [backchannel sign-in](ciba-fapi.md) requests applications sent them; the page refreshes itself while open |
 | **Your data** | Download everything held about them as JSON (no secrets), and delete the account after typing the username |
@@ -161,3 +208,7 @@ configured for the tenant decide which upstream accounts can be linked.
 
 Administrators cannot delete themselves from the account console; another
 administrator has to.
+
+The account console and the sign-in pages wear the tenant's appearance (skin,
+colours, light/dark policy) and offer the light/dark switch when the tenant allows
+it; see [Appearance](#appearance).

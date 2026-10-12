@@ -36,7 +36,7 @@ export function ConsentsTab({ tenant, id, editable }: { tenant: string; id: stri
           {consents.error.message}
         </p>
       ) : consents.data.length === 0 ? (
-        <p className="text-body text-muted">No consents recorded.</p>
+        <EmptyState compact title="No consents recorded." />
       ) : (
         <ul className="divide-y divide-line">
           {consents.data.map((c) => (

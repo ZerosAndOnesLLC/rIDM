@@ -47,7 +47,9 @@ once on the shared primitives, and a skin is
 | sign-in | split (brand panel) when a headline is set, else card | card | card | card |
 | display face | Bricolage Grotesque | Hanken Grotesk | IBM Plex Sans | Source Serif 4 |
 
-Anything a skin does not override falls through to Signal v2. New pages are
+Anything a skin does not override falls through to Signal v2. Only the three Signal
+faces are self-hosted (`ui/public/fonts/`); Vault and Registry name their faces and
+fall back to a system sans or serif when they are not installed. New pages are
 designed for Signal v2 first and must look acceptable in the other three with
 tokens alone; a structural switch is added only when tokens cannot do it. The
 a11y sweep runs every console page in every skin at least in light mode, and

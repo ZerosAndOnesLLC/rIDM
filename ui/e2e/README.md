@@ -60,10 +60,11 @@ owner (`ridm:owner` in `master`) so the console specs can sign in as them. Setti
 | `account-profile` | account console: profile fields by the tenant's schema saved as edited (admin-only fields read-only), contact details, sessions list with another browser signed out from here, connected applications, export download, deletion dialog |
 | `mfa-otp` | the chooser enrols codes by email (a wrong code refused, recovery codes shown once), the next step-up emails a code and verifies it |
 | `passkey` | CDP virtual authenticator: a step-up enrols a passkey as the second step (recovery codes), the passkey signs in without a password (no second step), a later step-up verifies with it |
-| `console-a11y` | axe pass over every console page in its landing state (all pages light, the first eight dark, six at phone width with no horizontal overflow) |
+| `console-a11y` | axe pass over every console page in its landing state (all pages light, the first eight dark, seven at phone width with no horizontal overflow), then every page again in each of the other three skins (set on the tenant by SQL and restored) |
 | `console-config` | tenant document downloaded and loaded into the editor, an unchanged document plans nothing, a renamed tenant plans one field-level update and applies, then reverts |
 | `console-ops` | keys timeline with a new pending key activated, retired and revoked, rotation, JWK shown; audit filtered by event, row expanded, chain verified, CSV exported, global chain; webhook created with a reveal-once secret, edited, test ping queued and listed, secret rotated, deleted; IP rule added, action changed in place, deleted; template override with live preview saved and reset, test email sent and shown in the log |
 | `console-access` | resource server created with a lifetime, offline access and a permission; role created, granted that permission and a composite, holders shown, built-in roles read-only; group tree with a subgroup, role attached, member added by search, no self-descendant parent offered; standard scope not deletable, new scope with claims and default flag surviving a reload; template mapper created, non-compiling template refused with the stored one restored; cleanup |
+| `console-bulk` | bulk actions: two users created, found through the search filter in the URL, sorted by a column header, selected and disabled then deleted in one go with one summary toast; two IP rules deleted together; an invitation revoked from the bar |
 | `console-users` | profile attribute declared in settings; user created with a reveal-once temporary password; profile per schema (enum select), phone and verified flag saving and surviving a reload; table search and status filter; password replaced with options, roles assigned and removed, groups, sessions and audit tabs; invitation sent, listed and revoked; import dry run with a per-row report; export download; disable and delete |
 | `console-saml` | SAML identity provider: IdP URLs and signing keys shown, a service provider registered by hand, its NameID format, an attribute and IdP-initiated sign-in saved as edited, the launcher link signing in and posting a signed response to the SP (its consumer URL stood in for by a route that captures the post), deletion |
 | `console-clients` | wizard creating a confidential client (defaults per type, redirect URI required, reveal-once client ID and secret), detail auto-save surviving a reload and an API-refused change reloading the stored client, secret rotation with grace and revoking the retiring secret, service account, registration token, playground running a real sign-in for a public client (redirect URI added in one click, token response, ID token claims, userinfo, refresh), deletion |
@@ -82,7 +83,9 @@ owner (`ridm:owner` in `master`) so the console specs can sign in as them. Setti
 OTP second factors and the device page get their journeys with the rest of Phases 7 and 8.
 
 Every page under test is also checked with axe-core; serious and critical
-accessibility violations fail the run. Specs that need rows in row-level-secured
+accessibility violations fail the run. Destructive actions in the console ask first
+through one dialog component; `confirmDialog(page)` in `helpers.ts` types the name it
+asks for (when it does) and presses its confirming button. Specs that need rows in row-level-secured
 tables write them through `tenantSql` (a transaction-local RLS bypass) and call
 `clearTenantCache`, which also publishes the API's own invalidation message so
 in-process caches drop the stale copy.

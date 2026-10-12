@@ -1,10 +1,10 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { Field, SaveIndicator, Section, SelectInput, TextInput } from "@/components/console/form";
-import { Spinner } from "@/components/ui";
 import { href } from "@/lib/console/access";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import { useConsole } from "@/lib/console/session";
@@ -83,7 +83,7 @@ export function OrganizationDetailView({ tenant, id }: { tenant: string; id: str
     },
   });
   if (query.isError) return <ErrorLine error={query.error} />;
-  if (!draft) return <Spinner label="Loading organization…" />;
+  if (!draft) return <Skeleton shape="lines" count={4} label="Loading organization…" />;
 
   return (
     <div className="flex flex-col gap-4">

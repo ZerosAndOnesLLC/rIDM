@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { SaveIndicator } from "@/components/console/form";
@@ -17,7 +18,6 @@ import { RiskSection } from "@/components/console/settings/risk";
 import { SessionsSection } from "@/components/console/settings/sessions";
 import { SignInSection } from "@/components/console/settings/signin";
 import { PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import { useConsole } from "@/lib/console/session";
 import { applySettings, SECTIONS, type SettingsPatch, type Tenant, type TenantPatch, type TenantPatchBody } from "@/lib/console/settings";
@@ -109,7 +109,7 @@ export default function SettingsPage() {
       </>
     );
   }
-  if (!editor) return <Spinner label="Loading settings…" />;
+  if (!editor) return <Skeleton shape="lines" count={4} label="Loading settings…" />;
 
   return (
     <SettingsContext.Provider value={editor}>

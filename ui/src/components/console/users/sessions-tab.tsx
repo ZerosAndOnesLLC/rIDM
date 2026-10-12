@@ -1,9 +1,10 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
+import { Skeleton } from "@/components/base/skeleton";
 import { fmtDateTime } from "@/lib/console/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Button, Card } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { useConsole } from "@/lib/console/session";
 import { describeAgent } from "@/lib/ua";
 
@@ -62,13 +63,13 @@ export function SessionsTab({ tenant, id, editable }: { tenant: string; id: stri
         }
       >
         {sessions.isPending ? (
-          <Spinner label="Loading…" />
+          <Skeleton shape="lines" count={4} label="Loading…" />
         ) : sessions.isError ? (
           <p role="alert" className="text-body text-danger">
             {sessions.error.message}
           </p>
         ) : sessions.data.length === 0 ? (
-          <p className="text-body text-muted">No live sessions.</p>
+          <EmptyState compact title="No live sessions." />
         ) : (
           <ul className="divide-y divide-line">
             {sessions.data.map((s) => (
@@ -106,13 +107,13 @@ export function SessionsTab({ tenant, id, editable }: { tenant: string; id: stri
         }
       >
         {devices.isPending ? (
-          <Spinner label="Loading…" />
+          <Skeleton shape="lines" count={4} label="Loading…" />
         ) : devices.isError ? (
           <p role="alert" className="text-body text-danger">
             {devices.error.message}
           </p>
         ) : devices.data.length === 0 ? (
-          <p className="text-body text-muted">No remembered devices.</p>
+          <EmptyState compact title="No remembered devices." />
         ) : (
           <ul className="divide-y divide-line">
             {devices.data.map((d) => (

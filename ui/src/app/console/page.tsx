@@ -30,10 +30,13 @@ export default function Overview() {
   const permissions =
     (me?.permissions?.length ?? 0) > 0 ? me!.permissions : (me?.organization_permissions ?? []);
   const shown = showAll ? permissions : permissions.slice(0, 12);
+  const hour = new Date().getHours();
+  const greeting = `${hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"}, ${me?.username ?? "there"}`;
+  const today = new Date().toLocaleDateString("en", { weekday: "long", month: "long", day: "numeric" });
 
   return (
     <>
-      <PageHeader title="Overview" sub={detail.data ? `${detail.data.display_name} · ${detail.data.slug}` : tenant ?? undefined} />
+      <PageHeader title="Overview" sub={[greeting, detail.data ? `${detail.data.display_name} · ${detail.data.slug}` : tenant, today].filter(Boolean).join(" · ")} />
       {tenant && tenantWide && (
         <div className="mb-6">
           <Dashboard tenant={tenant} />

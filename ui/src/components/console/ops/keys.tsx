@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
 import { fmtDate, fmtDateTime } from "@/lib/console/format";
 import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,7 +10,6 @@ import { ConfirmDialog } from "@/components/base/confirm-dialog";
 import { useToast } from "@/components/base/toast";
 import { Field, SelectInput, Toggle } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader, Row } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import type { KeyStatus, SigningKey } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
 import { RSA_BITS, SIGNING_ALGS } from "@/lib/console/settings";
@@ -103,7 +103,7 @@ export function KeysPage({ tenant }: { tenant: string }) {
       />
       {!confirm && <ErrorLine error={act.error} />}
       {keys.isPending ? (
-        <Spinner label="Loading keys…" />
+        <Skeleton shape="lines" count={4} label="Loading keys…" />
       ) : keys.isError ? (
         <ErrorLine error={keys.error} />
       ) : (
@@ -324,7 +324,7 @@ function MasterKey() {
           : "Every secret at rest is encrypted under the server's master key. After rolling a new generation out (MASTER_KEY_VERSION), re-encrypt what is still under the old one."}
       </p>
       {status.isPending ? (
-        <Spinner label="Loading…" />
+        <Skeleton shape="lines" count={4} label="Loading…" />
       ) : status.isError ? (
         <ErrorLine error={status.error} />
       ) : (

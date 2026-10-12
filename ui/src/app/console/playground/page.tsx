@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RotateCw, UserRound } from "lucide-react";
 import Link from "next/link";
@@ -125,7 +126,7 @@ function Playground({ tenant, id, res, setRes, error, setError }: { tenant: stri
       </p>
     );
   }
-  if (!query.data) return <Spinner label="Loading client…" />;
+  if (!query.data) return <Skeleton shape="lines" count={4} label="Loading client…" />;
   const c = query.data;
   return (
     <>

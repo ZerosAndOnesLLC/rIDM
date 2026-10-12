@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useI18n } from "@/i18n/provider";
@@ -53,7 +54,7 @@ export function Apps() {
           </div>
         )}
         {apps.isError && <Alert tone="error">{t("account.error_generic")}</Alert>}
-        {apps.data && apps.data.length === 0 && <p className="mt-3 text-body text-ink">{t("account.apps_none")}</p>}
+        {apps.data && apps.data.length === 0 && <EmptyState compact title={t("account.apps_none")} />}
         {apps.data && apps.data.length > 0 && (
           <ul aria-label={t("account.apps_title")} className="mt-3 divide-y divide-line">
             {apps.data.map((a) => (

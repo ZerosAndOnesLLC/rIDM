@@ -449,6 +449,9 @@ footer a {
 :root[data-skin="registry"] .console-nav svg {
   display: none;
 }
+:root[data-skin="registry"] .console-nav a {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
 :root[data-skin="registry"] .console-nav a[aria-current="page"] {
   font-weight: 600;
   text-decoration: underline;

@@ -11,7 +11,6 @@ import { SelectInput } from "@/components/console/form";
 import { Avatar, Badge, Card, Chip } from "@/components/console/ui";
 import { useTenantStats, type TenantStats } from "@/lib/console/counts";
 import { fmtDate, fmtDistance, fmtNumber, fmtWhen } from "@/lib/console/format";
-import { useConsole } from "@/lib/console/session";
 import { ErrorLine } from "./access/common";
 
 // Recharts is the console's largest dependency: the chart loads in its own
@@ -19,13 +18,12 @@ import { ErrorLine } from "./access/common";
 const SignInsChart = dynamic(() => import("./dashboard-charts").then((m) => m.SignInsChart), { ssr: false, loading: () => <Skeleton shape="block" label="Loading chart…" /> });
 
 /**
- * The overview (design/README.md): a greeting, four stat tiles with
- * sparklines and deltas, sign-ins per day as bars on the two series
+ * The overview (design/README.md), under the page header's greeting: four
+ * stat tiles with sparklines and deltas, sign-ins per day as bars on the two series
  * tokens, what needs attention, the newest events and the most used
  * clients. Everything comes from one cached statistics call.
  */
 export function Dashboard({ tenant }: { tenant: string }) {
-  const { me } = useConsole();
   const [days, setDays] = useState(30);
   const stats = useTenantStats(tenant, days);
   if (stats.isPending) return <Skeleton shape="rows" count={4} label="Loading statistics…" />;
@@ -34,9 +32,6 @@ export function Dashboard({ tenant }: { tenant: string }) {
   const adoption = s.users.active > 0 ? Math.round((s.users.mfa_enrolled / s.users.active) * 100) : 0;
   const series = s.days.map((d) => ({ date: d.date, label: new Date(`${d.date}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }), "Sign-ins": d.logins, Failed: d.failed }));
   const failedUp = s.failed_total > 0 && s.failed_total * 5 > s.logins_total;
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  const today = new Date().toLocaleDateString("en", { weekday: "long", month: "long", day: "numeric" });
   const base = `/console/users/?tenant=${encodeURIComponent(tenant)}`;
   const attention: { icon: typeof Lock; tone?: "warn"; title: string; detail: string; href: string; action: string }[] = [];
   if (s.attention.locked_users > 0) attention.push({ icon: Lock, tone: "warn", title: `${fmtNumber(s.attention.locked_users)} ${s.attention.locked_users === 1 ? "account" : "accounts"} locked`, detail: "Too many failed attempts, or locked by an administrator.", href: base, action: "Review" });
@@ -47,15 +42,7 @@ export function Dashboard({ tenant }: { tenant: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
-        <div>
-          <h1 className="text-2xl font-semibold leading-none text-ink">
-            {greeting}, {me?.username ?? "there"}
-          </h1>
-          <p className="mt-1.5 text-small text-muted">
-            {tenant} · {today} · last {days} days
-          </p>
-        </div>
+      <div className="-mt-10 flex justify-end">
         <label className="flex items-center gap-2 text-small text-muted">
           Window
           <SelectInput aria-label="Window" value={days} onChange={(e) => setDays(Number(e.target.value))} className="min-h-8 w-auto text-small">
@@ -64,7 +51,7 @@ export function Dashboard({ tenant }: { tenant: string }) {
             <option value={90}>Last 90 days</option>
           </SelectInput>
         </label>
-      </header>
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Tile label={`Sign-ins · ${days} days`} value={s.logins_total} change={delta(s.logins_total, s.previous.logins_total, days, "up")} spark={s.days.map((d) => d.logins)} />
@@ -202,7 +189,7 @@ interface Delta {
 /** "▲ 12% vs previous 30 days", with the tone of whether up is good. */
 function delta(now: number, before: number, days: number, good: "up" | "down"): Delta | undefined {
   if (before === 0 && now === 0) return undefined;
-  if (before === 0) return { text: `new vs previous ${days} days`, tone: "neutral" };
+  if (before === 0) return { text: `none in the ${days} days before`, tone: "neutral" };
   const pct = Math.round(((now - before) / before) * 100);
   if (pct === 0) return { text: `same as previous ${days} days`, tone: "neutral" };
   const up = pct > 0;

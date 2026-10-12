@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
 import { fmtDateTime } from "@/lib/console/format";
 import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,7 +8,6 @@ import { Plus } from "lucide-react";
 import { useState } from "react";
 import { NumberInput, TextInput } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import type { ScimToken } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
 import { ErrorLine } from "../access/common";
@@ -60,7 +60,7 @@ export function ProvisioningPage({ tenant }: { tenant: string }) {
       <RevealModal revealed={revealed} onClose={() => setRevealed(null)} />
       <ErrorLine error={create.error ?? revoke.error} />
       {tokens.isPending ? (
-        <Spinner label="Loading…" />
+        <Skeleton shape="lines" count={4} label="Loading…" />
       ) : tokens.isError ? (
         <ErrorLine error={tokens.error} />
       ) : (

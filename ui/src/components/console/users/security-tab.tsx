@@ -1,12 +1,12 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
 import { fmtDateTime } from "@/lib/console/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound } from "lucide-react";
 import { useState } from "react";
 import { Field, SelectInput, TextInput, Toggle } from "@/components/console/form";
 import { Badge, Button, Card, Row } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { useConsole } from "@/lib/console/session";
 import { type UserDetail as Detail } from "@/lib/console/users";
 import { type Revealed } from "../clients/reveal";
@@ -113,7 +113,7 @@ export function SecurityTab({ tenant, u, editable, onReveal, onChanged, onForce 
       </Card>
       <Card title="Second factors & passkeys">
         {creds.isPending ? (
-          <Spinner label="Loading…" />
+          <Skeleton shape="lines" count={4} label="Loading…" />
         ) : creds.isError ? (
           <p role="alert" className="text-body text-danger">
             {creds.error.message}
