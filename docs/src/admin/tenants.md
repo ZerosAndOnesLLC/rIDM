@@ -248,22 +248,35 @@ properties so right-to-left languages mirror the layout. Message templates can b
 
 ### branding
 
+How the tenant looks: the sign-in pages, the account console, and the admin console
+while it administers this tenant. Settings → Appearance in the console edits it with a
+live preview.
+
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `logo_url` | `null` | Logo on the login pages |
 | `favicon_url` | `null` | Browser tab icon |
-| `primary_color` | `null` | Accent colour (buttons, links) |
-| `background_color` | `null` | Page background |
+| `primary_color` | `null` | The theme's primary colour: buttons, navigation, links, focus. A hex colour (`#rrggbb`) drives a full set of light and dark shades; any other CSS colour literal sets the plain accent only |
+| `contrast_color` | `null` | The theme's second colour, for what must read as different from the primary: selected rows, the tenant mark. Hex; derived from the primary when unset |
+| `background_color` | `null` | Page background behind the card (a CSS colour literal) |
+| `skin` | `"signal-v2"` | The visual skin: `signal-v2` (default), `signal`, `vault` or `registry` |
+| `mode` | `"system"` | Light/dark policy: `system` follows each person's device, `light` and `dark` force one |
+| `allow_theme_switch` | `true` | Show a light/dark switch so people can override `mode` on their device |
 | `support_url` | `null` | "Need help?" link |
 | `custom_css` | `null` | Stylesheet applied to the login pages after the theme |
 | `links` | `[]` | Extra footer links, each `{"label": "…", "url": "…"}` |
 
+Colours are checked on write: a value that is not a CSS colour literal is refused, and
+`contrast_color` must be hex. The console shows the contrast ratios the two colours
+achieve on the page and on buttons in both modes, and flags anything under 4.5:1, but
+it does not refuse a brand colour over it.
+
 Branding, the display name, locales and the offered sign-in methods are published at
 `GET /t/{slug}/branding`, a public, cacheable document every end-user page loads. The
-console's branding editor (Settings → Branding) frames the real login page in preview
-mode and applies each draft change as you type. Images are loaded from their URLs
-over https; the pages' Content-Security-Policy allows images and fonts from any https
-origin, so host them anywhere.
+console's appearance editor (Settings → Appearance) frames the real login page in
+preview mode and applies each draft change as you type. Images are loaded from their
+URLs over https; the pages' Content-Security-Policy allows images and fonts from any
+https origin, so host them anywhere.
 
 ### keys
 

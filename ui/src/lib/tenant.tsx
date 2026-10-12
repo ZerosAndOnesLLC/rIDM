@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, ApiError, tenantBase } from "./api";
-import { applyTheme, clearTheme, deriveContrast, isHex } from "./theme/ramp";
+import { applyAppearance, isCssColor } from "./theme/appearance";
 import type { PublicTenant } from "./types";
 
 interface TenantState {
@@ -16,9 +16,9 @@ interface TenantState {
 const TenantContext = createContext<TenantState | null>(null);
 
 /**
- * Loads the tenant's public branding document and applies its theme: the
- * primary colour becomes the accent and contrast ramps (src/lib/theme/ramp.ts),
- * the background colour the ground, plus favicon and custom CSS.
+ * Loads the tenant's public branding document and applies its appearance
+ * (src/lib/theme/appearance.ts: colour ramps, skin, light/dark policy), the
+ * background colour as the ground, plus favicon and custom CSS.
  */
 export function TenantProvider({ slug, preview = false, children }: { slug: string | null; preview?: boolean; children: ReactNode }) {
   const [state, setState] = useState<TenantState>({
@@ -66,13 +66,9 @@ export function TenantProvider({ slug, preview = false, children }: { slug: stri
     const b = state.tenant?.branding;
     if (!b) return;
     const root = document.documentElement;
-    // Until the appearance settings land (15.3) the contrast colour is derived
-    // from the primary. A non-hex primary (rgb(), oklch()) cannot feed the ramp
-    // engine, so it only sets the plain accent, as before.
-    clearTheme(root);
-    if (b.primary_color && isHex(b.primary_color)) applyTheme(root, { primary: b.primary_color, contrast: deriveContrast(b.primary_color) });
-    else if (b.primary_color && isColor(b.primary_color)) root.style.setProperty("--accent", b.primary_color);
-    if (b.background_color && isColor(b.background_color)) root.style.setProperty("--ground", b.background_color);
+    // Drafts from the branding preview must not be cached as the tenant's own.
+    applyAppearance(root, b, preview ? undefined : (state.slug ?? undefined));
+    if (b.background_color && isCssColor(b.background_color)) root.style.setProperty("--ground", b.background_color);
     else root.style.removeProperty("--ground");
     if (b.favicon_url) {
       let link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
@@ -95,7 +91,7 @@ export function TenantProvider({ slug, preview = false, children }: { slug: stri
       style?.remove();
     }
     if (state.tenant) document.title = state.tenant.display_name;
-  }, [state.tenant]);
+  }, [state.tenant, state.slug, preview]);
 
   return <TenantContext.Provider value={state}>{children}</TenantContext.Provider>;
 }
@@ -104,9 +100,4 @@ export function useTenant(): TenantState {
   const ctx = useContext(TenantContext);
   if (!ctx) throw new Error("useTenant must be used inside <TenantProvider>");
   return ctx;
-}
-
-/** Accept only CSS colour literals, never arbitrary values. */
-function isColor(v: string): boolean {
-  return /^(#[0-9a-f]{3,8}|(rgb|hsl|oklch|oklab|color)\([^;{}]*\))$/i.test(v.trim());
 }

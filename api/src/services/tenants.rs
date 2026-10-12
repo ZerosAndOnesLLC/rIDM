@@ -55,6 +55,7 @@ pub async fn create(state: &AppState, actor: Actor, input: NewTenant) -> AppResu
     }
     let mut settings = input.settings.unwrap_or_default();
     locale::validate_settings(&mut settings.locale)?;
+    settings.branding.validate().map_err(AppError::BadRequest)?;
     rate_limit::validate_policy(&settings.rate_limits)?;
     impersonation::validate_policy(&settings.impersonation)?;
     features::validate(&settings.features)?;
@@ -184,6 +185,7 @@ pub async fn update(
 ) -> AppResult<Tenant> {
     if let Some(settings) = patch.settings.as_mut() {
         locale::validate_settings(&mut settings.locale)?;
+        settings.branding.validate().map_err(AppError::BadRequest)?;
         rate_limit::validate_policy(&settings.rate_limits)?;
         impersonation::validate_policy(&settings.impersonation)?;
         features::validate(&settings.features)?;

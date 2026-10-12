@@ -21,6 +21,7 @@
       "locale": { "default": "en", "supported": ["en", "de", "fr"] },
       "branding": {
         "primary_color": "#b4451f",
+        "contrast_color": "#334e68",
         "support_url": "https://support.acme.test",
         "links": [{ "label": "Status", "url": "https://status.acme.test" }]
       }

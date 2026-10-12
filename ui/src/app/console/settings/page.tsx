@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { SaveIndicator } from "@/components/console/form";
 import { AdvancedSection } from "@/components/console/settings/advanced";
-import { BrandingSection } from "@/components/console/settings/branding";
+import { AppearanceSection } from "@/components/console/settings/appearance";
 import { SettingsContext, type SettingsEditor } from "@/components/console/settings/context";
 import { DangerZone } from "@/components/console/settings/danger";
 import { GeneralSection } from "@/components/console/settings/general";
@@ -73,6 +73,8 @@ export default function SettingsPage() {
       }
       qc.setQueryData(["tenant", slug], data);
       void qc.invalidateQueries({ queryKey: ["tenants"] });
+      // The console wears the tenant's appearance; pick up the new one at once.
+      void qc.invalidateQueries({ queryKey: ["public-branding", slug] });
     },
     [client, qc, slug],
   );
@@ -138,7 +140,7 @@ export default function SettingsPage() {
           <RateLimitsSection />
           <SessionsSection />
           <ImpersonationSection />
-          <BrandingSection />
+          <AppearanceSection />
           <LocaleSection />
           <AdvancedSection />
           {editor.global && can("ridm:tenants:delete") && editor.draft.slug !== "master" && <DangerZone slug={editor.draft.slug} />}

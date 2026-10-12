@@ -60,7 +60,7 @@ export const SECTIONS: { id: string; label: string }[] = [
   { id: "ratelimits", label: "Rate limits" },
   { id: "sessions", label: "Sessions & tokens" },
   { id: "impersonation", label: "Impersonation" },
-  { id: "branding", label: "Branding" },
+  { id: "appearance", label: "Appearance" },
   { id: "locale", label: "Locale & notices" },
   { id: "advanced", label: "Keys, discovery & audit" },
 ];

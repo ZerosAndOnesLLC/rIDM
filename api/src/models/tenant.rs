@@ -590,16 +590,127 @@ impl Default for LocaleSettings {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+/// How the tenant looks: the sign-in pages, the account console and the admin
+/// console while it administers this tenant. The two theme colours feed the
+/// UI's ramp engine (`ui/src/lib/theme/ramp.ts`), which derives every shade
+/// for light and dark mode from them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct Branding {
     pub logo_url: Option<String>,
     pub favicon_url: Option<String>,
+    /// The theme's primary colour: actions, navigation, links, focus. A hex
+    /// colour drives the full tonal ramp; other CSS colour literals set the
+    /// plain accent only.
     pub primary_color: Option<String>,
+    /// The theme's second colour, for what must read as different from the
+    /// primary (selection, the tenant mark). Hex; derived from the primary by
+    /// hue rotation when `null`.
+    pub contrast_color: Option<String>,
     pub background_color: Option<String>,
     pub support_url: Option<String>,
     pub custom_css: Option<String>,
     pub links: Vec<BrandingLink>,
+    /// The visual skin (Phase 15): token set and layout family.
+    pub skin: Skin,
+    /// Light/dark policy for every surface of the tenant.
+    pub mode: ThemeMode,
+    /// People may override `mode` on their own device.
+    pub allow_theme_switch: bool,
+}
+
+impl Default for Branding {
+    fn default() -> Self {
+        Self {
+            logo_url: None,
+            favicon_url: None,
+            primary_color: None,
+            contrast_color: None,
+            background_color: None,
+            support_url: None,
+            custom_css: None,
+            links: Vec::new(),
+            skin: Skin::default(),
+            mode: ThemeMode::default(),
+            allow_theme_switch: true,
+        }
+    }
+}
+
+/// The visual skins the UI ships; `design/README.md` describes them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum Skin {
+    #[default]
+    SignalV2,
+    Signal,
+    Vault,
+    Registry,
+}
+
+/// Light/dark policy: follow each person's device, or always one of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeMode {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl Branding {
+    /// Refuses colours that are not CSS colour literals (the UI puts them into
+    /// custom properties, so anything else would be a stylesheet injection) and
+    /// a contrast colour that is not hex (only hex can feed the ramp engine).
+    pub fn validate(&self) -> Result<(), String> {
+        for (name, value) in [
+            ("primary_color", &self.primary_color),
+            ("background_color", &self.background_color),
+        ] {
+            if let Some(v) = value
+                && !is_css_color(v)
+            {
+                return Err(format!("branding.{name}: not a CSS colour"));
+            }
+        }
+        if let Some(v) = &self.contrast_color
+            && !is_hex_color(v)
+        {
+            return Err("branding.contrast_color: must be a hex colour (#rrggbb)".into());
+        }
+        Ok(())
+    }
+}
+
+/// `#rgb`, `#rrggbb` or `#rrggbbaa`.
+pub fn is_hex_color(v: &str) -> bool {
+    let v = v.trim();
+    let Some(hex) = v.strip_prefix('#') else {
+        return false;
+    };
+    matches!(hex.len(), 3 | 6 | 8) && hex.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// A hex colour or a functional literal (`rgb(…)`, `hsl(…)`, `oklch(…)`,
+/// `oklab(…)`, `color(…)`) whose body cannot close a declaration, a block or a
+/// comment, since the value goes into a custom property.
+pub fn is_css_color(v: &str) -> bool {
+    let v = v.trim();
+    if is_hex_color(v) {
+        return true;
+    }
+    let lower = v.to_ascii_lowercase();
+    let Some((func, rest)) = lower.split_once('(') else {
+        return false;
+    };
+    let Some(body) = rest.strip_suffix(')') else {
+        return false;
+    };
+    matches!(
+        func,
+        "rgb" | "rgba" | "hsl" | "hsla" | "oklch" | "oklab" | "color"
+    ) && !body.contains([';', '{', '}', '(', ')', '<', '>', '"', '\'', '\\'])
+        && !body.contains("/*")
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
@@ -628,6 +739,48 @@ mod tests {
             serde_json::from_str(r#"{"future_feature": {"x": 1}, "locale": {"default": "de"}}"#)
                 .unwrap();
         assert_eq!(s.locale.default, "de");
+    }
+
+    #[test]
+    fn branding_defaults_and_appearance_fields() {
+        let b: Branding = serde_json::from_str("{}").unwrap();
+        assert_eq!(b, Branding::default());
+        assert!(b.allow_theme_switch);
+        assert_eq!(serde_json::to_value(b.skin).unwrap(), "signal-v2");
+        assert_eq!(serde_json::to_value(b.mode).unwrap(), "system");
+        let b: Branding = serde_json::from_str(
+            r##"{"skin":"registry","mode":"dark","allow_theme_switch":false,"contrast_color":"#b45309"}"##,
+        )
+        .unwrap();
+        assert_eq!(b.skin, Skin::Registry);
+        assert_eq!(b.mode, ThemeMode::Dark);
+        assert!(!b.allow_theme_switch);
+        assert!(b.validate().is_ok());
+    }
+
+    #[test]
+    fn branding_colours_are_validated() {
+        let ok = |p: &str| {
+            Branding {
+                primary_color: Some(p.into()),
+                ..Branding::default()
+            }
+            .validate()
+            .is_ok()
+        };
+        assert!(
+            ok("#abc")
+                && ok("#8B0000")
+                && ok("#11223344")
+                && ok("rgb(1, 2, 3)")
+                && ok("oklch(60% 0.1 240)")
+        );
+        assert!(!ok("red") && !ok("#12345") && !ok("rgb(1;2)") && !ok("url(x)") && !ok("rgb(1) }"));
+        let bad = Branding {
+            contrast_color: Some("rgb(1,2,3)".into()),
+            ..Branding::default()
+        };
+        assert!(bad.validate().is_err(), "contrast must be hex");
     }
 
     #[test]
