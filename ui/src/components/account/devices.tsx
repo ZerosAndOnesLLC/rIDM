@@ -6,6 +6,7 @@ import { useI18n } from "@/i18n/provider";
 import { Alert } from "@/components/ui";
 import { Button, Card } from "@/components/console/ui";
 import { needsReauth, useAccount } from "@/lib/account/session";
+import { AgentLabel, DeviceIcon } from "./agent";
 import { useSecurityChange } from "./security";
 
 /** The browsers the user asked not to be asked for a second step on again. */
@@ -58,12 +59,15 @@ export function Devices() {
         <ul className="mt-3 divide-y divide-line">
           {devices.data.map((d) => (
             <li key={d.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-              <div className="min-w-0">
-                <p className="truncate text-lead font-medium text-ink">{d.name ?? d.user_agent ?? t("account.device_unnamed")}</p>
+              <div className="flex min-w-0 items-center gap-3">
+                <DeviceIcon ua={d.user_agent} />
+                <div className="min-w-0">
+                <p className="truncate text-lead font-medium text-ink">{d.name ?? <AgentLabel ua={d.user_agent} />}</p>
                 <p className="text-small text-muted">
                   {t("account.device_last_used", { when: when(d.last_seen_at) })}
                   {d.ip ? ` · ${d.ip}` : ""}
                 </p>
+                </div>
               </div>
               <Button variant="secondary" onClick={() => revoke.mutate(d.id)} disabled={revoke.isPending}>
                 {t("account.device_forget")}

@@ -533,6 +533,12 @@ footer a {
   color: var(--contrast-300);
 }
 
+/* Account console: its sections are cards on the ground (the mock's panels). */
+.account-cards > div > section {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sheet);
+}
+
 /* Row actions show on hover or keyboard focus; always on touch screens. */
 .row-action {
   opacity: 0;
