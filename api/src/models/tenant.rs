@@ -609,6 +609,12 @@ pub struct Branding {
     pub contrast_color: Option<String>,
     pub background_color: Option<String>,
     pub support_url: Option<String>,
+    /// A line for the sign-in page's brand panel ("One sign-in for everything
+    /// at Acme."). With the Signal v2 skin the page splits into the panel and
+    /// the form once this is set; the other skins keep the single card.
+    pub headline: Option<String>,
+    /// A sentence under the headline.
+    pub tagline: Option<String>,
     pub custom_css: Option<String>,
     pub links: Vec<BrandingLink>,
     /// The visual skin (Phase 15): token set and layout family.
@@ -628,6 +634,8 @@ impl Default for Branding {
             contrast_color: None,
             background_color: None,
             support_url: None,
+            headline: None,
+            tagline: None,
             custom_css: None,
             links: Vec::new(),
             skin: Skin::default(),
@@ -677,6 +685,19 @@ impl Branding {
             && !is_hex_color(v)
         {
             return Err("branding.contrast_color: must be a hex colour (#rrggbb)".into());
+        }
+        for (name, value, max) in [
+            ("headline", &self.headline, 120),
+            ("tagline", &self.tagline, 240),
+        ] {
+            if let Some(v) = value {
+                if v.chars().count() > max {
+                    return Err(format!("branding.{name}: at most {max} characters"));
+                }
+                if v.chars().any(|c| c.is_control()) {
+                    return Err(format!("branding.{name}: must be one line of text"));
+                }
+            }
         }
         Ok(())
     }

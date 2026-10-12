@@ -3319,6 +3319,13 @@ export interface components {
             custom_css: string | null;
             /** @default null */
             favicon_url: string | null;
+            /**
+             * @description A line for the sign-in page's brand panel ("One sign-in for everything
+             *     at Acme."). With the Signal v2 skin the page splits into the panel and
+             *     the form once this is set; the other skins keep the single card.
+             * @default null
+             */
+            headline: string | null;
             /** @default [] */
             links: components["schemas"]["BrandingLink"][];
             /** @default null */
@@ -3336,6 +3343,11 @@ export interface components {
             skin: components["schemas"]["Skin"];
             /** @default null */
             support_url: string | null;
+            /**
+             * @description A sentence under the headline.
+             * @default null
+             */
+            tagline: string | null;
         };
         BrandingLink: {
             label: string;
@@ -6930,12 +6942,14 @@ export interface components {
              *       "contrast_color": null,
              *       "custom_css": null,
              *       "favicon_url": null,
+             *       "headline": null,
              *       "links": [],
              *       "logo_url": null,
              *       "mode": "system",
              *       "primary_color": null,
              *       "skin": "signal-v2",
-             *       "support_url": null
+             *       "support_url": null,
+             *       "tagline": null
              *     }
              */
             branding: components["schemas"]["Branding"];

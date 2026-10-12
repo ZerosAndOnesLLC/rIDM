@@ -57,9 +57,9 @@ export const TextField = forwardRef<HTMLInputElement, FieldProps>(function TextF
           id={inputId}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy || undefined}
-          className={`min-h-11 w-full rounded-[var(--radius)] border bg-paper px-3.5 text-md text-ink placeholder:text-muted/70 sm:text-lead ${
+          className={`min-h-11 w-full rounded-[var(--radius)] border bg-paper px-3.5 text-md text-ink placeholder:text-muted/70 focus:border-transparent sm:text-lead ${
             trailing ? "pe-11" : ""
-          } ${error ? "border-danger" : "border-line hover:border-muted/60"}`}
+          } ${error ? "border-danger" : "border-line-strong hover:border-muted/70"}`}
           {...rest}
         />
         {trailing && <div className="absolute inset-y-0 end-1 flex items-center">{trailing}</div>}
@@ -107,7 +107,7 @@ export function Checkbox({
   const id = useId();
   return (
     <label htmlFor={id} className={`flex cursor-pointer items-start gap-2.5 text-lead ${className}`}>
-      <input id={id} type="checkbox" className="mt-1 size-4 shrink-0 accent-[var(--accent)]" {...rest} />
+      <input id={id} type="checkbox" className="mt-1 size-4 shrink-0 accent-[var(--accent-solid)]" {...rest} />
       <span>{label}</span>
     </label>
   );
@@ -149,8 +149,8 @@ export function Spinner({ label }: { label: string }) {
 export function Title({ children, sub }: { children: ReactNode; sub?: ReactNode }) {
   return (
     <header className="mb-6">
-      <h1 className="text-num font-semibold leading-tight tracking-[-0.01em] text-ink">{children}</h1>
-      {sub && <p className="mt-1.5 text-lead text-muted">{sub}</p>}
+      <h1 className="text-2xl font-semibold leading-[1.1] text-ink">{children}</h1>
+      {sub && <p className="mt-1.5 text-body text-muted">{sub}</p>}
     </header>
   );
 }

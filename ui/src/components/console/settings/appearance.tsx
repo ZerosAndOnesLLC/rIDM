@@ -137,6 +137,12 @@ export function AppearanceSection() {
         <Field label="Logo URL" hint="Shown above the card; keep it under 40 px tall." error={urlError(b.logo_url)}>
           {(id, by) => <TextInput id={id} aria-describedby={by} type="url" value={b.logo_url ?? ""} disabled={!editable} onChange={(e) => update({ branding: { logo_url: e.target.value || null } })} />}
         </Field>
+        <Field label="Headline" hint="With the Signal v2 skin the sign-in page gains a brand panel carrying this line; the other skins keep the single card." wide>
+          {(id, by) => <TextInput id={id} aria-describedby={by} maxLength={120} value={b.headline ?? ""} disabled={!editable} onChange={(e) => update({ branding: { headline: e.target.value || null } })} />}
+        </Field>
+        <Field label="Tagline" hint="A sentence under the headline." wide>
+          {(id, by) => <TextInput id={id} aria-describedby={by} maxLength={240} value={b.tagline ?? ""} disabled={!editable} onChange={(e) => update({ branding: { tagline: e.target.value || null } })} />}
+        </Field>
         <Field label="Favicon URL" error={urlError(b.favicon_url)}>
           {(id, by) => <TextInput id={id} aria-describedby={by} type="url" value={b.favicon_url ?? ""} disabled={!editable} onChange={(e) => update({ branding: { favicon_url: e.target.value || null } })} />}
         </Field>

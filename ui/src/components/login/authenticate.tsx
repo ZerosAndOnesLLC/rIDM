@@ -1,5 +1,6 @@
 "use client";
 
+import { KeyRound, Link2, LockKeyhole, Mail, MessageSquare } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { useI18n } from "@/i18n/provider";
 import { Captcha } from "@/components/captcha";
@@ -20,6 +21,9 @@ const SEND_STEP: Record<Passwordless, string> = {
 };
 
 const noop = () => () => {};
+
+/** The glyph each sign-in method wears on its button. */
+const METHOD_ICON: Record<Method, typeof Mail> = { password: LockKeyhole, passkey: KeyRound, magic_link: Link2, email_otp: Mail, sms_otp: MessageSquare };
 
 /** Whether this browser can run a passkey ceremony (false during server rendering). */
 function usePasskeySupport(): boolean {
@@ -155,12 +159,13 @@ export function Authenticate({
 
   const subtitle = t("login.subtitle", { client: flow.client.name });
   const cancelLink = (
-    <button type="button" onClick={() => void cancel()} className="self-center text-small text-muted hover:text-ink hover:underline underline-offset-4">
+    <button type="button" onClick={() => void cancel()} className="mt-1 self-center text-body text-muted hover:text-ink hover:underline underline-offset-4">
       {t("common.cancel")}
     </button>
   );
   const passkeyButton = passkey && (
     <Button type="button" variant={methods.length === 0 ? "primary" : "secondary"} busy={busy} onClick={() => void signInWithPasskey()}>
+      <KeyRound aria-hidden />
       {t("login.passkey")}
     </Button>
   );
@@ -244,7 +249,7 @@ export function Authenticate({
           <Button id="login-submit" type="submit" busy={busy} disabled={flow.captcha ? !captcha : false}>
             {t("common.continue")}
           </Button>
-          <div className="flex flex-wrap justify-between gap-3 text-body">
+          <div className="mt-1 flex flex-wrap justify-between gap-x-4 gap-y-1.5 text-body">
             <a href={pageUrl("recover", { tenant, identifier })} className="text-link hover:underline underline-offset-4">
               {t("login.forgot_password")}
             </a>
@@ -278,19 +283,23 @@ export function Authenticate({
           <div className="flex flex-col gap-2">
             {passkeyButton}
             {providerButtons}
-            {others.map((m) => (
-              <Button
-                key={m}
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  setMethod(m);
-                  setError(null);
-                }}
-              >
-                {t(`login.${m === "password" ? "with_password" : m}`)}
-              </Button>
-            ))}
+            {others.map((m) => {
+              const Icon = METHOD_ICON[m];
+              return (
+                <Button
+                  key={m}
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setMethod(m);
+                    setError(null);
+                  }}
+                >
+                  <Icon aria-hidden />
+                  {t(`login.${m === "password" ? "with_password" : m}`)}
+                </Button>
+              );
+            })}
           </div>
         </>
       )}

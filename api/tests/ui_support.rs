@@ -63,6 +63,7 @@ async fn branding_document_is_public_and_cacheable() {
     assert_eq!(body["branding"]["mode"], "system");
     assert_eq!(body["branding"]["allow_theme_switch"], true);
     assert!(body["branding"]["contrast_color"].is_null());
+    assert!(body["branding"]["headline"].is_null() && body["branding"]["tagline"].is_null());
     assert_eq!(
         body["locale"],
         json!({"default": "de", "supported": ["de", "en"]})

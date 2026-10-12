@@ -21355,6 +21355,14 @@
             ],
             "default": null
           },
+          "headline": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A line for the sign-in page's brand panel (\"One sign-in for everything\nat Acme.\"). With the Signal v2 skin the page splits into the panel and\nthe form once this is set; the other skins keep the single card.",
+            "default": null
+          },
           "links": {
             "type": "array",
             "items": {
@@ -21400,6 +21408,14 @@
               "string",
               "null"
             ],
+            "default": null
+          },
+          "tagline": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A sentence under the headline.",
             "default": null
           }
         }
@@ -30780,12 +30796,14 @@
               "contrast_color": null,
               "custom_css": null,
               "favicon_url": null,
+              "headline": null,
               "links": [],
               "logo_url": null,
               "mode": "system",
               "primary_color": null,
               "skin": "signal-v2",
-              "support_url": null
+              "support_url": null,
+              "tagline": null
             }
           },
           "captcha": {

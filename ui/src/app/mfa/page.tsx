@@ -291,7 +291,7 @@ function Choose({ flow, post, choices, onChoose }: { flow: PublicFlow; post: Pos
             key={choice}
             type="button"
             onClick={() => onChoose(choice)}
-            className="flex flex-col items-start gap-1 rounded-[var(--radius)] border border-line bg-paper px-4 py-3 text-start hover:bg-ground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className="flex flex-col items-start gap-1 rounded-[var(--radius)] border border-line-strong bg-paper px-4 py-3 text-start hover:border-accent-ring hover:bg-accent-soft"
           >
             <span className="text-lead font-medium text-ink">{t(CHOICE_TEXT[choice].label)}</span>
             <span className="text-small text-muted">{t(CHOICE_TEXT[choice].hint)}</span>

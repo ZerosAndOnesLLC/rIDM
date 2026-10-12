@@ -34,8 +34,8 @@ export function CodeInput({
         maxLength={length}
         autoFocus={autoFocus}
         aria-invalid={error ? true : undefined}
-        className={`min-h-12 w-full rounded-[var(--radius)] border bg-paper px-3.5 text-center font-mono text-xl tracking-[0.4em] text-ink ${
-          error ? "border-danger" : "border-line"
+        className={`min-h-12 w-full rounded-[var(--radius)] border bg-paper px-3.5 text-center font-mono text-xl tracking-[0.4em] text-ink focus:border-transparent ${
+          error ? "border-danger" : "border-line-strong"
         }`}
       />
       {error && (
