@@ -189,7 +189,15 @@ export function createAuth(app: AuthApp): AuthApi {
     },
     lastTenant() {
       try {
-        return storage("local")?.getItem(LAST_TENANT_KEY) ?? null;
+        const raw = storage("local")?.getItem(LAST_TENANT_KEY);
+        if (!raw) return null;
+        // Written as JSON (see `start`); a value stored bare by an older build is read as is.
+        try {
+          const v = JSON.parse(raw) as unknown;
+          return typeof v === "string" ? v : null;
+        } catch {
+          return raw;
+        }
       } catch {
         return null;
       }
