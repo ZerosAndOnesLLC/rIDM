@@ -1,10 +1,11 @@
 "use client";
 
+import { fmtDateTime } from "@/lib/console/format";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { Field, SaveIndicator, Section, SelectInput, TextInput, Toggle } from "@/components/console/form";
 import { Card, Row } from "@/components/console/ui";
-import { displayName, formatDate } from "@/i18n";
+import { displayName } from "@/i18n";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import { useConsole } from "@/lib/console/session";
 import { type UserDetail as Detail, type UserUpdate } from "@/lib/console/users";
@@ -158,9 +159,9 @@ export function ProfileTab({ tenant, u, editable }: { tenant: string; u: Detail;
           <Row label="User ID">
             <code className="font-mono text-small">{u.id}</code>
           </Row>
-          <Row label="Created">{formatDate("en", u.created_at)}</Row>
-          <Row label="Last sign-in">{u.last_login_at ? formatDate("en", u.last_login_at) : "Never"}</Row>
-          <Row label="Terms accepted">{u.terms_accepted_at ? formatDate("en", u.terms_accepted_at) : "—"}</Row>
+          <Row label="Created">{fmtDateTime(u.created_at)}</Row>
+          <Row label="Last sign-in">{u.last_login_at ? fmtDateTime(u.last_login_at) : "Never"}</Row>
+          <Row label="Terms accepted">{u.terms_accepted_at ? fmtDateTime(u.terms_accepted_at) : "—"}</Row>
           <Row label="Failed attempts">{u.failed_attempts}</Row>
         </dl>
       </Card>

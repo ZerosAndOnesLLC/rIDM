@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtDate } from "@/lib/console/format";
 import { useQuery } from "@tanstack/react-query";
 import { KeyRound, Search, UserRound } from "lucide-react";
 import { useState } from "react";
@@ -8,7 +9,6 @@ import { Badge, Card, Kbd, PageHeader, Row } from "@/components/console/ui";
 import { useConsole } from "@/lib/console/session";
 import { modKey } from "@/lib/console/shortcuts";
 import { useConsoleTenant } from "@/lib/console/tenant";
-import { formatDate } from "@/i18n";
 
 /** Landing page: who you are, what you can do, and the tenant in view. */
 export default function Overview() {
@@ -79,7 +79,7 @@ export default function Overview() {
               <Row label="Name">{detail.data.display_name}</Row>
               <Row label="Slug">{detail.data.slug}</Row>
               <Row label="Status">{detail.data.status === "active" ? <Badge tone="ok">Active</Badge> : <Badge tone="danger">{detail.data.status}</Badge>}</Row>
-              <Row label="Created">{formatDate("en", detail.data.created_at, { dateStyle: "medium" })}</Row>
+              <Row label="Created">{fmtDate(detail.data.created_at)}</Row>
               <Row label="Default locale">{detail.data.settings.locale.default}</Row>
             </dl>
           ) : (

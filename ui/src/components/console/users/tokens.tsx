@@ -1,9 +1,9 @@
 "use client";
 
+import { fmtDateTime } from "@/lib/console/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Button } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
 import { useConsole } from "@/lib/console/session";
 
 /** A user's personal access tokens (metadata only), with revocation. */
@@ -49,9 +49,9 @@ export function PersonalTokens({ tenant, id, editable }: { tenant: string; id: s
                   ))}
                 </span>
                 <span className="text-small text-muted">
-                  Created {formatDate("en", k.created_at)}
-                  {k.expires_at ? ` · expires ${formatDate("en", k.expires_at)}` : " · never expires"}
-                  {k.last_used_at ? ` · last used ${formatDate("en", k.last_used_at)}` : " · never used"}
+                  Created {fmtDateTime(k.created_at)}
+                  {k.expires_at ? ` · expires ${fmtDateTime(k.expires_at)}` : " · never expires"}
+                  {k.last_used_at ? ` · last used ${fmtDateTime(k.last_used_at)}` : " · never used"}
                 </span>
               </span>
               {editable && (

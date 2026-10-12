@@ -1,9 +1,9 @@
 "use client";
 
+import { fmtDateTime } from "@/lib/console/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Button, Card } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
 import { useConsole } from "@/lib/console/session";
 import { describeAgent } from "@/lib/ua";
 
@@ -82,7 +82,7 @@ export function SessionsTab({ tenant, id, editable }: { tenant: string; id: stri
                     </span>
                   )}
                   <span className="block text-small text-muted">
-                    Signed in {formatDate("en", s.auth_time)} · {s.amr.join(", ")} · last seen {formatDate("en", s.last_seen_at)} · ends {formatDate("en", s.expires_at)}
+                    Signed in {fmtDateTime(s.auth_time)} · {s.amr.join(", ")} · last seen {fmtDateTime(s.last_seen_at)} · ends {fmtDateTime(s.expires_at)}
                   </span>
                 </span>
                 {editable && (
@@ -121,7 +121,7 @@ export function SessionsTab({ tenant, id, editable }: { tenant: string; id: stri
                   <span className="font-medium text-ink">{d.name ?? describeAgent(d.user_agent)}</span>
                   <span className="ms-2 text-muted">{d.ip ?? ""}</span>
                   <span className="block text-small text-muted">
-                    Remembered {formatDate("en", d.created_at)} · last seen {formatDate("en", d.last_seen_at)} · until {formatDate("en", d.expires_at)}
+                    Remembered {fmtDateTime(d.created_at)} · last seen {fmtDateTime(d.last_seen_at)} · until {fmtDateTime(d.expires_at)}
                   </span>
                 </span>
                 {editable && (

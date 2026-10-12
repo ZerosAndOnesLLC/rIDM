@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtDate } from "@/lib/console/format";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { AppWindow, Plus } from "lucide-react";
 import { useState } from "react";
@@ -7,7 +8,6 @@ import { DataTable, ListFooter, type Column } from "@/components/base/data-table
 import { EmptyState } from "@/components/base/empty-state";
 import { TextInput } from "@/components/console/form";
 import { Badge, Button, PageHeader } from "@/components/console/ui";
-import { formatDate } from "@/i18n";
 import { AUTH_METHODS, clientHref, samlHref, typeLabel } from "@/lib/console/clients";
 import { useDebounced } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
@@ -36,7 +36,7 @@ export function ClientsTable({ tenant, onCreate }: { tenant: string; onCreate: (
     { key: "type", header: "Type", width: "minmax(7rem, 1fr)", cell: (c) => <span className="truncate text-muted">{typeLabel(c.client_type)}</span> },
     { key: "auth", header: "Authentication", width: "minmax(8rem, 1fr)", cell: (c) => <span className="truncate text-muted">{AUTH_METHODS.find((m) => m.value === c.token_endpoint_auth_method)?.label ?? c.token_endpoint_auth_method}</span> },
     { key: "status", header: "Status", width: "6rem", cell: (c) => (c.status === "active" ? <Badge tone="ok">Active</Badge> : <Badge tone="danger">Disabled</Badge>) },
-    { key: "created", header: "Created", width: "8rem", cell: (c) => <span className="text-muted">{formatDate("en", c.created_at, { dateStyle: "medium" })}</span> },
+    { key: "created", header: "Created", width: "8rem", cell: (c) => <span className="text-muted">{fmtDate(c.created_at)}</span> },
   ];
 
   return (

@@ -1,12 +1,12 @@
 "use client";
 
+import { fmtDateTime } from "@/lib/console/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Field, NumberInput, SelectInput, TextArea, TextInput } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
 import { useDebounced } from "@/lib/console/hooks";
 import { href, type LogEntry } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
@@ -546,7 +546,7 @@ function LogTab({ tenant }: { tenant: string }) {
                 <Badge tone={tone(m.status)}>{m.status}</Badge>
                 <span className="ms-2 text-small text-muted">
                   {m.channel} · {m.event}
-                  {m.subject ? ` · ${m.subject}` : ""} · {formatDate("en", m.created_at)} · attempt {m.attempts}/{m.max_attempts}
+                  {m.subject ? ` · ${m.subject}` : ""} · {fmtDateTime(m.created_at)} · attempt {m.attempts}/{m.max_attempts}
                 </span>
                 {m.last_error && <span className="block text-small text-danger">{m.last_error}</span>}
               </span>

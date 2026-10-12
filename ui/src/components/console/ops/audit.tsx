@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtDateTime } from "@/lib/console/format";
 import { EmptyState } from "@/components/base/empty-state";
 import { Skeleton } from "@/components/base/skeleton";
 import { ListFooter } from "@/components/base/data-table";
@@ -8,7 +9,6 @@ import { Download, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { Field, SelectInput, TextInput } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
-import { formatDate } from "@/i18n";
 import { EVENT_NAMES, downloadWithToken, toRfc3339, type AuditEvent } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
 import { ErrorLine } from "../access/common";
@@ -186,7 +186,7 @@ function EventRow({ e, open, onToggle }: { e: AuditEvent; open: boolean; onToggl
           {e.ip && <span className="text-small text-muted">{e.ip}</span>}
         </span>
         <span className="text-small text-muted">
-          #{e.seq} · {formatDate("en", e.occurred_at)}
+          #{e.seq} · {fmtDateTime(e.occurred_at)}
         </span>
       </button>
       {open && (

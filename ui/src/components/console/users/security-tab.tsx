@@ -1,12 +1,12 @@
 "use client";
 
+import { fmtDateTime } from "@/lib/console/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound } from "lucide-react";
 import { useState } from "react";
 import { Field, SelectInput, TextInput, Toggle } from "@/components/console/form";
 import { Badge, Button, Card, Row } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
 import { useConsole } from "@/lib/console/session";
 import { type UserDetail as Detail } from "@/lib/console/users";
 import { type Revealed } from "../clients/reveal";
@@ -69,8 +69,8 @@ export function SecurityTab({ tenant, u, editable, onReveal, onChanged, onForce 
         <dl className="mb-4">
           <Row label="Set">{u.password.set ? <Badge tone="ok">Yes</Badge> : <Badge>No password</Badge>}</Row>
           <Row label="Algorithm">{u.password.algorithm ?? "—"}</Row>
-          <Row label="Changed">{u.password.changed_at ? formatDate("en", u.password.changed_at) : "—"}</Row>
-          <Row label="Expires">{u.password.expires_at ? formatDate("en", u.password.expires_at) : "Never"}</Row>
+          <Row label="Changed">{u.password.changed_at ? fmtDateTime(u.password.changed_at) : "—"}</Row>
+          <Row label="Expires">{u.password.expires_at ? fmtDateTime(u.password.expires_at) : "Never"}</Row>
           <Row label="Change required">{u.password.must_change ? <Badge tone="accent">At next sign-in</Badge> : "No"}</Row>
         </dl>
         {editable && (
@@ -128,8 +128,8 @@ export function SecurityTab({ tenant, u, editable, onReveal, onChanged, onForce 
                   <span className="font-medium text-ink">{CREDENTIAL_KINDS[c.kind] ?? c.kind}</span>
                   {c.label && <span className="ms-2 text-muted">{c.label}</span>}
                   <span className="block text-small text-muted">
-                    Added {formatDate("en", c.created_at)}
-                    {c.last_used_at ? ` · used ${formatDate("en", c.last_used_at)}` : ""}
+                    Added {fmtDateTime(c.created_at)}
+                    {c.last_used_at ? ` · used ${fmtDateTime(c.last_used_at)}` : ""}
                   </span>
                 </span>
                 {editable && (

@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtDate } from "@/lib/console/format";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, Plus, Settings2 } from "lucide-react";
 import Link from "next/link";
@@ -9,7 +10,6 @@ import { Field, SelectInput, TextInput } from "@/components/console/form";
 import { DataTable, ListFooter, type Column } from "@/components/base/data-table";
 import { EmptyState } from "@/components/base/empty-state";
 import { Badge, Button, Modal, PageHeader } from "@/components/console/ui";
-import { formatDate } from "@/i18n";
 import { useDebounced } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
 import { isValidSlug } from "@/lib/console/settings";
@@ -52,7 +52,7 @@ export default function TenantsPage() {
     { key: "slug", header: "Slug", width: "minmax(7rem, 1fr)", cell: (t) => <span className="truncate font-mono text-small text-muted">{t.slug}</span> },
     ...(regional ? [{ key: "region", header: "Region", width: "7rem", cell: (t: Row) => <span className="font-mono text-small text-muted">{t.data_region ?? "home"}</span> }] : []),
     { key: "status", header: "Status", width: "6.5rem", cell: (t) => (t.relocating ? <Badge tone="accent">Moving</Badge> : t.status === "active" ? <Badge tone="ok">Active</Badge> : <Badge tone="danger">Disabled</Badge>) },
-    { key: "created", header: "Created", width: "8rem", cell: (t) => <span className="text-muted">{formatDate("en", t.created_at, { dateStyle: "medium" })}</span> },
+    { key: "created", header: "Created", width: "8rem", cell: (t) => <span className="text-muted">{fmtDate(t.created_at)}</span> },
     {
       key: "actions",
       header: "Actions",

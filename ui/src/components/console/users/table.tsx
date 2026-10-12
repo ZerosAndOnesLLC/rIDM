@@ -1,13 +1,13 @@
 "use client";
 
+import { fmtDate } from "@/lib/console/format";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Download, Mail, Plus, Upload, UsersRound } from "lucide-react";
 import { useState } from "react";
 import { DataTable, ListFooter, type Column } from "@/components/base/data-table";
 import { EmptyState } from "@/components/base/empty-state";
-import { SelectInput, TextInput } from "@/components/console/form";
+import { ChipSelect, ChipToggle, TextInput } from "@/components/console/form";
 import { Badge, Button, PageHeader } from "@/components/console/ui";
-import { formatDate } from "@/i18n";
 import { useDebounced } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
 import { STATUS_LABELS, statusTone, userHref, type UserStatus } from "@/lib/console/users";
@@ -48,7 +48,7 @@ export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: {
       ),
     },
     { key: "status", header: "Status", width: "7rem", cell: (u) => <Badge tone={statusTone(u.status)}>{STATUS_LABELS[u.status]}</Badge> },
-    { key: "last_login", header: "Last sign-in", width: "9rem", cell: (u) => <span className="text-muted">{u.last_login_at ? formatDate("en", u.last_login_at, { dateStyle: "medium" }) : "Never"}</span> },
+    { key: "last_login", header: "Last sign-in", width: "9rem", cell: (u) => <span className="text-muted">{u.last_login_at ? fmtDate(u.last_login_at) : "Never"}</span> },
   ];
 
   return (
@@ -84,9 +84,9 @@ export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: {
         }
       />
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <TextInput aria-label="Search users" placeholder="Search by username or email…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-sm" />
-        <SelectInput aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value as UserStatus | "")} className="max-w-[12rem]">
-          <option value="">Any status</option>
+        <TextInput aria-label="Search users" placeholder="Filter by username or email…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs flex-1 basis-[15rem]" />
+        <ChipSelect label="Status" value={status} onChange={(v) => setStatus(v as UserStatus | "")}>
+          <option value="">any</option>
           {(Object.keys(STATUS_LABELS) as UserStatus[])
             .filter((s) => s !== "deleted")
             .map((s) => (
@@ -94,11 +94,8 @@ export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: {
                 {STATUS_LABELS[s]}
               </option>
             ))}
-        </SelectInput>
-        <label className="flex items-center gap-2 text-body text-ink">
-          <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={deleted} onChange={(e) => setDeleted(e.target.checked)} />
-          Include deleted
-        </label>
+        </ChipSelect>
+        <ChipToggle label="Include deleted" checked={deleted} onChange={setDeleted} />
       </div>
       {users.isError ? (
         <p role="alert" className="text-lead text-danger">

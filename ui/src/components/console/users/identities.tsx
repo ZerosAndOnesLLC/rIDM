@@ -1,9 +1,9 @@
 "use client";
 
+import { fmtDateTime } from "@/lib/console/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Button } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
 import { useConsole } from "@/lib/console/session";
 
 /** The upstream identities linked to a user, with unlinking. */
@@ -47,8 +47,8 @@ export function LinkedIdentities({ tenant, id, editable }: { tenant: string; id:
                   {(i.external_email ?? i.external_username) && <span className="text-muted">{i.external_email ?? i.external_username}</span>}
                 </span>
                 <span className="text-small text-muted">
-                  Subject {i.external_subject} · linked {formatDate("en", i.linked_at)}
-                  {i.last_login_at ? ` · last sign-in ${formatDate("en", i.last_login_at)}` : ""}
+                  Subject {i.external_subject} · linked {fmtDateTime(i.linked_at)}
+                  {i.last_login_at ? ` · last sign-in ${fmtDateTime(i.last_login_at)}` : ""}
                 </span>
               </span>
               {editable && (

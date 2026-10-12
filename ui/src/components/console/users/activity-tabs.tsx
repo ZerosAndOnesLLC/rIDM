@@ -1,12 +1,12 @@
 "use client";
 
+import { fmtDateTime } from "@/lib/console/format";
 import { Skeleton } from "@/components/base/skeleton";
 import { EmptyState } from "@/components/base/empty-state";
 import { ListFooter } from "@/components/base/data-table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button, Card } from "@/components/console/ui";
-import { formatDate } from "@/i18n";
 import { useConsole } from "@/lib/console/session";
 
 export function ConsentsTab({ tenant, id, editable }: { tenant: string; id: string; editable: boolean }) {
@@ -44,8 +44,8 @@ export function ConsentsTab({ tenant, id, editable }: { tenant: string; id: stri
               <span>
                 <span className="font-medium text-ink">{c.client_name} ({c.client})</span>
                 <span className="block text-small text-muted">
-                  {c.scopes.join(" ")} · granted {formatDate("en", c.granted_at)}
-                  {c.revoked_at ? ` · revoked ${formatDate("en", c.revoked_at)}` : ""}
+                  {c.scopes.join(" ")} · granted {fmtDateTime(c.granted_at)}
+                  {c.revoked_at ? ` · revoked ${fmtDateTime(c.revoked_at)}` : ""}
                 </span>
               </span>
               {editable && !c.revoked_at && (
@@ -100,7 +100,7 @@ export function AuditTab({ tenant, id }: { tenant: string; id: string }) {
                   <span className="font-mono text-small font-medium text-ink">{e.name}</span>
                   <span className="ms-2 text-muted">by {e.actor_type}</span>
                 </span>
-                <span className="shrink-0 text-small text-muted">{formatDate("en", e.occurred_at)}</span>
+                <span className="shrink-0 text-small text-muted">{fmtDateTime(e.occurred_at)}</span>
               </button>
               {open === e.id && (
                 <pre tabIndex={0} aria-label="Event payload" className="mt-2 max-h-64 overflow-auto rounded-[var(--radius)] bg-ground px-3 py-2 font-mono text-small text-ink">

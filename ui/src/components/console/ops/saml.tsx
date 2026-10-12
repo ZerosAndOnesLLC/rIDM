@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtDate } from "@/lib/console/format";
 import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, KeyRound, Plus, Trash2 } from "lucide-react";
@@ -9,7 +10,6 @@ import { useCallback, useMemo, useState, type ChangeEvent } from "react";
 import { Field, NumberInput, SaveIndicator, Section, SelectInput, TagsInput, TextArea, TextInput, Toggle } from "@/components/console/form";
 import { Badge, Button, Card, IconButton, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import { useRowKeys } from "@/lib/console/hooks";
 import { href, type SamlAttribute, type SamlIdp, type SamlKey, type SamlSp, type SamlSpInput } from "@/lib/console/ops";
@@ -212,8 +212,8 @@ function IdpView({ tenant }: { tenant: string }) {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Badge tone={KEY_TONE[k.status]}>{k.status}</Badge>
                 <span className="text-small text-muted">
-                  Valid until {formatDate("en", k.not_after, { dateStyle: "medium" })}
-                  {k.activated_at ? ` · signing since ${formatDate("en", k.activated_at, { dateStyle: "medium" })}` : ""}
+                  Valid until {fmtDate(k.not_after)}
+                  {k.activated_at ? ` · signing since ${fmtDate(k.activated_at)}` : ""}
                 </span>
               </div>
               <code className="break-all font-mono text-caption text-muted" title="SHA-256 fingerprint">

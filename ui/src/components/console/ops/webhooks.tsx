@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtDateTime } from "@/lib/console/format";
 import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, RotateCw, Send } from "lucide-react";
@@ -9,7 +10,6 @@ import { useCallback, useState } from "react";
 import { Field, NumberInput, SaveIndicator, Section, SelectInput, TagsInput, TextInput, Toggle } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import { EVENT_NAMES, EVENT_PREFIXES, href, type Webhook, type WebhookDelivery } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
@@ -319,7 +319,7 @@ function Deliveries({ tenant, id, editable }: { tenant: string; id: string; edit
                   <Badge tone={TONE[d.status]}>{d.status}</Badge>
                   <span className="text-small text-muted">
                     attempt {d.attempts}/{d.max_attempts}
-                    {d.last_status ? ` · HTTP ${d.last_status}` : ""} · {formatDate("en", d.created_at)}
+                    {d.last_status ? ` · HTTP ${d.last_status}` : ""} · {fmtDateTime(d.created_at)}
                   </span>
                 </button>
                 {editable && (d.status === "dead" || d.status === "delivered" || d.status === "failed") && (

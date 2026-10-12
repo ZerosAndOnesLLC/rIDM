@@ -1,9 +1,9 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
-import { DEFAULT_POLICY, cachedPolicy, effectiveTheme, getPolicy, setPolicy, subscribePolicy, type Policy, type Theme } from "./appearance";
+import { DEFAULT_POLICY, DEFAULT_SKIN, cachedPolicy, cachedSkin, effectiveTheme, getPolicy, getSkin, setPolicy, setSkin, subscribePolicy, subscribeSkin, type Policy, type Skin, type Theme } from "./appearance";
 
-export type { Theme };
+export type { Skin, Theme };
 const KEY = "ridm.theme";
 
 interface ThemeState {
@@ -51,6 +51,25 @@ function policySnapshot(): Policy {
   return getPolicy();
 }
 const policyServerSnapshot = (): Policy => DEFAULT_POLICY;
+
+let skinPrimed = false;
+function skinSnapshot(): Skin {
+  if (!skinPrimed) {
+    skinPrimed = true;
+    setSkin(cachedSkin());
+  }
+  return getSkin();
+}
+const skinServerSnapshot = (): Skin => DEFAULT_SKIN;
+
+/**
+ * The tenant's skin, for the few structural switches the stylesheet cannot
+ * make on its own (design/README.md): the console chrome variant, chip or
+ * select filters, the sign-in layout.
+ */
+export function useSkin(): Skin {
+  return useSyncExternalStore(subscribeSkin, skinSnapshot, skinServerSnapshot);
+}
 
 /**
  * Light / dark / follow-the-device. The person's choice is kept per browser;

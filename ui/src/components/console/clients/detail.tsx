@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtDateTime } from "@/lib/console/format";
 import { EmptyState } from "@/components/base/empty-state";
 import { DataTable } from "@/components/base/data-table";
 import { ConfirmDialog } from "@/components/base/confirm-dialog";
@@ -12,7 +13,6 @@ import { useCallback, useMemo, useState } from "react";
 import { Field, NumberInput, SaveIndicator, Section, SelectInput, TagsInput, TextArea, TextInput, Toggle } from "@/components/console/form";
 import { Badge, Button, IconButton, Modal, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import {
   ALL_GRANTS,
@@ -554,8 +554,8 @@ function SecretsSection({ tenant, c, editable, onReveal, onChanged }: { tenant: 
           minWidth="30rem"
           columns={[
             { key: "id", header: "Secret", width: "minmax(6rem, 1fr)", cell: (sec: ClientView["secrets"][number]) => <span className="font-mono text-small text-muted">…{sec.id.slice(-8)}</span> },
-            { key: "created", header: "Created", width: "minmax(9rem, 1fr)", cell: (sec) => <span className="text-muted">{formatDate("en", sec.created_at)}</span> },
-            { key: "until", header: "Valid until", width: "minmax(9rem, 1.2fr)", cell: (sec) => (sec.expires_at ? <Badge>Retiring {formatDate("en", sec.expires_at)}</Badge> : <Badge tone="ok">Current</Badge>) },
+            { key: "created", header: "Created", width: "minmax(9rem, 1fr)", cell: (sec) => <span className="text-muted">{fmtDateTime(sec.created_at)}</span> },
+            { key: "until", header: "Valid until", width: "minmax(9rem, 1.2fr)", cell: (sec) => (sec.expires_at ? <Badge>Retiring {fmtDateTime(sec.expires_at)}</Badge> : <Badge tone="ok">Current</Badge>) },
             {
               key: "actions",
               header: "Actions",

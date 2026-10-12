@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtDate, fmtDateTime } from "@/lib/console/format";
 import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Plus, RotateCw } from "lucide-react";
@@ -9,7 +10,6 @@ import { useToast } from "@/components/base/toast";
 import { Field, SelectInput, Toggle } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader, Row } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
 import type { KeyStatus, SigningKey } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
 import { RSA_BITS, SIGNING_ALGS } from "@/lib/console/settings";
@@ -128,7 +128,7 @@ export function KeysPage({ tenant }: { tenant: string }) {
                 })}
               </ol>
               <span className="mt-2 block text-caption text-muted">
-                {formatDate("en", span.from, { dateStyle: "medium" })} → {formatDate("en", span.to, { dateStyle: "medium" })}
+                {fmtDate(span.from)} → {fmtDate(span.to)}
               </span>
             </Card>
           )}
@@ -201,9 +201,9 @@ function KeyCard({ k, editable, pending, onAct }: { k: SigningKey; editable: boo
       }
     >
       <dl>
-        <Row label="Created">{formatDate("en", k.created_at)}</Row>
-        <Row label="Signs from">{formatDate("en", k.not_before)}</Row>
-        <Row label="Published until">{k.expires_at ? formatDate("en", k.expires_at) : k.status === "revoked" ? "Unpublished" : "Until retired"}</Row>
+        <Row label="Created">{fmtDateTime(k.created_at)}</Row>
+        <Row label="Signs from">{fmtDateTime(k.not_before)}</Row>
+        <Row label="Published until">{k.expires_at ? fmtDateTime(k.expires_at) : k.status === "revoked" ? "Unpublished" : "Until retired"}</Row>
         <Row label="Master-key generation">{k.key_version}</Row>
       </dl>
       <button type="button" onClick={() => setShowJwk((s) => !s)} aria-expanded={showJwk} className="mt-2 text-small text-link underline underline-offset-4">
@@ -342,7 +342,7 @@ function MasterKey() {
                   <Badge tone={g.version === status.data.current_version ? "ok" : "neutral"}>{g.backend === "env" ? "environment" : g.backend}</Badge>
                   {!g.loaded && <Badge tone="danger">not readable on this server</Badge>}
                   {g.key_ref && <code className="min-w-0 break-all font-mono text-caption text-muted">{g.key_ref}</code>}
-                  {g.created_at && <span className="text-muted">{formatDate("en", g.created_at)}</span>}
+                  {g.created_at && <span className="text-muted">{fmtDateTime(g.created_at)}</span>}
                 </li>
               ))}
             </ul>

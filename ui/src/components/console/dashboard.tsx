@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtNumber } from "@/lib/console/format";
 import { EmptyState } from "@/components/base/empty-state";
 import { DataTable } from "@/components/base/data-table";
 import { useQuery } from "@tanstack/react-query";
@@ -8,7 +9,6 @@ import { useState } from "react";
 import { SelectInput } from "@/components/console/form";
 import { Card } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
-import { formatNumber } from "@/i18n";
 import { useConsole } from "@/lib/console/session";
 import { ErrorLine } from "./access/common";
 
@@ -49,7 +49,7 @@ export function Dashboard({ tenant }: { tenant: string }) {
           <Tile label={`Sign-ins · ${days} days`} value={s.logins_total} />
           <Tile label={`Failed sign-ins · ${days} days`} value={s.failed_total} tone={s.failed_total > 0 && s.failed_total * 5 > s.logins_total ? "warn" : undefined} />
           <Tile label="Live sessions" value={s.active_sessions} />
-          <Tile label="Two-step adoption" value={`${adoption}%`} sub={`${formatNumber("en", s.users.mfa_enrolled)} of ${formatNumber("en", s.users.active)} active users`} />
+          <Tile label="Two-step adoption" value={`${adoption}%`} sub={`${fmtNumber(s.users.mfa_enrolled)} of ${fmtNumber(s.users.active)} active users`} />
         </div>
         <label className="flex items-center gap-2 text-small text-muted">
           Window
@@ -98,15 +98,15 @@ export function Dashboard({ tenant }: { tenant: string }) {
           <dl className="grid grid-cols-3 gap-3 text-center">
             <div>
               <dt className="text-caption uppercase tracking-wide text-muted">Total</dt>
-              <dd className="text-2xl font-semibold text-ink">{formatNumber("en", s.users.total)}</dd>
+              <dd className="text-2xl font-semibold text-ink">{fmtNumber(s.users.total)}</dd>
             </div>
             <div>
               <dt className="text-caption uppercase tracking-wide text-muted">Active</dt>
-              <dd className="text-2xl font-semibold text-ink">{formatNumber("en", s.users.active)}</dd>
+              <dd className="text-2xl font-semibold text-ink">{fmtNumber(s.users.active)}</dd>
             </div>
             <div>
               <dt className="text-caption uppercase tracking-wide text-muted">With a second factor</dt>
-              <dd className="text-2xl font-semibold text-ink">{formatNumber("en", s.users.mfa_enrolled)}</dd>
+              <dd className="text-2xl font-semibold text-ink">{fmtNumber(s.users.mfa_enrolled)}</dd>
             </div>
           </dl>
           <div className="mt-4">
@@ -129,7 +129,7 @@ function Tile({ label, value, sub, tone }: { label: string; value: number | stri
   return (
     <div className="rounded-[calc(var(--radius)+2px)] border border-line bg-paper px-4 py-3">
       <p className="text-caption uppercase tracking-wide text-muted">{label}</p>
-      <p className={`mt-1 text-num font-semibold leading-none ${tone === "warn" ? "text-danger" : "text-ink"}`}>{typeof value === "number" ? formatNumber("en", value) : value}</p>
+      <p className={`mt-1 text-num font-semibold leading-none ${tone === "warn" ? "text-danger" : "text-ink"}`}>{typeof value === "number" ? fmtNumber(value) : value}</p>
       {sub && <p className="mt-1.5 text-caption text-muted">{sub}</p>}
     </div>
   );

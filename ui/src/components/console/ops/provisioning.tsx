@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtDateTime } from "@/lib/console/format";
 import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
@@ -7,7 +8,6 @@ import { useState } from "react";
 import { NumberInput, TextInput } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
 import type { ScimToken } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
 import { ErrorLine } from "../access/common";
@@ -112,9 +112,9 @@ export function ProvisioningPage({ tenant }: { tenant: string }) {
                         <span className="font-medium text-ink">{t.name}</span>
                         <Badge tone={s.tone}>{s.label}</Badge>
                         <span className="text-small text-muted">
-                          created {formatDate("en", t.created_at)}
-                          {t.expires_at ? ` · expires ${formatDate("en", t.expires_at)}` : " · no expiry"}
-                          {t.last_used_at ? ` · last used ${formatDate("en", t.last_used_at)}` : " · never used"}
+                          created {fmtDateTime(t.created_at)}
+                          {t.expires_at ? ` · expires ${fmtDateTime(t.expires_at)}` : " · no expiry"}
+                          {t.last_used_at ? ` · last used ${fmtDateTime(t.last_used_at)}` : " · never used"}
                         </span>
                       </div>
                       {editable && !t.revoked_at && (

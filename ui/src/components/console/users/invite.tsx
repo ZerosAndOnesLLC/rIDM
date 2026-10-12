@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtDateTime } from "@/lib/console/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Mail } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -7,7 +8,6 @@ import { DataTable, type Column } from "@/components/base/data-table";
 import { EmptyState } from "@/components/base/empty-state";
 import { Field, NumberInput, TextInput } from "@/components/console/form";
 import { Badge, Button, Modal } from "@/components/console/ui";
-import { formatDate } from "@/i18n";
 import { useConsole } from "@/lib/console/session";
 import { roleName } from "@/lib/console/users";
 import { CheckList } from "../clients/pickers";
@@ -133,8 +133,8 @@ export function InvitationsList({ tenant }: { tenant: string }) {
   type Row = NonNullable<typeof list.data>[number];
   const columns: Column<Row>[] = [
     { key: "email", header: "Email", width: "minmax(12rem, 2fr)", cell: (i) => <span className="truncate font-medium text-ink">{i.email}</span> },
-    { key: "sent", header: "Sent", width: "minmax(8rem, 1fr)", cell: (i) => <span className="text-muted">{formatDate("en", i.created_at)}</span> },
-    { key: "expires", header: "Expires", width: "minmax(8rem, 1fr)", cell: (i) => (new Date(i.expires_at) < new Date() ? <Badge tone="danger">Expired</Badge> : <span className="text-muted">{formatDate("en", i.expires_at)}</span>) },
+    { key: "sent", header: "Sent", width: "minmax(8rem, 1fr)", cell: (i) => <span className="text-muted">{fmtDateTime(i.created_at)}</span> },
+    { key: "expires", header: "Expires", width: "minmax(8rem, 1fr)", cell: (i) => (new Date(i.expires_at) < new Date() ? <Badge tone="danger">Expired</Badge> : <span className="text-muted">{fmtDateTime(i.expires_at)}</span>) },
     {
       key: "grants",
       header: "Roles / groups",

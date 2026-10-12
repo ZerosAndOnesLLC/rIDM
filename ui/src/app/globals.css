@@ -144,8 +144,42 @@
   --radius-md: 8px;
   --radius-lg: 14px;
   --radius: var(--radius-md);
-  /* list density: a skin sets its own (design/README.md); DataTable reads it for windowing */
+
+  --scale-tiny: 0.6875rem;
+  --scale-caption: 0.75rem;
+  --scale-small: 0.8125rem;
+  --scale-body: 0.875rem;
+  --scale-lead: 0.9375rem;
+  --scale-md: 1rem;
+  --scale-title: 1.125rem;
+  --scale-xl: 1.375rem;
+  --scale-2xl: 1.875rem;
+  --scale-num: 2.125rem;
+
+  /*
+   * Shell tokens (design/README.md "Skins"). Signal v2: dark command bar,
+   * sidebar on the tinted ground, the page as an elevated sheet. The other
+   * skins override these under [data-skin] below; DataTable reads --row-h
+   * for windowing.
+   */
   --row-h: 50px;
+  --rail-bg: transparent;
+  --rail-ink: var(--ink-2);
+  --rail-muted: var(--muted);
+  --rail-hint: var(--faint);
+  --rail-line: transparent;
+  --rail-hover: color-mix(in oklab, var(--paper) 60%, transparent);
+  --rail-active-bg: var(--paper);
+  --rail-active-ink: var(--accent-text);
+  --rail-active-icon: var(--accent-solid);
+  --rail-active-ring: var(--line);
+  --sheet-bg: var(--paper);
+  --sheet-line: var(--line);
+  --sheet-radius: var(--radius-lg);
+  --sheet-shadow: var(--shadow-sheet);
+  --sheet-inset: 0.875rem 1rem 1rem 0.25rem;
+  --table-line: var(--line);
+  --table-head: var(--ground);
   --shadow-sheet: light-dark(0 1px 2px rgba(15, 18, 24, 0.04), 0 1px 0 rgba(255, 255, 255, 0.03) inset), light-dark(0 12px 32px -16px rgba(15, 18, 24, 0.18), 0 12px 32px -16px rgba(0, 0, 0, 0.6));
   --shadow-pop: light-dark(0 2px 4px rgba(15, 18, 24, 0.06), 0 2px 4px rgba(0, 0, 0, 0.4)), light-dark(0 16px 40px -12px rgba(15, 18, 24, 0.3), 0 24px 48px -12px rgba(0, 0, 0, 0.7));
 
@@ -204,30 +238,30 @@
   --font-mono: var(--font-mono);
 
   /*
-   * Type scale. The names are the contract; the first values equal the
-   * arbitrary sizes the pages used before (so 15.2 reflows nothing), and
-   * 15.7 moves them to the design reference's scale in one place.
+   * Type scale (design/README.md): 12 / 13 / 14 / 16 / 22 / 30, numbers 34;
+   * the auth and account pages run one step looser (lead 15). The names are
+   * the contract; a skin may retune the values.
    */
-  --text-tiny: 0.6875rem;
+  --text-tiny: var(--scale-tiny);
   --text-tiny--line-height: 1;
-  --text-caption: 0.75rem;
+  --text-caption: var(--scale-caption);
   --text-caption--line-height: 1rem;
-  --text-small: 0.8125rem;
+  --text-small: var(--scale-small);
   --text-small--line-height: 1.25rem;
-  --text-body: 0.875rem;
+  --text-body: var(--scale-body);
   --text-body--line-height: 1.375rem;
-  --text-lead: 0.9375rem;
+  --text-lead: var(--scale-lead);
   --text-lead--line-height: 1.5rem;
-  --text-md: 1rem;
+  --text-md: var(--scale-md);
   --text-md--line-height: 1.5rem;
-  --text-title: 1.125rem;
+  --text-title: var(--scale-title);
   --text-title--line-height: 1.625rem;
-  --text-xl: 1.375rem;
+  --text-xl: var(--scale-xl);
   --text-xl--line-height: 1.75rem;
-  --text-2xl: 1.5rem;
-  --text-2xl--line-height: 1.875rem;
-  --text-num: 1.75rem;
-  --text-num--line-height: 1;
+  --text-2xl: var(--scale-2xl);
+  --text-2xl--line-height: 1.1;
+  --text-num: var(--scale-num);
+  --text-num--line-height: 1.1;
 
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
@@ -245,7 +279,7 @@ body {
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: 0.9375rem;
-  line-height: 1.5;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -288,14 +322,6 @@ footer a {
   }
 }
 
-/* Console: the sidebar and top bar are paper on ground; content sits on ground. */
-.console-nav a[aria-current="page"] {
-  background: var(--accent-soft-2);
-  color: var(--accent-text);
-}
-.console-nav a[aria-current="page"] svg {
-  color: var(--accent-solid);
-}
 .skip-link {
   position: absolute;
   inset-inline-start: 0.75rem;
@@ -309,18 +335,302 @@ footer a {
 .skip-link:focus {
   top: 0.75rem;
 }
-kbd {
+@layer base {
+  kbd {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1;
+    min-width: 1.375rem;
+    padding: 0.25rem 0.375rem;
+    border-radius: 5px;
+    border: 1px solid var(--line);
+    background: var(--ground);
+    color: var(--muted);
+    text-align: center;
+    display: inline-block;
+  }
+}
+
+/*
+ * Skins. A skin is a token set plus a few structural switches the shell
+ * reads (src/lib/theme/provider.tsx `useSkin`). Anything a skin does not
+ * override falls through to Signal v2 above. The display faces named in the
+ * reference for Vault (IBM Plex Sans) and Registry (Source Serif 4) are not
+ * self-hosted; they are used when installed and fall back to a system face.
+ */
+:root[data-skin="signal"] {
+  --bar: var(--paper);
+  --bar-ink: var(--ink);
+  --bar-muted: var(--muted);
+  --bar-field: var(--ground);
+  --bar-line: var(--line);
+  --rail-bg: var(--paper);
+  --rail-line: var(--line);
+  --rail-hover: var(--ground);
+  --rail-active-bg: var(--accent-soft-2);
+  --rail-active-ring: transparent;
+  --sheet-bg: transparent;
+  --sheet-line: transparent;
+  --sheet-shadow: none;
+  --sheet-radius: 0;
+  --sheet-inset: 0;
+  --font-display: var(--font-sans);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --row-h: 38px;
+  --scale-2xl: 1.5rem;
+  --scale-num: 1.75rem;
+}
+:root[data-skin="vault"] {
+  --rail-bg: light-dark(#141821, #0c0e13);
+  --rail-ink: #c8cfdb;
+  --rail-muted: #7f8898;
+  --rail-hint: #5b6474;
+  --rail-line: rgba(255, 255, 255, 0.08);
+  --rail-hover: rgba(255, 255, 255, 0.06);
+  --rail-active-bg: rgba(255, 255, 255, 0.1);
+  --rail-active-ink: #ffffff;
+  --rail-active-icon: var(--accent-300);
+  --rail-active-ring: transparent;
+  --bar: var(--paper);
+  --bar-ink: var(--ink);
+  --bar-muted: var(--muted);
+  --bar-field: var(--ground);
+  --bar-line: var(--line);
+  --sheet-bg: transparent;
+  --sheet-line: transparent;
+  --sheet-shadow: none;
+  --sheet-radius: 0;
+  --sheet-inset: 0;
+  --ground: light-dark(#f3f4f6, #0f1116);
+  --font-display: "IBM Plex Sans", "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --row-h: 46px;
+}
+:root[data-skin="registry"] {
+  --bar: var(--paper);
+  --bar-ink: var(--ink);
+  --bar-muted: var(--muted);
+  --bar-field: var(--ground);
+  --bar-line: var(--line);
+  --rail-bg: var(--paper);
+  --rail-line: var(--line);
+  --rail-hover: var(--ground);
+  --rail-active-bg: transparent;
+  --rail-active-ink: var(--ink);
+  --rail-active-ring: transparent;
+  --sheet-bg: transparent;
+  --sheet-line: transparent;
+  --sheet-shadow: none;
+  --sheet-radius: 0;
+  --sheet-inset: 0;
+  --ground: light-dark(#fbfaf7, #121315);
+  --paper: light-dark(#fffffe, #191a1d);
+  --line: light-dark(#e8e5dd, #2a2c31);
+  --line-strong: light-dark(#cfcabd, #3a3d44);
+  --table-line: light-dark(#ece9e2, #26282d);
+  --table-head: transparent;
+  --font-display: "Source Serif 4", "Iowan Old Style", Georgia, "Times New Roman", serif;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --shadow-sheet: none;
+  --row-h: 44px;
+}
+:root[data-skin="registry"] h1,
+:root[data-skin="registry"] h2,
+:root[data-skin="registry"] .font-display {
+  letter-spacing: -0.01em;
+  font-variation-settings: normal;
+}
+:root[data-skin="registry"] .console-nav svg {
+  display: none;
+}
+:root[data-skin="registry"] .console-nav a[aria-current="page"] {
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-color: var(--accent-solid);
+}
+:root[data-skin="registry"] .data-table {
+  border-color: transparent;
+  border-radius: 0;
+}
+:root[data-skin="registry"] .data-table [role="row"] {
+  border-color: var(--table-line);
+}
+
+/* Console chrome: command bar, rail, sheet (tokens above; skins retune them). */
+.console-bar {
+  background: var(--bar);
+  color: var(--bar-ink);
+  border-bottom: 1px solid var(--bar-line);
+}
+.console-rail {
+  background: var(--rail-bg);
+  color: var(--rail-ink);
+  border-inline-end: 1px solid var(--rail-line);
+}
+.console-sheet {
+  background: var(--sheet-bg);
+  border: 1px solid var(--sheet-line);
+  border-radius: var(--sheet-radius);
+  box-shadow: var(--sheet-shadow);
+}
+.console-content {
+  padding: var(--sheet-inset);
+}
+@media (max-width: 47.99rem) {
+  .console-content {
+    padding: 0;
+  }
+  .console-sheet {
+    border-radius: 0;
+    border-inline: 0;
+    box-shadow: none;
+  }
+}
+.console-nav .nav-group {
+  color: var(--rail-hint);
+}
+.console-nav a {
+  color: var(--rail-ink);
+}
+.console-nav a svg {
+  color: var(--rail-muted);
+}
+.console-nav a:hover {
+  background: var(--rail-hover);
+  color: var(--rail-active-ink);
+}
+.console-nav a[aria-current="page"] {
+  background: var(--rail-active-bg);
+  color: var(--rail-active-ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 18, 24, 0.06), 0 0 0 1px var(--rail-active-ring);
+}
+.console-nav a[aria-current="page"] svg {
+  color: var(--rail-active-icon);
+}
+.console-nav .nav-hint {
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  line-height: 1;
-  min-width: 1.375rem;
-  padding: 0.25rem 0.375rem;
-  border-radius: 5px;
-  border: 1px solid var(--line);
-  background: var(--ground);
+  font-size: 0.625rem;
+  color: var(--rail-hint);
+}
+.console-nav .nav-count {
+  font-family: var(--font-mono);
+  font-size: var(--text-tiny);
+  color: var(--rail-muted);
+}
+.console-nav .nav-count.hot {
+  color: var(--contrast-text);
+  font-weight: 700;
+}
+:root[data-skin="vault"] .console-nav .nav-count.hot {
+  color: var(--contrast-300);
+}
+
+/* Status: dot with a halo (Signal v2), outlined pill (Signal), dot + word (Vault, Registry). */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  white-space: nowrap;
+  font-size: var(--text-small);
+  line-height: 1.25rem;
+}
+.status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in oklab, currentColor 14%, transparent);
+  flex: none;
+}
+.status[data-tone="ok"] { color: var(--ok); }
+.status[data-tone="warn"] { color: var(--warn); }
+.status[data-tone="danger"] { color: var(--danger); }
+.status[data-tone="accent"] { color: var(--accent-text); }
+.status[data-tone="neutral"] { color: var(--muted); }
+:root[data-skin="signal"] .status {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 0.5rem;
+  font-size: var(--text-caption);
+  line-height: 1.125rem;
+}
+:root[data-skin="signal"] .status::before {
+  display: none;
+}
+:root[data-skin="vault"] .status::before,
+:root[data-skin="registry"] .status::before {
+  box-shadow: none;
+}
+
+/* Filter chips: a select or a checkbox wearing a chip; `on` when it narrows the list. */
+.chip-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 2rem;
+  padding: 0 0.625rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
   color: var(--muted);
-  text-align: center;
-  display: inline-block;
+  font-size: var(--text-small);
+  cursor: pointer;
+  position: relative;
+}
+.chip-filter:hover {
+  color: var(--ink);
+}
+.chip-filter.on {
+  border-style: solid;
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.chip-filter:focus-within {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+}
+.chip-filter select {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  padding-inline-end: 1rem;
+  cursor: pointer;
+  max-width: 12rem;
+  outline: none;
+}
+.chip-filter select option {
+  color: var(--ink);
+  background: var(--paper);
+}
+.chip-filter input[type="checkbox"] {
+  accent-color: var(--accent-solid);
+}
+:root[data-skin="signal"] .chip-filter,
+:root[data-skin="vault"] .chip-filter,
+:root[data-skin="registry"] .chip-filter {
+  border-style: solid;
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  color: var(--ink);
+}
+:root[data-skin="signal"] .chip-filter.on,
+:root[data-skin="vault"] .chip-filter.on,
+:root[data-skin="registry"] .chip-filter.on {
+  border-color: var(--line-strong);
+  background: var(--paper);
+  color: var(--ink);
 }
 
 /* One-time entrance for the card; nothing else moves on its own. */
