@@ -1,5 +1,7 @@
 "use client";
 
+import { ConfirmDialog } from "@/components/base/confirm-dialog";
+import { useToast } from "@/components/base/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FlaskConical, KeyRound, RotateCw, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -519,7 +521,9 @@ function TokensSection({ c, editable, update }: { c: ClientView; editable: boole
 
 function SecretsSection({ tenant, c, editable, onReveal, onChanged }: { tenant: string; c: ClientView; editable: boolean; onReveal: (r: Revealed) => void; onChanged: (c: ClientView) => void }) {
   const { client: api } = useConsole();
+  const { toast } = useToast();
   const [grace, setGrace] = useState(86_400);
+  const [confirm, setConfirm] = useState<{ kind: "rotate" } | { kind: "revoke"; id: string } | null>(null);
   const rotate = useMutation({
     mutationFn: async () => {
       const { data, error } = await api.POST("/admin/tenants/{slug}/clients/{client}/secrets", { params: { path: { slug: tenant, client: c.id } }, body: { grace_secs: grace } });
@@ -565,7 +569,7 @@ function SecretsSection({ tenant, c, editable, onReveal, onChanged }: { tenant: 
                 <td className="py-2">{s.expires_at ? <Badge>Retiring {formatDate("en", s.expires_at)}</Badge> : <Badge tone="ok">Current</Badge>}</td>
                 <td className="py-2 text-end">
                   {editable && c.secrets.length > 1 && (
-                    <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={revoke.isPending} onClick={() => revoke.mutate(s.id)}>
+                    <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={revoke.isPending} onClick={() => setConfirm({ kind: "revoke", id: s.id })}>
                       Revoke
                     </Button>
                   )}
@@ -588,16 +592,41 @@ function SecretsSection({ tenant, c, editable, onReveal, onChanged }: { tenant: 
               </SelectInput>
             )}
           </Field>
-          <Button variant="primary" disabled={rotate.isPending} onClick={() => rotate.mutate()}>
+          <Button variant="primary" disabled={rotate.isPending} onClick={() => (c.secrets.length ? setConfirm({ kind: "rotate" }) : rotate.mutate())}>
             <RotateCw className="size-4" aria-hidden />
             {c.secrets.length ? "Rotate secret" : "Generate secret"}
           </Button>
-          {err && (
+          {err && !confirm && (
             <p role="alert" className="text-body text-danger">
               {err.message}
             </p>
           )}
         </div>
+      )}
+      {confirm && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setConfirm(null);
+          }}
+          title={confirm.kind === "rotate" ? "Rotate the client secret?" : "Revoke this secret?"}
+          description={
+            confirm.kind === "rotate"
+              ? `A new secret is generated and shown once. ${GRACE_OPTIONS.find((g) => g.value === grace)?.label ?? "The grace period you chose applies"}.`
+              : "Anything still authenticating with it is refused from now on."
+          }
+          confirmLabel={confirm.kind === "rotate" ? "Rotate secret" : "Revoke"}
+          tone={confirm.kind === "rotate" ? "primary" : "danger"}
+          onConfirm={async () => {
+            if (confirm.kind === "rotate") {
+              await rotate.mutateAsync();
+              toast({ title: "Secret rotated", description: "The new secret is shown once." });
+            } else {
+              await revoke.mutateAsync(confirm.id);
+              toast({ title: "Secret revoked" });
+            }
+          }}
+        />
       )}
     </Section>
   );

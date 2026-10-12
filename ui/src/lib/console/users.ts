@@ -57,14 +57,6 @@ export function roleName(r: Role, clientNames: Record<string, string> = {}): str
   return r.client_id ? `${clientNames[r.client_id] ?? "client"}/${r.name}` : r.name;
 }
 
-/** Human summary of a user agent string. */
-export function describeAgent(ua: string | null | undefined): string {
-  if (!ua) return "Unknown browser";
-  const browser = /Edg\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : ua.split(" ")[0] ?? "Browser";
-  const os = /Windows/.test(ua) ? "Windows" : /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS" : /Mac OS/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : null;
-  return os ? `${browser} on ${os}` : browser;
-}
-
 /** Text form of an attribute value for an input. */
 export function attrToText(v: unknown): string {
   if (v === null || v === undefined) return "";

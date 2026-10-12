@@ -61,6 +61,9 @@ function Frame({
 
   return (
     <div className="flex min-h-screen flex-col items-center px-4 py-8 sm:py-14">
+      <a href="#main" className="skip-link">
+        {t("common.skip_to_content")}
+      </a>
       <header className="mb-6 flex w-full max-w-[26rem] items-center gap-3">
         {tenant?.branding.logo_url ? (
           // Tenant-supplied asset; next/image cannot optimise it in a static export.
@@ -79,7 +82,7 @@ function Frame({
         <span className="text-md font-semibold text-ink">{tenant?.display_name ?? ""}</span>
       </header>
 
-      <main className="card-in w-full max-w-[26rem] rounded-[calc(var(--radius)+4px)] border border-line bg-paper p-6 sm:p-8">
+      <main id="main" tabIndex={-1} className="card-in w-full max-w-[26rem] rounded-[calc(var(--radius)+4px)] border border-line bg-paper p-6 sm:p-8">
         {problem === "missing" ? (
           <Alert tone="error">{t("error.no_tenant")}</Alert>
         ) : problem === "unknown" ? (

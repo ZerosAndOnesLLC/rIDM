@@ -63,7 +63,7 @@ test.describe("admin console accessibility sweep", () => {
     test.use({ viewport: { width: 390, height: 844 } });
     // By name, not by index: adding a page must not silently move which pages
     // this checks (it once did, and the sweep started testing something else).
-    const ON_PHONE = ["overview", "users", "organizations", "clients", "saml", "audit"];
+    const ON_PHONE = ["overview", "users", "organizations", "clients", "saml", "audit", "keys"];
     for (const [name, path, heading] of PAGES.filter(([n]) => ON_PHONE.includes(n))) {
       test(`${name} page on a phone`, async ({ page }) => {
         await consoleLogin(page, loadState());

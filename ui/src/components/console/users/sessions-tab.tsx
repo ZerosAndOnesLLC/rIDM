@@ -5,7 +5,7 @@ import { Badge, Button, Card } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
 import { formatDate } from "@/i18n";
 import { useConsole } from "@/lib/console/session";
-import { describeAgent } from "@/lib/console/users";
+import { describeAgent } from "@/lib/ua";
 
 export function SessionsTab({ tenant, id, editable }: { tenant: string; id: string; editable: boolean }) {
   const { client: api } = useConsole();

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { consoleLogin, expectAccessible, loadState, TENANT } from "./helpers";
+import { confirmDialog, consoleLogin, expectAccessible, loadState, TENANT } from "./helpers";
 
 /**
  * Clients: the table, the creation wizard with its reveal-once secret,
@@ -90,11 +90,13 @@ test.describe("clients", () => {
     // Rotate: the new secret is revealed once and both are listed.
     await page.getByRole("combobox", { name: "Grace period" }).selectOption("3600");
     await page.getByRole("button", { name: "Rotate secret" }).click();
+    await confirmDialog(page);
     const reveal = page.getByRole("dialog", { name: "New client secret" });
     await expect(reveal.getByTestId("secret-value")).not.toBeEmpty({ timeout: 10_000 });
     await reveal.getByRole("button", { name: "I have stored it" }).click();
     await expect(page.getByRole("row", { name: /Retiring/ })).toBeVisible();
     await page.getByRole("row", { name: /Retiring/ }).getByRole("button", { name: "Revoke" }).click();
+    await confirmDialog(page);
     await expect(page.getByRole("row", { name: /Retiring/ })).toBeHidden({ timeout: 10_000 });
 
     await page.getByRole("button", { name: "Enable service account" }).click();

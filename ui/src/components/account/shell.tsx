@@ -100,6 +100,9 @@ function Frame({ children }: { children: ReactNode }) {
   const { t } = useI18n();
   return (
     <div className="min-h-screen bg-ground">
+      <a href="#main" className="skip-link">
+        {t("common.skip_to_content")}
+      </a>
       <ImpersonationBanner />
       <header className="border-b border-line bg-paper">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
@@ -123,7 +126,9 @@ function Frame({ children }: { children: ReactNode }) {
         </div>
         <Nav />
       </header>
-      <main className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">{children}</main>
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
+        {children}
+      </main>
       <p className="pb-6 text-center text-small text-muted">{t("common.powered_by")}</p>
     </div>
   );

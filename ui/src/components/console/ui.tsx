@@ -9,9 +9,9 @@ export function Card({ title, children, className = "", actions }: { title?: Rea
   return (
     <section className={`min-w-0 rounded-[calc(var(--radius)+2px)] border border-line bg-paper ${className}`}>
       {(title || actions) && (
-        <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
-          <h2 className="text-lead font-semibold text-ink">{title}</h2>
-          {actions}
+        <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line px-5 py-3">
+          <h2 className="min-w-0 text-lead font-semibold text-ink">{title}</h2>
+          {actions && <div className="flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
         </header>
       )}
       <div className="px-5 py-4">{children}</div>

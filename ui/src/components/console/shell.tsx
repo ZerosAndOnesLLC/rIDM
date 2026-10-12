@@ -270,8 +270,8 @@ function ShortcutsHelp({ open, onOpenChange, global }: { open: boolean; onOpenCh
           <div key={r.what} className="flex items-center justify-between gap-4 py-2 text-body not-last:border-b not-last:border-line">
             <dt className="text-ink">{r.what}</dt>
             <dd className="flex gap-1">
-              {r.keys.map((k) => (
-                <Kbd key={k}>{k}</Kbd>
+              {r.keys.map((k, i) => (
+                <Kbd key={i}>{k}</Kbd>
               ))}
             </dd>
           </div>

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { consoleLogin, expectAccessible, loadState, TENANT, tenantSql } from "./helpers";
+import { confirmDialog, consoleLogin, expectAccessible, loadState, TENANT, tenantSql } from "./helpers";
 
 /** Signing keys, audit log, webhooks, IP rules and messaging. */
 test.describe("operations", () => {
@@ -41,13 +41,17 @@ test.describe("operations", () => {
     await card.getByRole("button", { name: "Activate" }).click();
     await expect(card.getByText("active", { exact: true })).toBeVisible({ timeout: 10_000 });
     await card.getByRole("button", { name: "Retire" }).click();
+    await confirmDialog(page);
     await expect(card.getByText("retiring", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("status").filter({ hasText: "Key retiring" })).toBeVisible();
     // Nothing is active now. Rotation makes a key and leaves exactly one
     // active per algorithm, and only then is the retired key revoked, so the
     // tenant never has to sign without an active key.
     await page.getByRole("button", { name: "Rotate now" }).click();
+    await confirmDialog(page);
     await expect(page.getByText("active", { exact: true })).toHaveCount(1, { timeout: 15_000 });
     await card.getByRole("button", { name: "Revoke" }).click();
+    await confirmDialog(page);
     await expect(card.getByText("revoked", { exact: true })).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: "Show public key (JWK)" }).first().click();
     await expect(page.getByLabel("Public JWK").first()).toContainText('"kty"');
