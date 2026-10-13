@@ -104,7 +104,7 @@ console (while it administers the tenant) look:
 
 The login-page preview on the right follows every change. The settings are part of
 the tenant document (`settings.branding`), see
-[Tenants and tenant settings](tenants.md#appearance).
+[Tenants and tenant settings](tenants.md#branding).
 
 ### Keyboard shortcuts
 
