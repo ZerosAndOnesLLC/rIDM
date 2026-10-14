@@ -14,9 +14,28 @@ release renames that heading to the version and date.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-14
+
 ### Added
 
+- **The consoles restyled** ([docs](https://zerosandonesllc.github.io/rIDM/docs/admin/consoles.html)). The admin console has a dark command bar (tenant pill, search with ⌘K, theme switch), a sidebar with live counts and a needs-attention bell, the page as a sheet with breadcrumbs, and user and client details in a floating panel that deep links open. The overview shows four tiles with sparklines and deltas against the previous window, a needs-attention list (locked users, open invitations, keys expiring within 14 days, dead webhook deliveries) and a recent-activity feed. The account console has a dark header with the tenant mark, a security score with the next step to take, every section as a card and parsed user-agent labels on sessions and trusted devices. Every list is on one data table (windowed where long) with one footer for Load more / Newer / Older, skeletons while loading and empty states, and key, client-secret and certificate actions go through a confirmation dialog with a toast on success. Three typefaces are self-hosted (Bricolage Grotesque, Hanken Grotesk, JetBrains Mono); the fonts and the token sheet are documented in `design/README.md`.
+- **Tenant appearance** (`settings.branding`, Settings → Appearance in the console): `skin` (`signal-v2` default, `signal`, `vault`, `registry`: four looks as token sets, chosen per tenant), `contrast_color` next to `primary_color` (six presets or custom; the console shows the readability ratios), `mode` (`system`, `light`, `dark`) and `allow_theme_switch`, plus `headline` and `tagline` for the sign-in page. The API validates the colours as CSS colour literals (hex for the contrast colour) and refuses unknown skins and modes. The administered tenant's appearance is worn by the console; the login page preview on the Appearance page renders the real shell.
+- **Sign-in pages**: with the Signal v2 skin and a headline the page splits into a brand panel and the form; otherwise a single card. The footer carries the tenant links, Help, a language select and the theme switch (hidden when the tenant forbids switching; the tenant policy wins over the person's choice).
+- **Server-side sort for users and clients**: `?sort=` and `?dir=` on `GET /admin/tenants/{slug}/users` (`created`, `username`, `email`, `status`, `last_login`) and `/clients` (`created`, `name`, `type`), with a sort-aware keyset cursor, so a sorted table pages without offsets. Four migrations add the supporting indexes with `CREATE INDEX CONCURRENTLY`.
+- **Bulk actions**: enable, disable or delete a selection of users, and delete a selection of IP rules, with one confirmation and one summary toast.
+- **Filters in the URL** on the users, clients and audit pages, so a filtered view can be bookmarked and shared; the audit filters apply as you type.
+- `GET /admin/tenants/{slug}/stats` returns `previous` (the window before, for deltas), `counts` (users, groups, clients, webhooks, keys, identity providers), `attention` with `attention_total`, and `recent` (the eight newest audit events with actor and subject). The users list returns each row's `second_step` (`passkey`, `totp`, `otp` or none).
+- `npm run screenshots` in `ui/` regenerates the site's screenshots with Playwright.
 - **Valkey with a private CA and client-certificate authentication** (#23): `REDIS_TLS_CA_FILE` verifies a `rediss://` server against your own roots (outbound HTTPS keeps the system's), and `REDIS_TLS_CERT_FILE` + `REDIS_TLS_KEY_FILE` present a client certificate, which Valkey's `tls-auth-clients-user CN` maps onto an ACL user with no password. Single-server form only; per region as `REDIS_TLS_*_<NAME>`. The files are re-read whenever they change, so a renewal needs no restart. The Helm chart's `redis.tls` mounts the Secrets. The FIPS build asserts the connection's TLS configuration like every other.
+
+### Fixed
+
+- Card headers wrap instead of overflowing; the keys page fits a phone; a held modifier no longer starts a `g` shortcut sequence, and Escape cancels one; skip links on the auth and account shells; the console sign-in card no longer prefills the tenant with quotes and prefers the tenant named in the address.
+- Hints, rails and status colours meet 4.5:1 in every skin, light and dark; the a11y sweep runs every console page in each skin.
+
+### Upgrade notes
+
+- The four migrations only add indexes, so a 0.3.0 server keeps running beside 0.4.0 and a rollback needs no database change. The new `settings.branding` fields have defaults; an exported tenant document from 0.3.0 imports unchanged.
 
 ## [0.3.0] - 2026-10-08
 
@@ -390,6 +409,7 @@ Cut but never tagged or published; everything here ships in 0.2.0.
 - `/.well-known/security.txt` is the operator's: `SECURITY_CONTACT`,
   `SECURITY_POLICY_URL` or a whole `SECURITY_TXT_FILE`, and 404 until one is set.
 
-[Unreleased]: https://github.com/ZerosAndOnesLLC/rIDM/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/ZerosAndOnesLLC/rIDM/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.4.0
 [0.3.0]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.3.0
 [0.2.0]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.2.0
