@@ -233,7 +233,8 @@ async fn appearance_fields_round_trip_and_bad_colours_are_refused() {
         Some(&t),
         Some(&json!({"settings": {"branding": {
             "skin": "registry", "mode": "dark", "allow_theme_switch": false,
-            "primary_color": "#0f766e", "contrast_color": "#c2410c"
+            "primary_color": "#0f766e", "contrast_color": "#c2410c",
+            "headline": "One sign-in for everything.", "tagline": "Your account opens every Looks app."
         }}})),
     )
     .await;
@@ -243,6 +244,8 @@ async fn appearance_fields_round_trip_and_bad_colours_are_refused() {
     assert_eq!(b["mode"], "dark");
     assert_eq!(b["allow_theme_switch"], false);
     assert_eq!(b["contrast_color"], "#c2410c");
+    assert_eq!(b["headline"], "One sign-in for everything.");
+    assert_eq!(b["tagline"], "Your account opens every Looks app.");
     // The public document carries them too.
     let public: Value = app
         .http

@@ -98,7 +98,7 @@ export function Picker({
             }
           }}
           placeholder={placeholder}
-          className="min-h-12 w-full bg-transparent text-md text-ink outline-none placeholder:text-muted/70 sm:text-lead"
+          className="min-h-12 w-full bg-transparent text-md text-ink outline-none placeholder:text-muted/70 sm:text-body"
         />
         {loading && <Loader2 className="size-4 animate-spin text-muted" aria-hidden />}
       </div>
@@ -106,7 +106,7 @@ export function Picker({
         {items.length === 0 && !loading && <li className="px-3 py-6 text-center text-body text-muted">{empty}</li>}
         {groups.map((g) => (
           <li key={g.name} role="presentation">
-            <div className="px-3 pb-1 pt-2 text-tiny font-semibold uppercase tracking-wide text-muted" aria-hidden>
+            <div className="px-3 pb-1 pt-2 text-tiny font-semibold text-muted" aria-hidden>
               {g.name}
             </div>
             <ul role="group" aria-label={g.name}>
@@ -120,9 +120,7 @@ export function Picker({
                   onMouseEnter={() => setActive(index)}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => pick(index)}
-                  className={`flex cursor-pointer items-center gap-3 rounded-[var(--radius)] px-3 py-2 text-lead ${
-                    index === cursor ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-ink" : "text-ink"
-                  }`}
+                  className={`flex cursor-pointer items-center gap-3 rounded-[var(--radius)] px-3 py-2 text-body ${index === cursor ? "bg-accent-soft-2 text-accent-text" : "text-ink"}`}
                 >
                   {item.icon && <span className="flex size-5 shrink-0 items-center justify-center text-muted">{item.icon}</span>}
                   <span className="min-w-0 flex-1 truncate">

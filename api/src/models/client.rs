@@ -24,6 +24,53 @@ pub enum ClientType {
     Saml,
 }
 
+impl ClientType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ClientType::Spa => "spa",
+            ClientType::Web => "web",
+            ClientType::Native => "native",
+            ClientType::Machine => "machine",
+            ClientType::Device => "device",
+            ClientType::Saml => "saml",
+        }
+    }
+}
+
+/// What the clients list can be sorted by (the console's column headers).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ClientSort {
+    #[default]
+    Created,
+    Name,
+    Type,
+}
+
+impl ClientSort {
+    /// The expression ordered by (indexed by `clients_tenant_name_idx` and `clients_tenant_type_idx`).
+    pub fn expr(self) -> &'static str {
+        match self {
+            ClientSort::Created => "created_at",
+            ClientSort::Name => "lower(name)",
+            ClientSort::Type => "client_type",
+        }
+    }
+
+    pub fn is_time(self) -> bool {
+        matches!(self, ClientSort::Created)
+    }
+
+    /// The row's value of the key, as the cursor carries it.
+    pub fn key(self, c: &Client) -> String {
+        match self {
+            ClientSort::Created => c.created_at.to_rfc3339(),
+            ClientSort::Name => c.name.to_lowercase(),
+            ClientSort::Type => c.client_type.as_str().to_string(),
+        }
+    }
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema,
 )]

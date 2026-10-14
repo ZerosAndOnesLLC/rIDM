@@ -1,9 +1,10 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
+import { Skeleton } from "@/components/base/skeleton";
+import { fmtDateTime } from "@/lib/console/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Button } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
 import { useConsole } from "@/lib/console/session";
 
 /** A user's personal access tokens (metadata only), with revocation. */
@@ -30,13 +31,13 @@ export function PersonalTokens({ tenant, id, editable }: { tenant: string; id: s
     <div className="mt-4 border-t border-line pt-3">
       <h3 className="text-body font-semibold text-ink">Personal access tokens</h3>
       {list.isPending ? (
-        <Spinner label="Loading…" />
+        <Skeleton shape="lines" count={4} label="Loading…" />
       ) : list.isError ? (
         <p role="alert" className="mt-1 text-body text-danger">
           {list.error.message}
         </p>
       ) : live.length === 0 ? (
-        <p className="mt-1 text-small text-muted">No live personal access tokens.</p>
+        <EmptyState compact title="No live personal access tokens." />
       ) : (
         <ul aria-label="Personal access tokens" className="mt-1 divide-y divide-line">
           {live.map((k) => (
@@ -49,9 +50,9 @@ export function PersonalTokens({ tenant, id, editable }: { tenant: string; id: s
                   ))}
                 </span>
                 <span className="text-small text-muted">
-                  Created {formatDate("en", k.created_at)}
-                  {k.expires_at ? ` · expires ${formatDate("en", k.expires_at)}` : " · never expires"}
-                  {k.last_used_at ? ` · last used ${formatDate("en", k.last_used_at)}` : " · never used"}
+                  Created {fmtDateTime(k.created_at)}
+                  {k.expires_at ? ` · expires ${fmtDateTime(k.expires_at)}` : " · never expires"}
+                  {k.last_used_at ? ` · last used ${fmtDateTime(k.last_used_at)}` : " · never used"}
                 </span>
               </span>
               {editable && (

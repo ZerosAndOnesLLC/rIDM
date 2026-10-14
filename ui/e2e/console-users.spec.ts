@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { consoleLogin, expectAccessible, loadState, TENANT } from "./helpers";
+import { confirmDialog, consoleLogin, expectAccessible, loadState, TENANT } from "./helpers";
 
 /**
  * Users: the windowed table with search and filters, creating a user with
@@ -28,8 +28,12 @@ test.describe("users", () => {
     await consoleLogin(page, loadState());
     await page.goto(`/console/settings/?tenant=${TENANT}#profile`);
     await expect(page.getByRole("heading", { name: "Profile attributes" })).toBeVisible({ timeout: 15_000 });
-    // Remove leftovers from an earlier run, then add a required enum.
-    for (const btn of await page.getByRole("button", { name: /^Remove attribute/ }).all()) await btn.click();
+    // Remove leftovers from an earlier run and let that save, then add a
+    // required enum (added in the same patch, the re-add would equal what is
+    // stored and nothing would be sent).
+    const leftovers = await page.getByRole("button", { name: /^Remove attribute/ }).all();
+    for (const btn of leftovers) await btn.click();
+    if (leftovers.length > 0) await expect(page.getByRole("status").filter({ hasText: /^Saved$/ }).first()).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: "Add attribute" }).click();
     const row = page.getByTestId("attribute-row").last();
     await row.getByLabel("Name").fill("department");
@@ -79,7 +83,7 @@ test.describe("users", () => {
     await page.getByLabel("Search users").fill(username);
     await expect(page.getByRole("row", { name: new RegExp(username) })).toBeVisible({ timeout: 10_000 });
     await page.getByLabel("Status").selectOption("disabled");
-    await expect(page.getByText("No user matches.")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("No user matches")).toBeVisible({ timeout: 10_000 });
     await page.getByLabel("Status").selectOption("");
     await expect(page.getByRole("row", { name: new RegExp(username) })).toBeVisible({ timeout: 10_000 });
   });
@@ -129,6 +133,7 @@ test.describe("users", () => {
     await page.getByRole("link", { name: "Open invitations" }).click();
     await expect(page.getByRole("row", { name: new RegExp(`invite-${suffix}`) })).toBeVisible({ timeout: 10_000 });
     await page.getByRole("row", { name: new RegExp(`invite-${suffix}`) }).getByRole("button", { name: "Revoke" }).click();
+    await confirmDialog(page);
     await expect(page.getByRole("row", { name: new RegExp(`invite-${suffix}`) })).toBeHidden({ timeout: 10_000 });
 
     await page.locator("#main").getByRole("link", { name: "Users", exact: true }).click();
@@ -158,6 +163,6 @@ test.describe("users", () => {
     await page.getByRole("dialog", { name: `Delete ${username}?` }).getByRole("button", { name: "Delete user" }).click();
     await page.waitForURL(/\/console\/users\/\?tenant=master$/, { timeout: 15_000 });
     await page.getByLabel("Search users").fill(username);
-    await expect(page.getByText("No user matches.")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("No user matches")).toBeVisible({ timeout: 10_000 });
   });
 });

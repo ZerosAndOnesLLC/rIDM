@@ -23,6 +23,8 @@
         "primary_color": "#b4451f",
         "contrast_color": "#334e68",
         "support_url": "https://support.acme.test",
+        "headline": "One sign-in for everything at Acme.",
+        "tagline": "Your Acme account opens the customer portal, the mobile app and the reporting tools. Passkeys are the fastest way in.",
         "links": [{ "label": "Status", "url": "https://status.acme.test" }]
       }
     }

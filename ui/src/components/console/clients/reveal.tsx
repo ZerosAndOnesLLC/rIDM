@@ -10,7 +10,7 @@ export function CopyButton({ value, label = "Copy" }: { value: string; label?: s
   return (
     <Button
       variant="secondary"
-      className="min-h-8 px-2.5 text-small"
+      size="sm"
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(value);

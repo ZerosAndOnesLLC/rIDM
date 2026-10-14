@@ -6,6 +6,7 @@ import { useI18n } from "@/i18n/provider";
 import { Alert } from "@/components/ui";
 import { Badge, Button, Card } from "@/components/console/ui";
 import { needsReauth, useAccount } from "@/lib/account/session";
+import { AgentLabel, DeviceIcon } from "./agent";
 import { useProblemText, useSecurityChange } from "./security";
 
 /** Where the user is signed in, and the means to end it. */
@@ -64,10 +65,14 @@ export function Sessions() {
         <ul aria-label={t("account.sessions_title")} className="mt-3 divide-y divide-line">
           {list.map((s) => (
             <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-              <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-3">
+                <DeviceIcon ua={s.user_agent} />
+                <div className="min-w-0">
                 <p className="flex flex-wrap items-center gap-2 text-lead font-medium text-ink">
-                  <span className="truncate">{s.user_agent ?? t("account.device_unnamed")}</span>
-                  {s.current && <Badge tone="accent">{t("account.session_current")}</Badge>}
+                  <span className="truncate">
+                    <AgentLabel ua={s.user_agent} />
+                  </span>
+                  {s.current && <Badge tone="contrast">{t("account.session_current")}</Badge>}
                   {s.impersonated_by && <Badge>{t("account.session_impersonated", { name: s.impersonated_by })}</Badge>}
                 </p>
                 <p className="text-small text-muted">
@@ -75,6 +80,7 @@ export function Sessions() {
                   {s.ip ? ` · ${s.ip}` : ""}
                   {` · ${t("account.session_last_seen", { when: when(s.last_seen_at) })}`}
                 </p>
+                </div>
               </div>
               {!s.current && (
                 <Button variant="secondary" onClick={() => end.mutate(s.id)} disabled={end.isPending}>

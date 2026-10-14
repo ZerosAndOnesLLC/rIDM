@@ -6,8 +6,8 @@ use chrono::{DateTime, Utc};
 use sqlx::{PgExecutor, QueryBuilder};
 use uuid::Uuid;
 
-use crate::models::{NewUser, User, UserFilter, UserStatus, UserUpdate};
-use crate::util::cursor::Cursor;
+use crate::models::{NewUser, User, UserFilter, UserSort, UserStatus, UserUpdate};
+use crate::util::cursor::{Cursor, SortCursor, SortDir};
 
 const COLUMNS: &str = "id, tenant_id, org_id, username, email, email_verified, phone, phone_verified, \
     password_hash, password_algo, must_change_password, password_expires_at, password_changed_at, \
@@ -414,13 +414,40 @@ pub async fn window<'e>(
     qb.build_query_as::<User>().fetch_all(exec).await
 }
 
-/// Keyset-paginated list; fetches `limit + 1` rows.
+/// Keyset-paginated list; fetches `limit + 1` rows, in `created_at` order.
 pub async fn list<'e>(
     exec: impl PgExecutor<'e>,
     tenant_id: Uuid,
     filter: &UserFilter,
     after: Option<Cursor>,
     limit: i64,
+) -> Result<Vec<User>, sqlx::Error> {
+    let after = after.map(|c| SortCursor {
+        key: c.created_at.to_rfc3339(),
+        id: c.id,
+    });
+    list_sorted(
+        exec,
+        tenant_id,
+        filter,
+        after,
+        limit,
+        UserSort::Created,
+        SortDir::Asc,
+    )
+    .await
+}
+
+/// The list in the order the console asked for; the cursor's key was
+/// validated by the service (a time key parses) before it gets here.
+pub async fn list_sorted<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    filter: &UserFilter,
+    after: Option<SortCursor>,
+    limit: i64,
+    sort: UserSort,
+    dir: SortDir,
 ) -> Result<Vec<User>, sqlx::Error> {
     let mut qb = QueryBuilder::new("SELECT ");
     qb.push(COLUMNS)
@@ -451,15 +478,24 @@ pub async fn list<'e>(
             .push_bind(pattern)
             .push(")");
     }
+    let (order, cmp) = dir.sql();
     if let Some(c) = after {
-        qb.push(" AND (created_at, id) > (")
-            .push_bind(c.created_at)
-            .push(", ")
-            .push_bind(c.id)
-            .push(")");
+        qb.push(format!(" AND ({}, id) {cmp} (", sort.expr()));
+        if sort.is_time() {
+            qb.push_bind(
+                c.time()
+                    .unwrap_or(chrono::DateTime::<chrono::Utc>::UNIX_EPOCH),
+            );
+        } else {
+            qb.push_bind(c.key);
+        }
+        qb.push(", ").push_bind(c.id).push(")");
     }
-    qb.push(" ORDER BY created_at, id LIMIT ")
-        .push_bind(limit + 1);
+    qb.push(format!(
+        " ORDER BY {expr} {order}, id {order} LIMIT ",
+        expr = sort.expr()
+    ))
+    .push_bind(limit + 1);
     qb.build_query_as::<User>().fetch_all(exec).await
 }
 

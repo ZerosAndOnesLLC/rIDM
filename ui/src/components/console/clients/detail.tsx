@@ -1,14 +1,19 @@
 "use client";
 
+import { fmtDateTime } from "@/lib/console/format";
+import { EmptyState } from "@/components/base/empty-state";
+import { DataTable } from "@/components/base/data-table";
+import { ConfirmDialog } from "@/components/base/confirm-dialog";
+import { useToast } from "@/components/base/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FlaskConical, KeyRound, RotateCw, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { Field, NumberInput, SaveIndicator, Section, SelectInput, TagsInput, TextArea, TextInput, Toggle } from "@/components/console/form";
-import { Badge, Button, IconButton, Modal, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
+import { Skeleton } from "@/components/base/skeleton";
+import { DetailPanel } from "@/components/console/panel";
+import { Avatar, Badge, Button, IconButton, Modal, Status } from "@/components/console/ui";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import {
   ALL_GRANTS,
@@ -104,17 +109,24 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
   const sections = useMemo(() => (c ? { c } : null), [c]);
   // `tls_client_auth` is saved together with its subject, which the API requires.
   const [pendingTls, setPendingTls] = useState(false);
+  const listHref = `/console/clients/?tenant=${encodeURIComponent(tenant)}`;
+  const close = () => router.push(listHref);
   if (query.isError) {
     return (
-      <>
-        <PageHeader title="Client" />
+      <DetailPanel open onClose={close} title="Client">
         <p role="alert" className="text-lead text-danger">
           {query.error.message}
         </p>
-      </>
+      </DetailPanel>
     );
   }
-  if (!c || !sections) return <Spinner label="Loading client…" />;
+  if (!c || !sections) {
+    return (
+      <DetailPanel open onClose={close} title="Client">
+        <Skeleton shape="lines" count={8} label="Loading client…" />
+      </DetailPanel>
+    );
+  }
   const grantsOk = !(c.token_endpoint_auth_method === "none" && c.allowed_grants.includes("client_credentials"));
   const fapi = c.security_profile === "fapi2";
   const certBound = c.tls_client_certificate_bound_access_tokens;
@@ -124,32 +136,38 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
 
   return (
     <>
-      <PageHeader
-        title={c.name}
-        sub={
-          <span className="inline-flex flex-wrap items-center gap-2">
-            <code className="font-mono text-small">{c.client_id}</code>
-            <CopyButton value={c.client_id} label="Copy ID" />
-            <Badge>{typeLabel(c.client_type)}</Badge>
-            {c.status === "active" ? <Badge tone="ok">Active</Badge> : <Badge tone="danger">Disabled</Badge>}
-          </span>
-        }
-        actions={
+      <DetailPanel
+        open
+        onClose={close}
+        backLabel="Back to clients"
+        mark={<Avatar name={c.name} size="lg" className="shadow-[0_0_0_3px_var(--paper),0_0_0_4px_var(--accent-border)]" />}
+        title={
           <>
-            <SaveIndicator status={status} error={error} />
-            <Link href={playgroundHref(tenant, c.id)} className="inline-flex min-h-9 items-center gap-2 rounded-[var(--radius)] border border-line bg-paper px-3.5 text-body font-medium text-ink hover:bg-ground">
-              <FlaskConical className="size-4" aria-hidden />
-              Playground
-            </Link>
+            <span className="min-w-0 truncate">{c.name}</span>
+            {c.status === "active" ? <Status tone="ok">Active</Status> : <Status tone="danger">Disabled</Status>}
           </>
         }
-      />
-      <p className="mb-4 text-small text-muted">
-        <Link href={`/console/clients/?tenant=${encodeURIComponent(tenant)}`} className="text-link underline underline-offset-4">
-          All clients
-        </Link>
-      </p>
-      <div className="flex flex-col gap-6">
+        sub={
+          <>
+            <code className="font-mono">{c.client_id}</code>
+            <CopyButton value={c.client_id} label="Copy ID" />
+          </>
+        }
+        actions={
+          <Link href={playgroundHref(tenant, c.id)} className="inline-flex min-h-7 items-center gap-1.5 rounded-[var(--radius)] border border-line-strong bg-paper px-2.5 text-caption font-medium text-ink no-underline hover:bg-ground">
+            <FlaskConical className="size-3.5" aria-hidden />
+            Playground
+          </Link>
+        }
+        stats={[
+          { label: "Type", value: typeLabel(c.client_type) },
+          { label: "Authentication", value: AUTH_METHODS.find((m) => m.value === c.token_endpoint_auth_method)?.label ?? c.token_endpoint_auth_method },
+          { label: "Profile", value: fapi ? <Badge tone="accent">FAPI 2.0</Badge> : "Default" },
+          { label: "Created", value: fmtDateTime(c.created_at) },
+        ]}
+        footer={<SaveIndicator status={status} error={error} />}
+      >
+      <div className="flex flex-col gap-4">
         <Section id="basics" title="Basics" description="What users see on consent and login pages.">
           <Field label="Name">{(fid) => <TextInput id={fid} value={c.name} disabled={!editable} onChange={(e) => update({ name: e.target.value })} />}</Field>
           <Field label="Status" hint="A disabled client is refused at every endpoint.">
@@ -358,8 +376,9 @@ export function ClientDetail({ tenant, id }: { tenant: string; id: string }) {
           </div>
         </Section>
 
-        {editable && c.client_id !== "ridm-admin-console" && <DeleteClient tenant={tenant} c={c} onDeleted={() => router.push(`/console/clients/?tenant=${encodeURIComponent(tenant)}`)} />}
+        {editable && c.client_id !== "ridm-admin-console" && <DeleteClient tenant={tenant} c={c} onDeleted={close} />}
       </div>
+      </DetailPanel>
       <RevealModal revealed={revealed} onClose={() => setRevealed(null)} />
     </>
   );
@@ -519,7 +538,9 @@ function TokensSection({ c, editable, update }: { c: ClientView; editable: boole
 
 function SecretsSection({ tenant, c, editable, onReveal, onChanged }: { tenant: string; c: ClientView; editable: boolean; onReveal: (r: Revealed) => void; onChanged: (c: ClientView) => void }) {
   const { client: api } = useConsole();
+  const { toast } = useToast();
   const [grace, setGrace] = useState(86_400);
+  const [confirm, setConfirm] = useState<{ kind: "rotate" } | { kind: "revoke"; id: string } | null>(null);
   const rotate = useMutation({
     mutationFn: async () => {
       const { data, error } = await api.POST("/admin/tenants/{slug}/clients/{client}/secrets", { params: { path: { slug: tenant, client: c.id } }, body: { grace_secs: grace } });
@@ -543,37 +564,31 @@ function SecretsSection({ tenant, c, editable, onReveal, onChanged }: { tenant: 
   return (
     <Section id="secrets" title="Secrets" description="Shown once when generated. Rotate with a grace period so a running deployment can switch over.">
       <div className="sm:col-span-2">
-        <table className="w-full text-body">
-          <thead className="text-caption uppercase tracking-wide text-muted">
-            <tr className="border-b border-line">
-              <th scope="col" className="py-2 text-start font-medium">Secret</th>
-              <th scope="col" className="py-2 text-start font-medium">Created</th>
-              <th scope="col" className="py-2 text-start font-medium">Valid until</th>
-              <th scope="col" className="py-2 text-end font-medium"><span className="sr-only">Actions</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {c.secrets.length === 0 && (
-              <tr>
-                <td colSpan={4} className="py-4 text-center text-muted">No secret yet; generate one below.</td>
-              </tr>
-            )}
-            {c.secrets.map((s) => (
-              <tr key={s.id} className="border-b border-line last:border-b-0">
-                <td className="py-2 font-mono text-small text-muted">…{s.id.slice(-8)}</td>
-                <td className="py-2 text-muted">{formatDate("en", s.created_at)}</td>
-                <td className="py-2">{s.expires_at ? <Badge>Retiring {formatDate("en", s.expires_at)}</Badge> : <Badge tone="ok">Current</Badge>}</td>
-                <td className="py-2 text-end">
-                  {editable && c.secrets.length > 1 && (
-                    <Button variant="danger" className="min-h-8 px-2.5 text-small" disabled={revoke.isPending} onClick={() => revoke.mutate(s.id)}>
-                      Revoke
-                    </Button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DataTable
+          label="Secrets"
+          minWidth="30rem"
+          columns={[
+            { key: "id", header: "Secret", width: "minmax(6rem, 1fr)", cell: (sec: ClientView["secrets"][number]) => <span className="font-mono text-small text-muted">…{sec.id.slice(-8)}</span> },
+            { key: "created", header: "Created", width: "minmax(9rem, 1fr)", cell: (sec) => <span className="text-muted">{fmtDateTime(sec.created_at)}</span> },
+            { key: "until", header: "Valid until", width: "minmax(9rem, 1.2fr)", cell: (sec) => (sec.expires_at ? <Badge>Retiring {fmtDateTime(sec.expires_at)}</Badge> : <Badge tone="ok">Current</Badge>) },
+            {
+              key: "actions",
+              header: "Actions",
+              hideHeader: true,
+              width: "5.5rem",
+              align: "end",
+              cell: (sec) =>
+                editable && c.secrets.length > 1 ? (
+                  <Button variant="danger" className="min-h-7 px-2.5 text-caption" disabled={revoke.isPending} onClick={() => setConfirm({ kind: "revoke", id: sec.id })}>
+                    Revoke
+                  </Button>
+                ) : null,
+            },
+          ]}
+          rows={c.secrets}
+          rowKey={(sec) => sec.id}
+          empty={<EmptyState compact title="No secret yet" description={editable ? "Generate one below." : undefined} />}
+        />
       </div>
       {editable && (
         <div className="flex flex-wrap items-end gap-3 sm:col-span-2">
@@ -588,17 +603,41 @@ function SecretsSection({ tenant, c, editable, onReveal, onChanged }: { tenant: 
               </SelectInput>
             )}
           </Field>
-          <Button variant="primary" disabled={rotate.isPending} onClick={() => rotate.mutate()}>
+          <Button variant="primary" disabled={rotate.isPending} onClick={() => (c.secrets.length ? setConfirm({ kind: "rotate" }) : rotate.mutate())}>
             <RotateCw className="size-4" aria-hidden />
             {c.secrets.length ? "Rotate secret" : "Generate secret"}
           </Button>
-          {err && (
+          {err && !confirm && (
             <p role="alert" className="text-body text-danger">
               {err.message}
             </p>
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(o) => {
+          if (!o) setConfirm(null);
+        }}
+        title={confirm?.kind === "rotate" ? "Rotate the client secret?" : "Revoke this secret?"}
+        description={
+          confirm?.kind === "rotate"
+            ? `A new secret is generated and shown once. ${GRACE_OPTIONS.find((g) => g.value === grace)?.label ?? "The grace period you chose applies"}.`
+            : "Anything still authenticating with it is refused from now on."
+        }
+        confirmLabel={confirm?.kind === "rotate" ? "Rotate secret" : "Revoke"}
+        tone={confirm?.kind === "rotate" ? "primary" : "danger"}
+        onConfirm={async () => {
+          if (!confirm) return;
+          if (confirm.kind === "rotate") {
+            await rotate.mutateAsync();
+            toast({ title: "Secret rotated", description: "The new secret is shown once." });
+          } else {
+            await revoke.mutateAsync(confirm.id);
+            toast({ title: "Secret revoked" });
+          }
+        }}
+      />
     </Section>
   );
 }

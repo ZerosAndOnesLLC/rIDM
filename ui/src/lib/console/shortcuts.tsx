@@ -22,11 +22,13 @@ function inField(target: EventTarget | null): boolean {
 }
 
 const SEQUENCE_MS = 1000;
+const MODIFIERS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock"]);
 
 /**
  * Console-wide keyboard shortcuts. Modifier combinations work everywhere;
  * single keys only when no field has focus. `g` starts a one-second
- * sequence (`g o` opens the overview).
+ * sequence (`g o` opens the overview); Escape cancels it, a held modifier
+ * does not end it, and a key that is no destination is handled as itself.
  */
 export function useShortcuts(handlers: ShortcutHandlers) {
   const ref = useRef(handlers);
@@ -44,13 +46,21 @@ export function useShortcuts(handlers: ShortcutHandlers) {
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey || inField(e.target)) return;
+      // A modifier on its own (Shift ahead of `?`) is not the next key.
+      if (MODIFIERS.has(e.key)) return;
       if (pendingG.current !== null) {
         window.clearTimeout(pendingG.current);
         pendingG.current = null;
+        if (e.key === "Escape") {
+          e.preventDefault();
+          return;
+        }
         if (h.go(e.key.toLowerCase())) {
           e.preventDefault();
           return;
         }
+        // Not a destination: the sequence ends and the key means what it
+        // always does (`g` `/` still opens the search).
       }
       switch (e.key) {
         case "/":

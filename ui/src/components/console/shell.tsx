@@ -1,25 +1,28 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { Briefcase, Building2, ChevronsUpDown, LogOut, Menu, Monitor, Moon, Search, ShieldCheck, Sun, X } from "lucide-react";
+import { Bell, Briefcase, Building2, ChevronsUpDown, LogOut, Menu, Search, ShieldCheck, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
+import { Breadcrumbs } from "@/components/base/breadcrumbs";
+import { ThemeSwitch } from "@/components/base/theme-switch";
 import { Spinner } from "@/components/ui";
+import { useNavCounts } from "@/lib/console/counts";
+import { fmtNumber, initials } from "@/lib/console/format";
 import { NAV, PAGE_TITLES, allNavItems, consoleHref, navVisible } from "@/lib/console/nav";
 import { useConsole } from "@/lib/console/session";
 import { modKey, useShortcuts } from "@/lib/console/shortcuts";
 import { useConsoleTenant } from "@/lib/console/tenant";
-import { useTheme, type Theme } from "@/lib/console/theme";
-import { useTenantAppearance } from "@/lib/theme/use-tenant-appearance";
+import { useTenantAppearance, useTenantPublic } from "@/lib/theme/use-tenant-appearance";
 import { CommandPalette, TenantSwitcher } from "./palette";
 import { SignIn } from "./sign-in";
-import { IconButton, Kbd, Modal } from "./ui";
+import { Avatar, IconButton, Kbd, Modal } from "./ui";
 
 /**
  * Gate plus frame for every console page: the sign-in card while signed
- * out, otherwise sidebar, top bar and the page. The callback page renders
- * bare because it is what produces the session.
+ * out, otherwise the command bar, sidebar and the page. The callback page
+ * renders bare because it is what produces the session.
  */
 export function ConsoleShell({ children }: { children: ReactNode }) {
   const { status } = useConsole();
@@ -36,6 +39,13 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
   return <Frame>{children}</Frame>;
 }
 
+/**
+ * The frame (design/README.md "Layout"): a command bar across the top
+ * (wordmark, tenant switcher, search, theme), the sidebar on the tinted
+ * ground with counts, and the page in an elevated sheet. The skins retune
+ * it through tokens (globals.css); below `md` the sidebar is a drawer and
+ * the sheet loses its inset.
+ */
 function Frame({ children }: { children: ReactNode }) {
   const { me, signOut, can, canInOrg } = useConsole();
   const tenant = useConsoleTenant();
@@ -50,6 +60,10 @@ function Frame({ children }: { children: ReactNode }) {
 
   const items = allNavItems().filter((n) => navVisible(n, { can, canInOrg, global }));
   const current = items.find((n) => n.href === pathname) ?? items.find((n) => pathname.startsWith(n.href) && n.href !== "/console/");
+  const group = current ? NAV.find((g) => g.items.includes(current)) : undefined;
+  const title = current?.label ?? PAGE_TITLES[pathname] ?? "Console";
+  const { attentionTotal } = useNavCounts(tenant);
+  const tenantName = useTenantPublic(tenant)?.display_name ?? null;
 
   useShortcuts({
     palette: () => setPalette(true),
@@ -69,67 +83,109 @@ function Frame({ children }: { children: ReactNode }) {
     router.push(consoleHref(current?.href ?? "/console/", slug));
   };
 
-  const sidebar = (
-    <Sidebar
-      tenant={tenant}
-      global={global}
-      onSwitch={() => setTenants(true)}
-      pathname={pathname}
-      onNavigate={() => setDrawer(false)}
-      me={me}
-      onSignOut={signOut}
-    />
-  );
+  const sidebar = <Sidebar tenant={tenant} global={global} pathname={pathname} onNavigate={() => setDrawer(false)} me={me} onSignOut={signOut} />;
 
   return (
-    <div className="min-h-screen md:grid md:grid-cols-[15.5rem_minmax(0,1fr)]">
+    <div className="min-h-screen md:grid md:grid-cols-[14.75rem_minmax(0,1fr)] md:grid-rows-[3.25rem_minmax(0,1fr)]">
       <a href="#main" className="skip-link">
         Skip to content
       </a>
-      {/* dvh, not vh: iPad Safari measures vh with its toolbar hidden, which would put the bottom of the sidebar under the toolbar. */}
-      <aside className="sticky top-0 hidden h-dvh flex-col border-e border-line bg-paper md:flex">{sidebar}</aside>
 
-      <div className="flex min-h-screen flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-paper/90 px-3 backdrop-blur sm:px-5">
-          <Dialog.Root open={drawer} onOpenChange={setDrawer}>
-            <Dialog.Trigger asChild>
-              <IconButton label="Open navigation" className="md:hidden">
-                <Menu className="size-5" aria-hidden />
-              </IconButton>
-            </Dialog.Trigger>
-            <Dialog.Portal>
-              <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 md:hidden" />
-              <Dialog.Content className="fixed inset-y-0 start-0 z-50 flex w-[17rem] max-w-[85vw] flex-col border-e border-line bg-paper md:hidden">
-                <Dialog.Title className="sr-only">Navigation</Dialog.Title>
-                <Dialog.Description className="sr-only">Console sections</Dialog.Description>
-                <Dialog.Close asChild>
-                  <IconButton label="Close navigation" className="absolute end-2 top-2.5">
-                    <X className="size-4" aria-hidden />
-                  </IconButton>
-                </Dialog.Close>
-                {sidebar}
-              </Dialog.Content>
-            </Dialog.Portal>
-          </Dialog.Root>
-          <p className="min-w-0 flex-1 truncate text-lead font-medium text-ink">{current?.label ?? PAGE_TITLES[pathname] ?? "Console"}</p>
+      <header className="console-bar sticky top-0 z-30 flex h-[3.25rem] items-center gap-2 px-2.5 sm:gap-3 sm:px-3.5 md:col-span-2">
+        <Dialog.Root open={drawer} onOpenChange={setDrawer}>
+          <Dialog.Trigger asChild>
+            <IconButton label="Open navigation" className="text-bar-muted hover:bg-[var(--bar-field)] hover:text-bar-ink md:hidden">
+              <Menu className="size-5" aria-hidden />
+            </IconButton>
+          </Dialog.Trigger>
+          <Dialog.Portal>
+            <Dialog.Overlay className="fixed inset-0 z-40 bg-[rgba(8,10,14,0.45)] md:hidden" />
+            <Dialog.Content className="console-rail console-drawer fixed inset-y-0 start-0 z-50 flex w-[17rem] max-w-[85vw] flex-col md:hidden">
+              <Dialog.Title className="sr-only">Navigation</Dialog.Title>
+              <Dialog.Description className="sr-only">Console sections</Dialog.Description>
+              <Dialog.Close asChild>
+                <IconButton label="Close navigation" className="absolute end-2 top-2.5">
+                  <X className="size-4" aria-hidden />
+                </IconButton>
+              </Dialog.Close>
+              {sidebar}
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
+
+        <Link href={consoleHref("/console/", tenant)} className="flex shrink-0 items-center gap-2 no-underline md:w-[13.5rem]">
+          <span aria-hidden className="flex size-6 items-center justify-center rounded-[7px] bg-[linear-gradient(135deg,var(--accent-400),var(--accent-700))] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
+            <ShieldCheck className="size-3.5" />
+          </span>
+          <span className="font-display text-[1.0625rem] font-bold tracking-[-0.02em] text-bar-ink max-md:sr-only">rIDM</span>
+        </Link>
+
+        <div className="flex min-w-0 flex-1 items-center gap-2 md:max-w-3xl">
+          {global ? (
+            <button
+              type="button"
+              onClick={() => setTenants(true)}
+              aria-label={`Tenant: ${tenant ?? "none"}. Switch tenant`}
+              className="flex h-[2.125rem] shrink-0 items-center gap-2 rounded-full border border-[var(--bar-line)] bg-[var(--bar-field)] ps-1 pe-2.5 text-bar-ink hover:brightness-125"
+            >
+              <TenantMark name={tenantName ?? tenant ?? "?"} />
+              <span className="hidden min-w-0 items-baseline gap-1.5 sm:flex">
+                <span className="truncate text-small font-semibold">{tenantName ?? tenant ?? "—"}</span>
+                {tenantName && <span className="font-mono text-caption text-bar-muted">{tenant}</span>}
+              </span>
+              <ChevronsUpDown className="size-3.5 shrink-0 text-bar-muted" aria-hidden />
+            </button>
+          ) : (
+            <span className="flex h-[2.125rem] shrink-0 items-center gap-2 rounded-full border border-[var(--bar-line)] bg-[var(--bar-field)] ps-1 pe-2.5 text-bar-ink">
+              <TenantMark name={tenantName ?? tenant ?? "?"} />
+              <span className="sr-only">Tenant:</span>
+              <span className="hidden min-w-0 items-baseline gap-1.5 sm:flex">
+                <span className="truncate text-small font-semibold">{tenantName ?? tenant ?? "—"}</span>
+                {tenantName && <span className="font-mono text-caption text-bar-muted">{tenant}</span>}
+              </span>
+            </span>
+          )}
           <button
             type="button"
             aria-label="Search"
             onClick={() => setPalette(true)}
-            className="flex min-h-9 items-center gap-2 rounded-[var(--radius)] border border-line bg-ground px-3 text-body text-muted hover:text-ink"
+            className="flex h-[2.125rem] min-w-0 flex-1 items-center gap-2 rounded-full border border-[var(--bar-line)] bg-[var(--bar-field)] px-3 text-small text-bar-muted hover:brightness-125 hover:text-bar-ink"
           >
-            <Search className="size-4" aria-hidden />
-            <span className="hidden sm:inline">Search…</span>
-            <span className="hidden gap-1 sm:flex" aria-hidden>
-              <Kbd>{modKey()}</Kbd>
-              <Kbd>K</Kbd>
+            <Search className="size-4 shrink-0" aria-hidden />
+            <span className="hidden truncate sm:inline">Search users, clients, pages…</span>
+            <span className="ms-auto hidden gap-1 sm:flex" aria-hidden>
+              <kbd className="border-[var(--bar-line)] bg-transparent text-bar-muted">{modKey()}</kbd>
+              <kbd className="border-[var(--bar-line)] bg-transparent text-bar-muted">K</kbd>
             </span>
           </button>
-          <ThemeSwitch />
-        </header>
-        <main id="main" tabIndex={-1} className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto w-full max-w-6xl">{children}</div>
-        </main>
+        </div>
+
+        <div className="ms-auto flex shrink-0 items-center gap-1.5">
+          <ThemeSwitch surface="bar" />
+          <Link
+            href={`${consoleHref("/console/", tenant)}#attention`}
+            aria-label={attentionTotal > 0 ? `${attentionTotal} ${attentionTotal === 1 ? "thing needs" : "things need"} attention` : "Nothing needs attention"}
+            title={attentionTotal > 0 ? `${attentionTotal} ${attentionTotal === 1 ? "thing needs" : "things need"} attention` : "Nothing needs attention"}
+            className="relative hidden size-8 items-center justify-center rounded-full text-bar-muted no-underline hover:bg-[var(--bar-field)] hover:text-bar-ink sm:flex"
+          >
+            <Bell className="size-4" aria-hidden />
+            {attentionTotal > 0 && <span aria-hidden className="absolute end-1.5 top-1.5 size-[7px] rounded-full bg-[var(--contrast-500)] shadow-[0_0_0_2px_var(--bar)]" />}
+          </Link>
+        </div>
+      </header>
+
+      {/* dvh, not vh: iPad Safari measures vh with its toolbar hidden, which would put the bottom of the sidebar under the toolbar. */}
+      <aside className="console-rail sticky top-[3.25rem] hidden h-[calc(100dvh-3.25rem)] flex-col overflow-y-auto md:flex">{sidebar}</aside>
+
+      <div className="console-content flex min-h-[calc(100dvh-3.25rem)] min-w-0 flex-col">
+        <div className="console-sheet flex flex-1 flex-col">
+          <div className="flex items-center gap-3 px-4 pt-3.5 sm:px-6">
+            <Breadcrumbs items={group?.title ? [{ label: group.title }, { label: title }] : [{ label: title }]} />
+          </div>
+          <main id="main" tabIndex={-1} className="flex-1 px-4 pb-8 pt-3 sm:px-6">
+            {children}
+          </main>
+        </div>
       </div>
 
       <CommandPalette open={palette} onOpenChange={setPalette} tenant={tenant} />
@@ -139,88 +195,74 @@ function Frame({ children }: { children: ReactNode }) {
   );
 }
 
-function Sidebar({
-  tenant,
-  global,
-  onSwitch,
-  pathname,
-  onNavigate,
-  me,
-  onSignOut,
-}: {
-  tenant: string | null;
-  global: boolean;
-  onSwitch: () => void;
-  pathname: string;
-  onNavigate: () => void;
-  me: ReturnType<typeof useConsole>["me"];
-  onSignOut: () => void;
-}) {
+/** The tenant's round mark: its initial on the primary → contrast gradient. */
+function TenantMark({ name }: { name: string }) {
+  return (
+    <span aria-hidden className="flex size-6 items-center justify-center rounded-full bg-[linear-gradient(135deg,var(--accent-500),var(--contrast-500))] text-[0.6875rem] font-bold text-white">
+      {initials(name).slice(0, 1)}
+    </span>
+  );
+}
+
+function Sidebar({ tenant, global, pathname, onNavigate, me, onSignOut }: { tenant: string | null; global: boolean; pathname: string; onNavigate: () => void; me: ReturnType<typeof useConsole>["me"]; onSignOut: () => void }) {
   const { can, canInOrg, org } = useConsole();
+  const { counts, attention } = useNavCounts(tenant);
   return (
     <>
-      <div className="flex h-14 items-center gap-2.5 px-4">
-        <span aria-hidden className="flex size-8 items-center justify-center rounded-lg bg-accent text-accent-ink">
-          <ShieldCheck className="size-[1.125rem]" />
-        </span>
-        <span className="text-md font-semibold text-ink">rIDM</span>
-      </div>
-
-      <div className="px-3 pb-2">
-        {global ? (
-          <button
-            type="button"
-            onClick={onSwitch}
-            aria-label={`Tenant: ${tenant ?? "none"}. Switch tenant`}
-            className="flex w-full items-center gap-2.5 rounded-[var(--radius)] border border-line bg-ground px-3 py-2 text-start hover:border-muted/60"
-          >
-            <Building2 className="size-4 shrink-0 text-muted" aria-hidden />
+      {org && (
+        <div className="px-3 pt-3">
+          <div className="flex items-center gap-2.5 rounded-[var(--radius)] border border-[var(--rail-line)] bg-[var(--rail-hover)] px-3 py-2">
+            <Briefcase className="size-4 shrink-0 text-[var(--rail-muted)]" aria-hidden />
             <span className="min-w-0 flex-1">
-              <span className="block text-tiny uppercase tracking-wide text-muted">Tenant</span>
-              <span className="block truncate text-body font-medium text-ink">{tenant ?? "—"}</span>
-            </span>
-            <ChevronsUpDown className="size-4 shrink-0 text-muted" aria-hidden />
-          </button>
-        ) : (
-          <div className="flex items-center gap-2.5 rounded-[var(--radius)] border border-line bg-ground px-3 py-2">
-            <Building2 className="size-4 shrink-0 text-muted" aria-hidden />
-            <span className="min-w-0 flex-1">
-              <span className="block text-tiny uppercase tracking-wide text-muted">Tenant</span>
-              <span className="block truncate text-body font-medium text-ink">{tenant ?? "—"}</span>
+              <span className="block text-tiny text-[var(--rail-hint)]">Organization</span>
+              <span className="block truncate text-small font-medium">{org.display_name}</span>
             </span>
           </div>
-        )}
-        {org && (
-          <div className="mt-2 flex items-center gap-2.5 rounded-[var(--radius)] border border-line bg-ground px-3 py-2">
-            <Briefcase className="size-4 shrink-0 text-muted" aria-hidden />
+        </div>
+      )}
+      {!global && (
+        <div className="px-3 pt-3 md:hidden">
+          <div className="flex items-center gap-2.5 rounded-[var(--radius)] border border-[var(--rail-line)] bg-[var(--rail-hover)] px-3 py-2">
+            <Building2 className="size-4 shrink-0 text-[var(--rail-muted)]" aria-hidden />
             <span className="min-w-0 flex-1">
-              <span className="block text-tiny uppercase tracking-wide text-muted">Organization</span>
-              <span className="block truncate text-body font-medium text-ink">{org.display_name}</span>
+              <span className="block text-tiny text-[var(--rail-hint)]">Tenant</span>
+              <span className="block truncate text-small font-medium">{tenant ?? "—"}</span>
             </span>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      <nav aria-label="Console" className="console-nav flex-1 overflow-y-auto px-3 py-2">
+      <nav aria-label="Console" className="console-nav flex-1 overflow-y-auto px-2.5 py-2.5">
         {NAV.map((group, gi) => {
           const visible = group.items.filter((n) => navVisible(n, { can, canInOrg, global }));
           if (visible.length === 0) return null;
           return (
-            <div key={group.title ?? gi} className="mb-3">
-              {group.title && <div className="px-3 pb-1 pt-2 text-tiny font-semibold uppercase tracking-wide text-muted">{group.title}</div>}
+            <div key={group.title ?? gi} className="mb-2">
+              {group.title && <div className="nav-group mx-2.5 mb-1 mt-3 text-tiny font-semibold tracking-[0.02em]">{group.title}</div>}
               <ul className="flex flex-col gap-0.5">
                 {visible.map((n) => {
                   const active = pathname === n.href;
+                  const count = n.count ? counts[n.count] : undefined;
+                  const hot = n.count ? attention[n.count] : undefined;
                   return (
                     <li key={n.href}>
                       <Link
                         href={consoleHref(n.href, tenant)}
                         aria-current={active ? "page" : undefined}
                         onClick={onNavigate}
-                        className="flex items-center gap-2.5 rounded-[var(--radius)] px-3 py-2 text-body text-muted hover:bg-ground hover:text-ink"
+                        className="grid h-8 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-2.5 rounded-[var(--radius)] px-2.5 text-small no-underline"
                       >
-                        <n.icon className="size-4 shrink-0" aria-hidden />
-                        <span className="flex-1 truncate">{n.label}</span>
+                        <n.icon className="size-[0.9375rem] shrink-0" aria-hidden />
+                        <span className="truncate">{n.label}</span>
+                        {hot ? (
+                          <span className="nav-count hot">{`${fmtNumber(hot)} pending`}</span>
+                        ) : count !== undefined ? (
+                          <span className="nav-count">{fmtNumber(count)}</span>
+                        ) : n.key ? (
+                          <span className="nav-hint" aria-hidden>
+                            g {n.key}
+                          </span>
+                        ) : null}
                       </Link>
                     </li>
                   );
@@ -231,54 +273,21 @@ function Sidebar({
         })}
       </nav>
 
-      <div className="border-t border-line p-3">
+      <div className="border-t border-[var(--rail-line)] p-3">
         <div className="flex items-center gap-2.5 px-1">
-          <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-ground text-small font-semibold text-ink">
-            {(me?.username ?? "?").slice(0, 1).toUpperCase()}
-          </span>
+          <Avatar name={me?.username ?? "?"} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-body font-medium text-ink" data-testid="me-username">
+            <span className="block truncate text-small font-medium" data-testid="me-username">
               {me?.username}
             </span>
-            <span className="block truncate text-caption text-muted">{global ? "Global administrator" : `Administrator of ${me?.tenant_slug ?? ""}`}</span>
+            <span className="block truncate text-caption text-[var(--rail-muted)]">{global ? "Global administrator" : `Administrator of ${me?.tenant_slug ?? ""}`}</span>
           </span>
-          <IconButton label="Sign out" onClick={onSignOut}>
+          <IconButton label="Sign out" onClick={onSignOut} className="text-[var(--rail-muted)] hover:bg-[var(--rail-hover)] hover:text-[var(--rail-active-ink)]">
             <LogOut className="size-4" aria-hidden />
           </IconButton>
         </div>
       </div>
     </>
-  );
-}
-
-const THEMES: { value: Theme; label: string; icon: typeof Sun }[] = [
-  { value: "system", label: "Follow system theme", icon: Monitor },
-  { value: "light", label: "Light theme", icon: Sun },
-  { value: "dark", label: "Dark theme", icon: Moon },
-];
-
-function ThemeSwitch() {
-  const { theme, setTheme, policy } = useTheme();
-  // The tenant decides whether people may override its light/dark mode.
-  if (!policy.allowSwitch) return null;
-  return (
-    <div role="group" aria-label="Theme" className="flex items-center gap-0.5 rounded-[var(--radius)] border border-line bg-ground p-0.5">
-      {THEMES.map((t) => (
-        <button
-          key={t.value}
-          type="button"
-          aria-label={t.label}
-          title={t.label}
-          aria-pressed={theme === t.value}
-          onClick={() => setTheme(t.value)}
-          className={`flex size-8 items-center justify-center rounded-[calc(var(--radius)-2px)] ${
-            theme === t.value ? "bg-paper text-ink shadow-sm" : "text-muted hover:text-ink"
-          }`}
-        >
-          <t.icon className="size-4" aria-hidden />
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -301,8 +310,8 @@ function ShortcutsHelp({ open, onOpenChange, global }: { open: boolean; onOpenCh
           <div key={r.what} className="flex items-center justify-between gap-4 py-2 text-body not-last:border-b not-last:border-line">
             <dt className="text-ink">{r.what}</dt>
             <dd className="flex gap-1">
-              {r.keys.map((k) => (
-                <Kbd key={k}>{k}</Kbd>
+              {r.keys.map((k, i) => (
+                <Kbd key={i}>{k}</Kbd>
               ))}
             </dd>
           </div>

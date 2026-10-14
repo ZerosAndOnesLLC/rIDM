@@ -1,12 +1,14 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
+import { Skeleton } from "@/components/base/skeleton";
+import { fmtDateTime } from "@/lib/console/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Field, NumberInput, SelectInput, TextArea, TextInput } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
 import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
 import { useDebounced } from "@/lib/console/hooks";
 import { href, type LogEntry } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
@@ -134,7 +136,7 @@ function EmailTab({ tenant }: { tenant: string }) {
       void qc.invalidateQueries({ queryKey: ["messaging", tenant, "email"] });
     },
   });
-  if (settings.isPending) return <Spinner label="Loading…" />;
+  if (settings.isPending) return <Skeleton shape="lines" count={4} label="Loading…" />;
   if (settings.isError) return <ErrorLine error={settings.error} />;
   const source = view?.source;
   const secretSet = view && "type" in view ? (view.type === "smtp" ? view.password_set : view.auth_header_set) : false;
@@ -257,7 +259,7 @@ function SmsTab({ tenant }: { tenant: string }) {
       void qc.invalidateQueries({ queryKey: ["messaging", tenant, "sms"] });
     },
   });
-  if (settings.isPending) return <Spinner label="Loading…" />;
+  if (settings.isPending) return <Skeleton shape="lines" count={4} label="Loading…" />;
   if (settings.isError) return <ErrorLine error={settings.error} />;
   return (
     <div className="flex flex-col gap-4">
@@ -319,7 +321,7 @@ function TemplatesTab({ tenant }: { tenant: string }) {
   const [channel, setChannel] = useState<"email" | "sms">("email");
   const [event, setEvent] = useState("");
   const [locale, setLocale] = useState("en");
-  if (catalogue.isPending) return <Spinner label="Loading…" />;
+  if (catalogue.isPending) return <Skeleton shape="lines" count={4} label="Loading…" />;
   if (catalogue.isError) return <ErrorLine error={catalogue.error} />;
   const ev = event || catalogue.data.events[0] || "";
   const overridden = new Set(catalogue.data.overrides.map((o) => `${o.channel}/${o.event}/${o.locale}`));
@@ -425,7 +427,7 @@ function TemplateEditor({ tenant, channel, event, locale }: { tenant: string; ch
     // Nothing: `seeded` gates the initial copy above; this effect only exists so
     // that a reset (which clears `seeded`) reseeds from the refetched template.
   }, [tpl.data]);
-  if (tpl.isPending) return <Spinner label="Loading template…" />;
+  if (tpl.isPending) return <Skeleton shape="lines" count={4} label="Loading template…" />;
   if (tpl.isError) return <ErrorLine error={tpl.error} />;
   return (
     <div className="flex flex-col gap-4">
@@ -532,11 +534,11 @@ function LogTab({ tenant }: { tenant: string }) {
       <p className="mb-3 text-small text-muted">Bodies are not kept: they carry links and codes.</p>
       <ErrorLine error={redeliver.error} />
       {log.isPending ? (
-        <Spinner label="Loading…" />
+        <Skeleton shape="lines" count={4} label="Loading…" />
       ) : log.isError ? (
         <ErrorLine error={log.error} />
       ) : log.data.length === 0 ? (
-        <p className="text-body text-muted">Nothing sent yet.</p>
+        <EmptyState compact title="Nothing sent yet." />
       ) : (
         <ul className="divide-y divide-line">
           {log.data.map((m) => (
@@ -546,7 +548,7 @@ function LogTab({ tenant }: { tenant: string }) {
                 <Badge tone={tone(m.status)}>{m.status}</Badge>
                 <span className="ms-2 text-small text-muted">
                   {m.channel} · {m.event}
-                  {m.subject ? ` · ${m.subject}` : ""} · {formatDate("en", m.created_at)} · attempt {m.attempts}/{m.max_attempts}
+                  {m.subject ? ` · ${m.subject}` : ""} · {fmtDateTime(m.created_at)} · attempt {m.attempts}/{m.max_attempts}
                 </span>
                 {m.last_error && <span className="block text-small text-danger">{m.last_error}</span>}
               </span>

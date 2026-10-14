@@ -147,6 +147,6 @@ test.describe("identity brokering", () => {
     await expect(page.getByRole("heading", { name: NAME, level: 2 })).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: "Delete identity provider" }).click();
     await page.getByRole("dialog", { name: "Delete this identity provider?" }).getByRole("button", { name: "Delete identity provider" }).click();
-    await expect(page.getByText("No providers yet.")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("No providers yet")).toBeVisible({ timeout: 15_000 });
   });
 });

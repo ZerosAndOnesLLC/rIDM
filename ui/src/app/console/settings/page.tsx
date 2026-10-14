@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { SaveIndicator } from "@/components/console/form";
@@ -17,7 +18,6 @@ import { RiskSection } from "@/components/console/settings/risk";
 import { SessionsSection } from "@/components/console/settings/sessions";
 import { SignInSection } from "@/components/console/settings/signin";
 import { PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import { useConsole } from "@/lib/console/session";
 import { applySettings, SECTIONS, type SettingsPatch, type Tenant, type TenantPatch, type TenantPatchBody } from "@/lib/console/settings";
@@ -109,7 +109,7 @@ export default function SettingsPage() {
       </>
     );
   }
-  if (!editor) return <Spinner label="Loading settings…" />;
+  if (!editor) return <Skeleton shape="lines" count={4} label="Loading settings…" />;
 
   return (
     <SettingsContext.Provider value={editor}>
@@ -119,19 +119,19 @@ export default function SettingsPage() {
           You can view these settings but not change them.
         </p>
       )}
-      <div className="grid gap-6 lg:grid-cols-[11rem_minmax(0,1fr)]">
-        <nav aria-label="Settings sections" className="lg:sticky lg:top-20 lg:self-start">
-          <ul className="flex flex-wrap gap-1 lg:flex-col">
+      <div className="grid gap-6 lg:grid-cols-[12.5rem_minmax(0,1fr)]">
+        <nav aria-label="Settings sections" className="lg:sticky lg:top-[4.25rem] lg:self-start">
+          <ul className="flex flex-wrap gap-px lg:flex-col">
             {SECTIONS.map((s) => (
               <li key={s.id}>
-                <a href={`#${s.id}`} className="block rounded-[var(--radius)] px-3 py-1.5 text-body text-muted hover:bg-paper hover:text-ink">
+                <a href={`#${s.id}`} className="block rounded-[var(--radius-sm)] px-2.5 py-1.5 text-small text-ink-2 no-underline hover:bg-ground hover:text-ink">
                   {s.label}
                 </a>
               </li>
             ))}
           </ul>
         </nav>
-        <div className="flex min-w-0 flex-col gap-6">
+        <div className="flex min-w-0 max-w-3xl flex-col gap-4">
           <GeneralSection />
           <SignInSection />
           <RiskSection />

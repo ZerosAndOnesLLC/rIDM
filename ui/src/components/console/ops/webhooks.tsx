@@ -1,5 +1,8 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
+import { fmtDateTime } from "@/lib/console/format";
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, RotateCw, Send } from "lucide-react";
 import Link from "next/link";
@@ -7,8 +10,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { Field, NumberInput, SaveIndicator, Section, SelectInput, TagsInput, TextInput, Toggle } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import { EVENT_NAMES, EVENT_PREFIXES, href, type Webhook, type WebhookDelivery } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
@@ -48,11 +49,11 @@ export function WebhooksPage({ tenant, selected }: { tenant: string; selected: s
         list={
           <Card title="Webhooks">
             {hooks.isPending ? (
-              <Spinner label="Loading…" />
+              <Skeleton shape="lines" count={4} label="Loading…" />
             ) : hooks.isError ? (
               <ErrorLine error={hooks.error} />
             ) : hooks.data.length === 0 ? (
-              <p className="text-body text-muted">No webhooks yet.</p>
+              <EmptyState compact title="No webhooks yet" />
             ) : (
               <ul className="flex flex-col gap-0.5">
                 {hooks.data.map((w) => (
@@ -198,7 +199,7 @@ function WebhookView({ tenant, id, onReveal }: { tenant: string; id: string; onR
     },
   });
   if (query.isError) return <ErrorLine error={query.error} />;
-  if (!draft) return <Spinner label="Loading…" />;
+  if (!draft) return <Skeleton shape="lines" count={4} label="Loading…" />;
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -303,11 +304,11 @@ function Deliveries({ tenant, id, editable }: { tenant: string; id: string; edit
         </p>
       )}
       {list.isPending ? (
-        <Spinner label="Loading…" />
+        <Skeleton shape="lines" count={4} label="Loading…" />
       ) : list.isError ? (
         <ErrorLine error={list.error} />
       ) : list.data.length === 0 ? (
-        <p className="text-body text-muted">Nothing delivered yet.</p>
+        <EmptyState compact title="Nothing delivered yet." />
       ) : (
         <ul className="divide-y divide-line">
           {list.data.map((d) => (
@@ -318,7 +319,7 @@ function Deliveries({ tenant, id, editable }: { tenant: string; id: string; edit
                   <Badge tone={TONE[d.status]}>{d.status}</Badge>
                   <span className="text-small text-muted">
                     attempt {d.attempts}/{d.max_attempts}
-                    {d.last_status ? ` · HTTP ${d.last_status}` : ""} · {formatDate("en", d.created_at)}
+                    {d.last_status ? ` · HTTP ${d.last_status}` : ""} · {fmtDateTime(d.created_at)}
                   </span>
                 </button>
                 {editable && (d.status === "dead" || d.status === "delivered" || d.status === "failed") && (

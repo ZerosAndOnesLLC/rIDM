@@ -1,10 +1,11 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
+import { Skeleton } from "@/components/base/skeleton";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { SelectInput } from "@/components/console/form";
 import { Badge, Button, Card } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { useConsole } from "@/lib/console/session";
 import { roleName } from "@/lib/console/users";
 import { useRolesAndGroups } from "./invite";
@@ -40,14 +41,14 @@ export function RolesTab({ tenant, id, editable }: { tenant: string; id: string;
     <div className="grid gap-4 lg:grid-cols-2">
       <Card title="Assigned directly">
         {mine.isPending ? (
-          <Spinner label="Loading…" />
+          <Skeleton shape="lines" count={4} label="Loading…" />
         ) : mine.isError ? (
           <p role="alert" className="text-body text-danger">
             {mine.error.message}
           </p>
         ) : (
           <>
-            {mine.data.direct.length === 0 && <p className="text-body text-muted">No direct roles.</p>}
+            {mine.data.direct.length === 0 && <EmptyState compact title="No direct roles." />}
             <ul className="divide-y divide-line">
               {mine.data.direct.map((r) => (
                 <li key={r.id} className="flex items-center justify-between gap-3 py-2 text-body">
@@ -145,14 +146,14 @@ export function GroupsTab({ tenant, id, editable }: { tenant: string; id: string
     <div className="grid gap-4 lg:grid-cols-2">
       <Card title="Member of">
         {mine.isPending ? (
-          <Spinner label="Loading…" />
+          <Skeleton shape="lines" count={4} label="Loading…" />
         ) : mine.isError ? (
           <p role="alert" className="text-body text-danger">
             {mine.error.message}
           </p>
         ) : (
           <>
-            {mine.data.direct.length === 0 && <p className="text-body text-muted">No groups.</p>}
+            {mine.data.direct.length === 0 && <EmptyState compact title="No groups." />}
             <ul className="divide-y divide-line">
               {mine.data.direct.map((g) => (
                 <li key={g.id} className="flex items-center justify-between gap-3 py-2 text-body">

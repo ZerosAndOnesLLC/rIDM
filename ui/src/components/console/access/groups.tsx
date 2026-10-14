@@ -1,5 +1,7 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Plus, UserRoundPlus } from "lucide-react";
 import Link from "next/link";
@@ -8,7 +10,6 @@ import { useCallback, useMemo, useState } from "react";
 import { Picker, type PickerItem } from "@/components/console/picker";
 import { Field, SaveIndicator, Section, SelectInput, TextInput } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { groupPaths, href, type Group, type GroupDetail } from "@/lib/console/access";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import { useDebounced } from "@/lib/console/hooks";
@@ -43,7 +44,7 @@ export function GroupsPage({ tenant, selected }: { tenant: string; selected: str
       <Split
         list={
           <Card title="Tree">
-            {groups.isPending ? <Spinner label="Loading…" /> : groups.isError ? <ErrorLine error={groups.error} /> : all.length === 0 ? <p className="text-body text-muted">No groups yet.</p> : <GroupTree tree={tree} parent={null} depth={0} tenant={tenant} selected={selected} />}
+            {groups.isPending ? <Skeleton shape="lines" count={6} /> : groups.isError ? <ErrorLine error={groups.error} /> : all.length === 0 ? <EmptyState compact title="No groups yet" /> : <GroupTree tree={tree} parent={null} depth={0} tenant={tenant} selected={selected} />}
           </Card>
         }
         detail={selected ? <GroupDetailView key={selected} tenant={tenant} id={selected} all={all} onCreateChild={() => setCreating({ parent: selected })} /> : <p className="text-lead text-muted">Choose a group.</p>}
@@ -201,7 +202,7 @@ function GroupDetailView({ tenant, id, all, onCreateChild }: { tenant: string; i
     },
   });
   if (query.isError) return <ErrorLine error={query.error} />;
-  if (!draft) return <Spinner label="Loading group…" />;
+  if (!draft) return <Skeleton shape="lines" count={4} label="Loading group…" />;
 
   return (
     <div className="flex flex-col gap-4">
@@ -353,7 +354,7 @@ function GroupMembers({ tenant, id, editable }: { tenant: string; id: string; ed
       <MemberList
         tenant={tenant}
         of={{ kind: "group", id }}
-        empty={<p className="text-body text-muted">No direct members.</p>}
+        empty={<EmptyState compact title="No direct members." />}
         row={(u) => (
           <li key={u.id} className="flex items-center justify-between gap-3 py-2 text-body">
             <Link href={userHref(tenant, u.id, "groups")} className="font-medium text-ink hover:underline underline-offset-4">

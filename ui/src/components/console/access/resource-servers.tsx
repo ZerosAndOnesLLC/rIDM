@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import Link from "next/link";
@@ -7,7 +8,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { Field, NumberInput, SaveIndicator, Section, SelectInput, TextInput, Toggle } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { href, type ResourceServer, type ResourceServerDetail } from "@/lib/console/access";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import { useResourceServers } from "@/lib/console/hooks";
@@ -37,7 +37,7 @@ export function ResourceServersPage({ tenant, selected }: { tenant: string; sele
         list={
           <Card title="Resource servers">
             {servers.isPending ? (
-              <Spinner label="Loading…" />
+              <Skeleton shape="lines" count={4} label="Loading…" />
             ) : servers.isError ? (
               <ErrorLine error={servers.error} />
             ) : (
@@ -148,7 +148,7 @@ function ResourceServerView({ tenant, id }: { tenant: string; id: string }) {
     },
   });
   if (query.isError) return <ErrorLine error={query.error} />;
-  if (!draft) return <Spinner label="Loading…" />;
+  if (!draft) return <Skeleton shape="lines" count={4} label="Loading…" />;
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">

@@ -1,10 +1,12 @@
 "use client";
 
+import { fmtDateTime } from "@/lib/console/format";
+import { Skeleton } from "@/components/base/skeleton";
+import { EmptyState } from "@/components/base/empty-state";
+import { ListFooter } from "@/components/base/data-table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button, Card } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
 import { useConsole } from "@/lib/console/session";
 
 export function ConsentsTab({ tenant, id, editable }: { tenant: string; id: string; editable: boolean }) {
@@ -28,13 +30,13 @@ export function ConsentsTab({ tenant, id, editable }: { tenant: string; id: stri
   return (
     <Card title="Consented applications">
       {consents.isPending ? (
-        <Spinner label="Loading…" />
+        <Skeleton shape="lines" count={4} />
       ) : consents.isError ? (
         <p role="alert" className="text-body text-danger">
           {consents.error.message}
         </p>
       ) : consents.data.length === 0 ? (
-        <p className="text-body text-muted">No consents recorded.</p>
+        <EmptyState compact title="No consents recorded." />
       ) : (
         <ul className="divide-y divide-line">
           {consents.data.map((c) => (
@@ -42,8 +44,8 @@ export function ConsentsTab({ tenant, id, editable }: { tenant: string; id: stri
               <span>
                 <span className="font-medium text-ink">{c.client_name} ({c.client})</span>
                 <span className="block text-small text-muted">
-                  {c.scopes.join(" ")} · granted {formatDate("en", c.granted_at)}
-                  {c.revoked_at ? ` · revoked ${formatDate("en", c.revoked_at)}` : ""}
+                  {c.scopes.join(" ")} · granted {fmtDateTime(c.granted_at)}
+                  {c.revoked_at ? ` · revoked ${fmtDateTime(c.revoked_at)}` : ""}
                 </span>
               </span>
               {editable && !c.revoked_at && (
@@ -66,7 +68,8 @@ export function ConsentsTab({ tenant, id, editable }: { tenant: string; id: stri
 
 export function AuditTab({ tenant, id }: { tenant: string; id: string }) {
   const { client: api, can } = useConsole();
-  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const cursor = cursors[cursors.length - 1];
   const [open, setOpen] = useState<string | null>(null);
   const page = useQuery({
     queryKey: ["user", tenant, id, "audit", cursor],
@@ -81,13 +84,13 @@ export function AuditTab({ tenant, id }: { tenant: string; id: string }) {
   return (
     <Card title="Audit trail">
       {page.isPending ? (
-        <Spinner label="Loading…" />
+        <Skeleton shape="lines" count={4} />
       ) : page.isError ? (
         <p role="alert" className="text-body text-danger">
           {page.error.message}
         </p>
       ) : page.data.items.length === 0 ? (
-        <p className="text-body text-muted">Nothing recorded yet.</p>
+        <EmptyState compact title="Nothing recorded yet" />
       ) : (
         <ul className="divide-y divide-line">
           {page.data.items.map((e) => (
@@ -97,7 +100,7 @@ export function AuditTab({ tenant, id }: { tenant: string; id: string }) {
                   <span className="font-mono text-small font-medium text-ink">{e.name}</span>
                   <span className="ms-2 text-muted">by {e.actor_type}</span>
                 </span>
-                <span className="shrink-0 text-small text-muted">{formatDate("en", e.occurred_at)}</span>
+                <span className="shrink-0 text-small text-muted">{fmtDateTime(e.occurred_at)}</span>
               </button>
               {open === e.id && (
                 <pre tabIndex={0} aria-label="Event payload" className="mt-2 max-h-64 overflow-auto rounded-[var(--radius)] bg-ground px-3 py-2 font-mono text-small text-ink">
@@ -108,9 +111,17 @@ export function AuditTab({ tenant, id }: { tenant: string; id: string }) {
           ))}
         </ul>
       )}
-      {page.data?.next_cursor && (
-        <div className="mt-3 text-center">
-          <Button onClick={() => setCursor(page.data.next_cursor ?? undefined)}>Older events</Button>
+      {(cursors.length > 1 || page.data?.next_cursor) && (
+        <div className="mt-3">
+          <ListFooter
+            mode="cursor"
+            count={page.data?.items.length ?? 0}
+            canNewer={cursors.length > 1}
+            canOlder={Boolean(page.data?.next_cursor)}
+            loading={page.isFetching}
+            onNewer={() => setCursors((c) => c.slice(0, -1))}
+            onOlder={() => setCursors((c) => [...c, page.data?.next_cursor ?? undefined])}
+          />
         </div>
       )}
     </Card>

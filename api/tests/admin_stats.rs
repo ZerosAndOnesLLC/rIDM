@@ -123,6 +123,33 @@ async fn stats_reflect_attempts_sessions_and_authorizations() {
     assert_eq!(body["users"]["mfa_enrolled"], 0);
     assert_eq!(body["top_clients"][0]["client_id"], "stats-rp");
     assert_eq!(body["top_clients"][0]["authorizations"], 2, "{body}");
+    // The shell's counts, what needs attention, the newest events, and the
+    // window before (empty: nothing happened before today).
+    assert_eq!(body["previous"]["logins_total"], 0, "{body}");
+    assert_eq!(body["previous"]["failed_total"], 0);
+    assert_eq!(body["counts"]["users"], 1);
+    assert_eq!(body["counts"]["clients"], 1, "{body}");
+    assert_eq!(body["counts"]["groups"], 0);
+    assert!(body["counts"]["keys"].is_i64(), "{body}");
+    assert_eq!(body["attention"]["locked_users"], 0);
+    assert_eq!(body["attention"]["open_invitations"], 0);
+    assert_eq!(body["attention"]["dead_deliveries"], 0);
+    assert!(body["attention"]["expiring_keys"].is_array());
+    assert_eq!(
+        body["attention_total"],
+        body["attention"]["expiring_keys"].as_array().unwrap().len()
+    );
+    let recent = body["recent"].as_array().unwrap();
+    assert!(!recent.is_empty() && recent.len() <= 8, "{body}");
+    assert!(
+        recent.iter().any(|e| e["name"] == "authorization.granted"),
+        "{body}"
+    );
+    assert!(
+        recent
+            .iter()
+            .all(|e| e["actor_type"].is_string() && e["occurred_at"].is_string())
+    );
 
     // Window bounds and read access.
     let (status, _, _) = call(

@@ -1,9 +1,10 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
+import { Skeleton } from "@/components/base/skeleton";
+import { fmtDateTime } from "@/lib/console/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Button } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
 import { useConsole } from "@/lib/console/session";
 
 /** The upstream identities linked to a user, with unlinking. */
@@ -29,13 +30,13 @@ export function LinkedIdentities({ tenant, id, editable }: { tenant: string; id:
     <div className="mt-4 border-t border-line pt-3">
       <h3 className="text-body font-semibold text-ink">Linked identities</h3>
       {list.isPending ? (
-        <Spinner label="Loading…" />
+        <Skeleton shape="lines" count={4} label="Loading…" />
       ) : list.isError ? (
         <p role="alert" className="mt-1 text-body text-danger">
           {list.error.message}
         </p>
       ) : list.data.length === 0 ? (
-        <p className="mt-1 text-small text-muted">No upstream identity is linked.</p>
+        <EmptyState compact title="No upstream identity is linked." />
       ) : (
         <ul aria-label="Linked identities" className="mt-1 divide-y divide-line">
           {list.data.map((i) => (
@@ -47,8 +48,8 @@ export function LinkedIdentities({ tenant, id, editable }: { tenant: string; id:
                   {(i.external_email ?? i.external_username) && <span className="text-muted">{i.external_email ?? i.external_username}</span>}
                 </span>
                 <span className="text-small text-muted">
-                  Subject {i.external_subject} · linked {formatDate("en", i.linked_at)}
-                  {i.last_login_at ? ` · last sign-in ${formatDate("en", i.last_login_at)}` : ""}
+                  Subject {i.external_subject} · linked {fmtDateTime(i.linked_at)}
+                  {i.last_login_at ? ` · last sign-in ${fmtDateTime(i.last_login_at)}` : ""}
                 </span>
               </span>
               {editable && (

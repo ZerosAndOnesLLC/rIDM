@@ -310,6 +310,39 @@ async fn user_manager_runs_the_user_lifecycle() {
     )
     .await;
     assert_eq!(page["items"][0]["status"], "deleted");
+    // Listed rows carry the strongest second step enrolled; alice has none.
+    assert!(page["items"][0].get("second_step").is_some(), "{page}");
+    assert!(page["items"][0]["second_step"].is_null());
+    // Server-side sort with a keyset cursor over the sort key (the console's
+    // column headers): one row per page, then the page after it.
+    let (status, page, _) = get_json(
+        &app,
+        &format!("{base}?sort=username&dir=desc&include_deleted=true&limit=1"),
+        Some(&t),
+    )
+    .await;
+    assert_eq!(status, 200, "{page}");
+    assert_eq!(page["items"].as_array().unwrap().len(), 1);
+    if let Some(c) = page["next_cursor"].as_str() {
+        let (status, next, _) = get_json(
+            &app,
+            &format!("{base}?sort=username&dir=desc&include_deleted=true&limit=1&cursor={c}"),
+            Some(&t),
+        )
+        .await;
+        assert_eq!(status, 200, "{next}");
+        assert!(
+            next["items"][0]["username"].as_str().unwrap()
+                < page["items"][0]["username"].as_str().unwrap()
+        );
+    }
+    let (status, page, _) = get_json(
+        &app,
+        &format!("{base}?sort=last_login&dir=desc&limit=1"),
+        Some(&t),
+    )
+    .await;
+    assert_eq!(status, 200, "{page}");
 }
 
 #[tokio::test]

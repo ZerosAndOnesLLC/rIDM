@@ -263,6 +263,8 @@ live preview.
 | `mode` | `"system"` | Light/dark policy: `system` follows each person's device, `light` and `dark` force one |
 | `allow_theme_switch` | `true` | Show a light/dark switch so people can override `mode` on their device |
 | `support_url` | `null` | "Need help?" link |
+| `headline` | `null` | One line for the sign-in page's brand panel (at most 120 characters). With the Signal v2 skin the page splits into the panel and the form once this is set; the other skins keep the single card |
+| `tagline` | `null` | A sentence under the headline (at most 240 characters) |
 | `custom_css` | `null` | Stylesheet applied to the login pages after the theme |
 | `links` | `[]` | Extra footer links, each `{"label": "…", "url": "…"}` |
 

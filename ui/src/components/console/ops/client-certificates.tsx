@@ -1,11 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { BadgeCheck, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { ConfirmDialog } from "@/components/base/confirm-dialog";
+import { DataTable, type Column } from "@/components/base/data-table";
+import { EmptyState } from "@/components/base/empty-state";
+import { useToast } from "@/components/base/toast";
 import { TextArea, TextInput } from "@/components/console/form";
-import { Badge, Button, IconButton, Modal, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
+import { Badge, Button, IconButton, PageHeader } from "@/components/console/ui";
 import type { MtlsTrustAnchor } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
 import { ErrorLine } from "../access/common";
@@ -16,6 +19,7 @@ const DAY = 24 * 60 * 60 * 1000;
 export function ClientCertificatesPage({ tenant }: { tenant: string }) {
   const { client, can } = useConsole();
   const qc = useQueryClient();
+  const { toast } = useToast();
   const editable = can("ridm:tenants:write");
   const anchors = useQuery({
     queryKey: ["mtls-trust-anchors", tenant],
@@ -46,11 +50,39 @@ export function ClientCertificatesPage({ tenant }: { tenant: string }) {
       const { error } = await client.DELETE("/admin/tenants/{slug}/mtls/trust-anchors/{anchor}", { params: { path: { slug: tenant, anchor: id } } });
       if (error) throw new Error(error.detail ?? error.title);
     },
-    onSuccess: () => {
-      setRemoving(null);
-      invalidate();
-    },
+    onSuccess: invalidate,
   });
+  const now = anchors.data?.now ?? 0;
+
+  const columns: Column<MtlsTrustAnchor>[] = [
+    { key: "name", header: "Name", width: "minmax(9rem, 1fr)", cell: (a) => <span className="truncate text-ink">{a.name}</span> },
+    { key: "subject", header: "Subject", width: "minmax(12rem, 2fr)", cell: (a) => <span className="break-words font-mono text-small text-muted">{a.subject}</span> },
+    { key: "expires", header: "Expires", width: "9rem", cell: (a) => <Expiry notAfter={a.not_after} now={now} /> },
+    {
+      key: "fingerprint",
+      header: "SHA-256 thumbprint",
+      width: "9rem",
+      cell: (a) => (
+        <span className="font-mono text-caption text-muted" title={a.fingerprint}>
+          {a.fingerprint.slice(0, 16)}…
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      hideHeader: true,
+      width: "2.5rem",
+      align: "end",
+      cell: (a) =>
+        editable ? (
+          <IconButton label={`Remove ${a.name}`} onClick={() => setRemoving(a)} className="text-danger hover:bg-danger-soft">
+            <Trash2 className="size-4" aria-hidden />
+          </IconButton>
+        ) : null,
+    },
+  ];
+
   return (
     <>
       <PageHeader
@@ -58,80 +90,49 @@ export function ClientCertificatesPage({ tenant }: { tenant: string }) {
         sub="Certificate authorities whose certificates clients may authenticate with (mutual TLS, tls_client_auth). A client certificate must chain to one of these, be valid now and allow client authentication; which client it authenticates is set on the client, by subject DN or subject alternative name."
       />
       <ErrorLine error={add.error} />
-      {anchors.isPending ? (
-        <Spinner label="Loading…" />
-      ) : anchors.isError ? (
+      {anchors.isError ? (
         <ErrorLine error={anchors.error} />
       ) : (
-        <div className="overflow-x-auto rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
-          <table className="w-full text-body">
-            <thead className="text-caption uppercase tracking-wide text-muted">
-              <tr className="border-b border-line">
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Name</th>
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Subject</th>
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Expires</th>
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">SHA-256 thumbprint</th>
-                <th scope="col" className="px-4 py-2.5 text-end font-medium"><span className="sr-only">Actions</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {anchors.data.anchors.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-muted">No certificate authorities yet. Until one is added, no tls_client_auth client can authenticate.</td>
-                </tr>
-              )}
-              {anchors.data.anchors.map((a) => (
-                <tr key={a.id} className="border-b border-line last:border-b-0">
-                  <td className="px-4 py-2 text-ink">{a.name}</td>
-                  <td className="max-w-[22rem] break-words px-4 py-2 font-mono text-small text-muted">{a.subject}</td>
-                  <td className="whitespace-nowrap px-4 py-2">
-                    <Expiry notAfter={a.not_after} now={anchors.data.now} />
-                  </td>
-                  <td className="px-4 py-2 font-mono text-caption text-muted" title={a.fingerprint}>
-                    {a.fingerprint.slice(0, 16)}…
-                  </td>
-                  <td className="px-4 py-2 text-end">
-                    {editable && (
-                      <IconButton label={`Remove ${a.name}`} onClick={() => setRemoving(a)} className="text-danger hover:bg-danger-soft">
-                        <Trash2 className="size-4" aria-hidden />
-                      </IconButton>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {editable && (
-            <form
-              className="flex flex-col gap-2 border-t border-line p-3"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (name.trim() && pem.trim()) add.mutate();
-              }}
-            >
-              <TextInput aria-label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Partner issuing CA" className="max-w-[20rem]" />
-              <TextArea aria-label="CA certificate (PEM)" value={pem} onChange={(e) => setPem(e.target.value)} placeholder={"-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----"} rows={6} spellCheck={false} className="font-mono text-small" />
-              <div>
-                <Button type="submit" variant="primary" disabled={!name.trim() || !pem.trim() || add.isPending}>
-                  <Plus className="size-4" aria-hidden />
-                  Add certificate authority
-                </Button>
-              </div>
-            </form>
-          )}
-        </div>
+        <DataTable
+          label="Certificate authorities"
+          columns={columns}
+          rows={anchors.data?.anchors ?? []}
+          rowKey={(a) => a.id}
+          loading={anchors.isPending}
+          minWidth="42rem"
+          empty={<EmptyState icon={BadgeCheck} title="No certificate authorities yet" description="Until one is added, no tls_client_auth client can authenticate." />}
+        />
       )}
-      <Modal open={removing !== null} onOpenChange={(o) => !o && setRemoving(null)} title={`Remove ${removing?.name ?? ""}?`} description="Clients whose certificates chain only to this authority stop authenticating at once.">
-        <div className="flex flex-col gap-4 px-5 pb-5 pt-3">
-          <ErrorLine error={remove.error} />
-          <div className="flex justify-end gap-2">
-            <Button onClick={() => setRemoving(null)}>Cancel</Button>
-            <Button variant="danger" disabled={remove.isPending} onClick={() => removing && remove.mutate(removing.id)}>
-              {remove.isPending ? "Removing…" : "Remove"}
+      {editable && !anchors.isPending && (
+        <form
+          className="mt-3 flex flex-col gap-2 rounded-[var(--radius)] border border-line bg-paper p-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (name.trim() && pem.trim()) add.mutate();
+          }}
+        >
+          <TextInput aria-label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Partner issuing CA" className="max-w-[20rem]" />
+          <TextArea aria-label="CA certificate (PEM)" value={pem} onChange={(e) => setPem(e.target.value)} placeholder={"-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----"} rows={6} spellCheck={false} className="font-mono text-small" />
+          <div>
+            <Button type="submit" variant="primary" disabled={!name.trim() || !pem.trim() || add.isPending}>
+              <Plus className="size-4" aria-hidden />
+              Add certificate authority
             </Button>
           </div>
-        </div>
-      </Modal>
+        </form>
+      )}
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(o) => !o && setRemoving(null)}
+        title={`Remove ${removing?.name ?? ""}?`}
+        description="Clients whose certificates chain only to this authority stop authenticating at once."
+        confirmLabel="Remove"
+        onConfirm={async () => {
+          if (!removing) return;
+          await remove.mutateAsync(removing.id);
+          toast({ title: "Certificate authority removed", description: removing.name });
+        }}
+      />
     </>
   );
 }

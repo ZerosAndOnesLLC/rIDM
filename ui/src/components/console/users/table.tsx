@@ -1,32 +1,59 @@
 "use client";
 
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { Download, Mail, Plus, Upload } from "lucide-react";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronRight, Download, KeyRound, Mail, MessageSquare, Plus, Smartphone, Upload, UsersRound } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import { SelectInput, TextInput } from "@/components/console/form";
-import { Badge, Button, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
+import { useEffect, useState } from "react";
+import { BulkBar, bulkButtonClass } from "@/components/base/bulk-bar";
+import { ConfirmDialog } from "@/components/base/confirm-dialog";
+import { DataTable, ListFooter, type Column, type SortState } from "@/components/base/data-table";
+import { EmptyState } from "@/components/base/empty-state";
+import { useToast } from "@/components/base/toast";
+import { ChipSelect, ChipToggle, TextInput } from "@/components/console/form";
+import { Avatar, Button, PageHeader, Status } from "@/components/console/ui";
+import { bulkToast, runBulk } from "@/lib/console/bulk";
+import { useNavCounts } from "@/lib/console/counts";
+import { fmtWhen, isFresh } from "@/lib/console/format";
 import { useDebounced } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
-import { useRowWindow } from "@/lib/console/virtual";
-import { STATUS_LABELS, statusTone, userHref, type UserStatus } from "@/lib/console/users";
+import { STATUS_LABELS, displayName, statusTone, userHref, type UserStatus, type UserUpdate } from "@/lib/console/users";
+import { useQueryParams } from "@/lib/params";
 
-const ROW = 48;
+const SORTS = ["created", "username", "email", "status", "last_login"] as const;
+type Sort = (typeof SORTS)[number];
+const STATUSES = Object.keys(STATUS_LABELS) as UserStatus[];
 
+/**
+ * The users list: filters and sort in the URL, sorted on the server with
+ * keyset cursors, windowed rows, checkbox selection with a bulk bar for
+ * enable, disable and delete.
+ */
 export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: { tenant: string; onCreate: () => void; onInvite: () => void; onImport: () => void; onExport: () => void }) {
   const { client, can } = useConsole();
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<UserStatus | "">("");
-  const [deleted, setDeleted] = useState(false);
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const { counts, attention } = useNavCounts(tenant);
+  const params = useQueryParams();
+  const [search, setSearch] = useState(params.get("q"));
   const q = useDebounced(search.trim(), 250);
+  useEffect(() => params.set({ q }), [q, params]);
+  const statusParam = params.get("status");
+  const status: UserStatus | "" = (STATUSES as string[]).includes(statusParam) ? (statusParam as UserStatus) : "";
+  const deleted = params.get("deleted") === "1";
+  const sortParam = params.get("sort");
+  const sort: SortState = { key: (SORTS as readonly string[]).includes(sortParam) ? sortParam : "created", dir: params.get("dir") === "desc" ? "desc" : "asc" };
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [confirm, setConfirm] = useState<"delete" | null>(null);
+
   const users = useInfiniteQuery({
-    queryKey: ["users", tenant, q, status, deleted],
+    queryKey: ["users", tenant, q, status, deleted, sort.key, sort.dir],
     initialPageParam: undefined as string | undefined,
     queryFn: async ({ pageParam }) => {
       const { data, error } = await client.GET("/admin/tenants/{slug}/users", {
-        params: { path: { slug: tenant }, query: { search: q || undefined, status: status || undefined, include_deleted: deleted || undefined, cursor: pageParam, limit: 100 } },
+        params: {
+          path: { slug: tenant },
+          query: { search: q || undefined, status: status || undefined, include_deleted: deleted || undefined, sort: sort.key as Sort, dir: sort.dir, cursor: pageParam, limit: 100 },
+        },
       });
       if (error) throw new Error(error.detail ?? error.title);
       return data;
@@ -34,20 +61,93 @@ export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: {
     getNextPageParam: (last) => last.next_cursor ?? undefined,
   });
   const rows = users.data?.pages.flatMap((p) => p.items) ?? [];
-  const parentRef = useRef<HTMLDivElement>(null);
-  const { items, totalSize } = useRowWindow(rows.length, ROW, parentRef);
-  const last = items[items.length - 1];
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = users;
-  useEffect(() => {
-    if (last && last.index >= rows.length - 20 && hasNextPage && !isFetchingNextPage) void fetchNextPage();
-  }, [last, rows.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
   const writer = can("ridm:users:write");
+  type Row = (typeof rows)[number];
+  const chosen = rows.filter((u) => selected.has(u.id));
+
+  const act = async (what: "enable" | "disable" | "delete") => {
+    const path = (id: string) => ({ slug: tenant, user: id });
+    const result = await runBulk(chosen, async (u) => {
+      const r =
+        what === "delete"
+          ? await client.DELETE("/admin/tenants/{slug}/users/{user}", { params: { path: path(u.id) } })
+          : await client.PATCH("/admin/tenants/{slug}/users/{user}", { params: { path: path(u.id) }, body: { status: what === "disable" ? "disabled" : "active" } as UserUpdate });
+      if (r.error) throw new Error(r.error.detail ?? r.error.title);
+    });
+    toast(bulkToast(result, what === "delete" ? "deleted" : what === "disable" ? "disabled" : "enabled", ["user", "users"]));
+    setSelected(new Set());
+    await qc.invalidateQueries({ queryKey: ["users", tenant] });
+  };
+
+  const columns: Column<Row>[] = [
+    {
+      key: "username",
+      header: "User",
+      width: "minmax(12rem, 2fr)",
+      sortable: true,
+      link: false,
+      cell: (u) => {
+        const name = displayName(u);
+        return (
+          <span className="flex min-w-0 items-center gap-2.5">
+            <Avatar name={u.username} />
+            <span className="min-w-0">
+              <Link href={userHref(tenant, u.id)} className="block truncate font-semibold leading-tight text-ink no-underline hover:underline underline-offset-4">
+                {name ?? u.username}
+              </Link>
+              {name && <span className="block truncate text-caption leading-snug text-muted">{u.username}</span>}
+            </span>
+          </span>
+        );
+      },
+    },
+    {
+      key: "email",
+      header: "Email",
+      width: "minmax(10rem, 2fr)",
+      sortable: true,
+      cell: (u) => (
+        <span className="truncate text-muted">
+          {u.email ?? "—"}
+          {u.email && !u.email_verified && <span className="ms-1.5 text-caption text-warn">unverified</span>}
+        </span>
+      ),
+    },
+    { key: "status", header: "Status", width: "6.5rem", sortable: true, cell: (u) => <Status tone={statusTone(u.status)}>{STATUS_LABELS[u.status]}</Status> },
+    {
+      key: "last_login",
+      header: "Last sign-in",
+      width: "8.5rem",
+      sortable: true,
+      cell: (u) => (
+        <span className={`inline-flex items-center gap-1.5 font-mono text-caption ${isFresh(u.last_login_at) ? "text-ink-2" : "text-muted"}`}>
+          <i aria-hidden className={`size-1.5 rounded-full ${isFresh(u.last_login_at) ? "bg-ok" : "bg-line-strong"}`} />
+          {u.last_login_at ? fmtWhen(u.last_login_at) : "Never"}
+        </span>
+      ),
+    },
+    { key: "second_step", header: "Second step", width: "6.5rem", cell: (u) => <SecondStep step={u.second_step ?? null} /> },
+    {
+      key: "open",
+      header: "Open",
+      hideHeader: true,
+      width: "2.25rem",
+      align: "end",
+      cell: (u) => (
+        <Link href={userHref(tenant, u.id)} aria-label={`Open ${u.username}`} className="row-action flex size-7 items-center justify-center rounded-[var(--radius)] text-muted no-underline hover:bg-ground hover:text-ink">
+          <ChevronRight className="rtl-flip size-4" aria-hidden />
+        </Link>
+      ),
+    },
+  ];
 
   return (
     <>
       <PageHeader
         title="Users"
-        sub="Everyone who can sign in to this tenant."
+        count={counts.users}
+        sub={`Everyone who can sign in to this tenant.${attention.users ? ` ${attention.users} ${attention.users === 1 ? "invitation" : "invitations"} waiting.` : ""}`}
         actions={
           <>
             <Button onClick={onExport}>
@@ -75,82 +175,78 @@ export function UsersTable({ tenant, onCreate, onInvite, onImport, onExport }: {
           </>
         }
       />
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <TextInput aria-label="Search users" placeholder="Search by username or email…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-sm" />
-        <SelectInput aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value as UserStatus | "")} className="max-w-[12rem]">
-          <option value="">Any status</option>
-          {(Object.keys(STATUS_LABELS) as UserStatus[])
-            .filter((s) => s !== "deleted")
-            .map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABELS[s]}
-              </option>
-            ))}
-        </SelectInput>
-        <label className="flex items-center gap-2 text-body text-ink">
-          <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={deleted} onChange={(e) => setDeleted(e.target.checked)} />
-          Include deleted
-        </label>
-        <span className="ms-auto text-small text-muted" aria-live="polite">
-          {rows.length}
-          {users.hasNextPage ? "+" : ""} shown
-        </span>
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        <TextInput aria-label="Search users" placeholder="Filter by username or email…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs flex-1 basis-[15rem]" />
+        <ChipSelect label="Status" value={status} onChange={(v) => params.set({ status: v })}>
+          <option value="">any</option>
+          {STATUSES.filter((s) => s !== "deleted").map((s) => (
+            <option key={s} value={s}>
+              {STATUS_LABELS[s]}
+            </option>
+          ))}
+        </ChipSelect>
+        <ChipToggle label="Include deleted" checked={deleted} onChange={(v) => params.set({ deleted: v ? "1" : "" })} />
       </div>
       {users.isError ? (
         <p role="alert" className="text-lead text-danger">
           {users.error.message}
         </p>
-      ) : users.isPending ? (
-        <Spinner label="Loading users…" />
       ) : (
-        <div className="overflow-x-auto rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
-          <div role="table" aria-label="Users" aria-rowcount={rows.length} className="min-w-[38rem] text-body">
-            <div role="row" className="grid grid-cols-[minmax(10rem,2fr)_minmax(10rem,2fr)_7rem_9rem] gap-3 border-b border-line px-4 py-2.5 text-caption uppercase tracking-wide text-muted">
-              <span role="columnheader">Username</span>
-              <span role="columnheader">Email</span>
-              <span role="columnheader">Status</span>
-              <span role="columnheader">Last sign-in</span>
-            </div>
-            {rows.length === 0 ? (
-              <p className="px-4 py-8 text-center text-muted">{q || status ? "No user matches." : "No users yet."}</p>
+        <DataTable
+          label="Users"
+          columns={columns}
+          rows={rows}
+          rowKey={(u) => u.id}
+          rowHref={(u) => userHref(tenant, u.id)}
+          loading={users.isPending}
+          virtualize
+          minWidth="48rem"
+          sort={{ state: sort, onChange: (s) => params.set({ sort: s.key === "created" && s.dir === "asc" ? "" : s.key, dir: s.dir === "asc" ? "" : "desc" }) }}
+          selection={writer ? { selected, onChange: setSelected, name: (u) => u.username } : undefined}
+          onEndReached={() => {
+            if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+          }}
+          empty={
+            q || status ? (
+              <EmptyState icon={UsersRound} title="No user matches" description="Try another name, email or status." />
             ) : (
-              <div ref={parentRef} className="max-h-[calc(100vh-18rem)] overflow-y-auto">
-                <div role="rowgroup" style={{ height: totalSize, position: "relative" }}>
-                  {items.map((v) => {
-                    const u = rows[v.index]!;
-                    return (
-                      <div
-                        key={u.id}
-                        role="row"
-                        aria-rowindex={v.index + 1}
-                        style={{ position: "absolute", top: 0, left: 0, width: "100%", height: v.size, transform: `translateY(${v.start}px)` }}
-                        className="grid grid-cols-[minmax(10rem,2fr)_minmax(10rem,2fr)_7rem_9rem] items-center gap-3 border-b border-line px-4 hover:bg-ground/60"
-                      >
-                        <span role="cell" className="min-w-0 truncate font-medium text-ink">
-                          <Link href={userHref(tenant, u.id)} className="hover:underline underline-offset-4">
-                            {u.username}
-                          </Link>
-                        </span>
-                        <span role="cell" className="min-w-0 truncate text-muted">
-                          {u.email ?? "—"}
-                          {u.email && !u.email_verified && <span className="ms-1 text-caption">(unverified)</span>}
-                        </span>
-                        <span role="cell">
-                          <Badge tone={statusTone(u.status)}>{STATUS_LABELS[u.status]}</Badge>
-                        </span>
-                        <span role="cell" className="text-muted">
-                          {u.last_login_at ? formatDate("en", u.last_login_at, { dateStyle: "medium" }) : "Never"}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-                {users.isFetchingNextPage && <p className="py-2 text-center text-small text-muted">Loading more…</p>}
-              </div>
-            )}
-          </div>
-        </div>
+              <EmptyState icon={UsersRound} title="No users yet" description="Create the first user, invite people by email, or import a file." action={writer ? <Button variant="primary" onClick={onCreate}>New user</Button> : undefined} />
+            )
+          }
+          footer={<ListFooter mode="auto" count={rows.length} hasMore={Boolean(hasNextPage)} loading={isFetchingNextPage} note={sort.key !== "created" || sort.dir !== "asc" ? `sorted by ${sort.key.replace("_", " ")}${sort.dir === "desc" ? ", descending" : ""}` : undefined} />}
+        />
       )}
+      <BulkBar count={chosen.length} label="Selected users" onClear={() => setSelected(new Set())}>
+        <button type="button" className={bulkButtonClass()} onClick={() => void act("enable")}>
+          Enable
+        </button>
+        <button type="button" className={bulkButtonClass()} onClick={() => void act("disable")}>
+          Disable
+        </button>
+        <button type="button" className={bulkButtonClass(true)} onClick={() => setConfirm("delete")}>
+          Delete
+        </button>
+      </BulkBar>
+      <ConfirmDialog
+        open={confirm === "delete"}
+        onOpenChange={(o) => !o && setConfirm(null)}
+        title={`Delete ${chosen.length} ${chosen.length === 1 ? "user" : "users"}?`}
+        description="Each account is soft-deleted: its sessions and devices end at once; it can be purged later."
+        confirmLabel="Delete"
+        onConfirm={() => act("delete")}
+      />
     </>
+  );
+}
+
+/** The strongest second step enrolled, as a glyph with its name for assistive tech. */
+export function SecondStep({ step }: { step: string | null }) {
+  if (!step) return <span className="text-muted">—</span>;
+  const [Icon, label] = step === "passkey" ? [KeyRound, "Passkey"] : step === "totp" ? [Smartphone, "Authenticator app"] : [MessageSquare, "Emailed or texted codes"];
+  return (
+    <span className="inline-flex items-center gap-1.5 text-accent-text" title={label}>
+      <Icon className="size-[0.9375rem]" aria-hidden />
+      <span className="sr-only">{label}</span>
+    </span>
   );
 }

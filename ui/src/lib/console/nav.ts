@@ -20,7 +20,12 @@ export interface NavItem {
    * inside the organization their sign-in acts in (Phase 12.2).
    */
   orgScoped?: boolean;
+  /** The sidebar shows how many there are (`useNavCounts`) in place of the key hint. */
+  count?: NavCountKey;
 }
+
+/** Lists the sidebar counts; the tenant's statistics supply the numbers. */
+export type NavCountKey = "users" | "groups" | "clients" | "tenants" | "webhooks" | "keys" | "idps";
 
 export interface NavGroup {
   title: string | null;
@@ -35,8 +40,8 @@ export const NAV: NavGroup[] = [
   {
     title: "Identity",
     items: [
-      { label: "Users", href: "/console/users/", icon: UsersRound, permission: "ridm:users:read", key: "u" },
-      { label: "Groups", href: "/console/groups/", icon: FolderTree, permission: "ridm:groups:read", key: "g" },
+      { label: "Users", href: "/console/users/", icon: UsersRound, permission: "ridm:users:read", key: "u", count: "users" },
+      { label: "Groups", href: "/console/groups/", icon: FolderTree, permission: "ridm:groups:read", key: "g", count: "groups" },
       { label: "Organizations", href: "/console/organizations/", icon: Briefcase, permission: "ridm:orgs:read", key: "z", orgScoped: true },
       { label: "Roles", href: "/console/roles/", icon: ShieldCheck, permission: "ridm:roles:read", key: "r" },
     ],
@@ -44,7 +49,7 @@ export const NAV: NavGroup[] = [
   {
     title: "Applications",
     items: [
-      { label: "Clients", href: "/console/clients/", icon: AppWindow, permission: "ridm:clients:read", key: "c" },
+      { label: "Clients", href: "/console/clients/", icon: AppWindow, permission: "ridm:clients:read", key: "c", count: "clients" },
       { label: "SAML", href: "/console/saml/", icon: FileBadge, permission: "ridm:clients:read", key: "b" },
       { label: "Resource servers", href: "/console/resource-servers/", icon: Server, permission: "ridm:resource-servers:read", key: "a" },
       { label: "Scopes", href: "/console/scopes/", icon: Tags, permission: "ridm:scopes:read", key: "p" },
@@ -54,7 +59,7 @@ export const NAV: NavGroup[] = [
   {
     title: "Security",
     items: [
-      { label: "Signing keys", href: "/console/keys/", icon: KeyRound, permission: "ridm:keys:read", key: "k" },
+      { label: "Signing keys", href: "/console/keys/", icon: KeyRound, permission: "ridm:keys:read", key: "k", count: "keys" },
       { label: "Audit log", href: "/console/audit/", icon: ScrollText, permission: "ridm:audit:read", key: "l" },
       { label: "IP rules", href: "/console/ip-rules/", icon: Network, permission: "ridm:tenants:read", key: "i" },
       { label: "Client certificates", href: "/console/client-certificates/", icon: BadgeCheck, permission: "ridm:tenants:read", key: "n" },
@@ -63,16 +68,16 @@ export const NAV: NavGroup[] = [
   {
     title: "Integrations",
     items: [
-      { label: "Webhooks", href: "/console/webhooks/", icon: Webhook, permission: "ridm:webhooks:read", key: "w" },
+      { label: "Webhooks", href: "/console/webhooks/", icon: Webhook, permission: "ridm:webhooks:read", key: "w", count: "webhooks" },
       { label: "Messaging", href: "/console/messaging/", icon: Mail, permission: "ridm:messaging:read", key: "e" },
-      { label: "Identity providers", href: "/console/identity-providers/", icon: Globe, permission: "ridm:idps:read", key: "d" },
+      { label: "Identity providers", href: "/console/identity-providers/", icon: Globe, permission: "ridm:idps:read", key: "d", count: "idps" },
       { label: "Provisioning", href: "/console/provisioning/", icon: Plug, permission: "ridm:scim:read", key: "v" },
     ],
   },
   {
     title: "Tenant",
     items: [
-      { label: "Tenants", href: "/console/tenants/", icon: Building2, permission: "ridm:tenants:read", key: "t" },
+      { label: "Tenants", href: "/console/tenants/", icon: Building2, permission: "ridm:tenants:read", key: "t", count: "tenants" },
       { label: "Settings", href: "/console/settings/", icon: Settings2, permission: "ridm:tenants:read", key: "s" },
       { label: "Feature flags", href: "/console/features/", icon: ToggleRight, permission: "ridm:tenants:read", key: "f" },
       { label: "Export & import", href: "/console/config/", icon: ArrowLeftRight, permission: "ridm:tenants:export", key: "x" },

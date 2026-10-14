@@ -128,7 +128,7 @@ function Organization({ flow, post }: { flow: PublicFlow; post: Post }) {
         {flow.organizations.map((org) => (
           <label
             key={org.id}
-            className="flex min-h-11 cursor-pointer items-center gap-3 rounded-[var(--radius)] border border-line px-3 py-2 hover:bg-paper has-checked:border-accent"
+            className="flex min-h-11 cursor-pointer items-center gap-3 rounded-[var(--radius)] border border-line-strong bg-paper px-3 py-2 hover:bg-ground has-checked:border-accent-ring has-checked:bg-accent-soft"
           >
             <input
               type="radio"
@@ -284,7 +284,7 @@ function AttributeInput({
           value={String(value ?? "")}
           onChange={(e) => onChange(e.target.value)}
           required={def.required}
-          className="min-h-11 rounded-[var(--radius)] border border-line bg-paper px-3 text-md font-normal text-ink sm:text-lead"
+          className="min-h-11 rounded-[var(--radius)] border border-line-strong bg-paper px-3 text-md font-normal text-ink sm:text-lead"
         >
           <option value="">—</option>
           {def.validation.values.map((v) => (

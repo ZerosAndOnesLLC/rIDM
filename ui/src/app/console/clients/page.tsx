@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -7,11 +8,10 @@ import { ClientDetail } from "@/components/console/clients/detail";
 import { RevealModal, type Revealed } from "@/components/console/clients/reveal";
 import { ClientsTable } from "@/components/console/clients/table";
 import { ClientWizard } from "@/components/console/clients/wizard";
-import { Spinner } from "@/components/ui";
 import { clientHref, type RevealView } from "@/lib/console/clients";
 import { useConsoleTenant } from "@/lib/console/tenant";
 
-/** `/console/clients/`: the table, or one client when `?client=` is set. */
+/** `/console/clients/`: the table, with one client's panel over it when `?client=` is set. */
 export default function ClientsPage() {
   const tenant = useConsoleTenant();
   const sp = useSearchParams();
@@ -21,8 +21,7 @@ export default function ClientsPage() {
   const [revealed, setRevealed] = useState<Revealed | null>(null);
   const [goTo, setGoTo] = useState<string | null>(null);
 
-  if (!tenant) return <Spinner label="Loading…" />;
-  if (id) return <ClientDetail key={id} tenant={tenant} id={id} />;
+  if (!tenant) return <Skeleton shape="lines" count={4} label="Loading…" />;
 
   const onCreated = (created: RevealView) => {
     const target = clientHref(tenant, created.id);
@@ -44,6 +43,7 @@ export default function ClientsPage() {
   return (
     <>
       <ClientsTable tenant={tenant} onCreate={() => setWizard(true)} />
+      {id && <ClientDetail key={id} tenant={tenant} id={id} />}
       <ClientWizard tenant={tenant} open={wizard} onOpenChange={setWizard} onCreated={onCreated} />
       <RevealModal
         revealed={revealed}

@@ -1,12 +1,12 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Trash2, X } from "lucide-react";
 import { useCallback, useMemo, useState, type FormEvent } from "react";
 import type { Schemas } from "@api/client";
 import { SaveIndicator, TextInput, Toggle } from "@/components/console/form";
 import { Badge, Button, Card, IconButton, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { useAutoSave } from "@/lib/console/autosave";
 import { useConsole } from "@/lib/console/session";
 
@@ -44,7 +44,7 @@ export function FeatureFlagsPage({ tenant }: { tenant: string }) {
       </>
     );
   }
-  if (!query.data) return <Spinner label="Loading feature flags…" />;
+  if (!query.data) return <Skeleton shape="lines" count={4} label="Loading feature flags…" />;
   // A failed save reloads the stored flags into a fresh editor.
   return <Editor key={`${tenant}:${generation}`} tenant={tenant} initial={query.data.settings.features ?? {}} onReload={() => setGeneration((g) => g + 1)} />;
 }

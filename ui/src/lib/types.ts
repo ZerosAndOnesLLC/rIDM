@@ -178,6 +178,8 @@ export interface PublicTenant {
     contrast_color: string | null;
     background_color: string | null;
     support_url: string | null;
+    headline: string | null;
+    tagline: string | null;
     custom_css: string | null;
     links: BrandingLink[];
     skin: "signal-v2" | "signal" | "vault" | "registry";

@@ -39,8 +39,13 @@ export interface Policy {
 }
 
 export const DEFAULT_POLICY: Policy = { mode: "system", allowSwitch: true };
+export const DEFAULT_SKIN: Skin = "signal-v2";
 
 const CACHE_PREFIX = "ridm.appearance:";
+
+export function isSkin(v: unknown): v is Skin {
+  return SKINS.some((s) => s.id === v);
+}
 
 // ---- policy store ------------------------------------------------------------------
 
@@ -61,6 +66,30 @@ export function subscribePolicy(cb: () => void): () => void {
   listeners.add(cb);
   return () => {
     listeners.delete(cb);
+  };
+}
+
+// ---- skin store ---------------------------------------------------------------------
+// The shell reads the skin for its structural switches (chrome variant, icons,
+// filters); the stylesheet reads `data-skin` for everything tokens can do.
+
+let skin: Skin = DEFAULT_SKIN;
+const skinListeners = new Set<() => void>();
+
+export function getSkin(): Skin {
+  return skin;
+}
+
+export function setSkin(next: Skin): void {
+  if (next === skin) return;
+  skin = next;
+  skinListeners.forEach((l) => l());
+}
+
+export function subscribeSkin(cb: () => void): () => void {
+  skinListeners.add(cb);
+  return () => {
+    skinListeners.delete(cb);
   };
 }
 
@@ -98,6 +127,7 @@ export function applyAppearance(root: HTMLElement, a: Appearance, slug?: string)
   if (pair) applyTheme(root, pair);
   else if (a.primary_color && isCssColor(a.primary_color)) root.style.setProperty("--accent", a.primary_color);
   root.dataset.skin = a.skin;
+  setSkin(a.skin);
   setPolicy({ mode: a.mode, allowSwitch: a.allow_theme_switch });
   if (slug) {
     try {
@@ -113,7 +143,22 @@ export function resetAppearance(root: HTMLElement): void {
   clearTheme(root);
   root.style.removeProperty("--accent");
   delete root.dataset.skin;
+  setSkin(DEFAULT_SKIN);
   setPolicy(DEFAULT_POLICY);
+}
+
+/** The cached skin for the tenant named in the page's query string, for the first render. */
+export function cachedSkin(): Skin {
+  try {
+    const slug = new URLSearchParams(window.location.search).get("tenant");
+    if (!slug) return DEFAULT_SKIN;
+    const raw = localStorage.getItem(`${CACHE_PREFIX}${slug}`);
+    if (!raw) return DEFAULT_SKIN;
+    const c = JSON.parse(raw) as { skin?: unknown };
+    return isSkin(c.skin) ? c.skin : DEFAULT_SKIN;
+  } catch {
+    return DEFAULT_SKIN;
+  }
 }
 
 /** The cached policy for the tenant named in the page's query string, for the first render. */

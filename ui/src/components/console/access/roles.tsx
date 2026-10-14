@@ -1,5 +1,8 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
+import { Skeleton } from "@/components/base/skeleton";
+import { ListFooter } from "@/components/base/data-table";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import Link from "next/link";
@@ -7,7 +10,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { Field, SaveIndicator, Section, SelectInput, TextInput } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { href, type Role, type RoleDetail } from "@/lib/console/access";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import { useClientNames, useResourceServers } from "@/lib/console/hooks";
@@ -46,7 +48,7 @@ export function RolesPage({ tenant, selected }: { tenant: string; selected: stri
           <Card title="Roles">
             <TextInput aria-label="Filter roles" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} className="mb-3" />
             {roles.isPending ? (
-              <Spinner label="Loading…" />
+              <Skeleton shape="lines" count={6} />
             ) : roles.isError ? (
               <ErrorLine error={roles.error} />
             ) : (
@@ -171,7 +173,7 @@ function RoleDetailView({ tenant, id, clientNames }: { tenant: string; id: strin
   });
   const refresh = () => void qc.invalidateQueries({ queryKey: ["role", tenant, id] }).then(() => setResetCount((n) => n + 1));
   if (query.isError) return <ErrorLine error={query.error} />;
-  if (!draft) return <Spinner label="Loading role…" />;
+  if (!draft) return <Skeleton shape="lines" count={4} label="Loading role…" />;
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -355,11 +357,11 @@ function Holders({ tenant, id }: { tenant: string; id: string }) {
   return (
     <Card title="Held by">
       {holders.isPending ? (
-        <Spinner label="Loading…" />
+        <Skeleton shape="lines" count={3} />
       ) : holders.isError ? (
         <ErrorLine error={holders.error} />
       ) : assignments.length === 0 ? (
-        <p className="text-body text-muted">Nobody holds this role directly.</p>
+        <EmptyState compact title="Nobody holds this role directly" description="Assign it to a user or a group from their pages." />
       ) : (
         <ul className="flex flex-wrap gap-1.5">
           {assignments.map((a) =>
@@ -376,10 +378,8 @@ function Holders({ tenant, id }: { tenant: string; id: string }) {
         </ul>
       )}
       {holders.hasNextPage && (
-        <div className="mt-2 text-center">
-          <Button onClick={() => void holders.fetchNextPage()} disabled={holders.isFetchingNextPage}>
-            {holders.isFetchingNextPage ? "Loading…" : "Load more"}
-          </Button>
+        <div className="mt-2">
+          <ListFooter mode="more" count={assignments.length} hasMore={holders.hasNextPage} loading={holders.isFetchingNextPage} onMore={() => void holders.fetchNextPage()} />
         </div>
       )}
     </Card>

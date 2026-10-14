@@ -4,8 +4,8 @@ use sqlx::types::Json;
 use sqlx::{PgExecutor, QueryBuilder};
 use uuid::Uuid;
 
-use crate::models::{Client, ClientSecretHash, ClientStatus};
-use crate::util::cursor::Cursor;
+use crate::models::{Client, ClientSecretHash, ClientSort, ClientStatus};
+use crate::util::cursor::{Cursor, SortCursor, SortDir};
 
 const COLUMNS: &str = "id, tenant_id, client_id, name, client_type, description, logo_uri, client_uri, \
     tos_uri, policy_uri, secret_hashes, jwks, jwks_uri, token_endpoint_auth_method, redirect_uris, \
@@ -197,6 +197,33 @@ pub async fn list<'e>(
     after: Option<Cursor>,
     limit: i64,
 ) -> Result<Vec<Client>, sqlx::Error> {
+    let after = after.map(|c| SortCursor {
+        key: c.created_at.to_rfc3339(),
+        id: c.id,
+    });
+    list_sorted(
+        exec,
+        tenant_id,
+        search,
+        after,
+        limit,
+        ClientSort::Created,
+        SortDir::Asc,
+    )
+    .await
+}
+
+/// The list in the order the console asked for; the cursor's key was
+/// validated by the service (a time key parses) before it gets here.
+pub async fn list_sorted<'e>(
+    exec: impl PgExecutor<'e>,
+    tenant_id: Uuid,
+    search: Option<&str>,
+    after: Option<SortCursor>,
+    limit: i64,
+    sort: ClientSort,
+    dir: SortDir,
+) -> Result<Vec<Client>, sqlx::Error> {
     let mut qb = QueryBuilder::new("SELECT ");
     qb.push(COLUMNS)
         .push(" FROM clients WHERE tenant_id = ")
@@ -214,15 +241,24 @@ pub async fn list<'e>(
             .push_bind(pattern)
             .push(")");
     }
+    let (order, cmp) = dir.sql();
     if let Some(c) = after {
-        qb.push(" AND (created_at, id) > (")
-            .push_bind(c.created_at)
-            .push(", ")
-            .push_bind(c.id)
-            .push(")");
+        qb.push(format!(" AND ({}, id) {cmp} (", sort.expr()));
+        if sort.is_time() {
+            qb.push_bind(
+                c.time()
+                    .unwrap_or(chrono::DateTime::<chrono::Utc>::UNIX_EPOCH),
+            );
+        } else {
+            qb.push_bind(c.key);
+        }
+        qb.push(", ").push_bind(c.id).push(")");
     }
-    qb.push(" ORDER BY created_at, id LIMIT ")
-        .push_bind(limit + 1);
+    qb.push(format!(
+        " ORDER BY {expr} {order}, id {order} LIMIT ",
+        expr = sort.expr()
+    ))
+    .push_bind(limit + 1);
     qb.build_query_as::<Client>().fetch_all(exec).await
 }
 

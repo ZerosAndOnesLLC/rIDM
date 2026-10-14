@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { consoleLogin, expectAccessible, loadState, TENANT, tenantSql } from "./helpers";
+import { confirmDialog, consoleLogin, expectAccessible, loadState, TENANT, tenantSql } from "./helpers";
 
 /** Signing keys, audit log, webhooks, IP rules and messaging. */
 test.describe("operations", () => {
@@ -41,13 +41,18 @@ test.describe("operations", () => {
     await card.getByRole("button", { name: "Activate" }).click();
     await expect(card.getByText("active", { exact: true })).toBeVisible({ timeout: 10_000 });
     await card.getByRole("button", { name: "Retire" }).click();
+    await confirmDialog(page);
+    // The toast is raised as the dialog confirms (and lasts five seconds); the card follows the refetch.
+    await expect(page.getByRole("status").filter({ hasText: "Key retiring" })).toBeVisible();
     await expect(card.getByText("retiring", { exact: true })).toBeVisible({ timeout: 10_000 });
     // Nothing is active now. Rotation makes a key and leaves exactly one
     // active per algorithm, and only then is the retired key revoked, so the
     // tenant never has to sign without an active key.
     await page.getByRole("button", { name: "Rotate now" }).click();
+    await confirmDialog(page);
     await expect(page.getByText("active", { exact: true })).toHaveCount(1, { timeout: 15_000 });
     await card.getByRole("button", { name: "Revoke" }).click();
+    await confirmDialog(page);
     await expect(card.getByText("revoked", { exact: true })).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: "Show public key (JWK)" }).first().click();
     await expect(page.getByLabel("Public JWK").first()).toContainText('"kty"');
@@ -58,8 +63,9 @@ test.describe("operations", () => {
     await page.goto(`/console/audit/?tenant=${TENANT}`);
     await expect(page.getByRole("heading", { name: "Audit log", level: 1 })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("button", { name: /signing_key/ }).first()).toBeVisible({ timeout: 15_000 });
+    // Filters apply as they change (debounced) and land in the URL.
     await page.getByLabel("Event").selectOption("signing_key.created");
-    await page.getByRole("button", { name: "Apply filters" }).click();
+    await page.waitForURL(/event=signing_key\.created/, { timeout: 10_000 });
     await expect(page.getByRole("button", { name: /^signing_key\.created/ }).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("button", { name: /^user\./ })).toHaveCount(0);
     await page.getByRole("button", { name: /^signing_key\.created/ }).first().click();
@@ -120,6 +126,7 @@ test.describe("operations", () => {
     await page.reload();
     await expect(page.getByRole("row").filter({ hasText: "203.0.113.0/24" }).getByLabel("Action for 203.0.113.0/24")).toHaveValue("allow", { timeout: 15_000 });
     await page.getByRole("button", { name: "Delete rule 203.0.113.0/24" }).click();
+    await confirmDialog(page);
     await expect(page.getByRole("row").filter({ hasText: "203.0.113.0/24" })).toBeHidden({ timeout: 10_000 });
   });
 

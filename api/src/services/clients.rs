@@ -19,13 +19,13 @@ use crate::cache::keys as cache_keys;
 use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    AccessTokenFormat, BackchannelDeliveryMode, Client, ClientSecretHash, ClientStatus,
+    AccessTokenFormat, BackchannelDeliveryMode, Client, ClientSecretHash, ClientSort, ClientStatus,
     ClientSubjectType, ClientType, NewClient, NewUser, STANDARD_SCOPES, SecurityProfile,
     TokenEndpointAuthMethod, User, grants,
 };
 use crate::repos;
 use crate::state::AppState;
-use crate::util::cursor::{Cursor, Page, page_size};
+use crate::util::cursor::{Cursor, Page, SortCursor, SortDir, page_size};
 
 const CLIENT_CACHE_TTL: Duration = Duration::from_secs(300);
 /// How long a rotated-out secret keeps working.
@@ -618,6 +618,34 @@ pub async fn list(
     tx.commit().await?;
     Ok(Page::from_rows(rows, limit, |c| Cursor {
         created_at: c.created_at,
+        id: c.id,
+    }))
+}
+
+/// The list sorted as the console asks (name, type or creation), with a
+/// keyset cursor over that key.
+pub async fn list_sorted(
+    state: &AppState,
+    tenant_id: Uuid,
+    search: Option<&str>,
+    cursor: Option<&str>,
+    limit: Option<u32>,
+    sort: ClientSort,
+    dir: SortDir,
+) -> AppResult<Page<Client>> {
+    let after = cursor.map(SortCursor::decode).transpose()?;
+    if let Some(c) = &after
+        && sort.is_time()
+    {
+        c.time()?;
+    }
+    let limit = page_size(limit);
+    let mut tx = db::read_tx(&state.db, tenant_id).await?;
+    let rows =
+        repos::clients::list_sorted(&mut *tx, tenant_id, search, after, limit, sort, dir).await?;
+    tx.commit().await?;
+    Ok(Page::from_rows_sorted(rows, limit, |c| SortCursor {
+        key: sort.key(c),
         id: c.id,
     }))
 }

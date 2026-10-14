@@ -52,7 +52,7 @@ export function AppearanceSection() {
       <Section id="appearance-fields" title="Appearance" description="How the sign-in pages, the account console and this console look for the tenant. The preview on the right follows every change.">
         <fieldset className="sm:col-span-2">
           <legend className="text-small font-medium text-ink">Skin</legend>
-          <p className="mt-1 text-small text-muted">The layout family and token set. Signal v2 is what ships today; the other three arrive with the console restyle and fall back to it until then.</p>
+          <p className="mt-1 text-small text-muted">The layout family and token set. Every page works in all four; Signal v2 is the default.</p>
           <div role="radiogroup" aria-label="Skin" className="mt-2 grid gap-2 sm:grid-cols-2">
             {SKINS.map((s) => (
               <button
@@ -136,6 +136,12 @@ export function AppearanceSection() {
 
         <Field label="Logo URL" hint="Shown above the card; keep it under 40 px tall." error={urlError(b.logo_url)}>
           {(id, by) => <TextInput id={id} aria-describedby={by} type="url" value={b.logo_url ?? ""} disabled={!editable} onChange={(e) => update({ branding: { logo_url: e.target.value || null } })} />}
+        </Field>
+        <Field label="Headline" hint="With the Signal v2 skin the sign-in page gains a brand panel carrying this line; the other skins keep the single card." wide>
+          {(id, by) => <TextInput id={id} aria-describedby={by} maxLength={120} value={b.headline ?? ""} disabled={!editable} onChange={(e) => update({ branding: { headline: e.target.value || null } })} />}
+        </Field>
+        <Field label="Tagline" hint="A sentence under the headline." wide>
+          {(id, by) => <TextInput id={id} aria-describedby={by} maxLength={240} value={b.tagline ?? ""} disabled={!editable} onChange={(e) => update({ branding: { tagline: e.target.value || null } })} />}
         </Field>
         <Field label="Favicon URL" error={urlError(b.favicon_url)}>
           {(id, by) => <TextInput id={id} aria-describedby={by} type="url" value={b.favicon_url ?? ""} disabled={!editable} onChange={(e) => update({ branding: { favicon_url: e.target.value || null } })} />}

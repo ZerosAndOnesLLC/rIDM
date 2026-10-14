@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Loader2, Plus, X } from "lucide-react";
+import { Check, ChevronDown, Filter, Loader2, Plus, X } from "lucide-react";
 import { useId, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import type { SaveStatus } from "@/lib/console/autosave";
 
@@ -8,20 +8,53 @@ import type { SaveStatus } from "@/lib/console/autosave";
 // leaves it zoomed; on phones every control is 16px, whatever size a caller
 // asks for (`!`), and the compact size from `sm` up.
 const control =
-  "min-h-10 w-full rounded-[var(--radius)] border border-line bg-paper px-3 text-lead text-ink placeholder:text-muted/70 hover:border-muted/60 disabled:opacity-60 max-sm:text-md!";
+  "min-h-9 w-full rounded-[var(--radius)] border border-line-strong bg-paper px-2.5 text-body text-ink placeholder:text-muted/70 hover:border-muted/70 focus:border-transparent disabled:opacity-60 max-sm:text-md!";
 
 /** A titled group of fields on the settings page. */
 export function Section({ id, title, description, children }: { id: string; title: string; description?: ReactNode; children: ReactNode }) {
   return (
-    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-20 rounded-[calc(var(--radius)+2px)] border border-line bg-paper">
+    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-20 rounded-[var(--radius-lg)] border border-line bg-paper">
       <header className="border-b border-line px-5 py-4">
         <h2 id={`${id}-title`} className="text-md font-semibold text-ink">
           {title}
         </h2>
-        {description && <p className="mt-1 text-body text-muted">{description}</p>}
+        {description && <p className="mt-1 text-small text-muted">{description}</p>}
       </header>
       <div className="grid gap-5 px-5 py-5 sm:grid-cols-2">{children}</div>
     </section>
+  );
+}
+
+/**
+ * A filter worn as a chip: a native select (so it is a combobox with the
+ * label as its name) that reads "Status: any" until it narrows the list.
+ * The other skins draw it as a plain bordered control (globals.css).
+ */
+export function ChipSelect({ label, value, onChange, children, on, className = "" }: { label: string; value: string; onChange: (v: string) => void; children: ReactNode; /** It narrows the list (styled as active). */ on?: boolean; className?: string }) {
+  const id = useId();
+  const active = on ?? value !== "";
+  return (
+    <label htmlFor={id} className={`chip-filter ${active ? "on" : ""} ${className}`}>
+      <Filter className="size-3.5 shrink-0" aria-hidden />
+      <span className="sr-only">{label}</span>
+      <span aria-hidden className="shrink-0">
+        {label}:
+      </span>
+      <select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
+        {children}
+      </select>
+      <ChevronDown className="pointer-events-none absolute end-2 size-3 shrink-0 opacity-70" aria-hidden />
+    </label>
+  );
+}
+
+/** A yes/no filter worn as a chip (a labelled checkbox). */
+export function ChipToggle({ label, checked, onChange, className = "" }: { label: string; checked: boolean; onChange: (v: boolean) => void; className?: string }) {
+  return (
+    <label className={`chip-filter ${checked ? "on" : ""} ${className}`}>
+      <input type="checkbox" className="size-3.5" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      {label}
+    </label>
   );
 }
 
@@ -162,9 +195,9 @@ export function Toggle({ label, hint, checked, onChange, disabled }: { label: st
         aria-describedby={hint ? `${id}-h` : undefined}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-60 ${checked ? "bg-accent" : "bg-line"}`}
+        className={`relative mt-0.5 h-5 w-[2.125rem] shrink-0 rounded-full transition-colors disabled:opacity-60 ${checked ? "bg-accent-solid" : "bg-line-strong"}`}
       >
-        <span className={`absolute top-0.5 size-5 rounded-full bg-white shadow transition-[inset-inline-start] ${checked ? "start-[1.375rem]" : "start-0.5"}`} />
+        <span className={`absolute top-[3px] size-3.5 rounded-full bg-white shadow transition-[inset-inline-start] ${checked ? "start-[1.0625rem]" : "start-[3px]"}`} />
       </button>
     </div>
   );
@@ -264,12 +297,12 @@ export function ColorInput({ id, value, onChange, describedBy }: { id: string; v
   );
 }
 
-/** "Saving… / Saved / Could not save" pill for the page header. */
+/** "Saving… / Saved / Could not save" for the page header and panel footers. */
 export function SaveIndicator({ status, error }: { status: SaveStatus; error: string | null }) {
-  if (status === "idle") return <span className="text-small text-muted">Changes save automatically</span>;
+  if (status === "idle") return <span className="font-mono text-caption text-muted">Changes save automatically</span>;
   if (status === "error") {
     return (
-      <span role="alert" className="inline-flex items-center gap-1.5 rounded-full bg-danger-soft px-2.5 py-1 text-small text-danger">
+      <span role="alert" className="inline-flex items-center gap-1.5 rounded-full bg-danger-soft px-2.5 py-1 text-caption text-danger">
         <X className="size-3.5" aria-hidden />
         {error ?? "Could not save"}
       </span>
@@ -277,14 +310,14 @@ export function SaveIndicator({ status, error }: { status: SaveStatus; error: st
   }
   if (status === "saved") {
     return (
-      <span role="status" className="inline-flex items-center gap-1.5 rounded-full bg-ok-soft px-2.5 py-1 text-small text-ok">
-        <Check className="size-3.5" aria-hidden />
+      <span role="status" className="inline-flex items-center gap-1.5 font-mono text-caption text-muted">
+        <Check className="size-3.5 text-ok" aria-hidden />
         Saved
       </span>
     );
   }
   return (
-    <span role="status" className="inline-flex items-center gap-1.5 text-small text-muted">
+    <span role="status" className="inline-flex items-center gap-1.5 font-mono text-caption text-muted">
       <Loader2 className="size-3.5 animate-spin" aria-hidden />
       {status === "saving" ? "Saving…" : "Unsaved changes"}
     </span>

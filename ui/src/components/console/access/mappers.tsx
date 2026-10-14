@@ -1,5 +1,7 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import Link from "next/link";
@@ -7,7 +9,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { Field, SaveIndicator, Section, SelectInput, TextArea, TextInput, Toggle } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { MAPPER_TYPES, defaultMapper, href, type ClaimMapperRow, type MapperConfig, type MapperType } from "@/lib/console/access";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import { useClientNames } from "@/lib/console/hooks";
@@ -47,11 +48,11 @@ export function MappersPage({ tenant, selected }: { tenant: string; selected: st
         list={
           <Card title="Mappers">
             {mappers.isPending ? (
-              <Spinner label="Loading…" />
+              <Skeleton shape="lines" count={4} label="Loading…" />
             ) : mappers.isError ? (
               <ErrorLine error={mappers.error} />
             ) : rows.length === 0 ? (
-              <p className="text-body text-muted">No mappers yet.</p>
+              <EmptyState compact title="No mappers yet" />
             ) : (
               <ul className="flex flex-col gap-0.5">
                 {rows.map((m) => (
@@ -253,7 +254,7 @@ function MapperView({ tenant, id, clientNames }: { tenant: string; id: string; c
     },
   });
   if (query.isError) return <ErrorLine error={query.error} />;
-  if (!draft) return <Spinner label="Loading…" />;
+  if (!draft) return <Skeleton shape="lines" count={4} label="Loading…" />;
   const config = (draft.config ?? defaultMapper("hardcoded")) as MapperConfig;
   return (
     <div className="flex flex-col gap-4">

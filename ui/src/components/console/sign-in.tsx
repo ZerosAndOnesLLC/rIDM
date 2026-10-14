@@ -1,6 +1,7 @@
 "use client";
 
 import { ShieldCheck } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Alert, Button, TextField } from "@/components/ui";
 import { AuthError, isValidSlug, lastTenant } from "@/lib/console/auth";
@@ -13,7 +14,9 @@ import { useConsole } from "@/lib/console/session";
  */
 export function SignIn({ error }: { error?: string | null }) {
   const { signIn, notice } = useConsole();
-  const [tenant, setTenant] = useState(() => lastTenant() ?? "master");
+  // The address names the tenant (a deep link); else the last one used.
+  const sp = useSearchParams();
+  const [tenant, setTenant] = useState(() => sp.get("tenant") ?? lastTenant() ?? "master");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const message = problem ?? error ?? notice;

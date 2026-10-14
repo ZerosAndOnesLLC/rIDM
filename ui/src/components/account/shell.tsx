@@ -1,6 +1,7 @@
 "use client";
 
 import { LogOut, ShieldCheck, UserRoundCog } from "lucide-react";
+import { ThemeSwitch } from "@/components/base/theme-switch";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
@@ -45,8 +46,8 @@ function Nav() {
   const pathname = usePathname();
   const here = pathname.endsWith("/") ? pathname : `${pathname}/`;
   return (
-    <nav aria-label={t("account.nav_label")} className="mx-auto w-full max-w-3xl px-4 sm:px-6">
-      <ul className="-mb-px flex gap-1 overflow-x-auto">
+    <nav aria-label={t("account.nav_label")} className="mx-auto w-full max-w-4xl px-4 sm:px-5">
+      <ul className="-mb-px flex gap-0.5 overflow-x-auto">
         {PAGES.map((p) => {
           const active = here === p.href;
           return (
@@ -54,8 +55,8 @@ function Nav() {
               <Link
                 href={p.href}
                 aria-current={active ? "page" : undefined}
-                className={`inline-flex min-h-10 items-center border-b-2 px-3 text-body font-medium transition-colors ${
-                  active ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"
+                className={`inline-flex min-h-10 items-center whitespace-nowrap border-b-2 px-2.5 text-small no-underline transition-colors ${
+                  active ? "border-[var(--accent-400)] font-semibold text-bar-ink" : "border-transparent text-bar-muted hover:text-bar-ink"
                 }`}
               >
                 {t(p.key)}
@@ -95,26 +96,37 @@ function ImpersonationBanner() {
   );
 }
 
+/**
+ * The frame (design/README.md "Account"): a dark header with the tenant
+ * mark, the person's email, the theme switch (when the tenant allows it)
+ * and sign-out, with the tabs along its bottom edge; then the page, whose
+ * sections are cards.
+ */
 function Frame({ children }: { children: ReactNode }) {
   const { me, signOut } = useAccount();
   const { t } = useI18n();
+  const name = me?.tenant.display_name ?? "";
   return (
     <div className="min-h-screen bg-ground">
+      <a href="#main" className="skip-link">
+        {t("common.skip_to_content")}
+      </a>
       <ImpersonationBanner />
-      <header className="border-b border-line bg-paper">
-        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-2.5">
-            <span aria-hidden className="flex size-8 items-center justify-center rounded-lg bg-accent text-accent-ink">
-              <ShieldCheck className="size-4" />
+      <header className="console-bar">
+        <div className="mx-auto flex h-14 w-full max-w-4xl items-center justify-between gap-3 px-4 sm:px-5">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span aria-hidden className="flex size-[1.625rem] shrink-0 items-center justify-center rounded-[7px] bg-[linear-gradient(135deg,var(--accent-500),var(--contrast-500))] text-white">
+              <ShieldCheck className="size-3.5" />
             </span>
-            <span className="text-lead font-semibold text-ink">{me?.tenant.display_name}</span>
+            <span className="font-display truncate text-md font-bold tracking-[-0.02em] text-bar-ink">{name}</span>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="hidden text-body text-muted sm:inline">{me?.email ?? me?.username}</span>
+          <div className="flex shrink-0 items-center gap-2.5">
+            <span className="hidden text-small text-bar-muted sm:inline">{me?.email ?? me?.username}</span>
+            <ThemeSwitch surface="bar" labels={{ group: t("common.theme"), system: t("common.theme_system"), light: t("common.theme_light"), dark: t("common.theme_dark") }} />
             <button
               type="button"
               onClick={signOut}
-              className="inline-flex min-h-9 items-center gap-1.5 rounded-[var(--radius)] border border-line px-3 text-small font-medium text-ink hover:bg-ground"
+              className="inline-flex min-h-7 items-center gap-1.5 rounded-[var(--radius)] border border-[var(--bar-line)] px-2.5 text-caption font-medium text-bar-ink hover:bg-[var(--bar-field)]"
             >
               <LogOut className="size-3.5" aria-hidden />
               {t("account.sign_out")}
@@ -123,7 +135,9 @@ function Frame({ children }: { children: ReactNode }) {
         </div>
         <Nav />
       </header>
-      <main className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">{children}</main>
+      <main id="main" tabIndex={-1} className="account-cards mx-auto w-full max-w-4xl px-4 py-6 sm:px-5 sm:py-7">
+        {children}
+      </main>
       <p className="pb-6 text-center text-small text-muted">{t("common.powered_by")}</p>
     </div>
   );

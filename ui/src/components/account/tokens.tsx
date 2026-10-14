@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { useI18n } from "@/i18n/provider";
@@ -74,7 +75,7 @@ export function Tokens() {
           </div>
         )}
         {tokens.isError && <Alert tone="error">{t("account.error_generic")}</Alert>}
-        {d && live.length === 0 && <p className="mt-3 text-body text-ink">{t("account.tokens_none")}</p>}
+        {d && live.length === 0 && <EmptyState compact title={t("account.tokens_none")} />}
         {live.length > 0 && (
           <ul aria-label={t("account.tokens_title")} className="mt-3 divide-y divide-line">
             {live.map((k) => (

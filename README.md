@@ -30,7 +30,7 @@ or Auth0. The source is in [`docs/`](docs/); the website's is in [`site/`](site/
         alt="The account console's security page: password, two-step verification, trusted devices and active sessions"></td>
   </tr>
   <tr>
-    <td align="center"><sub>Each tenant's sign-in pages carry its own branding.</sub></td>
+    <td align="center"><sub>Each tenant's sign-in pages carry its own branding: a skin, two theme colours, a light/dark policy, a headline.</sub></td>
     <td align="center"><sub>End users manage passwords, second steps, devices and sessions themselves.</sub></td>
   </tr>
 </table>

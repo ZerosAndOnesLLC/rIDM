@@ -1,5 +1,7 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import Link from "next/link";
@@ -7,7 +9,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState, type ChangeEvent, type FormEvent } from "react";
 import { Field, NumberInput, SaveIndicator, Section, SelectInput, TagsInput, TextArea, TextInput, Toggle } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import { href, type IdentityProvider, type IdentityProviderPatch, type IdpPreset, type KerberosSettings, type KeytabReport, type LdapSettings, type SamlUpstreamSettings } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
@@ -53,11 +54,11 @@ export function IdentityProvidersPage({ tenant, selected }: { tenant: string; se
         list={
           <Card title="Providers">
             {list.isPending ? (
-              <Spinner label="Loading…" />
+              <Skeleton shape="lines" count={4} label="Loading…" />
             ) : list.isError ? (
               <ErrorLine error={list.error} />
             ) : list.data.length === 0 ? (
-              <p className="text-body text-muted">No providers yet.</p>
+              <EmptyState compact title="No providers yet" />
             ) : (
               <ul className="flex flex-col gap-0.5">
                 {list.data.map((p) => (
@@ -441,7 +442,7 @@ function ProviderView({ tenant, id }: { tenant: string; id: string }) {
     },
   });
   if (query.isError) return <ErrorLine error={query.error} />;
-  if (!draft) return <Spinner label="Loading…" />;
+  if (!draft) return <Skeleton shape="lines" count={4} label="Loading…" />;
   const m = draft.mappers;
   const isSaml = draft.kind === "saml";
   const isLdap = draft.kind === "ldap";

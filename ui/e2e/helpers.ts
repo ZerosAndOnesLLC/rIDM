@@ -275,3 +275,17 @@ export async function consoleLogin(page: Page, state: State) {
   await page.waitForURL(/\/console\/(\?.*)?$/, { timeout: 20_000 });
   await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible({ timeout: 15_000 });
 }
+
+/**
+ * Confirm the open `ConfirmDialog`: type the name it asks for (when it does)
+ * and press its confirming button. `button` narrows which when the label is
+ * not the default; the dialog's submit button is pressed otherwise.
+ */
+export async function confirmDialog(page: Page, { name, button }: { name?: string; button?: string | RegExp } = {}) {
+  const dialog = page.getByRole("dialog").last();
+  await expect(dialog).toBeVisible();
+  if (name) await dialog.getByRole("textbox").fill(name);
+  const confirm = button ? dialog.getByRole("button", { name: button }) : dialog.locator('button[type="submit"]');
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+}

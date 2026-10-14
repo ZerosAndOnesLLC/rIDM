@@ -1,12 +1,15 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
+import { fmtDate, fmtDateTime } from "@/lib/console/format";
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Plus, RotateCw } from "lucide-react";
 import { useState } from "react";
+import { ConfirmDialog } from "@/components/base/confirm-dialog";
+import { useToast } from "@/components/base/toast";
 import { Field, SelectInput, Toggle } from "@/components/console/form";
 import { Badge, Button, Card, PageHeader, Row } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
 import type { KeyStatus, SigningKey } from "@/lib/console/ops";
 import { useConsole } from "@/lib/console/session";
 import { RSA_BITS, SIGNING_ALGS } from "@/lib/console/settings";
@@ -14,11 +17,37 @@ import { CreateDialog, ErrorLine } from "../access/common";
 
 const TONE: Record<KeyStatus, "ok" | "accent" | "neutral" | "danger"> = { active: "ok", pending: "accent", retiring: "neutral", revoked: "danger" };
 
+type KeyAction = { rotate: true } | { id: string; kid: string; op: "activate" | "retire" | "revoke" };
+
+/** What each action asks before it runs, and says once it has. */
+const CONFIRM: Record<"rotate" | "retire" | "revoke", { title: string; description: string; label: string; done: string }> = {
+  rotate: {
+    title: "Rotate the signing key?",
+    description: "A new key is created and activated at once; the key that is active now starts retiring with the policy's overlap. Tokens it signed stay valid until they expire.",
+    label: "Rotate now",
+    done: "Key rotated",
+  },
+  retire: {
+    title: "Retire this key?",
+    description: "It stops signing new tokens but stays published until the ones it signed have expired.",
+    label: "Retire",
+    done: "Key retiring",
+  },
+  revoke: {
+    title: "Revoke this key?",
+    description: "It is removed from the JWKS immediately. Every token it signed stops verifying, which ends the sessions that use them.",
+    label: "Revoke",
+    done: "Key revoked",
+  },
+};
+
 /** Signing keys as a timeline, with rotation and per-key lifecycle actions. */
 export function KeysPage({ tenant }: { tenant: string }) {
   const { client, can, me } = useConsole();
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
+  const [confirm, setConfirm] = useState<KeyAction | null>(null);
+  const { toast } = useToast();
   const keys = useQuery({
     queryKey: ["keys", tenant],
     queryFn: async () => {
@@ -28,18 +57,25 @@ export function KeysPage({ tenant }: { tenant: string }) {
     },
   });
   const act = useMutation({
-    mutationFn: async (what: { rotate?: true; id?: string; op?: "activate" | "retire" | "revoke" }) => {
-      const r = what.rotate
-        ? await client.POST("/admin/tenants/{slug}/keys/rotate", { params: { path: { slug: tenant } } })
-        : what.op === "activate"
-          ? await client.POST("/admin/tenants/{slug}/keys/{key}/activate", { params: { path: { slug: tenant, key: what.id! } } })
-          : what.op === "retire"
-            ? await client.POST("/admin/tenants/{slug}/keys/{key}/retire", { params: { path: { slug: tenant, key: what.id! } } })
-            : await client.POST("/admin/tenants/{slug}/keys/{key}/revoke", { params: { path: { slug: tenant, key: what.id! } } });
+    mutationFn: async (what: KeyAction) => {
+      const r =
+        "rotate" in what
+          ? await client.POST("/admin/tenants/{slug}/keys/rotate", { params: { path: { slug: tenant } } })
+          : what.op === "activate"
+            ? await client.POST("/admin/tenants/{slug}/keys/{key}/activate", { params: { path: { slug: tenant, key: what.id } } })
+            : what.op === "retire"
+              ? await client.POST("/admin/tenants/{slug}/keys/{key}/retire", { params: { path: { slug: tenant, key: what.id } } })
+              : await client.POST("/admin/tenants/{slug}/keys/{key}/revoke", { params: { path: { slug: tenant, key: what.id } } });
       if (r.error) throw new Error(r.error.detail ?? r.error.title);
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["keys", tenant] }),
   });
+  // Activation is reversible enough to run at once; the rest ask first.
+  const run = (what: KeyAction) => {
+    if ("rotate" in what || what.op !== "activate") setConfirm(what);
+    else act.mutate(what);
+  };
+  const confirmed = confirm ? CONFIRM["rotate" in confirm ? "rotate" : (confirm.op as "retire" | "revoke")] : null;
   const editable = can("ridm:keys:write");
   const now = keys.data?.now ?? 0;
   const all = keys.data?.keys ?? [];
@@ -57,7 +93,7 @@ export function KeysPage({ tenant }: { tenant: string }) {
                 <Plus className="size-4" aria-hidden />
                 New key
               </Button>
-              <Button variant="primary" disabled={act.isPending} onClick={() => act.mutate({ rotate: true })}>
+              <Button variant="primary" disabled={act.isPending} onClick={() => run({ rotate: true })}>
                 <RotateCw className="size-4" aria-hidden />
                 Rotate now
               </Button>
@@ -65,9 +101,9 @@ export function KeysPage({ tenant }: { tenant: string }) {
           ) : undefined
         }
       />
-      <ErrorLine error={act.error} />
+      {!confirm && <ErrorLine error={act.error} />}
       {keys.isPending ? (
-        <Spinner label="Loading keys…" />
+        <Skeleton shape="lines" count={4} label="Loading keys…" />
       ) : keys.isError ? (
         <ErrorLine error={keys.error} />
       ) : (
@@ -79,7 +115,7 @@ export function KeysPage({ tenant }: { tenant: string }) {
                   const start = ((new Date(k.not_before).getTime() - span.from) / (span.to - span.from)) * 100;
                   const end = (((k.expires_at ? new Date(k.expires_at).getTime() : span.to) - span.from) / (span.to - span.from)) * 100;
                   return (
-                    <li key={k.id} className="grid grid-cols-[10rem_minmax(0,1fr)] items-center gap-3 text-small">
+                    <li key={k.id} className="grid grid-cols-[minmax(0,1fr)] items-center gap-x-3 gap-y-1 text-small sm:grid-cols-[10rem_minmax(0,1fr)]">
                       <span className="truncate font-mono text-muted">{k.kid}</span>
                       <span className="relative h-4 rounded bg-ground" aria-hidden>
                         <span
@@ -92,18 +128,44 @@ export function KeysPage({ tenant }: { tenant: string }) {
                 })}
               </ol>
               <span className="mt-2 block text-caption text-muted">
-                {formatDate("en", span.from, { dateStyle: "medium" })} → {formatDate("en", span.to, { dateStyle: "medium" })}
+                {fmtDate(span.from)} → {fmtDate(span.to)}
               </span>
             </Card>
           )}
-          {all.length === 0 && <p className="text-body text-muted">No keys yet; rotate to create the first active key.</p>}
+          {all.length === 0 && <EmptyState compact title="No keys yet" description="Rotate to create the first active key." />}
           {all.map((k) => (
-            <KeyCard key={k.id} k={k} editable={editable} pending={act.isPending} onAct={(op) => act.mutate({ id: k.id, op })} />
+            <KeyCard key={k.id} k={k} editable={editable} pending={act.isPending} onAct={(op) => run({ id: k.id, kid: k.kid, op })} />
           ))}
         </div>
       )}
       {me?.scope === "global" && can("ridm:keys:read") && <MasterKey />}
       <CreateKey tenant={tenant} open={creating} onOpenChange={setCreating} />
+      {/* Stays mounted and closes through `open`, so the dialog restores what it hid from assistive tech (the toast among it). */}
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(o) => {
+          if (!o) setConfirm(null);
+        }}
+        title={confirmed?.title ?? ""}
+        description={
+          confirm && confirmed ? (
+            "rotate" in confirm ? (
+              confirmed.description
+            ) : (
+              <>
+                <span className="font-mono text-ink">{confirm.kid}</span>: {confirmed.description}
+              </>
+            )
+          ) : undefined
+        }
+        confirmLabel={confirmed?.label ?? "Confirm"}
+        tone={confirm && "rotate" in confirm ? "primary" : "danger"}
+        onConfirm={async () => {
+          if (!confirm || !confirmed) return;
+          await act.mutateAsync(confirm);
+          toast({ title: confirmed.done, description: "rotate" in confirm ? undefined : confirm.kid });
+        }}
+      />
     </>
   );
 }
@@ -113,9 +175,9 @@ function KeyCard({ k, editable, pending, onAct }: { k: SigningKey; editable: boo
   return (
     <Card
       title={
-        <span className="inline-flex items-center gap-2">
+        <span className="inline-flex flex-wrap items-center gap-2">
           <KeyRound className="size-4 text-muted" aria-hidden />
-          <span className="font-mono">{k.kid}</span>
+          <span className="break-all font-mono">{k.kid}</span>
           <Badge tone={TONE[k.status]}>{k.status}</Badge>
           <Badge>{k.alg}</Badge>
         </span>
@@ -141,9 +203,9 @@ function KeyCard({ k, editable, pending, onAct }: { k: SigningKey; editable: boo
       }
     >
       <dl>
-        <Row label="Created">{formatDate("en", k.created_at)}</Row>
-        <Row label="Signs from">{formatDate("en", k.not_before)}</Row>
-        <Row label="Published until">{k.expires_at ? formatDate("en", k.expires_at) : k.status === "revoked" ? "Unpublished" : "Until retired"}</Row>
+        <Row label="Created">{fmtDateTime(k.created_at)}</Row>
+        <Row label="Signs from">{fmtDateTime(k.not_before)}</Row>
+        <Row label="Published until">{k.expires_at ? fmtDateTime(k.expires_at) : k.status === "revoked" ? "Unpublished" : "Until retired"}</Row>
         <Row label="Master-key generation">{k.key_version}</Row>
       </dl>
       <button type="button" onClick={() => setShowJwk((s) => !s)} aria-expanded={showJwk} className="mt-2 text-small text-link underline underline-offset-4">
@@ -264,7 +326,7 @@ function MasterKey() {
           : "Every secret at rest is encrypted under the server's master key. After rolling a new generation out (MASTER_KEY_VERSION), re-encrypt what is still under the old one."}
       </p>
       {status.isPending ? (
-        <Spinner label="Loading…" />
+        <Skeleton shape="lines" count={4} label="Loading…" />
       ) : status.isError ? (
         <ErrorLine error={status.error} />
       ) : (
@@ -282,7 +344,7 @@ function MasterKey() {
                   <Badge tone={g.version === status.data.current_version ? "ok" : "neutral"}>{g.backend === "env" ? "environment" : g.backend}</Badge>
                   {!g.loaded && <Badge tone="danger">not readable on this server</Badge>}
                   {g.key_ref && <code className="min-w-0 break-all font-mono text-caption text-muted">{g.key_ref}</code>}
-                  {g.created_at && <span className="text-muted">{formatDate("en", g.created_at)}</span>}
+                  {g.created_at && <span className="text-muted">{fmtDateTime(g.created_at)}</span>}
                 </li>
               ))}
             </ul>

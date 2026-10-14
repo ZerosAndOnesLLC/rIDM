@@ -1,5 +1,7 @@
 "use client";
 
+import { EmptyState } from "@/components/base/empty-state";
+import { Skeleton } from "@/components/base/skeleton";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserRoundPlus } from "lucide-react";
 import Link from "next/link";
@@ -7,7 +9,6 @@ import { useState } from "react";
 import { TextInput } from "@/components/console/form";
 import { Picker, type PickerItem } from "@/components/console/picker";
 import { Badge, Button, Card } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { useDebounced } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
 import { userHref } from "@/lib/console/users";
@@ -170,11 +171,11 @@ export function OrganizationInvitations({ tenant, id }: { tenant: string; id: st
   return (
     <Card title="Invitations" actions={<span className="text-small text-muted">Open invitations</span>}>
       {list.isPending ? (
-        <Spinner label="Loading invitations…" />
+        <Skeleton shape="lines" count={4} label="Loading invitations…" />
       ) : list.isError ? (
         <ErrorLine error={list.error} />
       ) : items.length === 0 ? (
-        <p className="text-body text-muted">No open invitations.</p>
+        <EmptyState compact title="No open invitations." />
       ) : (
         <ul className="divide-y divide-line">
           {items.map((i) => (

@@ -17,6 +17,62 @@ pub enum UserStatus {
     Deleted,
 }
 
+impl UserStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            UserStatus::Active => "active",
+            UserStatus::Disabled => "disabled",
+            UserStatus::Locked => "locked",
+            UserStatus::Pending => "pending",
+            UserStatus::Deleted => "deleted",
+        }
+    }
+}
+
+/// What the users list can be sorted by (the console's column headers).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum UserSort {
+    #[default]
+    Created,
+    Username,
+    Email,
+    Status,
+    LastLogin,
+}
+
+impl UserSort {
+    /// The expression ordered by. Nullable columns coalesce to a floor so the
+    /// keyset tuple always compares (and the index expressions match).
+    pub fn expr(self) -> &'static str {
+        match self {
+            UserSort::Created => "created_at",
+            UserSort::Username => "username",
+            UserSort::Email => "coalesce(email, '')",
+            UserSort::Status => "status",
+            UserSort::LastLogin => "coalesce(last_login_at, 'epoch'::timestamptz)",
+        }
+    }
+
+    pub fn is_time(self) -> bool {
+        matches!(self, UserSort::Created | UserSort::LastLogin)
+    }
+
+    /// The row's value of the key, as the cursor carries it.
+    pub fn key(self, u: &User) -> String {
+        match self {
+            UserSort::Created => u.created_at.to_rfc3339(),
+            UserSort::Username => u.username.clone(),
+            UserSort::Email => u.email.clone().unwrap_or_default(),
+            UserSort::Status => u.status.as_str().to_string(),
+            UserSort::LastLogin => u
+                .last_login_at
+                .unwrap_or(chrono::DateTime::<chrono::Utc>::UNIX_EPOCH)
+                .to_rfc3339(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct User {
     pub id: Uuid,

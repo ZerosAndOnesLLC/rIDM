@@ -3,15 +3,9 @@
 import { forwardRef, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useI18n } from "@/i18n/provider";
+import { buttonClass } from "@/components/base/button";
 
 type Variant = "primary" | "secondary" | "quiet" | "danger";
-
-const variantClass: Record<Variant, string> = {
-  primary: "bg-accent text-accent-ink hover:brightness-110 active:brightness-95",
-  secondary: "bg-paper text-ink border border-line hover:bg-ground",
-  quiet: "bg-transparent text-link hover:underline underline-offset-4",
-  danger: "bg-paper text-danger border border-line hover:bg-danger-soft",
-};
 
 export function Button({
   variant = "primary",
@@ -26,7 +20,7 @@ export function Button({
       {...rest}
       disabled={disabled || busy}
       aria-busy={busy || undefined}
-      className={`relative inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[var(--radius)] px-4 text-lead font-medium transition-[filter,background-color] disabled:cursor-not-allowed disabled:opacity-60 ${variantClass[variant]} ${className}`}
+      className={buttonClass(variant === "quiet" ? "link" : variant, "lg", `relative w-full ${className}`)}
     >
       {busy && <Loader2 className="size-4 animate-spin" aria-hidden />}
       {children}
@@ -63,9 +57,9 @@ export const TextField = forwardRef<HTMLInputElement, FieldProps>(function TextF
           id={inputId}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy || undefined}
-          className={`min-h-11 w-full rounded-[var(--radius)] border bg-paper px-3.5 text-md text-ink placeholder:text-muted/70 sm:text-lead ${
+          className={`min-h-11 w-full rounded-[var(--radius)] border bg-paper px-3.5 text-md text-ink placeholder:text-muted/70 focus:border-transparent sm:text-lead ${
             trailing ? "pe-11" : ""
-          } ${error ? "border-danger" : "border-line hover:border-muted/60"}`}
+          } ${error ? "border-danger" : "border-line-strong hover:border-muted/70"}`}
           {...rest}
         />
         {trailing && <div className="absolute inset-y-0 end-1 flex items-center">{trailing}</div>}
@@ -113,7 +107,7 @@ export function Checkbox({
   const id = useId();
   return (
     <label htmlFor={id} className={`flex cursor-pointer items-start gap-2.5 text-lead ${className}`}>
-      <input id={id} type="checkbox" className="mt-1 size-4 shrink-0 accent-[var(--accent)]" {...rest} />
+      <input id={id} type="checkbox" className="mt-1 size-4 shrink-0 accent-[var(--accent-solid)]" {...rest} />
       <span>{label}</span>
     </label>
   );
@@ -155,8 +149,8 @@ export function Spinner({ label }: { label: string }) {
 export function Title({ children, sub }: { children: ReactNode; sub?: ReactNode }) {
   return (
     <header className="mb-6">
-      <h1 className="text-num font-semibold leading-tight tracking-[-0.01em] text-ink">{children}</h1>
-      {sub && <p className="mt-1.5 text-lead text-muted">{sub}</p>}
+      <h1 className="text-2xl font-semibold leading-[1.1] text-ink">{children}</h1>
+      {sub && <p className="mt-1.5 text-body text-muted">{sub}</p>}
     </header>
   );
 }

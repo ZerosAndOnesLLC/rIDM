@@ -1,5 +1,8 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
+import { fmtDate } from "@/lib/console/format";
+import { EmptyState } from "@/components/base/empty-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, KeyRound, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -7,8 +10,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState, type ChangeEvent } from "react";
 import { Field, NumberInput, SaveIndicator, Section, SelectInput, TagsInput, TextArea, TextInput, Toggle } from "@/components/console/form";
 import { Badge, Button, Card, IconButton, PageHeader } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
-import { formatDate } from "@/i18n";
 import { useAutoSave, type SaveOptions } from "@/lib/console/autosave";
 import { useRowKeys } from "@/lib/console/hooks";
 import { href, type SamlAttribute, type SamlIdp, type SamlKey, type SamlSp, type SamlSpInput } from "@/lib/console/ops";
@@ -92,11 +93,11 @@ export function SamlPage({ tenant, selected }: { tenant: string; selected: strin
           <div className="flex flex-col gap-4">
             <Card title="Service providers">
               {list.isPending ? (
-                <Spinner label="Loading…" />
+                <Skeleton shape="lines" count={4} label="Loading…" />
               ) : list.isError ? (
                 <ErrorLine error={list.error} />
               ) : list.data.length === 0 ? (
-                <p className="text-body text-muted">No service providers yet.</p>
+                <EmptyState compact title="No service providers yet" />
               ) : (
                 <ul className="flex flex-col gap-0.5">
                   {list.data.map((p) => (
@@ -167,7 +168,7 @@ function IdpView({ tenant }: { tenant: string }) {
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["saml-idp", tenant] }),
   });
-  if (idp.isPending) return <Spinner label="Loading…" />;
+  if (idp.isPending) return <Skeleton shape="lines" count={4} label="Loading…" />;
   if (idp.isError) return <ErrorLine error={idp.error} />;
   const d = idp.data;
   const editable = can("ridm:keys:write");
@@ -211,8 +212,8 @@ function IdpView({ tenant }: { tenant: string }) {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Badge tone={KEY_TONE[k.status]}>{k.status}</Badge>
                 <span className="text-small text-muted">
-                  Valid until {formatDate("en", k.not_after, { dateStyle: "medium" })}
-                  {k.activated_at ? ` · signing since ${formatDate("en", k.activated_at, { dateStyle: "medium" })}` : ""}
+                  Valid until {fmtDate(k.not_after)}
+                  {k.activated_at ? ` · signing since ${fmtDate(k.activated_at)}` : ""}
                 </span>
               </div>
               <code className="break-all font-mono text-caption text-muted" title="SHA-256 fingerprint">
@@ -481,7 +482,7 @@ function SpView({ tenant, id }: { tenant: string; id: string }) {
     },
   });
   if (query.isError) return <ErrorLine error={query.error} />;
-  if (!draft || !query.data) return <Spinner label="Loading…" />;
+  if (!draft || !query.data) return <Skeleton shape="lines" count={4} label="Loading…" />;
   const active = query.data.client.status === "active";
   const initUrl = idp.data ? `${idp.data.init_url}?sp=${encodeURIComponent(query.data.client.client_id)}` : null;
   const nameIdHint = NAME_ID_FORMATS.find((f) => f.value === draft.name_id_format)?.hint;

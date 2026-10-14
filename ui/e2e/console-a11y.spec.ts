@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { consoleLogin, expectAccessible, loadState, TENANT } from "./helpers";
+import { clearTenantCache, consoleLogin, expectAccessible, loadState, TENANT, tenantSql } from "./helpers";
 
 /**
  * Every admin console page gets an axe pass in its landing state, in both
@@ -32,6 +32,14 @@ const PAGES: [string, string, string][] = [
   ["client certificates", `/console/client-certificates/?tenant=${TENANT}`, "Client certificates"],
 ];
 
+/** The tenant's skin, set straight in its settings document (null restores the default). */
+function setSkin(skin: string | null) {
+  const branding = "coalesce(settings->'branding', '{}'::jsonb)";
+  const next = skin ? `${branding} || '{"skin": "${skin}"}'::jsonb` : `${branding} - 'skin'`;
+  tenantSql(`UPDATE tenants SET settings = jsonb_set(settings, '{branding}', ${next}) WHERE slug = '${TENANT}'`);
+  clearTenantCache();
+}
+
 async function settled(page: Page, heading: string) {
   await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible({ timeout: 20_000 });
   // Let the page's queries settle so lists, not spinners, are checked.
@@ -63,7 +71,7 @@ test.describe("admin console accessibility sweep", () => {
     test.use({ viewport: { width: 390, height: 844 } });
     // By name, not by index: adding a page must not silently move which pages
     // this checks (it once did, and the sweep started testing something else).
-    const ON_PHONE = ["overview", "users", "organizations", "clients", "saml", "audit"];
+    const ON_PHONE = ["overview", "users", "organizations", "clients", "saml", "audit", "keys"];
     for (const [name, path, heading] of PAGES.filter(([n]) => ON_PHONE.includes(n))) {
       test(`${name} page on a phone`, async ({ page }) => {
         await consoleLogin(page, loadState());
@@ -76,3 +84,27 @@ test.describe("admin console accessibility sweep", () => {
     }
   });
 });
+
+/**
+ * The other skins (design/README.md): every page once, in light mode, with
+ * the tenant's skin set in its settings document, since the console wears
+ * the administered tenant's appearance. Serial and restored afterwards: the
+ * tenant is shared with the other specs.
+ */
+for (const skin of ["signal", "vault", "registry"]) {
+  test.describe(`${skin} skin`, () => {
+    test.describe.configure({ mode: "serial" });
+    test.beforeAll(() => setSkin(skin));
+    test.afterAll(() => setSkin(null));
+    for (const [name, path, heading] of PAGES) {
+      test(`${name} page in ${skin}`, async ({ page }) => {
+        await page.addInitScript(() => localStorage.setItem("ridm.theme", "light"));
+        await consoleLogin(page, loadState());
+        await page.goto(path);
+        await settled(page, heading);
+        await expect(page.locator("html")).toHaveAttribute("data-skin", skin, { timeout: 15_000 });
+        await expectAccessible(page);
+      });
+    }
+  });
+}

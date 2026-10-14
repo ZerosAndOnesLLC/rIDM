@@ -91,7 +91,7 @@ export function CommandPalette({ open, onOpenChange, tenant }: { open: boolean; 
       open={open}
       onOpenChange={close}
       title="Search"
-      placeholder={tenant ? `Search pages, users and clients in ${tenant}…` : "Search pages…"}
+      placeholder={tenant ? `Search users, clients and pages in ${tenant}…` : "Search pages…"}
       query={query}
       onQueryChange={setQuery}
       items={items}

@@ -17,10 +17,10 @@ use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
 use crate::middleware::{AdminCtx, AdminTenantPath, Json};
-use crate::models::{Client, ClientStatus, NewClient, User};
+use crate::models::{Client, ClientSort, ClientStatus, NewClient, User};
 use crate::services::{clients, resource_servers, scopes};
 use crate::state::AppState;
-use crate::util::cursor::Page;
+use crate::util::cursor::{Page, SortDir};
 use crate::util::patch::merge_patch;
 
 pub fn clients_router() -> OpenApiRouter<AppState> {
@@ -144,6 +144,12 @@ async fn check_references(state: &AppState, tenant_id: Uuid, c: &NewClient) -> A
 #[into_params(parameter_in = Query)]
 struct ListQuery {
     search: Option<String>,
+    /// Order: `created` (default), `name` or `type`.
+    #[param(inline)]
+    sort: Option<ClientSort>,
+    /// `asc` (default) or `desc`.
+    #[param(inline)]
+    dir: Option<SortDir>,
     cursor: Option<String>,
     limit: Option<u32>,
 }
@@ -156,12 +162,14 @@ async fn list(
     Query(q): Query<ListQuery>,
 ) -> AppResult<Json<Page<ClientView>>> {
     admin.require(tenant.id, P_READ)?;
-    let page = clients::list(
+    let page = clients::list_sorted(
         &state,
         tenant.id,
         q.search.as_deref(),
         q.cursor.as_deref(),
         q.limit,
+        q.sort.unwrap_or_default(),
+        q.dir.unwrap_or_default(),
     )
     .await?;
     Ok(Json(Page {

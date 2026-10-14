@@ -1,11 +1,11 @@
 "use client";
 
+import { Skeleton } from "@/components/base/skeleton";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Field, NumberInput, SaveIndicator, SelectInput, TagsInput, TextInput, Toggle } from "@/components/console/form";
 import { Button, IconButton } from "@/components/console/ui";
-import { Spinner } from "@/components/ui";
 import { useAutoSave } from "@/lib/console/autosave";
 import { useRowKeys } from "@/lib/console/hooks";
 import { useConsole } from "@/lib/console/session";
@@ -73,7 +73,7 @@ export function ProfileSchemaSection({ tenant, editable }: { tenant: string; edi
         {query.error.message}
       </p>
     );
-  if (!draft) return <Spinner label="Loading schema…" />;
+  if (!draft) return <Skeleton shape="lines" count={4} label="Loading schema…" />;
   const attrs = draft.attributes;
   const setAttr = (i: number, patch: Partial<AttributeDef>) => update({ ...draft, attributes: attrs.map((a, j) => (j === i ? { ...a, ...patch } : a)) });
   const setValidation = (i: number, patch: Partial<AttributeDef["validation"]>) => setAttr(i, { validation: { ...attrs[i]!.validation, ...patch } });

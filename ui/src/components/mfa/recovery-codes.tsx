@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useI18n } from "@/i18n/provider";
+import { buttonClass } from "@/components/base/button";
 import { Button, Title } from "@/components/ui";
 
 /** The recovery codes, shown once, with copy and download; `onDone` moves on. */
@@ -32,11 +33,7 @@ export function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () =
         <Button type="button" variant="secondary" className="flex-1" onClick={() => void copy()} aria-live="polite">
           {copied ? t("mfa.codes_copied") : t("mfa.codes_copy")}
         </Button>
-        <a
-          href={href}
-          download="recovery-codes.txt"
-          className="inline-flex min-h-11 flex-1 items-center justify-center rounded-[var(--radius)] border border-line px-4 text-lead font-medium text-ink hover:bg-ground"
-        >
+        <a href={href} download="recovery-codes.txt" className={buttonClass("secondary", "lg", "flex-1 no-underline")}>
           {t("mfa.codes_download")}
         </a>
       </div>

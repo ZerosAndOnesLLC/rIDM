@@ -1,4 +1,5 @@
-//! Opaque keyset-pagination cursors: `(created_at, id)` encoded as base64url JSON.
+//! Opaque keyset-pagination cursors: `(created_at, id)` encoded as base64url
+//! JSON, or `(sort key, id)` for a list sorted by something else.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -32,6 +33,55 @@ impl Cursor {
     }
 }
 
+/// Keyset cursor for a sorted list: the sort key as text (a timestamp in
+/// RFC 3339 when the key is one) plus the row id that breaks ties.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SortCursor {
+    #[serde(rename = "k")]
+    pub key: String,
+    #[serde(rename = "i")]
+    pub id: Uuid,
+}
+
+impl SortCursor {
+    pub fn encode(&self) -> String {
+        URL_SAFE_NO_PAD.encode(serde_json::to_vec(self).expect("cursor serializes"))
+    }
+
+    pub fn decode(raw: &str) -> Result<Self, AppError> {
+        let bytes = URL_SAFE_NO_PAD
+            .decode(raw)
+            .map_err(|_| AppError::BadRequest("invalid cursor".into()))?;
+        serde_json::from_slice(&bytes).map_err(|_| AppError::BadRequest("invalid cursor".into()))
+    }
+
+    /// The key as the timestamp it encodes, for a time-sorted list.
+    pub fn time(&self) -> Result<DateTime<Utc>, AppError> {
+        DateTime::parse_from_rfc3339(&self.key)
+            .map(|t| t.with_timezone(&Utc))
+            .map_err(|_| AppError::BadRequest("invalid cursor".into()))
+    }
+}
+
+/// Which way a sorted list runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum SortDir {
+    #[default]
+    Asc,
+    Desc,
+}
+
+impl SortDir {
+    /// The SQL keyword, and the comparison a keyset cursor continues with.
+    pub fn sql(self) -> (&'static str, &'static str) {
+        match self {
+            SortDir::Asc => ("ASC", ">"),
+            SortDir::Desc => ("DESC", "<"),
+        }
+    }
+}
+
 /// Clamp a requested page size into `[1, MAX_PAGE_SIZE]`.
 pub fn page_size(requested: Option<u32>) -> i64 {
     i64::from(
@@ -59,13 +109,26 @@ pub struct Page<T> {
 
 impl<T> Page<T> {
     /// Build a page from `limit + 1` rows: the extra row, if present, becomes the cursor.
-    pub fn from_rows(mut rows: Vec<T>, limit: i64, cursor_of: impl Fn(&T) -> Cursor) -> Self {
+    pub fn from_rows(rows: Vec<T>, limit: i64, cursor_of: impl Fn(&T) -> Cursor) -> Self {
+        Self::build(rows, limit, |row| cursor_of(row).encode())
+    }
+
+    /// The same for a list sorted by a chosen key.
+    pub fn from_rows_sorted(
+        rows: Vec<T>,
+        limit: i64,
+        cursor_of: impl Fn(&T) -> SortCursor,
+    ) -> Self {
+        Self::build(rows, limit, |row| cursor_of(row).encode())
+    }
+
+    fn build(mut rows: Vec<T>, limit: i64, encode: impl Fn(&T) -> String) -> Self {
         let has_more = rows.len() as i64 > limit;
         if has_more {
             rows.truncate(limit as usize);
         }
         let next_cursor = if has_more {
-            rows.last().map(|last| cursor_of(last).encode())
+            rows.last().map(&encode)
         } else {
             None
         };
