@@ -137,7 +137,7 @@ where
 /// What a route subtree demands of every request that reaches it.
 ///
 /// Build one per subtree and pass it to [`guard`] through
-/// [`axum::middleware::from_fn_with_state`](::axum::middleware::from_fn_with_state).
+/// [`axum::middleware::from_fn_with_state`].
 #[derive(Debug, Clone)]
 pub struct Guard {
     validator: Arc<Validator>,

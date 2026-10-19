@@ -122,7 +122,7 @@ Each links to its page in the documentation.
   ([Postgres and Valkey](https://zerosandonesllc.github.io/rIDM/docs/deploy/postgres-valkey.html),
   [data residency](https://zerosandonesllc.github.io/rIDM/docs/deploy/data-residency.html),
   [observability](https://zerosandonesllc.github.io/rIDM/docs/deploy/observability.html)).
-- **`ridm-auth`**: a crate that validates rIDM tokens in your own Rust API
+- **[`ridm-auth`](https://crates.io/crates/ridm-auth)**: a crate that validates rIDM tokens in your own Rust API
   ([protect an API](https://zerosandonesllc.github.io/rIDM/docs/quickstarts/protect-an-api.html)).
 
 ## Quick start (docker-compose)
@@ -172,7 +172,7 @@ To work on rIDM itself, see [CONTRIBUTING.md](CONTRIBUTING.md) and
 | `api/` | `ridm-api`: the identity server (axum, sqlx, Valkey) |
 | `api/migrations/` | sqlx migrations (forward-only) |
 | `crates/ridm-core/` | shared types, provider traits, event definitions |
-| `crates/ridm-auth/` | `ridm-auth`: validates rIDM tokens in someone else's Rust API (crates.io from the first release) |
+| `crates/ridm-auth/` | `ridm-auth`: validates rIDM tokens in someone else's Rust API ([crates.io](https://crates.io/crates/ridm-auth)) |
 | `crates/ridm-cli/` | `ridm`: command-line administration over the admin API |
 | `ui/` | Next.js 16 static export: admin console, account console, auth pages |
 | `examples/` | three relying parties: an axum resource server, a Next.js SPA, a confidential web app |

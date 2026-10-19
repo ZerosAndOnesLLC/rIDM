@@ -109,8 +109,8 @@ The [Admin API reference](../reference/admin-api/index.html) has the bodies.
 
 ## 2. Add ridm-auth
 
-`ridm-auth` is not on crates.io yet, so depend on the repository at a release tag.
-It needs Rust 1.98 or later.
+[`ridm-auth`](https://crates.io/crates/ridm-auth) is on crates.io; its version
+follows rIDM's. It needs Rust 1.98 or later.
 
 ```toml
 [package]
@@ -119,7 +119,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ridm-auth = { git = "https://github.com/ZerosAndOnesLLC/rIDM", tag = "v0.4.0" }
+ridm-auth = "0.4"
 axum = "0.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
 serde_json = "1"

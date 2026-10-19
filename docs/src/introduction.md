@@ -15,7 +15,7 @@ tokens, at the tenant's introspection endpoint).
 
 > **Status:** `0.4.0`. Until 1.0.0 a minor version may break
 > compatibility, and the [changelog](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/CHANGELOG.md)
-> says how. `ridm-auth` is not on crates.io yet. The [working plan](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/working-plan.md)
+> says how. The [working plan](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/working-plan.md)
 > lists what is done and what is still to come.
 
 ## Who it is for
@@ -25,7 +25,7 @@ tokens, at the tenant's introspection endpoint).
   and nothing but environment variables to configure it.
 - **Application and API developers** who need standard OAuth 2.0 and OpenID
   Connect behaviour to integrate against, without provider-specific SDKs. A Rust
-  API can use the [`ridm-auth`](https://github.com/ZerosAndOnesLLC/rIDM/tree/main/crates/ridm-auth)
+  API can use the [`ridm-auth`](https://crates.io/crates/ridm-auth)
   crate to validate tokens; anything else uses an ordinary OIDC or JWT library.
 - **Teams serving several customers or business units** from one deployment,
   each as a tenant with its own login page, policies and administrators.

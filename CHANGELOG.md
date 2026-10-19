@@ -14,6 +14,10 @@ release renames that heading to the version and date.
 
 ## [Unreleased]
 
+### Changed
+
+- The `ridm-auth` crate is published to [crates.io](https://crates.io/crates/ridm-auth) from this release on: `ridm-auth = "0.4"` replaces the git dependency in the quickstart, the crate's README and its `Cargo.toml` point at the docs and docs.rs, and the packaged crate carries the licence.
+
 ## [0.4.0] - 2026-10-14
 
 ### Added
