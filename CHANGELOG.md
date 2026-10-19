@@ -14,6 +14,8 @@ release renames that heading to the version and date.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-19
+
 ### Changed
 
 - The `ridm-auth` crate is published to [crates.io](https://crates.io/crates/ridm-auth) from this release on: `ridm-auth = "0.4"` replaces the git dependency in the quickstart, the crate's README and its `Cargo.toml` point at the docs and docs.rs, and the packaged crate carries the licence.
@@ -413,7 +415,8 @@ Cut but never tagged or published; everything here ships in 0.2.0.
 - `/.well-known/security.txt` is the operator's: `SECURITY_CONTACT`,
   `SECURITY_POLICY_URL` or a whole `SECURITY_TXT_FILE`, and 404 until one is set.
 
-[Unreleased]: https://github.com/ZerosAndOnesLLC/rIDM/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/ZerosAndOnesLLC/rIDM/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.4.1
 [0.4.0]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.4.0
 [0.3.0]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.3.0
 [0.2.0]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.2.0
