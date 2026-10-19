@@ -50,7 +50,7 @@ pub struct AccountTenant {
     pub display_name: String,
 }
 
-#[utoipa::path(get, path = "/t/{slug}/account/me", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = AccountMe), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Token of another tenant or inactive account", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/t/{slug}/account/me", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = AccountMe), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Token of another tenant or inactive account", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn me(State(state): State<AppState>, ctx: AccountCtx) -> AppResult<Json<AccountMe>> {
     let impersonation = match (&ctx.impersonator, ctx.session_id) {
         (Some(imp), Some(sid)) => {

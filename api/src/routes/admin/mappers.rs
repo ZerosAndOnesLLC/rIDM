@@ -38,7 +38,7 @@ struct ListQuery {
     tenant_wide: bool,
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/claim-mappers", tag = "mappers", params(("slug" = String, Path, description = "Tenant slug"), ListQuery), responses((status = 200, body = Vec<ClaimMapperRow>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/claim-mappers", tag = "mappers", params(("slug" = String, Path, description = "Tenant slug"), ListQuery), responses((status = 200, description = "OK", body = Vec<ClaimMapperRow>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -55,7 +55,7 @@ async fn list(
 }
 
 /// Body: `{name, client_id?, config}` where `config` is `{type, ..., include_in}`.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/claim-mappers", tag = "mappers", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewClaimMapper, responses((status = 201, body = ClaimMapperRow), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/claim-mappers", tag = "mappers", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewClaimMapper, responses((status = 201, description = "Created", body = ClaimMapperRow), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -67,7 +67,7 @@ async fn create(
     Ok((StatusCode::CREATED, axum::Json(m)).into_response())
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/claim-mappers/{mapper}", tag = "mappers", params(("slug" = String, Path, description = "Tenant slug"), ("mapper" = Uuid, Path)), responses((status = 200, body = ClaimMapperRow), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/claim-mappers/{mapper}", tag = "mappers", params(("slug" = String, Path, description = "Tenant slug"), ("mapper" = Uuid, Path)), responses((status = 200, description = "OK", body = ClaimMapperRow), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn get_one(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -79,7 +79,7 @@ async fn get_one(
 }
 
 /// `config` replaces the whole document (mapper types differ too much to merge).
-#[utoipa::path(patch, path = "/admin/tenants/{slug}/claim-mappers/{mapper}", tag = "mappers", params(("slug" = String, Path, description = "Tenant slug"), ("mapper" = Uuid, Path)), request_body = ClaimMapperUpdate, responses((status = 200, body = ClaimMapperRow), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(patch, path = "/admin/tenants/{slug}/claim-mappers/{mapper}", tag = "mappers", params(("slug" = String, Path, description = "Tenant slug"), ("mapper" = Uuid, Path)), request_body = ClaimMapperUpdate, responses((status = 200, description = "OK", body = ClaimMapperRow), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn update(
     State(state): State<AppState>,
     admin: AdminCtx,

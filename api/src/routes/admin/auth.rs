@@ -45,7 +45,7 @@ struct Me {
 }
 
 /// Who the caller is and what they may do; the admin UI reads this after login.
-#[utoipa::path(get, path = "/admin/me", tag = "auth", responses((status = 200, body = Me), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Not an administrator", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/me", tag = "auth", responses((status = 200, description = "OK", body = Me), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Not an administrator", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn me(State(state): State<AppState>, admin: AdminCtx) -> AppResult<Json<Me>> {
     // The organization may have been deleted since the token was issued; the
     // session then simply acts in none.
@@ -92,7 +92,7 @@ struct PermissionModel {
 }
 
 /// The permission catalogue and built-in roles (for role editors and docs).
-#[utoipa::path(get, path = "/admin/permissions", tag = "auth", responses((status = 200, body = PermissionModel), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Not an administrator", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/permissions", tag = "auth", responses((status = 200, description = "OK", body = PermissionModel), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Not an administrator", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn permissions(_admin: AdminCtx) -> Json<PermissionModel> {
     Json(PermissionModel {
         audience: ADMIN_AUDIENCE,

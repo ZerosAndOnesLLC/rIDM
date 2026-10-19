@@ -71,7 +71,7 @@ pub(super) async fn view(state: &AppState, ctx: &AccountCtx, user: &User) -> App
     })
 }
 
-#[utoipa::path(get, path = "/t/{slug}/account/profile", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Profile), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/t/{slug}/account/profile", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = Profile), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn get_profile(State(state): State<AppState>, ctx: AccountCtx) -> AppResult<Json<Profile>> {
     Ok(Json(view(&state, &ctx, &ctx.user).await?))
 }
@@ -87,7 +87,7 @@ pub struct ProfilePatch {
     pub locale: Option<Option<String>>,
 }
 
-#[utoipa::path(patch, path = "/t/{slug}/account/profile", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = ProfilePatch, responses((status = 200, body = Profile), (status = 400, description = "Validation failed", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(patch, path = "/t/{slug}/account/profile", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = ProfilePatch, responses((status = 200, description = "OK", body = Profile), (status = 400, description = "Validation failed", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn patch_profile(
     State(state): State<AppState>,
     ctx: AccountCtx,

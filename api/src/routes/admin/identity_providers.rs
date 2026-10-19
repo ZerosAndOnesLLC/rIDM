@@ -97,7 +97,7 @@ fn view(
     }
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/identity-providers/presets", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Vec<Preset>), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/identity-providers/presets", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = Vec<Preset>), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn presets(
     admin: AdminCtx,
     AdminTenantPath(tenant): AdminTenantPath,
@@ -113,7 +113,7 @@ pub struct DiscoverBody {
 }
 
 /// Fetch an issuer's OpenID discovery document (to preview the endpoints).
-#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/discover", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug")), request_body = DiscoverBody, responses((status = 200, body = Discovery), (status = 400, description = "Not an issuer, or its document is unusable", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 503, description = "The issuer could not be reached", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/discover", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug")), request_body = DiscoverBody, responses((status = 200, description = "OK", body = Discovery), (status = 400, description = "Not an issuer, or its document is unusable", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 503, description = "The issuer could not be reached", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn discover(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -140,7 +140,7 @@ pub struct SamlMetadataBody {
 /// Read an IdP's SAML metadata into the settings of a new `saml`
 /// provider, for the administrator to review before creating it. Nothing
 /// is stored.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/saml-metadata", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug")), request_body = SamlMetadataBody, responses((status = 200, body = SamlUpstreamSettings), (status = 400, description = "Not usable IdP metadata", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 503, description = "The metadata URL could not be read", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/saml-metadata", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug")), request_body = SamlMetadataBody, responses((status = 200, description = "OK", body = SamlUpstreamSettings), (status = 400, description = "Not usable IdP metadata", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 503, description = "The metadata URL could not be read", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn saml_metadata(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -188,7 +188,7 @@ pub struct KeytabReport {
 
 /// Read a keytab without storing it: its entries (never a key) and the
 /// services rIDM could accept tickets for with it.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/kerberos-keytab", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug")), request_body = KeytabBody, responses((status = 200, body = KeytabReport), (status = 400, description = "Not a keytab", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/kerberos-keytab", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug")), request_body = KeytabBody, responses((status = 200, description = "OK", body = KeytabReport), (status = 400, description = "Not a keytab", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn kerberos_keytab(
     admin: AdminCtx,
     AdminTenantPath(tenant): AdminTenantPath,
@@ -211,7 +211,7 @@ async fn kerberos_keytab(
 }
 
 /// Re-read a SAML provider's metadata URL now, as the daily job does.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/{idp}/saml/refresh", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug"), ("idp" = String, Path, description = "Row id or alias")), responses((status = 200, body = IdentityProviderView), (status = 400, description = "Not a SAML provider with a metadata URL, or its metadata is unusable", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 503, description = "The metadata URL could not be read", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/{idp}/saml/refresh", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug"), ("idp" = String, Path, description = "Row id or alias")), responses((status = 200, description = "OK", body = IdentityProviderView), (status = 400, description = "Not a SAML provider with a metadata URL, or its metadata is unusable", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 503, description = "The metadata URL could not be read", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn saml_refresh(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -228,7 +228,7 @@ async fn saml_refresh(
     Ok(Json(view(&state, &tenant, row)))
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/identity-providers", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Vec<IdentityProviderView>), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/identity-providers", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = Vec<IdentityProviderView>), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -243,7 +243,7 @@ async fn list(
 
 /// A `preset` fills in the protocol, endpoints, scopes and mappers; an OIDC
 /// provider's endpoints are discovered from its `issuer` when left out.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewIdentityProvider, responses((status = 201, body = IdentityProviderView), (status = 400, description = "Validation failed", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 409, description = "Alias in use", body = crate::error::Problem), (status = 503, description = "The issuer could not be reached", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewIdentityProvider, responses((status = 201, description = "Created", body = IdentityProviderView), (status = 400, description = "Validation failed", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 409, description = "Alias in use", body = crate::error::Problem), (status = 503, description = "The issuer could not be reached", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -255,7 +255,7 @@ async fn create(
     Ok((StatusCode::CREATED, Json(view(&state, &tenant, row))))
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/identity-providers/{idp}", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug"), ("idp" = String, Path, description = "Row id or alias")), responses((status = 200, body = IdentityProviderView), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/identity-providers/{idp}", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug"), ("idp" = String, Path, description = "Row id or alias")), responses((status = 200, description = "OK", body = IdentityProviderView), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn get_one(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -269,7 +269,7 @@ async fn get_one(
 
 /// A merge patch; `client_secret: null` clears the secret. A new `issuer`
 /// re-discovers the endpoints unless the patch names them.
-#[utoipa::path(patch, path = "/admin/tenants/{slug}/identity-providers/{idp}", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug"), ("idp" = String, Path, description = "Row id or alias")), request_body = IdentityProviderUpdate, responses((status = 200, body = IdentityProviderView), (status = 400, description = "Validation failed", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 409, description = "Alias in use", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(patch, path = "/admin/tenants/{slug}/identity-providers/{idp}", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug"), ("idp" = String, Path, description = "Row id or alias")), request_body = IdentityProviderUpdate, responses((status = 200, description = "OK", body = IdentityProviderView), (status = 400, description = "Validation failed", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 409, description = "Alias in use", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn update(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -298,7 +298,7 @@ async fn delete(
 
 /// Connect to a directory as its service account and read a few users
 /// (and groups): what a sign-in and a sync would see. Nothing is stored.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/{idp}/ldap/test", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug"), ("idp" = String, Path, description = "Row id or alias")), responses((status = 200, body = TestReport, description = "What the test found; `error` says what failed"), (status = 400, description = "Not an LDAP provider", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/{idp}/ldap/test", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug"), ("idp" = String, Path, description = "Row id or alias")), responses((status = 200, description = "OK", body = TestReport, description = "What the test found; `error` says what failed"), (status = 400, description = "Not an LDAP provider", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn ldap_test(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -319,7 +319,7 @@ pub struct LdapSyncBody {
 }
 
 /// Sync a directory's users and groups now, as the periodic job does.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/{idp}/ldap/sync", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug"), ("idp" = String, Path, description = "Row id or alias")), request_body = LdapSyncBody, responses((status = 200, body = LdapSyncStats), (status = 400, description = "Not an LDAP provider", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 409, description = "A sync of this directory is already running", body = crate::error::Problem), (status = 503, description = "The directory could not be reached", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/identity-providers/{idp}/ldap/sync", tag = "identity_providers", params(("slug" = String, Path, description = "Tenant slug"), ("idp" = String, Path, description = "Row id or alias")), request_body = LdapSyncBody, responses((status = 200, description = "OK", body = LdapSyncStats), (status = 400, description = "Not an LDAP provider", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 409, description = "A sync of this directory is already running", body = crate::error::Problem), (status = 503, description = "The directory could not be reached", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn ldap_sync(
     State(state): State<AppState>,
     admin: AdminCtx,

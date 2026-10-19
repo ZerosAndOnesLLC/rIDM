@@ -61,7 +61,7 @@ impl AccountSession {
     }
 }
 
-#[utoipa::path(get, path = "/t/{slug}/account/sessions", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Vec<AccountSession>), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/t/{slug}/account/sessions", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = Vec<AccountSession>), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list_sessions(
     State(state): State<AppState>,
     ctx: AccountCtx,
@@ -110,7 +110,7 @@ pub struct Revoked {
     pub revoked: u64,
 }
 
-#[utoipa::path(delete, path = "/t/{slug}/account/sessions", tag = "account", params(("slug" = String, Path, description = "Tenant slug"), RevokeAllQuery), responses((status = 200, body = Revoked), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(delete, path = "/t/{slug}/account/sessions", tag = "account", params(("slug" = String, Path, description = "Tenant slug"), RevokeAllQuery), responses((status = 200, description = "OK", body = Revoked), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn revoke_all_sessions(
     State(state): State<AppState>,
     ctx: AccountCtx,

@@ -51,7 +51,7 @@ async fn may_export(state: &AppState, caller: &AdminCtx, export: &Export) -> App
 /// A single-use URL for one of the exports, so a browser can download it
 /// with its own download manager (streamed to disk) instead of holding it in
 /// memory. The caller must hold what the export itself requires.
-#[utoipa::path(post, path = "/admin/download-tickets", tag = "downloads", request_body = NewDownloadTicket, responses((status = 201, body = DownloadTicket), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/download-tickets", tag = "downloads", request_body = NewDownloadTicket, responses((status = 201, description = "Created", body = DownloadTicket), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create(
     State(state): State<AppState>,
     admin: AdminCtx,

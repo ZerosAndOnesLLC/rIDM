@@ -47,7 +47,7 @@ struct ListQuery {
 }
 
 /// Global administrators see every tenant; tenant-scoped ones see their own.
-#[utoipa::path(get, path = "/admin/tenants", tag = "tenants", params(ListQuery), responses((status = 200, body = Page<Tenant>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants", tag = "tenants", params(ListQuery), responses((status = 200, description = "OK", body = Page<Tenant>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -82,7 +82,7 @@ struct Region {
 
 /// The databases a new tenant can be placed in, home first. Only the home
 /// database when the deployment has no `DATA_REGIONS`.
-#[utoipa::path(get, path = "/admin/regions", tag = "tenants", responses((status = 200, body = Vec<Region>), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/regions", tag = "tenants", responses((status = 200, description = "OK", body = Vec<Region>), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn regions(State(state): State<AppState>, admin: AdminCtx) -> AppResult<Json<Vec<Region>>> {
     admin.require_global(P_READ)?;
     let counts = tenants::count_by_region(&state).await?;
@@ -104,7 +104,7 @@ async fn regions(State(state): State<AppState>, admin: AdminCtx) -> AppResult<Js
     ))
 }
 
-#[utoipa::path(post, path = "/admin/tenants", tag = "tenants", request_body = NewTenant, responses((status = 201, body = Tenant), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants", tag = "tenants", request_body = NewTenant, responses((status = 201, description = "Created", body = Tenant), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -115,7 +115,7 @@ async fn create(
     Ok((StatusCode::CREATED, axum::Json(tenant)).into_response())
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Tenant), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = Tenant), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn get_one(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -135,7 +135,7 @@ struct TenantPatch {
     settings: Option<serde_json::Value>,
 }
 
-#[utoipa::path(patch, path = "/admin/tenants/{slug}", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), request_body = TenantPatch, responses((status = 200, body = Tenant), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(patch, path = "/admin/tenants/{slug}", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), request_body = TenantPatch, responses((status = 200, description = "OK", body = Tenant), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn update(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -214,7 +214,7 @@ struct CaptchaView {
     verify_url: Option<String>,
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/captcha", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = CaptchaView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/captcha", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = CaptchaView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn captcha_get(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -263,7 +263,7 @@ async fn captcha_delete(
 
 /// The tenant's user profile schema: declared attributes, their types,
 /// validation, who may edit them and where they surface.
-#[utoipa::path(get, path = "/admin/tenants/{slug}/profile-schema", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = crate::models::ProfileSchema), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/profile-schema", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = crate::models::ProfileSchema), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn profile_schema_get(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -276,7 +276,7 @@ async fn profile_schema_get(
 
 /// Replace the profile schema. Validated structurally (names, types,
 /// enum values, patterns); existing attribute values are not rewritten.
-#[utoipa::path(put, path = "/admin/tenants/{slug}/profile-schema", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), request_body = crate::models::ProfileSchema, responses((status = 200, body = crate::models::ProfileSchema), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(put, path = "/admin/tenants/{slug}/profile-schema", tag = "tenants", params(("slug" = String, Path, description = "Tenant slug")), request_body = crate::models::ProfileSchema, responses((status = 200, description = "OK", body = crate::models::ProfileSchema), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn profile_schema_put(
     State(state): State<AppState>,
     admin: AdminCtx,

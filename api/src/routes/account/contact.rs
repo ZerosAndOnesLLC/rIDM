@@ -76,7 +76,7 @@ async fn cancel(state: &AppState, ctx: &AccountCtx, contact: Contact) -> AppResu
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[utoipa::path(post, path = "/t/{slug}/account/email/change", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewEmail, responses((status = 200, body = Sent), (status = 400, description = "Invalid address or the current one (field errors)", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem), (status = 409, description = "Address in use", body = crate::error::Problem), (status = 429, description = "Too many codes", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/t/{slug}/account/email/change", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewEmail, responses((status = 200, description = "OK", body = Sent), (status = 400, description = "Invalid address or the current one (field errors)", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem), (status = 409, description = "Address in use", body = crate::error::Problem), (status = 429, description = "Too many codes", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn change_email(
     State(state): State<AppState>,
     ctx: AccountCtx,
@@ -85,7 +85,7 @@ async fn change_email(
     begin(&state, &ctx, Contact::Email, &body.email).await
 }
 
-#[utoipa::path(post, path = "/t/{slug}/account/email/confirm", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = Code, responses((status = 200, body = Profile), (status = 400, description = "Wrong code or nothing pending", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 409, description = "Address in use", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/t/{slug}/account/email/confirm", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = Code, responses((status = 200, description = "OK", body = Profile), (status = 400, description = "Wrong code or nothing pending", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 409, description = "Address in use", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn confirm_email_change(
     State(state): State<AppState>,
     ctx: AccountCtx,
@@ -102,7 +102,7 @@ async fn cancel_email_change(
     cancel(&state, &ctx, Contact::Email).await
 }
 
-#[utoipa::path(post, path = "/t/{slug}/account/phone/change", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewPhone, responses((status = 200, body = Sent), (status = 400, description = "Invalid number or the current one (field errors)", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem), (status = 429, description = "Too many codes", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/t/{slug}/account/phone/change", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewPhone, responses((status = 200, description = "OK", body = Sent), (status = 400, description = "Invalid number or the current one (field errors)", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem), (status = 429, description = "Too many codes", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn change_phone(
     State(state): State<AppState>,
     ctx: AccountCtx,
@@ -111,7 +111,7 @@ async fn change_phone(
     begin(&state, &ctx, Contact::Phone, &body.phone).await
 }
 
-#[utoipa::path(post, path = "/t/{slug}/account/phone/confirm", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = Code, responses((status = 200, body = Profile), (status = 400, description = "Wrong code or nothing pending", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/t/{slug}/account/phone/confirm", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = Code, responses((status = 200, description = "OK", body = Profile), (status = 400, description = "Wrong code or nothing pending", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn confirm_phone_change(
     State(state): State<AppState>,
     ctx: AccountCtx,
@@ -128,7 +128,7 @@ async fn cancel_phone_change(
     cancel(&state, &ctx, Contact::Phone).await
 }
 
-#[utoipa::path(delete, path = "/t/{slug}/account/phone", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Profile), (status = 400, description = "The number backs an SMS second step", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem), (status = 404, description = "No number on the account", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(delete, path = "/t/{slug}/account/phone", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = Profile), (status = 400, description = "The number backs an SMS second step", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem), (status = 404, description = "No number on the account", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn remove_phone(State(state): State<AppState>, ctx: AccountCtx) -> AppResult<Json<Profile>> {
     ctx.require_recent(&state).await?;
     let user = contact_changes::remove_phone(&state, &ctx.tenant, &ctx.user).await?;

@@ -33,7 +33,7 @@ struct RsPath {
     rs: Uuid,
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/resource-servers", tag = "resource_servers", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Vec<ResourceServer>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/resource-servers", tag = "resource_servers", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = Vec<ResourceServer>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -43,7 +43,7 @@ async fn list(
     Ok(Json(resource_servers::list(&state, tenant.id).await?))
 }
 
-#[utoipa::path(post, path = "/admin/tenants/{slug}/resource-servers", tag = "resource_servers", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewResourceServer, responses((status = 201, body = ResourceServer), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/resource-servers", tag = "resource_servers", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewResourceServer, responses((status = 201, description = "Created", body = ResourceServer), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -62,7 +62,7 @@ struct ResourceServerDetail {
     permissions: Vec<Permission>,
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/resource-servers/{rs}", tag = "resource_servers", params(("slug" = String, Path, description = "Tenant slug"), ("rs" = Uuid, Path)), responses((status = 200, body = ResourceServerDetail), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/resource-servers/{rs}", tag = "resource_servers", params(("slug" = String, Path, description = "Tenant slug"), ("rs" = Uuid, Path)), responses((status = 200, description = "OK", body = ResourceServerDetail), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn get_one(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -77,7 +77,7 @@ async fn get_one(
     }))
 }
 
-#[utoipa::path(patch, path = "/admin/tenants/{slug}/resource-servers/{rs}", tag = "resource_servers", params(("slug" = String, Path, description = "Tenant slug"), ("rs" = Uuid, Path)), request_body = ResourceServerUpdate, responses((status = 200, body = ResourceServer), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(patch, path = "/admin/tenants/{slug}/resource-servers/{rs}", tag = "resource_servers", params(("slug" = String, Path, description = "Tenant slug"), ("rs" = Uuid, Path)), request_body = ResourceServerUpdate, responses((status = 200, description = "OK", body = ResourceServer), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn update(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -103,7 +103,7 @@ async fn delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/resource-servers/{rs}/permissions", tag = "resource_servers", params(("slug" = String, Path, description = "Tenant slug"), ("rs" = Uuid, Path)), responses((status = 200, body = Vec<Permission>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/resource-servers/{rs}/permissions", tag = "resource_servers", params(("slug" = String, Path, description = "Tenant slug"), ("rs" = Uuid, Path)), responses((status = 200, description = "OK", body = Vec<Permission>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn permissions(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -116,7 +116,7 @@ async fn permissions(
     ))
 }
 
-#[utoipa::path(post, path = "/admin/tenants/{slug}/resource-servers/{rs}/permissions", tag = "resource_servers", params(("slug" = String, Path, description = "Tenant slug"), ("rs" = Uuid, Path)), request_body = NewPermission, responses((status = 201, body = Permission), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/resource-servers/{rs}/permissions", tag = "resource_servers", params(("slug" = String, Path, description = "Tenant slug"), ("rs" = Uuid, Path)), request_body = NewPermission, responses((status = 201, description = "Created", body = Permission), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create_permission(
     State(state): State<AppState>,
     admin: AdminCtx,

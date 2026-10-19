@@ -154,7 +154,7 @@ struct ListQuery {
     limit: Option<u32>,
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/clients", tag = "clients", params(("slug" = String, Path, description = "Tenant slug"), ListQuery), responses((status = 200, body = Page<ClientView>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/clients", tag = "clients", params(("slug" = String, Path, description = "Tenant slug"), ListQuery), responses((status = 200, description = "OK", body = Page<ClientView>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -178,7 +178,7 @@ async fn list(
     }))
 }
 
-#[utoipa::path(post, path = "/admin/tenants/{slug}/clients", tag = "clients", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewClient, responses((status = 201, body = RevealView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/clients", tag = "clients", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewClient, responses((status = 201, description = "Created", body = RevealView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -195,7 +195,7 @@ async fn create(
     ))
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/clients/{client}", tag = "clients", params(("slug" = String, Path, description = "Tenant slug"), ("client" = String, Path)), responses((status = 200, body = ClientView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/clients/{client}", tag = "clients", params(("slug" = String, Path, description = "Tenant slug"), ("client" = String, Path)), responses((status = 200, description = "OK", body = ClientView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn get_one(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -223,7 +223,7 @@ const NON_METADATA: [&str; 6] = [
 /// resets a defaulted one to its type-driven default. `status` may be sent
 /// alongside. Switching to a secret-based auth method mints a secret that is
 /// returned once in `client_secret`.
-#[utoipa::path(patch, path = "/admin/tenants/{slug}/clients/{client}", tag = "clients", params(("slug" = String, Path, description = "Tenant slug"), ("client" = String, Path)), request_body(content = serde_json::Value, description = "JSON merge patch over the client metadata, plus `status`"), responses((status = 200, body = RevealView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(patch, path = "/admin/tenants/{slug}/clients/{client}", tag = "clients", params(("slug" = String, Path, description = "Tenant slug"), ("client" = String, Path)), request_body(content = serde_json::Value, description = "JSON merge patch over the client metadata, plus `status`"), responses((status = 200, description = "OK", body = RevealView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn update(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -299,7 +299,7 @@ struct RotateBody {
 
 /// Generate a new secret (first one, or a rotation with a grace window for
 /// the previous secret). The secret is in the response and nowhere else.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/clients/{client}/secrets", tag = "clients", params(("slug" = String, Path, description = "Tenant slug"), ("client" = String, Path)), request_body(content = RotateBody, description = "Optional"), responses((status = 201, body = RevealView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/clients/{client}/secrets", tag = "clients", params(("slug" = String, Path, description = "Tenant slug"), ("client" = String, Path)), request_body(content = RotateBody, description = "Optional"), responses((status = 201, description = "Created", body = RevealView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn rotate_secret(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -323,7 +323,7 @@ struct SecretPath {
     secret_id: Uuid,
 }
 
-#[utoipa::path(delete, path = "/admin/tenants/{slug}/clients/{client}/secrets/{secret_id}", tag = "clients", params(("slug" = String, Path, description = "Tenant slug"), ("client" = String, Path), ("secret_id" = Uuid, Path)), responses((status = 200, body = ClientView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/clients/{client}/secrets/{secret_id}", tag = "clients", params(("slug" = String, Path, description = "Tenant slug"), ("client" = String, Path), ("secret_id" = Uuid, Path)), responses((status = 200, description = "OK", body = ClientView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn revoke_secret(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -344,7 +344,7 @@ struct ServiceAccountView {
 }
 
 /// Create (or return) the user the client acts as under `client_credentials`.
-#[utoipa::path(put, path = "/admin/tenants/{slug}/clients/{client}/service-account", tag = "clients", params(("slug" = String, Path, description = "Tenant slug"), ("client" = String, Path)), responses((status = 200, body = ServiceAccountView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(put, path = "/admin/tenants/{slug}/clients/{client}/service-account", tag = "clients", params(("slug" = String, Path, description = "Tenant slug"), ("client" = String, Path)), responses((status = 200, description = "OK", body = ServiceAccountView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn enable_service_account(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -361,7 +361,7 @@ async fn enable_service_account(
     }))
 }
 
-#[utoipa::path(delete, path = "/admin/tenants/{slug}/clients/{client}/service-account", tag = "clients", params(("slug" = String, Path, description = "Tenant slug"), ("client" = String, Path)), responses((status = 200, body = ClientView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/clients/{client}/service-account", tag = "clients", params(("slug" = String, Path, description = "Tenant slug"), ("client" = String, Path)), responses((status = 200, description = "OK", body = ClientView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn disable_service_account(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -382,7 +382,7 @@ struct RegistrationTokenView {
 
 /// Issue (replacing any previous one) the RFC 7592 registration access token
 /// so the client's owner can manage its metadata without admin access.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/clients/{client}/registration-token", tag = "clients", params(("slug" = String, Path, description = "Tenant slug"), ("client" = String, Path)), responses((status = 201, body = RegistrationTokenView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/clients/{client}/registration-token", tag = "clients", params(("slug" = String, Path, description = "Tenant slug"), ("client" = String, Path)), responses((status = 201, description = "Created", body = RegistrationTokenView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn registration_token(
     State(state): State<AppState>,
     admin: AdminCtx,

@@ -18,6 +18,7 @@ release renames that heading to the version and date.
 
 ### Changed
 
+- **Every Rust dependency is on its latest stable release.** Four RustSec advisories against rustls 0.23.45 (RUSTSEC-2026-0346 to 0349) are closed by 0.23.46; x509-parser 0.18, picky-krb 0.13, OpenTelemetry 0.33 (tracing-opentelemetry 0.34), utoipa 6 (utoipa-axum 0.3, utoipa-swagger-ui 10) and uuid 1.28 are the notable moves. testcontainers stays at 0.27 until testcontainers-modules follows. utoipa 6 no longer writes an empty `description` on a response, so every success response in the OpenAPI document now says `OK`, `Created`, `Accepted` or `No content`, and single-element `oneOf` wrappers around referenced schemas are gone; the document is otherwise the same. The three zip advisories (RUSTSEC-2026-0367 to 0369) are on the ignore list with a reason: zip is a build-time dependency of utoipa-swagger-ui that unpacks the crate's own vendored archive, never attacker-controlled input, and utoipa-swagger-ui 10 does not yet accept zip 9.
 - The `ridm-auth` crate is published to [crates.io](https://crates.io/crates/ridm-auth) from this release on: `ridm-auth = "0.4"` replaces the git dependency in the quickstart, the crate's README and its `Cargo.toml` point at the docs and docs.rs, and the packaged crate carries the licence.
 
 ## [0.4.0] - 2026-10-14

@@ -30,7 +30,7 @@ pub struct Identities {
     pub available: Vec<PublicIdentityProvider>,
 }
 
-#[utoipa::path(get, path = "/t/{slug}/account/identities", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Identities), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/t/{slug}/account/identities", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = Identities), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list_identities(
     State(state): State<AppState>,
     ctx: AccountCtx,
@@ -61,7 +61,7 @@ pub struct LinkStart {
 }
 
 /// Needs a recent sign-in (with the second step once there is one).
-#[utoipa::path(post, path = "/t/{slug}/account/identities/link", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = LinkRequest, responses((status = 200, body = LinkStart), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem), (status = 404, description = "No such provider", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/t/{slug}/account/identities/link", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = LinkRequest, responses((status = 200, description = "OK", body = LinkStart), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem), (status = 404, description = "No such provider", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn start_link(
     State(state): State<AppState>,
     ctx: AccountCtx,

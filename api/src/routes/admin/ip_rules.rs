@@ -39,7 +39,7 @@ struct ListQuery {
     tenant_wide: bool,
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/ip-rules", tag = "ip_rules", params(("slug" = String, Path, description = "Tenant slug"), ListQuery), responses((status = 200, body = Vec<IpRule>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/ip-rules", tag = "ip_rules", params(("slug" = String, Path, description = "Tenant slug"), ListQuery), responses((status = 200, description = "OK", body = Vec<IpRule>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -56,7 +56,7 @@ async fn list(
 }
 
 /// `{cidr, action?: allow|deny (default deny), client_id?, description?}`.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/ip-rules", tag = "ip_rules", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewIpRule, responses((status = 201, body = IpRule), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/ip-rules", tag = "ip_rules", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewIpRule, responses((status = 201, description = "Created", body = IpRule), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -68,7 +68,7 @@ async fn create(
     Ok((StatusCode::CREATED, axum::Json(r)).into_response())
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/ip-rules/{rule}", tag = "ip_rules", params(("slug" = String, Path, description = "Tenant slug"), ("rule" = Uuid, Path)), responses((status = 200, body = IpRule), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/ip-rules/{rule}", tag = "ip_rules", params(("slug" = String, Path, description = "Tenant slug"), ("rule" = Uuid, Path)), responses((status = 200, description = "OK", body = IpRule), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn get_one(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -79,7 +79,7 @@ async fn get_one(
     Ok(Json(ip_rules::get(&state, tenant.id, rule).await?))
 }
 
-#[utoipa::path(patch, path = "/admin/tenants/{slug}/ip-rules/{rule}", tag = "ip_rules", params(("slug" = String, Path, description = "Tenant slug"), ("rule" = Uuid, Path)), request_body = IpRuleUpdate, responses((status = 200, body = IpRule), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(patch, path = "/admin/tenants/{slug}/ip-rules/{rule}", tag = "ip_rules", params(("slug" = String, Path, description = "Tenant slug"), ("rule" = Uuid, Path)), request_body = IpRuleUpdate, responses((status = 200, description = "OK", body = IpRule), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn update(
     State(state): State<AppState>,
     admin: AdminCtx,

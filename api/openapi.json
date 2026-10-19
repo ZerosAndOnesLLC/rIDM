@@ -100,7 +100,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -297,7 +297,7 @@
         "operationId": "audit_global_verify",
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -373,7 +373,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -439,7 +439,7 @@
         "operationId": "keys_master_status",
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -505,7 +505,7 @@
         "operationId": "keys_master_new_generation",
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -581,7 +581,7 @@
         "operationId": "keys_master_rotate",
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -647,7 +647,7 @@
         "operationId": "auth_me",
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -693,7 +693,7 @@
         "operationId": "auth_permissions",
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -739,7 +739,7 @@
         "operationId": "tenants_regions",
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -817,7 +817,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -890,7 +890,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -966,7 +966,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -1117,7 +1117,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -1275,7 +1275,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -1493,7 +1493,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -1569,7 +1569,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -1808,7 +1808,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -1896,7 +1896,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -1981,7 +1981,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -2151,7 +2151,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -2282,7 +2282,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -2366,7 +2366,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -2450,7 +2450,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -2617,7 +2617,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -2702,7 +2702,7 @@
         ],
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -2798,7 +2798,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -2891,7 +2891,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -2976,7 +2976,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -3058,7 +3058,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -3134,7 +3134,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -3212,7 +3212,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -3358,7 +3358,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -3435,7 +3435,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -3522,7 +3522,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -3607,7 +3607,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -3777,7 +3777,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -3889,7 +3889,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -4146,7 +4146,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -4398,7 +4398,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -4476,7 +4476,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -4583,7 +4583,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -4670,7 +4670,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -4736,7 +4736,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -4806,7 +4806,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -4891,7 +4891,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -5042,7 +5042,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -5148,7 +5148,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -5340,7 +5340,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -5455,7 +5455,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -5558,7 +5558,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -5643,7 +5643,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -5728,7 +5728,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -5890,7 +5890,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -5985,7 +5985,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -6073,7 +6073,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -6158,7 +6158,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -6327,7 +6327,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -6418,7 +6418,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -6506,7 +6506,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -6583,7 +6583,7 @@
         ],
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -6668,7 +6668,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -6753,7 +6753,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -6838,7 +6838,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -6924,7 +6924,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -7000,7 +7000,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -7085,7 +7085,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -7159,7 +7159,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -7245,7 +7245,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -7345,7 +7345,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -7503,7 +7503,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -7587,7 +7587,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -7661,7 +7661,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -7747,7 +7747,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -7823,7 +7823,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -7910,7 +7910,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -8010,7 +8010,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -8118,7 +8118,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -8285,7 +8285,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -8363,7 +8363,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -8556,7 +8556,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -8640,7 +8640,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -8725,7 +8725,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -8895,7 +8895,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -8980,7 +8980,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -9077,7 +9077,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -9267,7 +9267,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -9362,7 +9362,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -9458,7 +9458,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -9765,7 +9765,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -9859,7 +9859,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -10059,7 +10059,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -10528,7 +10528,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -10605,7 +10605,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -10680,7 +10680,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -10756,7 +10756,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -10843,7 +10843,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -10928,7 +10928,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -11097,7 +11097,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -11182,7 +11182,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -11278,7 +11278,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -11460,7 +11460,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -11547,7 +11547,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -11632,7 +11632,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -11801,7 +11801,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -11886,7 +11886,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -12166,7 +12166,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -12251,7 +12251,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -12503,7 +12503,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -12570,7 +12570,7 @@
         ],
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -12646,7 +12646,7 @@
         ],
         "responses": {
           "204": {
-            "description": ""
+            "description": "No content"
           },
           "401": {
             "description": "Missing or invalid admin token",
@@ -12715,7 +12715,7 @@
         ],
         "responses": {
           "204": {
-            "description": ""
+            "description": "No content"
           },
           "401": {
             "description": "Missing or invalid admin token",
@@ -12774,7 +12774,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -12851,7 +12851,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -12938,7 +12938,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -13014,7 +13014,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -13099,7 +13099,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -13193,7 +13193,7 @@
         ],
         "responses": {
           "204": {
-            "description": ""
+            "description": "No content"
           },
           "401": {
             "description": "Missing or invalid admin token",
@@ -13252,7 +13252,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -13327,7 +13327,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -13471,7 +13471,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -13558,7 +13558,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -13643,7 +13643,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -13812,7 +13812,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -13900,7 +13900,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -14074,7 +14074,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -14158,7 +14158,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -14340,7 +14340,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -14425,7 +14425,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -14596,7 +14596,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -14763,7 +14763,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -14848,7 +14848,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -15023,7 +15023,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -15196,7 +15196,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -15282,7 +15282,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -15455,7 +15455,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -15540,7 +15540,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -15634,7 +15634,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -15804,7 +15804,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -15990,7 +15990,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -16096,7 +16096,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -16181,7 +16181,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -16356,7 +16356,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -16450,7 +16450,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -16620,7 +16620,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -16706,7 +16706,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -16879,7 +16879,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -16955,7 +16955,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -17043,7 +17043,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -17128,7 +17128,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -17297,7 +17297,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -17407,7 +17407,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -17495,7 +17495,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -17589,7 +17589,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -17684,7 +17684,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -17769,7 +17769,7 @@
         ],
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -17855,7 +17855,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -17931,7 +17931,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -18040,7 +18040,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -18229,7 +18229,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -18403,7 +18403,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -18536,7 +18536,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -18603,7 +18603,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -18659,7 +18659,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -18716,7 +18716,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -18850,7 +18850,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -18974,7 +18974,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -19099,7 +19099,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -19165,7 +19165,7 @@
         ],
         "responses": {
           "202": {
-            "description": "",
+            "description": "Accepted",
             "content": {
               "application/json": {
                 "schema": {
@@ -19315,7 +19315,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -19382,7 +19382,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -19458,7 +19458,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -19534,7 +19534,7 @@
         },
         "responses": {
           "202": {
-            "description": "",
+            "description": "Accepted",
             "content": {
               "application/json": {
                 "schema": {
@@ -19620,7 +19620,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -19686,7 +19686,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -19753,7 +19753,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -19802,7 +19802,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -19856,7 +19856,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -19922,7 +19922,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -20008,7 +20008,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -20131,7 +20131,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -20187,7 +20187,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -20241,7 +20241,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -20297,7 +20297,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -20353,7 +20353,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -20477,7 +20477,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -20532,7 +20532,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -20814,11 +20814,11 @@
           "impersonation": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/AccountImpersonation",
                 "description": "Set when an administrator opened this session as the user. Changes\nto credentials, consent and the account's existence are refused."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -21091,11 +21091,7 @@
             "default": null
           },
           "editable_by": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/EditableBy"
-              }
-            ],
+            "$ref": "#/components/schemas/EditableBy",
             "default": "user"
           },
           "label": {
@@ -21125,19 +21121,11 @@
             "default": false
           },
           "type": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AttributeType"
-              }
-            ],
+            "$ref": "#/components/schemas/AttributeType",
             "default": "string"
           },
           "validation": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AttributeValidation"
-              }
-            ],
+            "$ref": "#/components/schemas/AttributeValidation",
             "default": {
               "max": null,
               "max_length": null,
@@ -21438,12 +21426,8 @@
             "default": null
           },
           "mode": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/ThemeMode",
-                "description": "Light/dark policy for every surface of the tenant."
-              }
-            ],
+            "$ref": "#/components/schemas/ThemeMode",
+            "description": "Light/dark policy for every surface of the tenant.",
             "default": "system"
           },
           "primary_color": {
@@ -21455,12 +21439,8 @@
             "default": null
           },
           "skin": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/Skin",
-                "description": "The visual skin (Phase 15): token set and layout family."
-              }
-            ],
+            "$ref": "#/components/schemas/Skin",
+            "description": "The visual skin (Phase 15): token set and layout family.",
             "default": "signal-v2"
           },
           "support_url": {
@@ -21772,11 +21752,11 @@
           "backchannel_token_delivery_mode": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/BackchannelDeliveryMode",
                 "description": "CIBA delivery mode; set exactly when the client may use the CIBA grant."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -21825,10 +21805,10 @@
           "id_token_encryption": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/IdTokenEncryptionConfig"
               },
               {
-                "$ref": "#/components/schemas/IdTokenEncryptionConfig"
+                "type": "null"
               }
             ]
           },
@@ -22292,11 +22272,11 @@
           "alg": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SigningAlg",
                 "description": "Defaults to the tenant's key policy."
+              },
+              {
+                "type": "null"
               }
             ],
             "default": null
@@ -22518,11 +22498,7 @@
             "default": []
           },
           "mode": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/DcrMode"
-              }
-            ],
+            "$ref": "#/components/schemas/DcrMode",
             "default": "disabled"
           },
           "require_pkce": {
@@ -22703,10 +22679,10 @@
           {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/EmailSettingsView"
               },
               {
-                "$ref": "#/components/schemas/EmailSettingsView"
+                "type": "null"
               }
             ]
           },
@@ -23258,11 +23234,11 @@
           "kerberos": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/KerberosUpstream",
                 "description": "The Kerberos settings of a `kerberos` provider."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -23272,11 +23248,11 @@
           "ldap": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/LdapUpstream",
                 "description": "The directory settings of an `ldap` provider."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -23299,11 +23275,11 @@
           "saml": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SamlUpstream",
                 "description": "The SAML settings of a `saml` provider."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -23393,49 +23369,37 @@
           "kerberos": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/KerberosDoc",
                 "description": "A `kerberos` provider's settings (the keytab is a secret: never\nexported, kept on import, uploaded afterwards on a new provider)."
+              },
+              {
+                "type": "null"
               }
             ],
             "default": null
           },
           "kind": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/IdpKind"
-              }
-            ],
+            "$ref": "#/components/schemas/IdpKind",
             "default": "oidc"
           },
           "ldap": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/LdapSettings",
                 "description": "An `ldap` provider's directory settings (the bind password is a\nsecret: never exported, kept on import, set afterwards on a new\nprovider; the sync status is not configuration)."
+              },
+              {
+                "type": "null"
               }
             ],
             "default": null
           },
           "link_policy": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/LinkPolicy"
-              }
-            ],
+            "$ref": "#/components/schemas/LinkPolicy",
             "default": "verified_email"
           },
           "mappers": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/IdpMappers"
-              }
-            ],
+            "$ref": "#/components/schemas/IdpMappers",
             "default": {
               "attributes": {},
               "email": null,
@@ -23458,11 +23422,11 @@
           "saml": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SamlUpstreamSettings",
                 "description": "A `saml` provider's settings (`metadata_url` included; the refresh\nstatus is not configuration)."
+              },
+              {
+                "type": "null"
               }
             ],
             "default": null
@@ -23487,11 +23451,7 @@
             "default": null
           },
           "token_endpoint_auth_method": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/IdpAuthMethod"
-              }
-            ],
+            "$ref": "#/components/schemas/IdpAuthMethod",
             "default": "client_secret_basic"
           },
           "trust_email": {
@@ -23578,11 +23538,11 @@
           "kerberos": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/KerberosSettings",
                 "description": "A `kerberos` provider's settings, replaced as a whole (a missing\n`keytab` keeps the stored one)."
+              },
+              {
+                "type": "null"
               }
             ],
             "default": null
@@ -23590,10 +23550,10 @@
           "kind": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/IdpKind"
               },
               {
-                "$ref": "#/components/schemas/IdpKind"
+                "type": "null"
               }
             ],
             "default": null
@@ -23601,11 +23561,11 @@
           "ldap": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/LdapSettings",
                 "description": "An `ldap` provider's settings, replaced as a whole (a missing\n`bind_password` keeps the stored one)."
+              },
+              {
+                "type": "null"
               }
             ],
             "default": null
@@ -23613,10 +23573,10 @@
           "link_policy": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LinkPolicy"
               },
               {
-                "$ref": "#/components/schemas/LinkPolicy"
+                "type": "null"
               }
             ],
             "default": null
@@ -23624,10 +23584,10 @@
           "mappers": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/IdpMappers"
               },
               {
-                "$ref": "#/components/schemas/IdpMappers"
+                "type": "null"
               }
             ],
             "default": null
@@ -23642,11 +23602,11 @@
           "saml": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SamlUpstreamSettings",
                 "description": "A `saml` provider's settings, replaced as a whole."
+              },
+              {
+                "type": "null"
               }
             ],
             "default": null
@@ -23679,10 +23639,10 @@
           "token_endpoint_auth_method": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/IdpAuthMethod"
               },
               {
-                "$ref": "#/components/schemas/IdpAuthMethod"
+                "type": "null"
               }
             ],
             "default": null
@@ -23722,11 +23682,11 @@
               "saml_sp": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/SamlSpInfo",
                     "description": "What a SAML IdP is configured with: rIDM's SP entity ID and URLs."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               }
@@ -24036,10 +23996,10 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/UserStatus"
               },
               {
-                "$ref": "#/components/schemas/UserStatus"
+                "type": "null"
               }
             ],
             "default": null
@@ -24251,11 +24211,7 @@
         "type": "object",
         "properties": {
           "action": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/IpRuleAction"
-              }
-            ],
+            "$ref": "#/components/schemas/IpRuleAction",
             "default": "deny"
           },
           "cidr": {
@@ -24285,10 +24241,10 @@
           "action": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/IpRuleAction"
               },
               {
-                "$ref": "#/components/schemas/IpRuleAction"
+                "type": "null"
               }
             ],
             "default": null
@@ -24343,11 +24299,7 @@
             "default": 300
           },
           "name_form": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/KerberosNameForm"
-              }
-            ],
+            "$ref": "#/components/schemas/KerberosNameForm",
             "default": "local_part"
           },
           "realms": {
@@ -24426,11 +24378,7 @@
             "default": 300
           },
           "name_form": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/KerberosNameForm"
-              }
-            ],
+            "$ref": "#/components/schemas/KerberosNameForm",
             "default": "local_part"
           },
           "realms": {
@@ -24539,12 +24487,8 @@
         "description": "Signing key lifecycle policy.",
         "properties": {
           "default_alg": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/SigningAlg",
-                "description": "Algorithm for new keys created by rotation / on demand."
-              }
-            ],
+            "$ref": "#/components/schemas/SigningAlg",
+            "description": "Algorithm for new keys created by rotation / on demand.",
             "default": "RS256"
           },
           "retire_overlap_hours": {
@@ -24562,11 +24506,7 @@
             "minimum": 0
           },
           "rsa_bits": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RsaBits"
-              }
-            ],
+            "$ref": "#/components/schemas/RsaBits",
             "default": "B2048"
           }
         }
@@ -24716,11 +24656,7 @@
             "default": null
           },
           "edit_mode": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/LdapEditMode"
-              }
-            ],
+            "$ref": "#/components/schemas/LdapEditMode",
             "default": "read_only"
           },
           "full_sync_interval_hours": {
@@ -24738,11 +24674,7 @@
             "default": null
           },
           "group_membership": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/LdapMembership"
-              }
-            ],
+            "$ref": "#/components/schemas/LdapMembership",
             "default": "dn"
           },
           "group_name_attribute": {
@@ -24786,11 +24718,7 @@
             "default": []
           },
           "search_scope": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/LdapScope"
-              }
-            ],
+            "$ref": "#/components/schemas/LdapScope",
             "default": "subtree"
           },
           "starttls": {
@@ -24845,11 +24773,7 @@
             "default": null
           },
           "vendor": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/LdapVendor"
-              }
-            ],
+            "$ref": "#/components/schemas/LdapVendor",
             "default": "other"
           }
         },
@@ -25043,10 +24967,10 @@
           "last_sync_stats": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LdapSyncStats"
               },
               {
-                "$ref": "#/components/schemas/LdapSyncStats"
+                "type": "null"
               }
             ]
           },
@@ -25366,10 +25290,10 @@
           "organization": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/MeOrganization"
               },
               {
-                "$ref": "#/components/schemas/MeOrganization"
+                "type": "null"
               }
             ]
           },
@@ -25786,10 +25710,10 @@
           "access_token_format": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AccessTokenFormat"
               },
               {
-                "$ref": "#/components/schemas/AccessTokenFormat"
+                "type": "null"
               }
             ],
             "default": null
@@ -25846,10 +25770,10 @@
           "backchannel_token_delivery_mode": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/BackchannelDeliveryMode"
               },
               {
-                "$ref": "#/components/schemas/BackchannelDeliveryMode"
+                "type": "null"
               }
             ],
             "default": null
@@ -25865,10 +25789,10 @@
           "client_type": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ClientType"
               },
               {
-                "$ref": "#/components/schemas/ClientType"
+                "type": "null"
               }
             ],
             "default": null
@@ -25911,10 +25835,10 @@
           "id_token_encryption": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/IdTokenEncryptionConfig"
               },
               {
-                "$ref": "#/components/schemas/IdTokenEncryptionConfig"
+                "type": "null"
               }
             ],
             "default": null
@@ -26020,10 +25944,10 @@
           "security_profile": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SecurityProfile"
               },
               {
-                "$ref": "#/components/schemas/SecurityProfile"
+                "type": "null"
               }
             ],
             "default": null
@@ -26031,10 +25955,10 @@
           "subject_type": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ClientSubjectType"
               },
               {
-                "$ref": "#/components/schemas/ClientSubjectType"
+                "type": "null"
               }
             ],
             "default": null
@@ -26084,10 +26008,10 @@
           "token_endpoint_auth_method": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/TokenEndpointAuthMethod"
               },
               {
-                "$ref": "#/components/schemas/TokenEndpointAuthMethod"
+                "type": "null"
               }
             ],
             "default": null
@@ -26232,11 +26156,11 @@
           "kerberos": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/KerberosSettings",
                 "description": "Required for a `kerberos` provider, refused for any other."
+              },
+              {
+                "type": "null"
               }
             ],
             "default": null
@@ -26244,10 +26168,10 @@
           "kind": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/IdpKind"
               },
               {
-                "$ref": "#/components/schemas/IdpKind"
+                "type": "null"
               }
             ],
             "default": null
@@ -26255,11 +26179,11 @@
           "ldap": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/LdapSettings",
                 "description": "Required for an `ldap` provider, refused for any other."
+              },
+              {
+                "type": "null"
               }
             ],
             "default": null
@@ -26267,10 +26191,10 @@
           "link_policy": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LinkPolicy"
               },
               {
-                "$ref": "#/components/schemas/LinkPolicy"
+                "type": "null"
               }
             ],
             "default": null
@@ -26278,10 +26202,10 @@
           "mappers": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/IdpMappers"
               },
               {
-                "$ref": "#/components/schemas/IdpMappers"
+                "type": "null"
               }
             ],
             "default": null
@@ -26303,11 +26227,11 @@
           "saml": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SamlUpstreamSettings",
                 "description": "Required for a `saml` provider, refused for any other."
+              },
+              {
+                "type": "null"
               }
             ],
             "default": null
@@ -26340,10 +26264,10 @@
           "token_endpoint_auth_method": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/IdpAuthMethod"
               },
               {
-                "$ref": "#/components/schemas/IdpAuthMethod"
+                "type": "null"
               }
             ],
             "default": null
@@ -26449,10 +26373,10 @@
           "action": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/IpRuleAction"
               },
               {
-                "$ref": "#/components/schemas/IpRuleAction"
+                "type": "null"
               }
             ],
             "default": null
@@ -26728,10 +26652,10 @@
           "settings": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/TenantSettings"
               },
               {
-                "$ref": "#/components/schemas/TenantSettings"
+                "type": "null"
               }
             ]
           },
@@ -26982,10 +26906,10 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/OrganizationStatus"
               },
               {
-                "$ref": "#/components/schemas/OrganizationStatus"
+                "type": "null"
               }
             ],
             "default": null
@@ -28060,10 +27984,10 @@
           "channel": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/MessageChannel"
               },
               {
-                "$ref": "#/components/schemas/MessageChannel"
+                "type": "null"
               }
             ],
             "default": null
@@ -28071,11 +27995,11 @@
           "draft": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/TemplateBody",
                 "description": "An unsaved draft to render instead of the stored/built-in template."
+              },
+              {
+                "type": "null"
               }
             ],
             "default": null
@@ -28686,11 +28610,7 @@
             "minimum": 0
           },
           "weights": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RiskWeights"
-              }
-            ],
+            "$ref": "#/components/schemas/RiskWeights",
             "default": {
               "impossible_travel": 60,
               "new_country": 50,
@@ -29331,10 +29251,10 @@
           "data_encryption": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DataEncryption"
               },
               {
-                "$ref": "#/components/schemas/DataEncryption"
+                "type": "null"
               }
             ],
             "default": null
@@ -29374,10 +29294,10 @@
           "key_transport": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/KeyTransport"
               },
               {
-                "$ref": "#/components/schemas/KeyTransport"
+                "type": "null"
               }
             ],
             "default": null
@@ -29396,10 +29316,10 @@
           "name_id_format": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/NameIdFormat"
               },
               {
-                "$ref": "#/components/schemas/NameIdFormat"
+                "type": "null"
               }
             ],
             "default": null
@@ -29444,10 +29364,10 @@
           "slo_binding": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SloBinding"
               },
               {
-                "$ref": "#/components/schemas/SloBinding"
+                "type": "null"
               }
             ],
             "default": null
@@ -29534,10 +29454,10 @@
           "name_id_format": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/NameIdFormat"
               },
               {
-                "$ref": "#/components/schemas/NameIdFormat"
+                "type": "null"
               }
             ]
           },
@@ -29617,11 +29537,11 @@
           "name_id_format": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/NameIdFormat",
                 "description": "The NameID format to ask for (`NameIDPolicy`); none leaves it to\nthe IdP."
+              },
+              {
+                "type": "null"
               }
             ],
             "default": null
@@ -29645,11 +29565,7 @@
             "default": []
           },
           "slo_binding": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/SloBinding"
-              }
-            ],
+            "$ref": "#/components/schemas/SloBinding",
             "default": "redirect"
           },
           "slo_url": {
@@ -29661,12 +29577,8 @@
             "default": null
           },
           "sso_binding": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/SloBinding",
-                "description": "How `AuthnRequest`s reach it."
-              }
-            ],
+            "$ref": "#/components/schemas/SloBinding",
+            "description": "How `AuthnRequest`s reach it.",
             "default": "redirect"
           },
           "sso_url": {
@@ -30314,11 +30226,11 @@
           "impersonator": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Impersonator",
                 "description": "The administrator who opened this session as the user\n(impersonation); the source of the `act` claim."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -30771,10 +30683,10 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/TenantStatus"
               },
               {
-                "$ref": "#/components/schemas/TenantStatus"
+                "type": "null"
               }
             ],
             "default": null
@@ -30807,12 +30719,8 @@
         "description": "Per-tenant configuration stored as JSONB. Every field has a default so that\nsettings written by older versions keep deserializing.",
         "properties": {
           "account": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AccountPolicy",
-                "description": "What users may do to their own account from the account console."
-              }
-            ],
+            "$ref": "#/components/schemas/AccountPolicy",
+            "description": "What users may do to their own account from the account console.",
             "default": {
               "deletion_retention_days": 30,
               "personal_token_max_days": 365,
@@ -30821,21 +30729,13 @@
             }
           },
           "audit": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AuditPolicy"
-              }
-            ],
+            "$ref": "#/components/schemas/AuditPolicy",
             "default": {
               "retention_days": 365
             }
           },
           "auth": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AuthMethods"
-              }
-            ],
+            "$ref": "#/components/schemas/AuthMethods",
             "default": {
               "email_otp": false,
               "magic_link": false,
@@ -30845,11 +30745,7 @@
             }
           },
           "branding": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/Branding"
-              }
-            ],
+            "$ref": "#/components/schemas/Branding",
             "default": {
               "allow_theme_switch": true,
               "background_color": null,
@@ -30867,11 +30763,7 @@
             }
           },
           "captcha": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/CaptchaPolicy"
-              }
-            ],
+            "$ref": "#/components/schemas/CaptchaPolicy",
             "default": {
               "after_failures": 3,
               "on_registration": true
@@ -30886,11 +30778,7 @@
             "default": null
           },
           "dcr": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/DcrPolicy"
-              }
-            ],
+            "$ref": "#/components/schemas/DcrPolicy",
             "default": {
               "allowed_grants": [],
               "mode": "disabled",
@@ -30898,11 +30786,7 @@
             }
           },
           "discovery": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/DiscoverySettings"
-              }
-            ],
+            "$ref": "#/components/schemas/DiscoverySettings",
             "default": {
               "email_domains": []
             }
@@ -30919,23 +30803,15 @@
             }
           },
           "impersonation": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/ImpersonationPolicy",
-                "description": "Administrators signing in as users (Phase 12.4), off until enabled."
-              }
-            ],
+            "$ref": "#/components/schemas/ImpersonationPolicy",
+            "description": "Administrators signing in as users (Phase 12.4), off until enabled.",
             "default": {
               "enabled": false,
               "max_minutes": 60
             }
           },
           "keys": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/KeyPolicy"
-              }
-            ],
+            "$ref": "#/components/schemas/KeyPolicy",
             "default": {
               "default_alg": "RS256",
               "retire_overlap_hours": 24,
@@ -30944,11 +30820,7 @@
             }
           },
           "locale": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/LocaleSettings"
-              }
-            ],
+            "$ref": "#/components/schemas/LocaleSettings",
             "default": {
               "default": "en",
               "supported": [
@@ -30957,11 +30829,7 @@
             }
           },
           "lockout": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/LockoutPolicy"
-              }
-            ],
+            "$ref": "#/components/schemas/LockoutPolicy",
             "default": {
               "ip_max_failures": 100,
               "ip_window_minutes": 15,
@@ -30970,22 +30838,14 @@
             }
           },
           "mfa": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/MfaPolicy"
-              }
-            ],
+            "$ref": "#/components/schemas/MfaPolicy",
             "default": {
               "mode": "off"
             }
           },
           "mfa_methods": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/MfaMethods",
-                "description": "Second factors the tenant offers (passkeys follow `auth.passkey`)."
-              }
-            ],
+            "$ref": "#/components/schemas/MfaMethods",
+            "description": "Second factors the tenant offers (passkeys follow `auth.passkey`).",
             "default": {
               "email_otp": false,
               "sms_otp": false,
@@ -30993,11 +30853,7 @@
             }
           },
           "notifications": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/NotificationPolicy"
-              }
-            ],
+            "$ref": "#/components/schemas/NotificationPolicy",
             "default": {
               "email_changed": true,
               "mfa_changed": true,
@@ -31006,11 +30862,7 @@
             }
           },
           "password": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/PasswordPolicy"
-              }
-            ],
+            "$ref": "#/components/schemas/PasswordPolicy",
             "default": {
               "check_breached": false,
               "history": 5,
@@ -31024,12 +30876,8 @@
             }
           },
           "rate_limits": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RateLimitPolicy",
-                "description": "Request ceilings on the OAuth and sign-in endpoints."
-              }
-            ],
+            "$ref": "#/components/schemas/RateLimitPolicy",
+            "description": "Request ceilings on the OAuth and sign-in endpoints.",
             "default": {
               "authorize_per_ip": 300,
               "enabled": true,
@@ -31041,11 +30889,7 @@
             }
           },
           "registration": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RegistrationPolicy"
-              }
-            ],
+            "$ref": "#/components/schemas/RegistrationPolicy",
             "default": {
               "allowed_email_domains": [],
               "enabled": false,
@@ -31056,12 +30900,8 @@
             }
           },
           "risk": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RiskPolicy",
-                "description": "Risk-based adaptive authentication (Phase 12.3), off until enabled."
-              }
-            ],
+            "$ref": "#/components/schemas/RiskPolicy",
+            "description": "Risk-based adaptive authentication (Phase 12.3), off until enabled.",
             "default": {
               "block_at": 100,
               "enabled": false,
@@ -31078,11 +30918,7 @@
             }
           },
           "session": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/SessionPolicy"
-              }
-            ],
+            "$ref": "#/components/schemas/SessionPolicy",
             "default": {
               "absolute_timeout_secs": 43200,
               "access_token_ttl_secs": 300,
@@ -31734,10 +31570,10 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/UserStatus"
               },
               {
-                "$ref": "#/components/schemas/UserStatus"
+                "type": "null"
               }
             ],
             "default": null
@@ -31803,11 +31639,11 @@
           "scheduled": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ScheduledVerification",
                 "description": "The daily verification job's progress on this chain."
+              },
+              {
+                "type": "null"
               }
             ]
           },

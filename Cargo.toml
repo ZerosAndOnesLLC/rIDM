@@ -30,19 +30,19 @@ tower = "=0.5.3"
 tower-http = { version = "=0.7.1", features = ["cors", "trace", "compression-gzip", "compression-br", "set-header", "fs"] }
 tower_governor = "=0.8.0"
 http = "=1.5.0"
-tokio = { version = "=1.53.1", features = ["full"] }
+tokio = { version = "=1.53.3", features = ["full"] }
 
 # Storage
 sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "uuid", "chrono", "json", "migrate", "macros"] }
 deadpool = { version = "=0.13.1", default-features = false, features = ["managed", "rt_tokio_1"] }
 deadpool-redis = { version = "=0.23.1", features = ["rt_tokio_1", "cluster", "sentinel"] }
-redis = { version = "=1.7.0", features = ["tokio-rustls-comp", "script", "cluster-async", "sentinel"] }
+redis = { version = "=1.7.1", features = ["tokio-rustls-comp", "script", "cluster-async", "sentinel"] }
 # In-process (L1) cache: size-bounded, per-entry TTL.
 moka = { version = "=0.12.16", features = ["sync"] }
 
 # Crypto / tokens
 # Signing, verification and key generation all go through aws-lc-rs.
-jsonwebtoken = { version = "=11.0.0", features = ["aws_lc_rs"] }
+jsonwebtoken = { version = "=11.1.0", features = ["aws_lc_rs"] }
 argon2 = "=0.6.0"
 # Legacy hash verification for migrated users (never used for new hashes).
 bcrypt = "=0.19.3"
@@ -57,16 +57,16 @@ webauthn-rs = { version = "=0.5.5", features = ["danger-allow-state-serialisatio
 webauthn-rs-proto = "=0.5.5"
 base64urlsafedata = "=0.5.5"
 chacha20poly1305 = "=0.11.0"
-sha2 = "=0.11.0"
+sha2 = "=0.11.1"
 hmac = "=0.13.0"
-rand = "=0.10.2"
-rustls = { version = "=0.23.45", default-features = false, features = ["aws-lc-rs", "std", "tls12"] }
-tokio-rustls = { version = "=0.26.5", default-features = false, features = ["aws_lc_rs", "tls12"] }
-rustls-platform-verifier = "=0.7.0"
+rand = "=0.10.3"
+rustls = { version = "=0.23.46", default-features = false, features = ["aws-lc-rs", "std", "tls12"] }
+tokio-rustls = { version = "=0.26.6", default-features = false, features = ["aws_lc_rs", "tls12"] }
+rustls-platform-verifier = "=0.7.1"
 # JWE (RSA-OAEP + AES-GCM) for encrypted ID tokens; same backend jsonwebtoken/rustls use.
-aws-lc-rs = "=1.18.1"
+aws-lc-rs = "=1.18.2"
 subtle = "=2.6.1"
-zeroize = "=1.9.0"
+zeroize = "=1.9.1"
 base64 = "=0.23.1"
 hex = "=0.4.3"
 # SAML 2.0: a read-only XML tree that refuses DTDs (so no entity expansion
@@ -75,7 +75,7 @@ hex = "=0.4.3"
 # for the HTTP-Redirect binding. XML-DSig and XML-Enc are rIDM's own code.
 roxmltree = { version = "=0.21.1", default-features = false, features = ["std", "positions"] }
 rcgen = { version = "=0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
-x509-parser = "=0.16.0"
+x509-parser = "=0.18.1"
 flate2 = "=1.1.10"
 
 # Outbound
@@ -89,25 +89,25 @@ hickory-resolver = { version = "=0.26.3", default-features = false, features = [
 ldap3 = { version = "=0.12.1", default-features = false, features = ["tls-rustls-aws-lc-rs"] }
 # Tests only: an independent implementation of the RFC 3962 Kerberos AES
 # types, which ridm-api's own (on aws-lc-rs) are checked against.
-picky-krb = "=0.12.4"
+picky-krb = "=0.13.0"
 # Key custody (the `hsm-pkcs11` and `kms-aws` features of ridm-api): the master
 # key's data keys wrapped by an HSM or AWS KMS. Off in the default build. The
 # AWS crates' default `rustls` feature is the legacy hyper 0.14 / ring stack;
 # `default-https-client` is the current one on aws-lc-rs.
 cryptoki = "=0.12.1"
 aws-config = { version = "=1.12.0", default-features = false, features = ["default-https-client", "rt-tokio", "sso", "credentials-process"] }
-aws-sdk-kms = { version = "=1.121.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-kms = { version = "=1.123.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
 # The SDK's HTTP client, named only so the FIPS build can pick its FIPS TLS mode
 # (the default client hard-codes the non-FIPS aws-lc-rs provider).
-aws-smithy-http-client = { version = "=1.4.2", default-features = false }
+aws-smithy-http-client = { version = "=1.5.0", default-features = false }
 
 # Serde / types
 serde = { version = "=1.0.229", features = ["derive"] }
-serde_json = "=1.0.151"
+serde_json = "=1.0.154"
 csv = "=1.4.0"
-uuid = { version = "=1.26.1", features = ["v4", "v7", "serde"] }
+uuid = { version = "=1.28.0", features = ["v4", "v7", "serde"] }
 chrono = { version = "=0.4.45", features = ["serde"] }
-thiserror = "=2.0.20"
+thiserror = "=2.0.21"
 validator = { version = "=0.21.0", features = ["derive"] }
 regex = "=1.13.1"
 url = { version = "=2.5.8", features = ["serde"] }
@@ -127,18 +127,18 @@ tracing = "=0.1.44"
 tracing-subscriber = { version = "=0.3.23", features = ["env-filter", "json"] }
 metrics = "=0.24.6"
 metrics-exporter-prometheus = { version = "=0.18.3", default-features = false }
-opentelemetry = "=0.32.0"
-opentelemetry_sdk = { version = "=0.32.1", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "=0.32.0", default-features = false, features = ["trace", "http-proto", "reqwest-client", "reqwest-rustls"] }
-tracing-opentelemetry = "=0.33.0"
+opentelemetry = "=0.33.1"
+opentelemetry_sdk = { version = "=0.33.1", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "=0.33.1", default-features = false, features = ["trace", "http-proto", "reqwest-client", "reqwest-rustls"] }
+tracing-opentelemetry = "=0.34.0"
 
 # API docs
-utoipa = { version = "=5.5.0", features = ["axum_extras", "uuid", "chrono"] }
-utoipa-axum = "=0.2.0"
-utoipa-swagger-ui = { version = "=9.0.2", features = ["axum"] }
+utoipa = { version = "=6.0.0", features = ["axum_extras", "uuid", "chrono"] }
+utoipa-axum = "=0.3.0"
+utoipa-swagger-ui = { version = "=10.0.1", features = ["axum"] }
 
 # Embedded UI
-rust-embed = { version = "=8.12.0", features = ["mime-guess"] }
+rust-embed = { version = "=8.13.0", features = ["mime-guess"] }
 
 # Allocator for the static (musl) release binaries
 mimalloc = { version = "=0.1.52", default-features = false }
@@ -146,7 +146,7 @@ mimalloc = { version = "=0.1.52", default-features = false }
 # Dev
 testcontainers-modules = { version = "=0.15.0", features = ["postgres", "redis"] }
 testcontainers = { version = "=0.27.3", features = ["reusable-containers"] }
-proptest = "=1.11.0"
+proptest = "=1.12.0"
 
 [profile.release]
 lto = "thin"

@@ -28,7 +28,7 @@ struct TokenPath {
     token: Uuid,
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/scim/tokens", tag = "scim", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = ScimTokens), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/scim/tokens", tag = "scim", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = ScimTokens), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -39,7 +39,7 @@ async fn list(
 }
 
 /// The token is returned once, in this response.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/scim/tokens", tag = "scim", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewScimToken, responses((status = 201, body = CreatedScimToken), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/scim/tokens", tag = "scim", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewScimToken, responses((status = 201, description = "Created", body = CreatedScimToken), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create(
     State(state): State<AppState>,
     admin: AdminCtx,
