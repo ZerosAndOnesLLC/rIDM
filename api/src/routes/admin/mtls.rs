@@ -30,7 +30,7 @@ struct AnchorPath {
     anchor: Uuid,
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/mtls/trust-anchors", tag = "mtls", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Vec<MtlsTrustAnchor>), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/mtls/trust-anchors", tag = "mtls", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = Vec<MtlsTrustAnchor>), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -41,7 +41,7 @@ async fn list(
 }
 
 /// `{name, certificate_pem}`: one CA certificate (root or intermediate).
-#[utoipa::path(post, path = "/admin/tenants/{slug}/mtls/trust-anchors", tag = "mtls", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewMtlsTrustAnchor, responses((status = 201, body = MtlsTrustAnchor), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 409, description = "Already trusted", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/mtls/trust-anchors", tag = "mtls", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewMtlsTrustAnchor, responses((status = 201, description = "Created", body = MtlsTrustAnchor), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 409, description = "Already trusted", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create(
     State(state): State<AppState>,
     admin: AdminCtx,

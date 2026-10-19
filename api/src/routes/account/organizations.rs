@@ -27,7 +27,7 @@ pub struct AccountOrganization {
 
 /// Read-only: membership is managed by an administrator, by an invitation or
 /// by a verified auto-join domain. To act in another one, sign in again.
-#[utoipa::path(get, path = "/t/{slug}/account/organizations", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Vec<AccountOrganization>), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/t/{slug}/account/organizations", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = Vec<AccountOrganization>), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list_organizations(
     State(state): State<AppState>,
     ctx: AccountCtx,

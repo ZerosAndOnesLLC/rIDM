@@ -115,7 +115,7 @@ fn otp_scope(ctx: &AccountCtx) -> otp_factors::Scope<'_> {
     }
 }
 
-#[utoipa::path(get, path = "/t/{slug}/account/mfa", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = MfaStatus), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/t/{slug}/account/mfa", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = MfaStatus), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn status(State(state): State<AppState>, ctx: AccountCtx) -> AppResult<Json<MfaStatus>> {
     let f = totp::factors_of(&state, ctx.tenant.id, ctx.user.id).await?;
     let rows = totp::credentials_of(&state, ctx.tenant.id, ctx.user.id).await?;
@@ -150,7 +150,7 @@ async fn status(State(state): State<AppState>, ctx: AccountCtx) -> AppResult<Jso
     }))
 }
 
-#[utoipa::path(post, path = "/t/{slug}/account/mfa/totp/enroll", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = totp::Enrolment), (status = 400, description = "Already enrolled or disabled", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/t/{slug}/account/mfa/totp/enroll", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = totp::Enrolment), (status = 400, description = "Already enrolled or disabled", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn totp_enroll(
     State(state): State<AppState>,
     ctx: AccountCtx,
@@ -174,7 +174,7 @@ async fn totp_enroll(
     ))
 }
 
-#[utoipa::path(post, path = "/t/{slug}/account/mfa/totp/confirm", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = CodeBody, responses((status = 200, body = Enrolled), (status = 400, description = "Wrong code or nothing pending", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/t/{slug}/account/mfa/totp/confirm", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = CodeBody, responses((status = 200, description = "OK", body = Enrolled), (status = 400, description = "Wrong code or nothing pending", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn totp_confirm(
     State(state): State<AppState>,
     ctx: AccountCtx,
@@ -212,7 +212,7 @@ async fn passkey_register(
     Ok(Json(serde_json::to_value(options)?))
 }
 
-#[utoipa::path(post, path = "/t/{slug}/account/mfa/passkey/register/finish", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = PasskeyFinishBody, responses((status = 200, body = Enrolled), (status = 400, description = "The passkey could not be verified", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/t/{slug}/account/mfa/passkey/register/finish", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = PasskeyFinishBody, responses((status = 200, description = "OK", body = Enrolled), (status = 400, description = "The passkey could not be verified", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn passkey_register_finish(
     State(state): State<AppState>,
     ctx: AccountCtx,
@@ -278,7 +278,7 @@ async fn otp_confirm(
     }))
 }
 
-#[utoipa::path(post, path = "/t/{slug}/account/mfa/email/enroll", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 202, body = otp_factors::Sent), (status = 400, description = "Already enrolled, disabled or no address", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem), (status = 429, description = "Too many codes sent", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/t/{slug}/account/mfa/email/enroll", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 202, description = "Accepted", body = otp_factors::Sent), (status = 400, description = "Already enrolled, disabled or no address", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem), (status = 429, description = "Too many codes sent", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn email_enroll(
     State(state): State<AppState>,
     ctx: AccountCtx,
@@ -289,7 +289,7 @@ async fn email_enroll(
     ))
 }
 
-#[utoipa::path(post, path = "/t/{slug}/account/mfa/email/confirm", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = CodeBody, responses((status = 200, body = Enrolled), (status = 400, description = "Wrong code or nothing pending", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/t/{slug}/account/mfa/email/confirm", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = CodeBody, responses((status = 200, description = "OK", body = Enrolled), (status = 400, description = "Wrong code or nothing pending", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn email_confirm(
     State(state): State<AppState>,
     ctx: AccountCtx,
@@ -298,7 +298,7 @@ async fn email_confirm(
     otp_confirm(&state, &ctx, Channel::Email, &body.code).await
 }
 
-#[utoipa::path(post, path = "/t/{slug}/account/mfa/sms/enroll", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = PhoneBody, responses((status = 202, body = otp_factors::Sent), (status = 400, description = "Already enrolled, disabled or no number", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem), (status = 429, description = "Too many codes sent", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/t/{slug}/account/mfa/sms/enroll", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = PhoneBody, responses((status = 202, description = "Accepted", body = otp_factors::Sent), (status = 400, description = "Already enrolled, disabled or no number", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem), (status = 429, description = "Too many codes sent", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn sms_enroll(
     State(state): State<AppState>,
     ctx: AccountCtx,
@@ -311,7 +311,7 @@ async fn sms_enroll(
     ))
 }
 
-#[utoipa::path(post, path = "/t/{slug}/account/mfa/sms/confirm", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = CodeBody, responses((status = 200, body = Enrolled), (status = 400, description = "Wrong code or nothing pending", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/t/{slug}/account/mfa/sms/confirm", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = CodeBody, responses((status = 200, description = "OK", body = Enrolled), (status = 400, description = "Wrong code or nothing pending", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn sms_confirm(
     State(state): State<AppState>,
     ctx: AccountCtx,
@@ -348,7 +348,7 @@ async fn delete_credential(
 }
 
 /// Replace the recovery codes; the new set is shown once.
-#[utoipa::path(post, path = "/t/{slug}/account/mfa/recovery-codes", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = RecoveryCodes), (status = 400, description = "No second factor enrolled", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/t/{slug}/account/mfa/recovery-codes", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = RecoveryCodes), (status = 400, description = "No second factor enrolled", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn recovery_codes(
     State(state): State<AppState>,
     ctx: AccountCtx,

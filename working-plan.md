@@ -75,11 +75,11 @@ All versions are the latest **stable** release as of the date above. Verified by
 | tower | 0.5.3 | |
 | tower-http | 0.7.1 | `cors`, `trace`, `compression-gzip`, `set-header`, `fs` |
 | tower_governor | 0.8.0 | rate limiting |
-| tokio | 1.53.1 | `full` |
+| tokio | 1.53.3 | `full` |
 | sqlx | 0.9.0 | `runtime-tokio`, `tls-rustls-ring`, `postgres`, `uuid`, `chrono`, `json`, `migrate` |
 | deadpool-redis | 0.23.1 | `rt_tokio_1` |
-| redis | 1.7.0 | `tokio-rustls-comp`, `script` |
-| jsonwebtoken | 11.0.0 | `aws_lc_rs` — constant-time RSA; avoids RUSTSEC-2023-0071 exposure |
+| redis | 1.7.1 | `tokio-rustls-comp`, `script` |
+| jsonwebtoken | 11.1.0 | `aws_lc_rs` — constant-time RSA; avoids RUSTSEC-2023-0071 exposure |
 | rsa | 0.9.10 | `pem` — 0.10 is still RC, do not use |
 | p256 | 0.14.0 | `ecdsa`, `pem` |
 | ed25519-dalek | 3.0.0 | `rand_core`, `pkcs8`, `alloc` |
@@ -92,28 +92,28 @@ All versions are the latest **stable** release as of the date above. Verified by
 | totp-rs | 6.0.0 | `qr`, `gen_secret` |
 | webauthn-rs | 0.5.5 | `danger-allow-state-serialisation` — 0.6 is still dev, do not use. Requires OpenSSL: `openssl-sys 0.9.117` with `vendored` so the distroless image is self-contained |
 | chacha20poly1305 | 0.11.0 | |
-| sha2 | 0.11.0 | |
-| rand | 0.10.2 | |
-| rustls | 0.23.45 | `aws-lc-rs` — 0.24 is still dev, do not use |
+| sha2 | 0.11.1 | |
+| rand | 0.10.3 | |
+| rustls | 0.23.46 | `aws-lc-rs` — 0.24 is still dev, do not use |
 | reqwest | 0.13.5 | default-features off; `json`, `rustls`, `form` |
 | lettre | 0.11.23 | default-features off; `tokio1`, `tokio1-rustls`, `aws-lc-rs`, `rustls-platform-verifier`, `smtp-transport`, `builder` |
 | handlebars | 6.4.4 | |
 | serde | 1.0.229 | `derive` |
-| serde_json | 1.0.151 | |
-| uuid | 1.26.1 | `v4`, `v7`, `serde` |
+| serde_json | 1.0.154 | |
+| uuid | 1.28.0 | `v4`, `v7`, `serde` |
 | chrono | 0.4.45 | `serde` |
-| thiserror | 2.0.20 | |
+| thiserror | 2.0.21 | |
 | validator | 0.21.0 | `derive` |
 | dotenvy | 0.15.7 | |
 | tracing | 0.1.44 | |
 | tracing-subscriber | 0.3.23 | `env-filter`, `json` |
 | metrics-exporter-prometheus | 0.18.3 | |
-| utoipa | 5.5.0 | `axum_extras`, `uuid`, `chrono` |
-| utoipa-axum | 0.2.0 | |
-| utoipa-swagger-ui | 9.0.2 | `axum` |
-| rust-embed | 8.12.0 | embedded UI mode |
+| utoipa | 6.0.0 | `axum_extras`, `uuid`, `chrono` |
+| utoipa-axum | 0.3.0 | |
+| utoipa-swagger-ui | 10.0.1 | `axum` |
+| rust-embed | 8.13.0 | embedded UI mode |
 | testcontainers-modules (dev) | 0.15.0 | `postgres`, `redis` |
-| proptest (dev) | 1.11.0 | property tests for token/blob/cursor parsing |
+| proptest (dev) | 1.12.0 | property tests for token/blob/cursor parsing |
 | testcontainers (dev) | 0.27.3 | `reusable-containers` — no Ryuk in testcontainers-rs; named reusable containers instead |
 | cargo-llvm-cov / cargo-fuzz / cargo-audit / cargo-deny (tools) | latest stable at Phase 0.9 (verify then) | coverage, fuzzing, supply chain |
 

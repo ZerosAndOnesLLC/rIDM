@@ -32,7 +32,7 @@ struct TokenPath {
     token: Uuid,
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/dcr/initial-access-tokens", tag = "clients", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Vec<InitialAccessToken>), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/dcr/initial-access-tokens", tag = "clients", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = Vec<InitialAccessToken>), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list_tokens(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -45,7 +45,7 @@ async fn list_tokens(
 /// The token is returned once, in this response. `expires_in_secs` and
 /// `max_uses` are optional; without them the token neither expires nor runs
 /// out.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/dcr/initial-access-tokens", tag = "clients", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewInitialAccessToken, responses((status = 201, body = CreatedInitialAccessToken), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/dcr/initial-access-tokens", tag = "clients", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewInitialAccessToken, responses((status = 201, description = "Created", body = CreatedInitialAccessToken), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn issue_token(
     State(state): State<AppState>,
     admin: AdminCtx,

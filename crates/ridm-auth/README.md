@@ -9,13 +9,23 @@ was meant for *it* and not for some other API of the same tenant, and decide
 whether the subject may do what it is asking. This crate is those three steps,
 and nothing else.
 
-The crate is not on crates.io yet; it is published with rIDM's first release.
-Until then, depend on it from the repository:
+```toml
+[dependencies]
+ridm-auth = "0.4"
+```
+
+It needs Rust 1.98 or later. The crate's version follows rIDM's, and a release
+of one is a release of the other; to try what is on `main` before it ships,
+depend on the repository instead:
 
 ```toml
 [dependencies]
 ridm-auth = { git = "https://github.com/ZerosAndOnesLLC/rIDM" }
 ```
+
+[Protect a Rust API with ridm-auth](https://zerosandonesllc.github.io/rIDM/docs/quickstarts/protect-an-api.html)
+is the full walkthrough; the API reference is on
+[docs.rs](https://docs.rs/ridm-auth).
 
 ## Verifying a token
 

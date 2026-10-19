@@ -47,7 +47,7 @@ struct IdpView {
     keys: Vec<SamlKeyView>,
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/saml", tag = "saml", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = IdpView), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/saml", tag = "saml", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = IdpView), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn idp(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -72,7 +72,7 @@ struct KeyPath {
 }
 
 /// Start a rollover: a new key, listed in metadata at once but not signing.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/saml/keys", tag = "saml", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 201, body = SamlKeyView), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 409, description = "A pending key exists", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/saml/keys", tag = "saml", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 201, description = "Created", body = SamlKeyView), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 409, description = "A pending key exists", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn add_key(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -85,7 +85,7 @@ async fn add_key(
 
 /// Sign with this key from now on; the active one before it is kept in
 /// metadata as `retiring` until deleted.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/saml/keys/{key}/activate", tag = "saml", params(("slug" = String, Path, description = "Tenant slug"), ("key" = Uuid, Path)), responses((status = 204), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/saml/keys/{key}/activate", tag = "saml", params(("slug" = String, Path, description = "Tenant slug"), ("key" = Uuid, Path)), responses((status = 204, description = "No content"), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn activate_key(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -98,7 +98,7 @@ async fn activate_key(
 }
 
 /// Remove a pending or retiring key from metadata.
-#[utoipa::path(delete, path = "/admin/tenants/{slug}/saml/keys/{key}", tag = "saml", params(("slug" = String, Path, description = "Tenant slug"), ("key" = Uuid, Path)), responses((status = 204), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 409, description = "The active key cannot be deleted", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/saml/keys/{key}", tag = "saml", params(("slug" = String, Path, description = "Tenant slug"), ("key" = Uuid, Path)), responses((status = 204, description = "No content"), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 409, description = "The active key cannot be deleted", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn delete_key(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -110,7 +110,7 @@ async fn delete_key(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/saml/service-providers", tag = "saml", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Vec<SamlSpView>), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/saml/service-providers", tag = "saml", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = Vec<SamlSpView>), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -120,7 +120,7 @@ async fn list(
     Ok(Json(saml_sps::list(&state, tenant.id).await?))
 }
 
-#[utoipa::path(post, path = "/admin/tenants/{slug}/saml/service-providers", tag = "saml", params(("slug" = String, Path, description = "Tenant slug")), request_body = SamlSpInput, responses((status = 201, body = SamlSpView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 409, description = "The entity ID or client id is taken", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/saml/service-providers", tag = "saml", params(("slug" = String, Path, description = "Tenant slug")), request_body = SamlSpInput, responses((status = 201, description = "Created", body = SamlSpView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 409, description = "The entity ID or client id is taken", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -140,7 +140,7 @@ struct MetadataBody {
 }
 
 /// Read an SP's metadata into a registration to review; nothing is saved.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/saml/service-providers/metadata", tag = "saml", params(("slug" = String, Path, description = "Tenant slug")), request_body = MetadataBody, responses((status = 200, body = SamlSpInput), (status = 400, description = "Not usable SP metadata", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/saml/service-providers/metadata", tag = "saml", params(("slug" = String, Path, description = "Tenant slug")), request_body = MetadataBody, responses((status = 200, description = "OK", body = SamlSpInput), (status = 400, description = "Not usable SP metadata", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn import_metadata(
     admin: AdminCtx,
     AdminTenantPath(tenant): AdminTenantPath,
@@ -155,7 +155,7 @@ struct SpPath {
     sp: Uuid,
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/saml/service-providers/{sp}", tag = "saml", params(("slug" = String, Path, description = "Tenant slug"), ("sp" = Uuid, Path, description = "The client's row id")), responses((status = 200, body = SamlSpView), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/saml/service-providers/{sp}", tag = "saml", params(("slug" = String, Path, description = "Tenant slug"), ("sp" = Uuid, Path, description = "The client's row id")), responses((status = 200, description = "OK", body = SamlSpView), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn get_one(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -167,7 +167,7 @@ async fn get_one(
 }
 
 /// Replace the SP's settings (the public client id and status are kept).
-#[utoipa::path(put, path = "/admin/tenants/{slug}/saml/service-providers/{sp}", tag = "saml", params(("slug" = String, Path, description = "Tenant slug"), ("sp" = Uuid, Path, description = "The client's row id")), request_body = SamlSpInput, responses((status = 200, body = SamlSpView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 409, description = "The entity ID is taken", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(put, path = "/admin/tenants/{slug}/saml/service-providers/{sp}", tag = "saml", params(("slug" = String, Path, description = "Tenant slug"), ("sp" = Uuid, Path, description = "The client's row id")), request_body = SamlSpInput, responses((status = 200, description = "OK", body = SamlSpView), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 409, description = "The entity ID is taken", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn replace(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -181,7 +181,7 @@ async fn replace(
     ))
 }
 
-#[utoipa::path(delete, path = "/admin/tenants/{slug}/saml/service-providers/{sp}", tag = "saml", params(("slug" = String, Path, description = "Tenant slug"), ("sp" = Uuid, Path, description = "The client's row id")), responses((status = 204), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(delete, path = "/admin/tenants/{slug}/saml/service-providers/{sp}", tag = "saml", params(("slug" = String, Path, description = "Tenant slug"), ("sp" = Uuid, Path, description = "The client's row id")), responses((status = 204, description = "No content"), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn delete(
     State(state): State<AppState>,
     admin: AdminCtx,

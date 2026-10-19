@@ -32,7 +32,7 @@ pub struct Tokens {
     pub max_days: u32,
 }
 
-#[utoipa::path(get, path = "/t/{slug}/account/tokens", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Tokens), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/t/{slug}/account/tokens", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = Tokens), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list_tokens(State(state): State<AppState>, ctx: AccountCtx) -> AppResult<Json<Tokens>> {
     Ok(Json(Tokens {
         tokens: pats::list(&state, ctx.tenant.id, ctx.user.id).await?,
@@ -43,7 +43,7 @@ async fn list_tokens(State(state): State<AppState>, ctx: AccountCtx) -> AppResul
 }
 
 /// The token is in the answer once and never again.
-#[utoipa::path(post, path = "/t/{slug}/account/tokens", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewPersonalAccessToken, responses((status = 201, body = CreatedPersonalAccessToken), (status = 400, description = "Validation failed", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required, or tokens are not allowed", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/t/{slug}/account/tokens", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewPersonalAccessToken, responses((status = 201, description = "Created", body = CreatedPersonalAccessToken), (status = 400, description = "Validation failed", body = crate::error::Problem), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem), (status = 403, description = "Recent authentication required, or tokens are not allowed", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create_token(
     State(state): State<AppState>,
     ctx: AccountCtx,

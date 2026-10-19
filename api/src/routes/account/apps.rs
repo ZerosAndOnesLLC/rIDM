@@ -19,7 +19,7 @@ pub fn apps_router() -> OpenApiRouter<AppState> {
         .routes(routes!(revoke_app))
 }
 
-#[utoipa::path(get, path = "/t/{slug}/account/apps", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Vec<ConsentedApp>), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/t/{slug}/account/apps", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = Vec<ConsentedApp>), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list_apps(
     State(state): State<AppState>,
     ctx: AccountCtx,

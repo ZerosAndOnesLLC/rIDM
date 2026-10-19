@@ -20,7 +20,7 @@ pub fn devices_router() -> OpenApiRouter<AppState> {
         .routes(routes!(revoke))
 }
 
-#[utoipa::path(get, path = "/t/{slug}/account/devices", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Vec<TrustedDevice>), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/t/{slug}/account/devices", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = Vec<TrustedDevice>), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     axum::extract::State(state): axum::extract::State<AppState>,
     ctx: AccountCtx,

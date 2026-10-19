@@ -50,7 +50,7 @@ struct ListQuery {
     status: Option<KeyStatus>,
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/keys", tag = "keys", params(("slug" = String, Path, description = "Tenant slug"), ListQuery), responses((status = 200, body = Vec<SigningKey>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/keys", tag = "keys", params(("slug" = String, Path, description = "Tenant slug"), ListQuery), responses((status = 200, description = "OK", body = Vec<SigningKey>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -75,7 +75,7 @@ struct CreateKey {
     not_before: Option<DateTime<Utc>>,
 }
 
-#[utoipa::path(post, path = "/admin/tenants/{slug}/keys", tag = "keys", params(("slug" = String, Path, description = "Tenant slug")), request_body(content = CreateKey, description = "Optional"), responses((status = 201, body = SigningKey), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/keys", tag = "keys", params(("slug" = String, Path, description = "Tenant slug")), request_body(content = CreateKey, description = "Optional"), responses((status = 201, description = "Created", body = SigningKey), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -116,7 +116,7 @@ async fn create(
 
 /// New key with the tenant's default algorithm, active at once; the previous
 /// active key retires with the policy's overlap.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/keys/rotate", tag = "keys", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 201, body = SigningKey), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/keys/rotate", tag = "keys", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 201, description = "Created", body = SigningKey), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn rotate(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -127,7 +127,7 @@ async fn rotate(
     Ok((StatusCode::CREATED, axum::Json(key)).into_response())
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/keys/{key}", tag = "keys", params(("slug" = String, Path, description = "Tenant slug"), ("key" = Uuid, Path)), responses((status = 200, body = SigningKey), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/keys/{key}", tag = "keys", params(("slug" = String, Path, description = "Tenant slug"), ("key" = Uuid, Path)), responses((status = 200, description = "OK", body = SigningKey), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn get_one(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -138,7 +138,7 @@ async fn get_one(
     Ok(Json(keys::get(&state, tenant.id, key).await?))
 }
 
-#[utoipa::path(post, path = "/admin/tenants/{slug}/keys/{key}/activate", tag = "keys", params(("slug" = String, Path, description = "Tenant slug"), ("key" = Uuid, Path)), responses((status = 200, body = SigningKey), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/keys/{key}/activate", tag = "keys", params(("slug" = String, Path, description = "Tenant slug"), ("key" = Uuid, Path)), responses((status = 200, description = "OK", body = SigningKey), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn activate(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -151,7 +151,7 @@ async fn activate(
     ))
 }
 
-#[utoipa::path(post, path = "/admin/tenants/{slug}/keys/{key}/retire", tag = "keys", params(("slug" = String, Path, description = "Tenant slug"), ("key" = Uuid, Path)), responses((status = 200, body = SigningKey), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/keys/{key}/retire", tag = "keys", params(("slug" = String, Path, description = "Tenant slug"), ("key" = Uuid, Path)), responses((status = 200, description = "OK", body = SigningKey), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn retire(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -165,7 +165,7 @@ async fn retire(
 }
 
 /// Unpublish now: tokens signed with the key stop verifying.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/keys/{key}/revoke", tag = "keys", params(("slug" = String, Path, description = "Tenant slug"), ("key" = Uuid, Path)), responses((status = 200, body = SigningKey), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/keys/{key}/revoke", tag = "keys", params(("slug" = String, Path, description = "Tenant slug"), ("key" = Uuid, Path)), responses((status = 200, description = "OK", body = SigningKey), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn revoke(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -189,7 +189,7 @@ struct MasterStatus {
 
 /// Which master-key generation every encrypted row is under. Spans all
 /// tenants, so global administrators only.
-#[utoipa::path(get, path = "/admin/master-key", tag = "keys", responses((status = 200, body = MasterStatus), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/master-key", tag = "keys", responses((status = 200, description = "OK", body = MasterStatus), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn master_status(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -212,7 +212,7 @@ struct NewGeneration {
 /// Have the key custody backend (`KEY_WRAPPER`) wrap a new master-key
 /// generation and make it current. 409 when the master key comes from the
 /// environment, whose generations are rolled out by changing `MASTER_KEY`.
-#[utoipa::path(post, path = "/admin/master-key/generations", tag = "keys", responses((status = 201, body = NewGeneration), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 409, description = "No key custody backend is configured", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/master-key/generations", tag = "keys", responses((status = 201, description = "Created", body = NewGeneration), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 409, description = "No key custody backend is configured", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn master_new_generation(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -232,7 +232,7 @@ async fn master_new_generation(
 /// Re-encrypt every row still under an older generation with the current
 /// master key (the new key itself comes from the environment or the key
 /// custody backend).
-#[utoipa::path(post, path = "/admin/master-key/rotate", tag = "keys", responses((status = 200, body = RotationReport), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/master-key/rotate", tag = "keys", responses((status = 200, description = "OK", body = RotationReport), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn master_rotate(
     State(state): State<AppState>,
     admin: AdminCtx,

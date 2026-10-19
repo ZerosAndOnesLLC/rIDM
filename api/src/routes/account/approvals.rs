@@ -23,7 +23,7 @@ pub fn approvals_router() -> OpenApiRouter<AppState> {
         .routes(routes!(deny_request))
 }
 
-#[utoipa::path(get, path = "/t/{slug}/account/backchannel-requests", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Vec<PendingRequest>), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/t/{slug}/account/backchannel-requests", tag = "account", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = Vec<PendingRequest>), (status = 401, description = "Missing or invalid account token", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list_requests(
     State(state): State<AppState>,
     ctx: AccountCtx,

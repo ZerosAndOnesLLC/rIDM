@@ -75,7 +75,7 @@ struct ListQuery {
     limit: Option<u32>,
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ListQuery), responses((status = 200, body = Page<Organization>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ListQuery), responses((status = 200, description = "OK", body = Page<Organization>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -93,7 +93,7 @@ async fn list(
     ))
 }
 
-#[utoipa::path(post, path = "/admin/tenants/{slug}/organizations", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewOrganization, responses((status = 201, body = Organization), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/organizations", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug")), request_body = NewOrganization, responses((status = 201, description = "Created", body = Organization), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn create(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -113,7 +113,7 @@ struct OrganizationDetail {
     domains: Vec<OrganizationDomain>,
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations/{org}", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path)), responses((status = 200, body = OrganizationDetail), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations/{org}", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path)), responses((status = 200, description = "OK", body = OrganizationDetail), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn get_one(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -130,7 +130,7 @@ async fn get_one(
     }))
 }
 
-#[utoipa::path(patch, path = "/admin/tenants/{slug}/organizations/{org}", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path)), request_body = OrganizationUpdate, responses((status = 200, body = Organization), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(patch, path = "/admin/tenants/{slug}/organizations/{org}", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path)), request_body = OrganizationUpdate, responses((status = 200, description = "OK", body = Organization), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn update(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -163,7 +163,7 @@ async fn delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations/{org}/members", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path), MembersQuery), responses((status = 200, body = Page<Member>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations/{org}/members", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path), MembersQuery), responses((status = 200, description = "OK", body = Page<Member>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn members(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -229,7 +229,7 @@ async fn remove_member(
 
 /// Grants scoped to this organization: they apply to sessions acting in it and
 /// nowhere else. `user_id` or `group_id` names the principal.
-#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations/{org}/roles", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path), PageParams), responses((status = 200, body = Page<RoleHolder>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations/{org}/roles", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path), PageParams), responses((status = 200, description = "OK", body = Page<RoleHolder>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn role_grants(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -257,7 +257,7 @@ struct GrantableRole {
 /// The tenant's roles as a picker for this organization's grants. An
 /// organization's own administrator may read them here without holding
 /// `ridm:roles:read` tenant-wide.
-#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations/{org}/grantable-roles", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path)), responses((status = 200, body = Vec<GrantableRole>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations/{org}/grantable-roles", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path)), responses((status = 200, description = "OK", body = Vec<GrantableRole>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn grantable_roles(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -406,7 +406,7 @@ async fn unassign_group_role(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations/{org}/domains", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path)), responses((status = 200, body = Vec<OrganizationDomain>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations/{org}/domains", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path)), responses((status = 200, description = "OK", body = Vec<OrganizationDomain>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn domains(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -419,7 +419,7 @@ async fn domains(
 
 /// The response's `verification` is the value to publish as a TXT record at
 /// `_ridm-challenge.<domain>`; auto-join waits for the verification.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/organizations/{org}/domains", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path)), request_body = NewOrganizationDomain, responses((status = 201, body = OrganizationDomain), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/organizations/{org}/domains", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path)), request_body = NewOrganizationDomain, responses((status = 201, description = "Created", body = OrganizationDomain), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn add_domain(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -438,7 +438,7 @@ struct DomainPath {
     domain_id: Uuid,
 }
 
-#[utoipa::path(patch, path = "/admin/tenants/{slug}/organizations/{org}/domains/{domain_id}", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path), ("domain_id" = Uuid, Path)), request_body = OrganizationDomainUpdate, responses((status = 200, body = OrganizationDomain), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(patch, path = "/admin/tenants/{slug}/organizations/{org}/domains/{domain_id}", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path), ("domain_id" = Uuid, Path)), request_body = OrganizationDomainUpdate, responses((status = 200, description = "OK", body = OrganizationDomain), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn update_domain(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -454,7 +454,7 @@ async fn update_domain(
 
 /// Looks for the TXT record now. 400 while it is not there, 503 when the
 /// server has no resolver to ask.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/organizations/{org}/domains/{domain_id}/verify", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path), ("domain_id" = Uuid, Path)), responses((status = 200, body = OrganizationDomain), (status = 400, description = "The record was not found", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 503, description = "No DNS resolver", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/organizations/{org}/domains/{domain_id}/verify", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path), ("domain_id" = Uuid, Path)), responses((status = 200, description = "OK", body = OrganizationDomain), (status = 400, description = "The record was not found", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem), (status = 503, description = "No DNS resolver", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn verify_domain(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -492,7 +492,7 @@ struct InvitationListQuery {
 
 /// Only this organization's invitations; the tenant's others are not shown,
 /// so an organization's own administrator never sees them.
-#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations/{org}/invitations", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path), InvitationListQuery), responses((status = 200, body = Page<Invitation>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/organizations/{org}/invitations", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path), InvitationListQuery), responses((status = 200, description = "OK", body = Page<Invitation>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn invitations(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -519,7 +519,7 @@ async fn invitations(
 /// and the membership at once. Roles and groups are granted tenant-wide on
 /// acceptance, so a caller confined to the organization may not attach any —
 /// they grant roles within the organization afterwards.
-#[utoipa::path(post, path = "/admin/tenants/{slug}/organizations/{org}/invitations", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path)), request_body = NewInvitation, responses((status = 201, body = Invitation), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(post, path = "/admin/tenants/{slug}/organizations/{org}/invitations", tag = "organizations", params(("slug" = String, Path, description = "Tenant slug"), ("org" = Uuid, Path)), request_body = NewInvitation, responses((status = 201, description = "Created", body = Invitation), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn invite(
     State(state): State<AppState>,
     admin: AdminCtx,

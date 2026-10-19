@@ -70,7 +70,7 @@ impl From<AuditFilterQuery> for AuditFilter {
 
 /// `?from=&to=&name=&actor_id=&subject_id=&impersonator_id=&user_id=&cursor=&limit=`; `name`
 /// matches exactly, or as a prefix when it ends with `.` or `*`.
-#[utoipa::path(get, path = "/admin/tenants/{slug}/audit", tag = "audit", params(("slug" = String, Path, description = "Tenant slug"), AuditFilterQuery, ("cursor" = Option<String>, Query), ("limit" = Option<u32>, Query)), responses((status = 200, body = Page<AuditEvent>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/audit", tag = "audit", params(("slug" = String, Path, description = "Tenant slug"), AuditFilterQuery, ("cursor" = Option<String>, Query), ("limit" = Option<u32>, Query)), responses((status = 200, description = "OK", body = Page<AuditEvent>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn list(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -137,7 +137,7 @@ async fn export(
     Ok(stream_export(state, Some(tenant.id), q, &name))
 }
 
-#[utoipa::path(get, path = "/admin/tenants/{slug}/audit/verify", tag = "audit", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, body = Verification), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/tenants/{slug}/audit/verify", tag = "audit", params(("slug" = String, Path, description = "Tenant slug")), responses((status = 200, description = "OK", body = Verification), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn verify(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -147,7 +147,7 @@ async fn verify(
     Ok(Json(audit::verify(&state, Some(tenant.id)).await?))
 }
 
-#[utoipa::path(get, path = "/admin/audit", tag = "audit", params(AuditFilterQuery, ("cursor" = Option<String>, Query), ("limit" = Option<u32>, Query)), responses((status = 200, body = Page<AuditEvent>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/audit", tag = "audit", params(AuditFilterQuery, ("cursor" = Option<String>, Query), ("limit" = Option<u32>, Query)), responses((status = 200, description = "OK", body = Page<AuditEvent>), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn global_list(
     State(state): State<AppState>,
     admin: AdminCtx,
@@ -169,7 +169,7 @@ async fn global_export(
     Ok(stream_export(state, None, q, "audit-global"))
 }
 
-#[utoipa::path(get, path = "/admin/audit/verify", tag = "audit", responses((status = 200, body = Verification), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
+#[utoipa::path(get, path = "/admin/audit/verify", tag = "audit", responses((status = 200, description = "OK", body = Verification), (status = 400, description = "Bad request", body = crate::error::Problem), (status = 401, description = "Missing or invalid admin token", body = crate::error::Problem), (status = 403, description = "Permission missing", body = crate::error::Problem), (status = 404, description = "Not found", body = crate::error::Problem)), security(("bearer" = [])))]
 async fn global_verify(
     State(state): State<AppState>,
     admin: AdminCtx,
