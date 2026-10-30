@@ -15,15 +15,7 @@ targets = [
 [advisories]
 version = 2
 yanked = "deny"
-ignore = [
-  # zip: a build-dependency of utoipa-swagger-ui, which unpacks its own vendored
-  # Swagger UI archive at compile time. The advisories concern extracting
-  # attacker-controlled archives; nothing here extracts one, and zip is not in
-  # the shipped binary. utoipa-swagger-ui 10 requires zip ^8.6, the fix is 9.
-  { id = "RUSTSEC-2026-0367", reason = "build-time extraction of utoipa-swagger-ui's own vendored archive; lift when utoipa-swagger-ui moves to zip 9" },
-  { id = "RUSTSEC-2026-0368", reason = "build-time extraction of utoipa-swagger-ui's own vendored archive; lift when utoipa-swagger-ui moves to zip 9" },
-  { id = "RUSTSEC-2026-0369", reason = "build-time extraction of utoipa-swagger-ui's own vendored archive; lift when utoipa-swagger-ui moves to zip 9" },
-]
+ignore = []
 
 [licenses]
 version = 2
