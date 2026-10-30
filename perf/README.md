@@ -14,8 +14,8 @@ Two shapes:
 
 | Run | Load | Thresholds | Where |
 |-----|------|------------|-------|
-| smoke (`SMOKE=1`) | 20 VUs on `/token`, 2 on the documents, 30 s | errors < 1 %, token p95 < 500 ms, documents p95 < 200 ms | every PR (`load-smoke` job, debug build) |
-| baseline | 200 VUs, 2 min (`VUS`, `DURATION`) | errors < 1 %, token p99 < 50 ms, documents p99 < 10 ms | the `release` workflow, on a release build, when a `v*` tag is pushed (or on demand, with `vus`/`duration` inputs); target 5,000 token requests per second per node |
+| smoke (`SMOKE=1`) | 20 VUs on `/token`, 2 on the documents, 30 s | errors < 1 %, token p95 < 500 ms, documents p95 < 200 ms | every release, before anything is built (`load-smoke` gate job of the `release` workflow, debug build) |
+| baseline | 200 VUs, 2 min (`VUS`, `DURATION`) | errors < 1 %, token p99 < 50 ms, documents p99 < 10 ms | the `release` workflow, on a release build, when a `v*` GitHub release is published (or on demand, with `vus`/`duration` inputs); target 5,000 token requests per second per node |
 
 Run the API with `RATE_LIMITS=false` for any load test: the request guard would
 otherwise refuse the test's single address after its per-address ceiling (600 token

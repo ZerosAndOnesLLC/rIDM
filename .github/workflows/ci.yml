@@ -1,14 +1,22 @@
-# Required status checks for `main` (see working-plan.md §6). Job ids are the
-# check names configured in branch protection; keep them stable.
+# The pull-request checks: lint, unit and integration tests. Nothing here
+# builds a release artifact, a container image or the UI's static export; the
+# heavier suites (UI build and e2e, coverage, load and fuzz smokes, packaging,
+# FIPS image, Helm, examples, OpenID conformance) gate the `release` workflow,
+# which runs when a GitHub release is published. Job ids are check names; keep
+# them stable.
+#
+# GitHub-hosted runners only: this is a public repository and a fork's pull
+# request must never run on a self-hosted runner.
 name: ci
 
 on:
   pull_request:
-  push:
-    branches: [main]
+    paths-ignore:
+      - docs/**
+      - site/**
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -21,28 +29,40 @@ env:
   # The optional server features every release build turns on: Kerberos and
   # the key custody backends (13.6). Lint and test with them all.
   RIDM_FEATURES: ridm-api/kerberos,ridm-api/hsm-pkcs11,ridm-api/kms-aws,ridm-api/kms-vault,ridm-api/kms-gcp,ridm-api/kms-azure
-  NODE_VERSION: "24"
+  NODE_VERSION: "26"
+  FIPS_FEATURES: ridm-cli/fips,ridm-api/kerberos,ridm-api/hsm-pkcs11,ridm-api/kms-aws,ridm-api/kms-vault,ridm-api/kms-gcp,ridm-api/kms-azure,ridm-api/test-support
 
 jobs:
   static:
     name: static
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      # Three feature sets of the whole workspace (default, optional, FIPS)
+      # outgrow the runner's disk: drop the preinstalled SDKs never used here.
+      - name: free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          df -h /
+      # rust-toolchain.toml pins the compiler and its rustfmt/clippy.
+      - name: toolchain
+        run: rustup toolchain install && rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
       - name: rustfmt
         run: cargo fmt --all -- --check
-      - name: cargo check
-        run: cargo check --workspace --all-targets --locked
+      # Clippy type-checks everything `cargo check` would, so it runs alone.
       - name: clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       # The Kerberos acceptor and the key custody backends are optional
       # features (on in the release builds): lint the code both ways.
       - name: clippy (optional features)
         run: cargo clippy --workspace --all-targets --locked --features "$RIDM_FEATURES" -- -D warnings
+      # The FIPS build (docs/src/deploy/fips.md) lints on its own feature set;
+      # its image is built and booted in the release gate.
+      - name: clippy (fips)
+        run: cargo clippy -p ridm-api -p ridm-cli --all-targets --locked --no-default-features --features "$FIPS_FEATURES" -- -D warnings
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
@@ -59,6 +79,12 @@ jobs:
           # No `--all-features`: `deny.toml` sets it, and cargo-deny 0.19 only
           # accepts that flag before the subcommand.
           arguments: ""
+      # Pinned: 0.20 moved `--config` off the `check` subcommand.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.19.0
+      - name: cargo deny (fips bans)
+        run: cargo deny check bans --config deny-fips.toml
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -93,9 +119,11 @@ jobs:
   unit:
     name: unit
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - name: toolchain
+        run: rustup toolchain install && rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
       # The SAML interop tests check rIDM's XML signatures and encryption
       # against xmlsec1; without it they would skip, so CI requires it.
@@ -105,10 +133,13 @@ jobs:
         env:
           RIDM_REQUIRE_XMLSEC1: "1"
         run: cargo test --workspace --lib --bins --locked --features "$RIDM_FEATURES"
+      - name: cargo test (fips, lib)
+        run: cargo test -p ridm-api --lib --locked --no-default-features --features "ridm-api/fips,$RIDM_FEATURES,ridm-api/test-support"
 
   integration:
     name: integration
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     services:
       postgres:
         image: postgres:18.6-alpine
@@ -139,7 +170,8 @@ jobs:
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
             /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
           df -h /
-      - uses: dtolnay/rust-toolchain@stable
+      - name: toolchain
+        run: rustup toolchain install && rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
       # xmlsec1 for the SAML interop tests; SoftHSM for the PKCS#11 key
       # custody test, with a token directory of the job's own.
@@ -159,480 +191,6 @@ jobs:
           RIDM_REQUIRE_SOFTHSM: "1"
           RIDM_TEST_PKCS11_MODULE: /usr/lib/softhsm/libsofthsm2.so
         run: cargo test --workspace --tests --locked --features "$RIDM_FEATURES"
-
-  coverage:
-    name: coverage
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:18.6-alpine
-        env:
-          POSTGRES_DB: ridm
-          POSTGRES_USER: ridm
-          POSTGRES_PASSWORD: ridm
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U ridm -d ridm"
-          --health-interval 5s --health-timeout 3s --health-retries 20
-      valkey:
-        image: valkey/valkey:9.1.2-alpine3.24
-        ports: ["6379:6379"]
-        options: >-
-          --health-cmd "valkey-cli ping"
-          --health-interval 5s --health-timeout 3s --health-retries 20
-    env:
-      RIDM_TEST_DATABASE_URL: postgres://ridm:ridm@localhost:5432/ridm
-      RIDM_TEST_REDIS_URL: redis://localhost:6379
-    steps:
-      - uses: actions/checkout@v7
-      # The all-features build (the AWS SDK among it) and the test
-      # containers (Vault, OpenBao, local-kms, the KDC) outgrow the runner's
-      # disk: drop the preinstalled SDKs this job never uses.
-      - name: free disk space
-        run: |
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
-            /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
-          df -h /
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: llvm-tools-preview
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-llvm-cov
-      - name: cargo llvm-cov
-        run: |
-          # Every feature but `fips`: coverage measures the standard build.
-          cargo llvm-cov --workspace --locked \
-            --features "$RIDM_FEATURES,ridm-api/embedded-ui,ridm-api/mimalloc,ridm-api/test-support" \
-            --ignore-filename-regex '(tests?/|build\.rs|main\.rs)' \
-            --lcov --output-path lcov.info
-          cargo llvm-cov report --summary-only | tee coverage-summary.txt
-          cargo llvm-cov report --summary-only >> "$GITHUB_STEP_SUMMARY"
-      - name: coverage floor
-        # Plan §6: line coverage of services/ (the login flows live there),
-        # oidc/ and middleware/ stays at or above 80%, each on its own.
-        run: |
-          awk '
-            match($1, /^api\/src\/(services|oidc|middleware)\//) {
-              dir = substr($1, 1, RLENGTH); lines[dir] += $8; missed[dir] += $9
-            }
-            END {
-              n = split("api/src/services/ api/src/oidc/ api/src/middleware/", dirs, " ")
-              for (i = 1; i <= n; i++) {
-                d = dirs[i]; l = lines[d]
-                pct = l ? 100 * (l - missed[d]) / l : 0
-                printf "%s: %.2f%% of %d lines\n", d, pct, l
-                if (l == 0 || pct < 80) fail = 1
-              }
-              exit fail
-            }' coverage-summary.txt > coverage-floor.txt && status=0 || status=$?
-          cat coverage-floor.txt
-          cat coverage-floor.txt >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: coverage
-          path: |
-            lcov.info
-            coverage-summary.txt
-          retention-days: 14
-
-  ui-build:
-    name: ui-build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - name: npm ci
-        working-directory: ui
-        run: npm ci
-      - name: next build (static export)
-        working-directory: ui
-        run: npm run build
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ui-out
-          path: ui/out
-          retention-days: 7
-
-  ui-e2e:
-    name: ui-e2e
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:18.6-alpine
-        env:
-          POSTGRES_DB: ridm
-          POSTGRES_USER: ridm
-          POSTGRES_PASSWORD: ridm
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U ridm -d ridm"
-          --health-interval 5s --health-timeout 3s --health-retries 20
-      valkey:
-        image: valkey/valkey:9.1.2-alpine3.24
-        ports: ["6379:6379"]
-        options: >-
-          --health-cmd "valkey-cli ping"
-          --health-interval 5s --health-timeout 3s --health-retries 20
-      mailpit:
-        image: axllent/mailpit:v1.31.1
-        ports: ["1025:1025", "8025:8025"]
-      # The directory the LDAP upstream spec seeds with ldapadd.
-      openldap:
-        image: osixia/openldap:1.5.0
-        env:
-          LDAP_ORGANISATION: Example
-          LDAP_DOMAIN: example.org
-          LDAP_ADMIN_PASSWORD: admin-Passw0rd
-          LDAP_TLS: "false"
-        ports: ["1389:389"]
-    env:
-      DATABASE_URL: postgres://ridm:ridm@localhost:5432/ridm
-      REDIS_URL: redis://localhost:6379
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - name: npm ci
-        working-directory: ui
-        run: npm ci
-      - name: playwright browsers
-        working-directory: ui
-        run: npx playwright install --with-deps chromium webkit firefox
-      - name: redis-cli (protocol-compatible client; global setup clears the tenant cache in Valkey), ldap-utils (the LDAP spec seeds its directory) and MIT GSSAPI (Chromium's Kerberos, for the SPNEGO spec)
-        run: sudo apt-get update -q && sudo apt-get install -y -q redis-tools ldap-utils libgssapi-krb5-2
-      # The suite drives the artifact that ships: the static export compiled
-      # into the API (embedded UI mode), everything on one origin.
-      - name: build ui (static export, same origin)
-        working-directory: ui
-        env:
-          NEXT_PUBLIC_API_URL: ""
-        run: npm run build
-      - name: build api (embedded ui)
-        run: cargo build -p ridm-api --locked --features embedded-ui,kerberos
-      - name: start api
-        env:
-          PUBLIC_URL: http://localhost:8090
-          BIND_ADDR: 127.0.0.1:8090
-          MASTER_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-          COOKIE_SECURE: "false"
-          MIGRATE_ON_START: "true"
-          SMTP_HOST: localhost
-          SMTP_PORT: "1025"
-          SMTP_SECURITY: none
-          SMTP_FROM: "rIDM <no-reply@ridm.local>"
-          BOOTSTRAP_ADMIN_EMAIL: admin@ridm.local
-          BOOTSTRAP_ADMIN_PASSWORD: ChangeMe-Now-1234-e2e
-        run: |
-          nohup target/debug/ridm-api > api.log 2>&1 &
-          for i in $(seq 1 60); do curl -sf localhost:8090/readyz && break; sleep 2; done
-          curl -sf localhost:8090/readyz
-      - name: playwright
-        working-directory: ui
-        env:
-          CI: "true"
-          E2E_UI_URL: http://localhost:8090
-          E2E_API_URL: http://localhost:8090
-          E2E_MAILPIT_URL: http://localhost:8025
-          E2E_DATABASE_URL: postgres://ridm:ridm@localhost:5432/ridm
-          E2E_REDIS_URL: redis://localhost:6379
-        run: npm run e2e
-      - name: api log
-        if: failure()
-        run: tail -200 api.log
-      - uses: actions/upload-artifact@v7
-        if: failure()
-        with:
-          name: playwright-report
-          path: ui/playwright-report
-
-  load-smoke:
-    name: load-smoke
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:18.6-alpine
-        env:
-          POSTGRES_DB: ridm
-          POSTGRES_USER: ridm
-          POSTGRES_PASSWORD: ridm
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U ridm -d ridm"
-          --health-interval 5s --health-timeout 3s --health-retries 20
-      valkey:
-        image: valkey/valkey:9.1.2-alpine3.24
-        ports: ["6379:6379"]
-        options: >-
-          --health-cmd "valkey-cli ping"
-          --health-interval 5s --health-timeout 3s --health-retries 20
-    env:
-      DATABASE_URL: postgres://ridm:ridm@localhost:5432/ridm
-      REDIS_URL: redis://localhost:6379
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: build api
-        run: cargo build -p ridm-api --locked
-      - name: start api
-        env:
-          PUBLIC_URL: http://localhost:8090
-          BIND_ADDR: 127.0.0.1:8090
-          MASTER_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-          COOKIE_SECURE: "false"
-          MIGRATE_ON_START: "true"
-          RATE_LIMITS: "false"
-          BOOTSTRAP_ADMIN_EMAIL: admin@ridm.local
-          BOOTSTRAP_ADMIN_PASSWORD: ChangeMe-Now-1234-e2e
-        run: |
-          nohup target/debug/ridm-api > api.log 2>&1 &
-          for i in $(seq 1 60); do curl -sf localhost:8090/readyz && break; sleep 2; done
-          curl -sf localhost:8090/readyz
-      - name: open dynamic registration on master (the test registers its own client)
-        run: |
-          sudo apt-get update -q && sudo apt-get install -y -q postgresql-client redis-tools
-          # Merge, never `jsonb_set`: a tenant's settings hold only what was
-          # written, and `jsonb_set` on an absent `dcr` key does nothing at all.
-          psql "$DATABASE_URL" -c "UPDATE tenants SET settings = settings || '{\"dcr\": {\"mode\": \"open\", \"allowed_grants\": [\"client_credentials\"]}}'::jsonb WHERE slug = 'master'"
-          psql "$DATABASE_URL" -tAc "SELECT settings->'dcr' FROM tenants WHERE slug = 'master'" | grep -q open
-          redis-cli -u "$REDIS_URL" --scan --pattern 'ridm:tenant:*' | xargs -r redis-cli -u "$REDIS_URL" del
-          # Clearing Valkey does not reach the API's in-process cache, which
-          # keeps a tenant document for fifteen seconds (`cache/layer.rs`).
-          sleep 20
-      - uses: grafana/setup-k6-action@v1
-      - name: k6 smoke
-        run: k6 run -e BASE_URL=http://localhost:8090 -e TENANT=master -e SMOKE=1 perf/token.js
-      - name: api log
-        if: failure()
-        run: tail -n 200 api.log
-
-  fuzz-smoke:
-    name: fuzz-smoke
-    runs-on: ubuntu-latest
-    # Five targets, a minute each. The sanitizer build of the whole dependency
-    # tree is the slow part; the budget is for a cold one, and `cache-on-failure`
-    # keeps what a failed run built so the next is warm.
-    timeout-minutes: 90
-    env:
-      # `cargo fuzz` composes its own RUSTFLAGS (sanitizer, coverage); the
-      # workspace's `-D warnings` has no business in that build.
-      RUSTFLAGS: ""
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@nightly
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: api/fuzz
-          cache-on-failure: "true"
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-fuzz
-      - name: fuzz (60 s per target)
-        run: api/fuzz/run.sh 60
-      - name: crashing inputs
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: fuzz-artifacts
-          path: api/fuzz/artifacts
-          retention-days: 30
-
-  packaging:
-    name: packaging
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - name: build image (amd64)
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: api/Dockerfile
-          push: false
-          load: true
-          tags: ridm:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: boot image, migrate, readyz
-        env:
-          MASTER_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
-          RIDM_IMAGE: ridm:ci
-        run: |
-          docker compose -f deploy/docker-compose.yml --profile prod up -d --no-build
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:8080/readyz; then echo; exit 0; fi
-            sleep 2
-          done
-          docker compose -f deploy/docker-compose.yml --profile prod logs api
-          exit 1
-      # The production stack (deploy/production) behind nginx, Caddy and
-      # Traefik in turn, checked over https from outside; run.sh says what.
-      - name: production compose behind each proxy
-        env:
-          RIDM_IMAGE: ridm:ci
-        run: deploy/production/smoke/run.sh
-      # The previous release's image, then this one over the same volumes, then
-      # the previous one again on the migrated schema; run.sh says what. Passes
-      # with a notice while there is no earlier release tag.
-      - name: upgrade from the previous release
-        env:
-          TO_IMAGE: ridm:ci
-        run: |
-          git fetch --tags --force --quiet origin
-          deploy/upgrade-smoke/run.sh
-      - uses: actions/upload-artifact@v7
-        if: failure()
-        with:
-          name: proxy-smoke
-          path: |
-            target/proxy-smoke/logs
-            target/upgrade-smoke
-          retention-days: 7
-
-  # The FIPS build (docs/src/deploy/fips.md): lint and unit-test it, check
-  # its dependency bans, build the UBI image, and boot it (scripts/fips/
-  # smoke.sh says what). The runner isn't in FIPS mode, so the smoke uses
-  # FIPS_ALLOW_NON_FIPS_HOST, after checking that the image refuses without it.
-  fips:
-    name: fips
-    runs-on: ubuntu-latest
-    env:
-      FIPS_FEATURES: ridm-cli/fips,ridm-api/kerberos,ridm-api/hsm-pkcs11,ridm-api/kms-aws,ridm-api/kms-vault,ridm-api/kms-gcp,ridm-api/kms-azure,ridm-api/test-support
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: fips
-      - name: clippy (fips)
-        run: cargo clippy -p ridm-api -p ridm-cli --all-targets --locked --no-default-features --features "$FIPS_FEATURES" -- -D warnings
-      - name: unit tests (fips)
-        run: cargo test -p ridm-api --lib --locked --no-default-features --features "ridm-api/fips,$RIDM_FEATURES,ridm-api/test-support"
-      # Valkey by client certificate, the FIPS deployment's form, in this build too.
+      # Valkey by client certificate, the FIPS deployment's form, in that build too.
       - name: valkey TLS (fips)
         run: cargo test -p ridm-api --test valkey_tls --locked --no-default-features --features "ridm-api/fips,$RIDM_FEATURES,ridm-api/test-support"
-      # Pinned: 0.20 moved `--config` off the `check` subcommand.
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-deny@0.19.0
-      - name: cargo deny (fips bans)
-        run: cargo deny check bans --config deny-fips.toml
-      - uses: docker/setup-buildx-action@v4
-      # The builder stage runs scripts/fips/check-binary.sh on the release
-      # binary: only the FIPS module's AWS-LC, no ring, no OpenSSL.
-      - name: build image (fips, amd64)
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: api/Dockerfile.fips
-          push: false
-          load: true
-          tags: ridm:fips
-          cache-from: type=gha,scope=fips
-          cache-to: type=gha,mode=max,scope=fips
-      - name: boot the FIPS image
-        run: scripts/fips/smoke.sh ridm:fips
-      # helm-smoke runs its client-certificate phase with this image.
-      - name: save the FIPS image
-        run: docker save ridm:fips | gzip -1 > ridm-fips.tar.gz
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ridm-fips-image
-          path: ridm-fips.tar.gz
-          retention-days: 1
-
-  # The Helm chart installed on a throwaway kind cluster from the image built
-  # here, upgraded and uninstalled, then installed again against a Postgres
-  # that authenticates by client certificate, with the FIPS image the `fips`
-  # job built (deploy/helm/smoke/run.sh says what).
-  helm-smoke:
-    name: helm-smoke
-    runs-on: ubuntu-latest
-    needs: fips
-    steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - name: build image (amd64)
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: api/Dockerfile
-          push: false
-          load: true
-          tags: ridm:ci
-          cache-from: type=gha
-      - uses: actions/download-artifact@v8
-        with:
-          name: ridm-fips-image
-      - name: load the FIPS image
-        run: docker load < ridm-fips.tar.gz
-      - name: helm and kind
-        run: |
-          curl -fsSL https://get.helm.sh/helm-v4.3.0-linux-amd64.tar.gz \
-            | sudo tar xz -C /usr/local/bin --strip-components=1 linux-amd64/helm
-          curl -fsSLo kind https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64
-          sudo install -m 0755 kind /usr/local/bin/kind && rm kind
-      - name: chart on kind
-        env:
-          RIDM_IMAGE: ridm:ci
-          RIDM_FIPS_IMAGE: ridm:fips
-        run: deploy/helm/smoke/run.sh
-
-  # The example applications against the shipped stack: the image above under
-  # docker-compose, the first admin and token from `ridm bootstrap`, the demo
-  # tenant from examples/setup.sh, then real sign-ins in headless Chromium
-  # (examples/smoke/run.sh says what is checked).
-  examples-smoke:
-    name: examples-smoke
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - name: build image (amd64)
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: api/Dockerfile
-          push: false
-          load: true
-          tags: ridm:ci
-          cache-from: type=gha
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: |
-            ui/package-lock.json
-            examples/nextjs-spa/package-lock.json
-      - name: npm ci (ui)
-        working-directory: ui
-        run: npm ci
-      - name: playwright browsers
-        working-directory: ui
-        run: npx playwright install --with-deps chromium
-      - name: smoke
-        env:
-          RIDM_IMAGE: ridm:ci
-        run: examples/smoke/run.sh
-      - uses: actions/upload-artifact@v7
-        if: failure()
-        with:
-          name: examples-smoke
-          path: target/smoke
-          retention-days: 7

@@ -6,12 +6,14 @@ name: conformance
 # (Caddy, a private CA the suite trusts) as https://ridm.local; the static UI
 # is served on the same origin.
 #
-# `conformance` is a required status check on `main` (working-plan.md §6): the
-# job id is the check name configured in branch protection, so keep it stable.
-# The same plans run again weekly on the schedule below.
+# Part of the `release` workflow's gate, so no release is built while a plan
+# fails. A called workflow checks out the caller's ref (the release tag on a
+# published release), so it takes no ref input: checking out an
+# input-controlled ref with caches enabled is a cache-poisoning risk. The same
+# plans run weekly on the schedule below, and on demand.
 
 on:
-  pull_request:
+  workflow_call:
   schedule:
     - cron: "17 3 * * 1"
   workflow_dispatch:
@@ -20,7 +22,7 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: "24"
+  NODE_VERSION: "26"
 
 jobs:
   conformance:
@@ -49,7 +51,9 @@ jobs:
       REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      # rust-toolchain.toml pins the compiler.
+      - name: toolchain
+        run: rustup toolchain install && rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v7
         with:
@@ -107,7 +111,7 @@ jobs:
         run: conformance/run.sh
       - name: results
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: conformance-results
           path: conformance/results

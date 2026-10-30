@@ -47,7 +47,7 @@ group memberships, a few disabled or unverified. `ada.lovelace`, `alan.hopper`,
 
 ## 1. Infrastructure and the server
 
-Requirements: Rust 1.98+ (pinned in `rust-toolchain.toml`), Node.js 24, Docker,
+Requirements: Rust 1.98+ (pinned in `rust-toolchain.toml`), Node.js 26, Docker,
 `sqlx-cli`.
 
 ```bash

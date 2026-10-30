@@ -186,7 +186,7 @@ To work on rIDM itself, see [CONTRIBUTING.md](CONTRIBUTING.md) and
 | `perf/` | k6 load tests: the PR smoke and the release baseline |
 | `conformance/` | the OpenID Foundation conformance rig |
 | `scripts/release/` | release checks: every version agrees with the tag, notes from `CHANGELOG.md` |
-| `.github/` | CI workflows (the `release` workflow publishes signed images, the chart and static binaries from a `v*` tag), issue and PR templates |
+| `.github/` | CI workflows (the `release` workflow publishes signed images, the chart and static binaries when a `v*` GitHub release is published), issue and PR templates |
 
 ## Releases
 
@@ -195,6 +195,24 @@ and arm64, with an SBOM, and a `<version>-fips` variant for the [FIPS 140-3 buil
 static Linux binaries of `ridm-api` and `ridm`, and a GitHub release with signed
 checksums; see [Releases and verification](https://zerosandonesllc.github.io/rIDM/docs/deploy/releases.html)
 and [`CHANGELOG.md`](CHANGELOG.md). The roadmap is in [`working-plan.md`](working-plan.md).
+
+## CI & Releases
+
+- **Pull requests run checks only** (`ci`): rustfmt, clippy (default, optional and FIPS
+  features), `cargo audit`/`cargo deny`, ESLint, `tsc`, the UI unit tests, the Helm
+  chart's lint, and the Rust unit and integration tests. CodeQL and the docs build run
+  alongside (path-filtered). No release builds, images or UI export on a pull request.
+- **Full builds run on a published GitHub release:**
+  `gh release create vX.Y.Z --target main --generate-notes`. The `release` workflow's gate
+  (coverage, UI e2e, load and fuzz smokes, packaging, the FIPS image, Helm on kind, the
+  examples, OpenID conformance) must pass before the images, chart and binaries are
+  built, signed and uploaded to that release. See
+  [CONTRIBUTING.md](CONTRIBUTING.md#cutting-a-release).
+- **Runners:** everything a pull request or release triggers runs on GitHub-hosted
+  runners (`ubuntu-latest`/`ubuntu-24.04`, and `ubuntu-24.04-arm` for the native arm64
+  builds), so a fork's code never reaches a self-hosted machine. Only the weekly
+  four-hour fuzz run (`weekly`, schedule or manual dispatch only) uses the self-hosted
+  `zo-local` runners, one target at a time.
 
 ## Contributing and security
 

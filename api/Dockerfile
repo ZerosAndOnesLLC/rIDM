@@ -14,7 +14,7 @@
 # distroless image (no shell, no package manager, runs as non-root).
 
 ARG RUST_VERSION=1.98.1
-ARG NODE_VERSION=24.21.0
+ARG NODE_VERSION=26.13.0
 
 # ---------------------------------------------------------------------------
 # ui

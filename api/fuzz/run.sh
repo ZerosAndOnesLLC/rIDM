@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Run every fuzz target for a while. Used by the `fuzz-smoke` PR check (60 s a
-# target) and by the weekly long run (four hours a target).
+# Run every fuzz target for a while. Used by the `fuzz-smoke` release gate (60 s
+# a target) and by the weekly long run (four hours a target).
 #
 #   api/fuzz/run.sh [seconds] [target ...]
 #

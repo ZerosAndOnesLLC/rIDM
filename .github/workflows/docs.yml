@@ -1,16 +1,29 @@
 # The GitHub Pages site: the website (site/) at the root and the documentation
 # (docs/, mdBook) under docs/. Every PR builds both and checks every link
 # inside them, so a renamed page or a moved anchor fails here rather than on
-# the published site; `main` deploys it to GitHub Pages.
+# the published site; `main` deploys it to GitHub Pages. Only changes to what
+# the site is built from run it.
 name: docs
 
 on:
   pull_request:
+    paths:
+      - docs/**
+      - site/**
+      - scripts/pages/**
+      - api/openapi.json
+      - .github/workflows/docs.yml
   push:
     branches: [main]
+    paths:
+      - docs/**
+      - site/**
+      - scripts/pages/**
+      - api/openapi.json
+      - .github/workflows/docs.yml
 
 concurrency:
-  group: docs-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -20,11 +33,13 @@ jobs:
   docs:
     name: docs
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
-          # Full history: the sitemap dates each page by its last commit.
-          fetch-depth: 0
+          # The sitemap dates each page by its last commit: full history for
+          # the deploy; a pull request only checks the build and the links.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 1 || 0 }}
       - uses: taiki-e/install-action@v2
         with:
           tool: mdbook@0.5.4
@@ -60,6 +75,7 @@ jobs:
     if: github.event_name == 'push'
     needs: docs
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       pages: write
       id-token: write
