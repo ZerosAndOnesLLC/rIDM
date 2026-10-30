@@ -29,7 +29,7 @@ env:
   # The optional server features every release build turns on: Kerberos and
   # the key custody backends (13.6). Lint and test with them all.
   RIDM_FEATURES: ridm-api/kerberos,ridm-api/hsm-pkcs11,ridm-api/kms-aws,ridm-api/kms-vault,ridm-api/kms-gcp,ridm-api/kms-azure
-  NODE_VERSION: "24"
+  NODE_VERSION: "26"
   FIPS_FEATURES: ridm-cli/fips,ridm-api/kerberos,ridm-api/hsm-pkcs11,ridm-api/kms-aws,ridm-api/kms-vault,ridm-api/kms-gcp,ridm-api/kms-azure,ridm-api/test-support
 
 jobs:

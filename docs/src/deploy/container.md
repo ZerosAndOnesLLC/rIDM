@@ -17,7 +17,7 @@ docker buildx build --platform linux/amd64,linux/arm64 -f api/Dockerfile -t ridm
 Run either from the repository root; the build context is the whole workspace. The
 build has three stages:
 
-- **ui** (`node:24.21.0-bookworm-slim`, overridable with `--build-arg NODE_VERSION=...`)
+- **ui** (`node:26.13.0-bookworm-slim`, overridable with `--build-arg NODE_VERSION=...`)
   runs `npm ci` and `npm run build` in `ui/` with `NEXT_PUBLIC_API_URL` empty, producing
   the same-origin static export `ui/out`. It runs once on the build platform, since the
   files are the same for every architecture.

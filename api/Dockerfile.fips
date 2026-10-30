@@ -18,7 +18,7 @@
 #   development and CI only).
 
 ARG RUST_VERSION=1.98.1
-ARG NODE_VERSION=24.21.0
+ARG NODE_VERSION=26.13.0
 ARG UBI_VERSION=9.8
 
 # ---------------------------------------------------------------------------

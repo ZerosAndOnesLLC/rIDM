@@ -6,7 +6,7 @@ what a pull request needs before it can merge.
 
 ## Development environment
 
-Requirements: Rust 1.98+ (`rust-toolchain.toml` pins the exact version), Node.js 24 LTS,
+Requirements: Rust 1.98+ (`rust-toolchain.toml` pins the exact version), Node.js 26 LTS,
 Docker with Compose, and `sqlx-cli` (`cargo install sqlx-cli --no-default-features
 --features rustls,postgres`).
 

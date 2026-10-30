@@ -61,7 +61,7 @@ All versions are the latest **stable** release as of the date above. Verified by
 | Component | Version | Notes |
 |-----------|---------|-------|
 | Rust | 1.98.1, edition 2024 | |
-| Node.js | 24.21.0 (LTS) | 26.x is current but not LTS |
+| Node.js | 26.13.0 (LTS) | |
 | npm | 12.0.2 | |
 | PostgreSQL | 18.6 | minimum supported: 16 |
 | Valkey | 9.1.2 | image `valkey/valkey:9.1.2-alpine3.24`; Redis 8.x is protocol-compatible |
@@ -75,10 +75,10 @@ All versions are the latest **stable** release as of the date above. Verified by
 | tower | 0.5.3 | |
 | tower-http | 0.7.1 | `cors`, `trace`, `compression-gzip`, `set-header`, `fs` |
 | tower_governor | 0.8.0 | rate limiting |
-| tokio | 1.53.3 | `full` |
+| tokio | 1.54.1 | `full` |
 | sqlx | 0.9.0 | `runtime-tokio`, `tls-rustls-ring`, `postgres`, `uuid`, `chrono`, `json`, `migrate` |
 | deadpool-redis | 0.23.1 | `rt_tokio_1` |
-| redis | 1.7.1 | `tokio-rustls-comp`, `script` |
+| redis | 1.8.0 | `tokio-rustls-comp`, `script` |
 | jsonwebtoken | 11.1.0 | `aws_lc_rs` — constant-time RSA; avoids RUSTSEC-2023-0071 exposure |
 | rsa | 0.9.10 | `pem` — 0.10 is still RC, do not use |
 | p256 | 0.14.0 | `ecdsa`, `pem` |
@@ -100,7 +100,7 @@ All versions are the latest **stable** release as of the date above. Verified by
 | handlebars | 6.4.4 | |
 | serde | 1.0.229 | `derive` |
 | serde_json | 1.0.154 | |
-| uuid | 1.28.0 | `v4`, `v7`, `serde` |
+| uuid | 1.29.0 | `v4`, `v7`, `serde` |
 | chrono | 0.4.45 | `serde` |
 | thiserror | 2.0.21 | |
 | validator | 0.21.0 | `derive` |
@@ -110,7 +110,7 @@ All versions are the latest **stable** release as of the date above. Verified by
 | metrics-exporter-prometheus | 0.18.3 | |
 | utoipa | 6.0.0 | `axum_extras`, `uuid`, `chrono` |
 | utoipa-axum | 0.3.0 | |
-| utoipa-swagger-ui | 10.0.1 | `axum` |
+| utoipa-swagger-ui | 10.0.2 | `axum` |
 | rust-embed | 8.13.0 | embedded UI mode |
 | testcontainers-modules (dev) | 0.15.0 | `postgres`, `redis` |
 | proptest (dev) | 1.12.0 | property tests for token/blob/cursor parsing |

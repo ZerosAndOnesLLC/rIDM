@@ -54,7 +54,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
-  NODE_VERSION: "24"
+  NODE_VERSION: "26"
   IMAGE: ghcr.io/zerosandonesllc/ridm
   CHART_REPO: oci://ghcr.io/zerosandonesllc/charts
   TAG: ${{ github.event.release.tag_name || inputs.tag }}
