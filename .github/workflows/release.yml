@@ -1,6 +1,9 @@
 name: release
 
-# A `v*` tag becomes a release (see CONTRIBUTING.md, "Cutting a release"):
+# Publishing a GitHub release for a `v*` tag (`gh release create vX.Y.Z`) runs
+# this workflow (see CONTRIBUTING.md, "Cutting a release"). First the gate: the
+# heavy suites (coverage, UI e2e, load and fuzz smokes, packaging, the FIPS
+# image, Helm, examples, OpenID conformance). Then:
 #
 #   image      linux/amd64 and linux/arm64, built natively on each architecture,
 #              in two variants: the standard image (api/Dockerfile) and the FIPS
@@ -12,25 +15,28 @@ name: release
 #   binaries   static (musl) ridm-api and ridm for linux amd64 and arm64
 #   chart      the Helm chart, packaged and pushed to
 #              oci://ghcr.io/zerosandonesllc/charts, signed the same way
-#   release    a GitHub release with the tarballs, the chart, the SBOM,
-#              SHA256SUMS and its Sigstore bundle, notes from CHANGELOG.md
+#   release    the tarballs, the chart, the SBOM, SHA256SUMS and its Sigstore
+#              bundle uploaded to the published release, notes from CHANGELOG.md
 #   crate      ridm-auth to crates.io, when CARGO_REGISTRY_TOKEN is set
 #   baseline   the full k6 load baseline against a release build
 #
 # The tag must match every version in the tree (scripts/release/check-version.sh).
-# A pull request that changes this file or scripts/release runs everything up to
-# publishing, so the build is proven before a tag depends on it; nothing is
-# pushed, signed or released from a pull request.
+#
+# Re-running: `gh workflow run release.yml --ref vX.Y.Z -f tag=vX.Y.Z` publishes
+# again into the existing release (signatures name the tag ref, which is what
+# `cosign verify` checks). Dispatched from a branch instead
+# (`--ref <branch> -f tag=vX.Y.Z`), it is a rehearsal of that release from the
+# branch head (whose versions must already say X.Y.Z): the gate and every build
+# run, nothing is pushed, signed or released.
 
 on:
-  push:
-    tags: ["v*"]
-  pull_request:
-    paths:
-      - .github/workflows/release.yml
-      - scripts/release/**
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
+      tag:
+        description: Release tag (vX.Y.Z)
+        required: true
       vus:
         description: Virtual users on /token (load baseline)
         default: "200"
@@ -42,8 +48,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: release-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -51,29 +57,42 @@ env:
   NODE_VERSION: "24"
   IMAGE: ghcr.io/zerosandonesllc/ridm
   CHART_REPO: oci://ghcr.io/zerosandonesllc/charts
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+  # What is built: the release's tag, or the commit a dispatch ran on (the tag
+  # itself for a re-run, a branch head for a rehearsal).
+  REF: ${{ github.event.release.tag_name || github.sha }}
 
 jobs:
   prepare:
     name: prepare
+    if: startsWith(github.event.release.tag_name || inputs.tag, 'v')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.v.outputs.version }}
       publish: ${{ steps.v.outputs.publish }}
       prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REF }}
       - id: v
         name: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ "${GITHUB_REF_TYPE}" = tag ]; then
-            scripts/release/check-version.sh "${GITHUB_REF_NAME}"
-            version="${GITHUB_REF_NAME#v}"
+          scripts/release/check-version.sh "$TAG"
+          version="${TAG#v}"
+          scripts/release/notes.sh "$version" > /dev/null
+          if [ "$GITHUB_REF" = "refs/tags/$TAG" ]; then
             publish=true
-            scripts/release/notes.sh "$version" > /dev/null
+            # A re-run dispatched on the tag uploads into its release.
+            gh release view "$TAG" --json tagName > /dev/null ||
+              { echo "::error::no GitHub release for $TAG: create it with gh release create $TAG" >&2; exit 1; }
           else
-            # A rehearsal: the tree's own version, nothing published.
-            version="$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p}' Cargo.toml)"
+            # Dispatched from a branch: a rehearsal, nothing published.
             publish=false
+            echo "::notice::rehearsal of $TAG from $GITHUB_REF: nothing is published"
           fi
           case "$version" in *-*) prerelease=true ;; *) prerelease=false ;; esac
           {
@@ -83,13 +102,511 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "version $version, publish $publish, prerelease $prerelease"
 
+  # ---------------------------------------------------------------------------
+  # Gate: the suites too heavy for a pull request run here, against the tagged
+  # commit, before anything is built for the release. If one fails, nothing is
+  # built, pushed, signed or uploaded. (The UI's static export is the `ui` job
+  # below, which every binary embeds.)
+  # ---------------------------------------------------------------------------
+  coverage:
+    name: coverage
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_DB: ridm
+          POSTGRES_USER: ridm
+          POSTGRES_PASSWORD: ridm
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ridm -d ridm"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      valkey:
+        image: valkey/valkey:9.1.2-alpine3.24
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      RIDM_TEST_DATABASE_URL: postgres://ridm:ridm@localhost:5432/ridm
+      RIDM_TEST_REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REF }}
+      # The all-features build (the AWS SDK among it) and the test
+      # containers (Vault, OpenBao, local-kms, the KDC) outgrow the runner's
+      # disk: drop the preinstalled SDKs this job never uses.
+      - name: free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          df -h /
+      # rust-toolchain.toml pins the compiler.
+      - name: toolchain
+        run: rustup toolchain install && rustup show active-toolchain
+      - name: llvm-tools
+        run: rustup component add llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - name: cargo llvm-cov
+        run: |
+          # Every feature but `fips`: coverage measures the standard build.
+          cargo llvm-cov --workspace --locked \
+            --features "$RIDM_FEATURES,ridm-api/embedded-ui,ridm-api/mimalloc,ridm-api/test-support" \
+            --ignore-filename-regex '(tests?/|build\.rs|main\.rs)' \
+            --lcov --output-path lcov.info
+          cargo llvm-cov report --summary-only | tee coverage-summary.txt
+          cargo llvm-cov report --summary-only >> "$GITHUB_STEP_SUMMARY"
+      - name: coverage floor
+        # Plan §6: line coverage of services/ (the login flows live there),
+        # oidc/ and middleware/ stays at or above 80%, each on its own.
+        run: |
+          awk '
+            match($1, /^api\/src\/(services|oidc|middleware)\//) {
+              dir = substr($1, 1, RLENGTH); lines[dir] += $8; missed[dir] += $9
+            }
+            END {
+              n = split("api/src/services/ api/src/oidc/ api/src/middleware/", dirs, " ")
+              for (i = 1; i <= n; i++) {
+                d = dirs[i]; l = lines[d]
+                pct = l ? 100 * (l - missed[d]) / l : 0
+                printf "%s: %.2f%% of %d lines\n", d, pct, l
+                if (l == 0 || pct < 80) fail = 1
+              }
+              exit fail
+            }' coverage-summary.txt > coverage-floor.txt && status=0 || status=$?
+          cat coverage-floor.txt
+          cat coverage-floor.txt >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: |
+            lcov.info
+            coverage-summary.txt
+          retention-days: 14
+
+  ui-e2e:
+    name: ui-e2e
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_DB: ridm
+          POSTGRES_USER: ridm
+          POSTGRES_PASSWORD: ridm
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ridm -d ridm"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      valkey:
+        image: valkey/valkey:9.1.2-alpine3.24
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      mailpit:
+        image: axllent/mailpit:v1.31.1
+        ports: ["1025:1025", "8025:8025"]
+      # The directory the LDAP upstream spec seeds with ldapadd.
+      openldap:
+        image: osixia/openldap:1.5.0
+        env:
+          LDAP_ORGANISATION: Example
+          LDAP_DOMAIN: example.org
+          LDAP_ADMIN_PASSWORD: admin-Passw0rd
+          LDAP_TLS: "false"
+        ports: ["1389:389"]
+    env:
+      DATABASE_URL: postgres://ridm:ridm@localhost:5432/ridm
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REF }}
+      # rust-toolchain.toml pins the compiler.
+      - name: toolchain
+        run: rustup toolchain install && rustup show active-toolchain
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: npm ci
+        working-directory: ui
+        run: npm ci
+      - name: playwright browsers
+        working-directory: ui
+        run: npx playwright install --with-deps chromium webkit firefox
+      - name: redis-cli (protocol-compatible client; global setup clears the tenant cache in Valkey), ldap-utils (the LDAP spec seeds its directory) and MIT GSSAPI (Chromium's Kerberos, for the SPNEGO spec)
+        run: sudo apt-get update -q && sudo apt-get install -y -q redis-tools ldap-utils libgssapi-krb5-2
+      # The suite drives the artifact that ships: the static export compiled
+      # into the API (embedded UI mode), everything on one origin.
+      - name: build ui (static export, same origin)
+        working-directory: ui
+        env:
+          NEXT_PUBLIC_API_URL: ""
+        run: npm run build
+      - name: build api (embedded ui)
+        run: cargo build -p ridm-api --locked --features embedded-ui,kerberos
+      - name: start api
+        env:
+          PUBLIC_URL: http://localhost:8090
+          BIND_ADDR: 127.0.0.1:8090
+          MASTER_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          COOKIE_SECURE: "false"
+          MIGRATE_ON_START: "true"
+          SMTP_HOST: localhost
+          SMTP_PORT: "1025"
+          SMTP_SECURITY: none
+          SMTP_FROM: "rIDM <no-reply@ridm.local>"
+          BOOTSTRAP_ADMIN_EMAIL: admin@ridm.local
+          BOOTSTRAP_ADMIN_PASSWORD: ChangeMe-Now-1234-e2e
+        run: |
+          nohup target/debug/ridm-api > api.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf localhost:8090/readyz && break; sleep 2; done
+          curl -sf localhost:8090/readyz
+      - name: playwright
+        working-directory: ui
+        env:
+          CI: "true"
+          E2E_UI_URL: http://localhost:8090
+          E2E_API_URL: http://localhost:8090
+          E2E_MAILPIT_URL: http://localhost:8025
+          E2E_DATABASE_URL: postgres://ridm:ridm@localhost:5432/ridm
+          E2E_REDIS_URL: redis://localhost:6379
+        run: npm run e2e
+      - name: api log
+        if: failure()
+        run: tail -200 api.log
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report
+          path: ui/playwright-report
+
+  load-smoke:
+    name: load-smoke
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_DB: ridm
+          POSTGRES_USER: ridm
+          POSTGRES_PASSWORD: ridm
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ridm -d ridm"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      valkey:
+        image: valkey/valkey:9.1.2-alpine3.24
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgres://ridm:ridm@localhost:5432/ridm
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REF }}
+      # rust-toolchain.toml pins the compiler.
+      - name: toolchain
+        run: rustup toolchain install && rustup show active-toolchain
+      - uses: Swatinem/rust-cache@v2
+      - name: build api
+        run: cargo build -p ridm-api --locked
+      - name: start api
+        env:
+          PUBLIC_URL: http://localhost:8090
+          BIND_ADDR: 127.0.0.1:8090
+          MASTER_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          COOKIE_SECURE: "false"
+          MIGRATE_ON_START: "true"
+          RATE_LIMITS: "false"
+          BOOTSTRAP_ADMIN_EMAIL: admin@ridm.local
+          BOOTSTRAP_ADMIN_PASSWORD: ChangeMe-Now-1234-e2e
+        run: |
+          nohup target/debug/ridm-api > api.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf localhost:8090/readyz && break; sleep 2; done
+          curl -sf localhost:8090/readyz
+      - name: open dynamic registration on master (the test registers its own client)
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q postgresql-client redis-tools
+          # Merge, never `jsonb_set`: a tenant's settings hold only what was
+          # written, and `jsonb_set` on an absent `dcr` key does nothing at all.
+          psql "$DATABASE_URL" -c "UPDATE tenants SET settings = settings || '{\"dcr\": {\"mode\": \"open\", \"allowed_grants\": [\"client_credentials\"]}}'::jsonb WHERE slug = 'master'"
+          psql "$DATABASE_URL" -tAc "SELECT settings->'dcr' FROM tenants WHERE slug = 'master'" | grep -q open
+          redis-cli -u "$REDIS_URL" --scan --pattern 'ridm:tenant:*' | xargs -r redis-cli -u "$REDIS_URL" del
+          # Clearing Valkey does not reach the API's in-process cache, which
+          # keeps a tenant document for fifteen seconds (`cache/layer.rs`).
+          sleep 20
+      - uses: grafana/setup-k6-action@v1
+      - name: k6 smoke
+        run: k6 run -e BASE_URL=http://localhost:8090 -e TENANT=master -e SMOKE=1 perf/token.js
+      - name: api log
+        if: failure()
+        run: tail -n 200 api.log
+
+  fuzz-smoke:
+    name: fuzz-smoke
+    needs: prepare
+    runs-on: ubuntu-latest
+    # Every target, a minute each. The sanitizer build of the whole dependency
+    # tree is the slow part; the budget is for a cold one, and `cache-on-failure`
+    # keeps what a failed run built so the next is warm.
+    timeout-minutes: 90
+    env:
+      # `cargo fuzz` composes its own RUSTFLAGS (sanitizer, coverage); the
+      # workspace's `-D warnings` has no business in that build.
+      RUSTFLAGS: ""
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REF }}
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api/fuzz
+          cache-on-failure: "true"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      - name: fuzz (60 s per target)
+        run: api/fuzz/run.sh 60
+      - name: crashing inputs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-artifacts
+          path: api/fuzz/artifacts
+          retention-days: 30
+
+  packaging:
+    name: packaging
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REF }}
+      - uses: docker/setup-buildx-action@v4
+      - name: build image (amd64)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: api/Dockerfile
+          push: false
+          load: true
+          tags: ridm:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: boot image, migrate, readyz
+        env:
+          MASTER_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+          RIDM_IMAGE: ridm:ci
+        run: |
+          docker compose -f deploy/docker-compose.yml --profile prod up -d --no-build
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/readyz; then echo; exit 0; fi
+            sleep 2
+          done
+          docker compose -f deploy/docker-compose.yml --profile prod logs api
+          exit 1
+      # The production stack (deploy/production) behind nginx, Caddy and
+      # Traefik in turn, checked over https from outside; run.sh says what.
+      - name: production compose behind each proxy
+        env:
+          RIDM_IMAGE: ridm:ci
+        run: deploy/production/smoke/run.sh
+      # The previous release's image, then this one over the same volumes, then
+      # the previous one again on the migrated schema; run.sh says what. Passes
+      # with a notice while there is no earlier release tag.
+      - name: upgrade from the previous release
+        env:
+          TO_IMAGE: ridm:ci
+        run: |
+          git fetch --tags --force --quiet origin
+          deploy/upgrade-smoke/run.sh
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: proxy-smoke
+          path: |
+            target/proxy-smoke/logs
+            target/upgrade-smoke
+          retention-days: 7
+
+  # The FIPS image (docs/src/deploy/fips.md): build the UBI image and boot it
+  # (scripts/fips/smoke.sh says what). The runner isn't in FIPS mode, so the
+  # smoke uses FIPS_ALLOW_NON_FIPS_HOST, after checking that the image refuses
+  # without it. Its clippy, unit tests and dependency bans run on every pull
+  # request (`ci`).
+  fips:
+    name: fips
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REF }}
+      - uses: docker/setup-buildx-action@v4
+      # The builder stage runs scripts/fips/check-binary.sh on the release
+      # binary: only the FIPS module's AWS-LC, no ring, no OpenSSL.
+      - name: build image (fips, amd64)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: api/Dockerfile.fips
+          push: false
+          load: true
+          tags: ridm:fips
+          cache-from: type=gha,scope=fips
+          cache-to: type=gha,mode=max,scope=fips
+      - name: boot the FIPS image
+        run: scripts/fips/smoke.sh ridm:fips
+      # helm-smoke runs its client-certificate phase with this image.
+      - name: save the FIPS image
+        run: docker save ridm:fips | gzip -1 > ridm-fips.tar.gz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ridm-fips-image
+          path: ridm-fips.tar.gz
+          retention-days: 1
+
+  # The Helm chart installed on a throwaway kind cluster from the image built
+  # here, upgraded and uninstalled, then installed again against a Postgres
+  # that authenticates by client certificate, with the FIPS image the `fips`
+  # job built (deploy/helm/smoke/run.sh says what).
+  helm-smoke:
+    name: helm-smoke
+    needs: [prepare, fips]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REF }}
+      - uses: docker/setup-buildx-action@v4
+      - name: build image (amd64)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: api/Dockerfile
+          push: false
+          load: true
+          tags: ridm:ci
+          cache-from: type=gha
+      - uses: actions/download-artifact@v8
+        with:
+          name: ridm-fips-image
+      - name: load the FIPS image
+        run: docker load < ridm-fips.tar.gz
+      - name: helm and kind
+        run: |
+          curl -fsSL https://get.helm.sh/helm-v4.3.0-linux-amd64.tar.gz \
+            | sudo tar xz -C /usr/local/bin --strip-components=1 linux-amd64/helm
+          curl -fsSLo kind https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64
+          sudo install -m 0755 kind /usr/local/bin/kind && rm kind
+      - name: chart on kind
+        env:
+          RIDM_IMAGE: ridm:ci
+          RIDM_FIPS_IMAGE: ridm:fips
+        run: deploy/helm/smoke/run.sh
+
+  # The example applications against the shipped stack: the image above under
+  # docker-compose, the first admin and token from `ridm bootstrap`, the demo
+  # tenant from examples/setup.sh, then real sign-ins in headless Chromium
+  # (examples/smoke/run.sh says what is checked).
+  examples-smoke:
+    name: examples-smoke
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REF }}
+      - uses: docker/setup-buildx-action@v4
+      - name: build image (amd64)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: api/Dockerfile
+          push: false
+          load: true
+          tags: ridm:ci
+          cache-from: type=gha
+      # rust-toolchain.toml pins the compiler.
+      - name: toolchain
+        run: rustup toolchain install && rustup show active-toolchain
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            ui/package-lock.json
+            examples/nextjs-spa/package-lock.json
+      - name: npm ci (ui)
+        working-directory: ui
+        run: npm ci
+      - name: playwright browsers
+        working-directory: ui
+        run: npx playwright install --with-deps chromium
+      - name: smoke
+        env:
+          RIDM_IMAGE: ridm:ci
+        run: examples/smoke/run.sh
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: examples-smoke
+          path: target/smoke
+          retention-days: 7
+
+  # The OpenID Foundation conformance plans (conformance.yml, also weekly).
+  conformance:
+    name: conformance
+    needs: prepare
+    uses: ./.github/workflows/conformance.yml
+    with:
+      ref: ${{ github.event.release.tag_name || github.sha }}
+
+  gate:
+    name: gate
+    needs: [coverage, ui-e2e, load-smoke, fuzz-smoke, packaging, fips, helm-smoke, examples-smoke, conformance]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo "every release gate passed"
+
   # The UI's static export, built once: the same files go into every binary.
   ui:
     name: ui
-    needs: prepare
+    needs: [prepare, gate]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REF }}
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -123,11 +640,14 @@ jobs:
             runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
     env:
       TARGET: ${{ matrix.target }}
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REF }}
       - uses: actions/download-artifact@v8
         with:
           name: ui-out
@@ -185,7 +705,7 @@ jobs:
 
   image:
     name: image (${{ matrix.variant }}, ${{ matrix.arch }})
-    needs: prepare
+    needs: [prepare, gate]
     strategy:
       fail-fast: false
       matrix:
@@ -195,6 +715,7 @@ jobs:
           - { variant: fips, file: api/Dockerfile.fips, arch: amd64, runner: ubuntu-24.04 }
           - { variant: fips, file: api/Dockerfile.fips, arch: arm64, runner: ubuntu-24.04-arm }
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
     permissions:
       contents: read
       packages: write
@@ -202,6 +723,8 @@ jobs:
       PUBLISH: ${{ needs.prepare.outputs.publish }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REF }}
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         if: env.PUBLISH == 'true'
@@ -255,6 +778,7 @@ jobs:
           - { variant: standard, suffix: "" }
           - { variant: fips, suffix: "-fips" }
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -331,8 +855,9 @@ jobs:
 
   chart:
     name: chart
-    needs: prepare
+    needs: [prepare, gate]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       packages: write
@@ -342,6 +867,8 @@ jobs:
       PUBLISH: ${{ needs.prepare.outputs.publish }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REF }}
       - uses: azure/setup-helm@v5
         with:
           version: v4.3.0
@@ -380,6 +907,7 @@ jobs:
     needs: [prepare, binaries, manifest, chart]
     if: needs.prepare.outputs.publish == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
       id-token: write
@@ -387,6 +915,8 @@ jobs:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REF }}
       - uses: actions/download-artifact@v8
         with:
           pattern: binaries-*
@@ -432,18 +962,22 @@ jobs:
             echo
             echo "Verifying signatures: https://zerosandonesllc.github.io/rIDM/docs/deploy/releases.html#verifying-a-release"
           } > notes.md
-          flags=()
-          [ "$PRERELEASE" = true ] && flags+=(--prerelease)
-          gh release create "v$VERSION" dist/* \
-            --verify-tag --title "rIDM $VERSION" --notes-file notes.md "${flags[@]}"
+          # The release already exists (publishing it started this run):
+          # attach the artifacts and replace its notes with the changelog's.
+          gh release upload "$TAG" dist/* --clobber
+          gh release edit "$TAG" --title "rIDM $VERSION" --notes-file notes.md \
+            --prerelease="$PRERELEASE"
 
   crate:
     name: crate
     needs: [prepare, release]
     if: needs.prepare.outputs.publish == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REF }}
       - name: publish ridm-auth
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -457,7 +991,6 @@ jobs:
   load-baseline:
     name: load-baseline
     needs: prepare
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     services:
@@ -482,7 +1015,11 @@ jobs:
       REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+        with:
+          ref: ${{ env.REF }}
+      # rust-toolchain.toml pins the compiler.
+      - name: toolchain
+        run: rustup toolchain install && rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
       - name: build api (release)
         run: cargo build -p ridm-api --release --locked

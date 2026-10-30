@@ -1,8 +1,15 @@
 name: weekly
 
-# The long runs that are too slow for a pull request: four hours per fuzz
-# target (the PR check gives each one a minute). The weekly conformance run
-# lives with the rest of the suite in `conformance.yml`.
+# The long runs that are too slow for any per-change check: four hours per
+# fuzz target (the release gate gives each one a minute). The weekly
+# conformance run lives with the rest of the suite in `conformance.yml`.
+#
+# Self-hosted (zo-local): this workflow runs only on its schedule or by hand,
+# never for a pull request, so no fork's code reaches these runners. The
+# runners are persistent: the toolchain, cargo-fuzz and the sanitizer build
+# (CARGO_TARGET_DIR below) stay on them, so within a run only the first target
+# on each runner pays for the build. One target at a time, leaving the other
+# runner free for everything else that uses it.
 
 on:
   schedule:
@@ -13,18 +20,22 @@ on:
         description: Seconds per target
         default: "14400"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
 jobs:
   fuzz-long:
     name: fuzz-long (${{ matrix.target }})
-    runs-on: ubuntu-latest
-    # Four hours of fuzzing plus the sanitizer build, under the six-hour
-    # ceiling a hosted runner gives one job — hence one job per target.
+    runs-on: [self-hosted, Linux, X64, zo-local]
+    # Four hours of fuzzing plus, for the first target, the sanitizer build.
     timeout-minutes: 330
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         target:
           - authorize_params
@@ -35,6 +46,7 @@ jobs:
           - saml_message
           - kerberos_token
           - client_cert
+          - passkey_answer
     env:
       CARGO_TERM_COLOR: always
       CARGO_INCREMENTAL: "0"
@@ -42,11 +54,27 @@ jobs:
       RUSTFLAGS: ""
     steps:
       - uses: actions/checkout@v7
+      # The runners are provisioned with a C/C++ toolchain; anything missing is
+      # installed only when sudo works without a password.
+      - name: native build deps
+        run: |
+          missing=""
+          for p in build-essential pkg-config; do
+            dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"
+          done
+          if [ -n "$missing" ]; then
+            if sudo -n true 2>/dev/null; then
+              sudo -n apt-get update -qq
+              sudo -n apt-get install -y -qq $missing
+            else
+              echo "::error::runner is missing packages:$missing (install them on the runner host)"
+              exit 1
+            fi
+          fi
+          # A target dir outside the checkout (which actions/checkout cleans),
+          # kept on the runner between runs.
+          echo "CARGO_TARGET_DIR=$HOME/.cache/ridm-ci/target-fuzz" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@nightly
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: api/fuzz
-          cache-on-failure: "true"
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-fuzz

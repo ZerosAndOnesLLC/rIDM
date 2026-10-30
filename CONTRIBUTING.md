@@ -174,8 +174,9 @@ cd ui && npm run gen:api        # writes lib/api/openapi.d.ts
 the Playwright spec `ui/e2e/openapi-contract.spec.ts` compares the live document with
 the committed one and drives the generated client against the live API.
 
-CodeQL runs on every pull request (`.github/workflows/codeql.yml`) over the Rust, the
-TypeScript, the Python helpers and the workflows themselves. It does not scan the test
+CodeQL runs on every pull request that changes more than `docs/`
+(`.github/workflows/codeql.yml`) over the Rust, the TypeScript and the workflows
+themselves, and weekly over the Python helpers too. It does not scan the test
 suites (`.github/codeql/codeql-config.yml`): a test is meant to hold the fixed
 passwords, fixed signing keys and printed tokens a scanner objects to, and an alert on
 one says nothing about what ships. It is not a required check — a finding is triaged in
@@ -189,18 +190,29 @@ nginx, rIDM behind a Caddy TLS front as `https://ridm.local` (a private CA the s
 trusts), and a headless Chromium driver that signs in, approves consent and confirms
 logout for every browser step the tests leave pending. The `conformance` workflow runs
 the configuration, basic (discovery + dynamic registration), RP-initiated, back-channel
-and front-channel logout certification plans on every pull request and weekly, fails on
+and front-channel logout certification plans in the release gate and weekly, fails on
 any finding not listed in `conformance/expected-failures.json`, and uploads the suite's
 exported logs as an artifact. Running it locally: [`conformance/README.md`](conformance/README.md).
 
 ## CI
 
-Every pull request runs the `ci` workflow (`.github/workflows/ci.yml`):
+Pull requests run checks only; the full builds and the heavy suites run when a release
+is published. Everything a pull request triggers runs on GitHub-hosted runners (this is a
+public repository, so a fork's code never reaches a self-hosted runner).
+
+Every pull request that changes more than `docs/` or `site/` runs the `ci` workflow
+(`.github/workflows/ci.yml`):
 
 | Job | Checks |
 |-----|--------|
-| `static` | rustfmt, `cargo check`, clippy with warnings denied (default and optional features), `cargo audit`, `cargo deny`, `cargo package -p ridm-auth`, ESLint, `tsc`, `npm run test:scripts`, `npm run test:unit`, `npm audit`, the Helm chart's lint and schema |
-| `unit`, `integration` | the Rust tests, integration against Postgres and Valkey |
+| `static` | rustfmt, clippy with warnings denied (default, optional and FIPS features; clippy type-checks everything, so there is no separate `cargo check`), `cargo audit`, `cargo deny` (and the FIPS bans), `cargo package -p ridm-auth`, ESLint, `tsc`, `npm run test:scripts`, `npm run test:unit`, `npm audit`, the Helm chart's lint and schema |
+| `unit`, `integration` | the Rust tests (also the FIPS build's unit and Valkey TLS tests), integration against Postgres and Valkey |
+
+Publishing a GitHub release runs the `release` workflow, whose gate runs these before
+anything is built (`.github/workflows/release.yml`):
+
+| Job | Checks |
+|-----|--------|
 | `coverage` | `cargo llvm-cov`, with an 80% line floor on each of `services/`, `oidc/` and `middleware/` |
 | `ui-build` | the UI's static export |
 | `ui-e2e` | the Playwright suite (end-user journeys and every console page, with axe-core checks in light, dark and phone width) against an API built with `embedded-ui` |
@@ -209,11 +221,13 @@ Every pull request runs the `ci` workflow (`.github/workflows/ci.yml`):
 | `packaging` | the container image boots, migrates and is ready; production compose behind each proxy; an upgrade from the previous release's image |
 | `helm-smoke` | the chart on a kind cluster, then again against client-certificate Postgres with the FIPS image from `fips` (`deploy/helm/smoke/run.sh`) |
 | `examples-smoke` | the example applications signed into in headless Chromium against that image under docker-compose |
+| `fips` | the FIPS image builds (only the FIPS module's AWS-LC in the binary) and boots |
+| `conformance` | the OpenID Foundation suite (`conformance.yml`, also weekly) |
 
-The `conformance` workflow runs the OpenID Foundation suite on the same pull request
-(and weekly). Off the pull-request path, `weekly` fuzzes each target for four hours and
-`release` runs the full 200-VU k6 baseline against a release build when a `v*` tag is
-pushed. Fuzz targets, seeds and reproducing a crash: [`api/fuzz/README.md`](api/fuzz/README.md);
+The UI's static export is the release's own `ui` job, which every binary embeds. Off
+the release path, `weekly` fuzzes each target for four hours on the self-hosted
+`zo-local` runners (schedule or manual dispatch only, one target at a time), and
+`release` also runs the full 200-VU k6 baseline against a release build. Fuzz targets, seeds and reproducing a crash: [`api/fuzz/README.md`](api/fuzz/README.md);
 load tests: [`perf/README.md`](perf/README.md). Dependencies are exact-pinned and
 updated by Renovate (`renovate.json`).
 
@@ -222,7 +236,8 @@ pull request: the website from `site/` at the root, the documentation from `docs
 under `/rIDM/docs/`, a redirect stub at each documentation page's old URL, and a
 `sitemap.xml` for search engines, each page dated by its last commit. It
 checks every link and anchor offline with lychee, plus the OpenAPI document the API
-reference loads; on `main` it deploys the site to GitHub Pages. To work on it locally:
+reference loads; on `main` it deploys the site to GitHub Pages. It runs only when
+`docs/`, `site/`, `scripts/pages/` or `api/openapi.json` change. To work on it locally:
 
 ```bash
 cargo install mdbook --version 0.5.4 --locked
@@ -239,22 +254,19 @@ in `404.html`, which GitHub Pages serves at any path.
 
 - Open an issue or discussion first for anything larger than a bug fix.
 - Keep PRs focused; one logical change per PR.
-- `main` is protected: every required status check must pass and no one can bypass.
-  Those checks are `static`, `unit`, `integration`, `coverage`, `ui-build`, `ui-e2e`,
-  `load-smoke`, `fuzz-smoke`, `packaging`, `helm-smoke`, `examples-smoke` (all in the `ci`
-  workflow) and
-  `conformance`.
-  Adding a suite means adding it to `working-plan.md` §6 and to branch protection in the
-  same pull request. The long runs — four hours a fuzz target (`weekly`) and the 200-VU
-  load baseline (`release`) — do not gate a pull request.
+- A pull request must pass `static`, `unit` and `integration` (the `ci` workflow). The
+  heavier suites (`coverage`, `ui-e2e`, `load-smoke`, `fuzz-smoke`, `packaging`, `fips`,
+  `helm-smoke`, `examples-smoke`, `conformance`) gate every release instead; run the
+  ones your change touches locally before asking for review. The long runs — four hours
+  a fuzz target (`weekly`) and the 200-VU load baseline (`release`) — gate nothing.
 - Do not bump versions. Releases bump `Cargo.toml` and `package.json` once, at release time.
 - Update `README.md` (and docs) when behaviour or configuration changes.
 - Commit messages: imperative subject line, body explains *why*.
 
 ## Cutting a release
 
-Releases are built and published by `.github/workflows/release.yml` from a `v*` tag;
-nothing is built or uploaded by hand. What a release publishes and how users verify it
+Releases are built and published by `.github/workflows/release.yml` when a GitHub
+release is published for a `v*` tag; nothing is built or uploaded by hand. What a release publishes and how users verify it
 is in the docs' *Releases and verification* page.
 
 1. **Bump the version** in one pull request, everywhere it lives (and nowhere else in
@@ -270,20 +282,22 @@ is in the docs' *Releases and verification* page.
    the link references at the bottom.
 3. `scripts/release/check-version.sh vX.Y.Z` must pass, and
    `scripts/release/notes.sh X.Y.Z` must print the notes. Merge the PR.
-4. **Tag the merge commit on `main`** and push the tag:
-   `git tag -a vX.Y.Z -m "rIDM X.Y.Z" && git push origin vX.Y.Z`. A version with a
-   pre-release part (`0.2.0-rc.1`) makes a GitHub pre-release and moves no floating
-   image tag.
-5. Watch the `release` run. It checks the versions again, builds both architectures
-   natively, pushes and signs the image and chart, creates the GitHub release, publishes
-   `ridm-auth` to crates.io (only when the `CARGO_REGISTRY_TOKEN` secret is set), and runs
-   the load baseline.
+4. **Publish the release** on the merge commit on `main`:
+   `gh release create vX.Y.Z --target main --generate-notes` (this creates the tag). A
+   version with a pre-release part (`0.2.0-rc.1`) is marked a pre-release by the workflow
+   and moves no floating image tag.
+5. Watch the `release` run. It checks the versions again, runs the gate, builds both
+   architectures natively, pushes and signs the image and chart, uploads the artifacts to
+   the release and replaces its notes with the changelog's, publishes `ridm-auth` to
+   crates.io (only when the `CARGO_REGISTRY_TOKEN` secret is set), and runs the load
+   baseline. To re-run it: `gh workflow run release.yml --ref vX.Y.Z -f tag=vX.Y.Z`.
 
 The first time an image or chart is pushed, GHCR creates the package as private: make
 `ridm` and `charts/ridm` public under the organisation's packages, once.
 
-A pull request that touches the workflow or `scripts/release/` runs every build job
-without publishing anything, so the release build is proven before a tag relies on it.
+To prove a release build before publishing, dispatch the workflow from the version-bump
+branch (`gh workflow run release.yml --ref <branch> -f tag=vX.Y.Z`): it runs the gate
+and every build from that branch's head and publishes nothing.
 
 ## Reporting security issues
 

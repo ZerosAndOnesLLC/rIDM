@@ -141,7 +141,8 @@ workflow for a `v*` tag, or was changed afterwards. Do not run it.
 For maintainers, in
 [CONTRIBUTING.md](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/CONTRIBUTING.md#cutting-a-release):
 bump the version everywhere it lives, move the changelog's Unreleased notes under the
-new version, merge, then push the tag. The workflow refuses a tag that disagrees with any
-version in the tree or has no changelog section, and a pull request that changes the
-workflow runs every build step without publishing, so a broken release build is found
-before a tag depends on it.
+new version, merge, then publish a GitHub release for the tag (`gh release create`). The
+workflow refuses a tag that disagrees with any version in the tree or has no changelog
+section, and runs the heavy test suites (end-to-end, packaging, Helm, FIPS image,
+conformance, fuzzing) as a gate before anything is built or published. Dispatched from a
+branch, it rehearses the release from that branch without publishing anything.

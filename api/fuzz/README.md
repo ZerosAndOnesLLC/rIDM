@@ -1,8 +1,8 @@
 # Fuzz targets
 
 `cargo-fuzz` (libFuzzer) targets for the parsers that read input rIDM does not
-control. Each one runs for 60 seconds per pull request (the required
-`fuzz-smoke` check) and for four hours a target in the weekly `fuzz-long`
+control. Each one runs for 60 seconds in the release gate (the `fuzz-smoke` job of
+the `release` workflow) and for four hours a target in the weekly `fuzz-long`
 workflow.
 
 | Target | What it reads | What it asserts beyond "does not panic" |
