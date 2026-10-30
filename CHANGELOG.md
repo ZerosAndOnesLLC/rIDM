@@ -16,7 +16,7 @@ release renames that heading to the version and date.
 
 ### Changed
 
-- **Dependencies are on their latest stable releases.** Rust: tokio 1.54, redis 1.8, aws-lc-rs 1.19, aws-config 1.13 and aws-sdk-kms 1.128, uuid 1.29, utoipa-swagger-ui 10.0.2 and the rest of the lockfile. utoipa-swagger-ui now builds with zip 9, so the three zip advisories (RUSTSEC-2026-0367 to 0369) are off the `cargo deny` and `cargo audit` ignore lists. testcontainers stays at 0.27 until testcontainers-modules follows. UI: Next 16.4.3, React 19.3.1, ESLint 10, Radix Dialog 1.3 and Select 2.4; TypeScript stays at 6.0 (TypeScript 7 has no JS API, which typescript-eslint and Next still need).
+- **Dependencies are on their latest stable releases.** Rust: tokio 1.54, aws-lc-rs 1.19, aws-config 1.13 and aws-sdk-kms 1.128, uuid 1.29, utoipa-swagger-ui 10.0.2 and the rest of the lockfile. utoipa-swagger-ui now builds with zip 9, so the three zip advisories (RUSTSEC-2026-0367 to 0369) are off the `cargo deny` and `cargo audit` ignore lists. testcontainers stays at 0.27 until testcontainers-modules follows, and redis stays at 1.7.1: 1.8's larger futures overflow the 2 MiB test-thread stack in the SAML integration suite's debug build. UI: Next 16.4.3, React 19.3.1, ESLint 10, Radix Dialog 1.3 and Select 2.4; TypeScript stays at 6.0 (TypeScript 7 has no JS API, which typescript-eslint and Next still need).
 - **Node.js 26 LTS** builds the UI: the `engines` field, CI and the container images (`node:26.13.0-bookworm-slim`) moved from Node 24.
 
 ## [0.4.1] - 2026-10-19
