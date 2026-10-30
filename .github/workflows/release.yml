@@ -586,8 +586,6 @@ jobs:
     name: conformance
     needs: prepare
     uses: ./.github/workflows/conformance.yml
-    with:
-      ref: ${{ github.event.release.tag_name || github.sha }}
 
   gate:
     name: gate

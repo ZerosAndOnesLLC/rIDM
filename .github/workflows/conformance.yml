@@ -6,17 +6,14 @@ name: conformance
 # (Caddy, a private CA the suite trusts) as https://ridm.local; the static UI
 # is served on the same origin.
 #
-# Part of the `release` workflow's gate (called with the release tag), so no
-# release is built while a plan fails; the same plans run weekly on the
-# schedule below, and on demand.
+# Part of the `release` workflow's gate, so no release is built while a plan
+# fails. A called workflow checks out the caller's ref (the release tag on a
+# published release), so it takes no ref input: checking out an
+# input-controlled ref with caches enabled is a cache-poisoning risk. The same
+# plans run weekly on the schedule below, and on demand.
 
 on:
   workflow_call:
-    inputs:
-      ref:
-        description: The commit to test (the release tag)
-        type: string
-        default: ""
   schedule:
     - cron: "17 3 * * 1"
   workflow_dispatch:
@@ -54,8 +51,6 @@ jobs:
       REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
       # rust-toolchain.toml pins the compiler.
       - name: toolchain
         run: rustup toolchain install && rustup show active-toolchain
