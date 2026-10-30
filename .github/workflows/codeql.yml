@@ -2,9 +2,10 @@
 # only this form can exclude paths, and the test suites are full of the values
 # a scanner is right to object to everywhere else (see
 # `.github/codeql/codeql-config.yml`). Running it here also means the scan
-# happens on every pull request, not weekly. The Python helpers (the
-# conformance driver, the Pages SEO script) are scanned on the weekly schedule
-# only; documentation-only changes are not scanned.
+# happens on every pull request, not weekly. Every language runs on every
+# analysis (including the small Python helpers): code scanning compares a PR
+# against main's configurations and warns about any the PR is missing.
+# Documentation-only changes are not scanned.
 name: codeql
 
 on:
@@ -41,7 +42,6 @@ jobs:
       matrix:
         # Every language is analysed without a build.
         language: [actions, javascript-typescript, python, rust]
-        exclude: ${{ fromJSON(github.event_name == 'schedule' && '[]' || '[{"language":"python"}]') }}
     env:
       # Since the action started building "overlay" databases on the default
       # branch, the JavaScript/TypeScript analysis of `main` uploads fine but
