@@ -39,7 +39,10 @@ for p in "${plans[@]}"; do args+=("$p" "$config"); done
 mkdir -p results
 # The suite's own HtmlUnit browser cannot run rIDM's pages: a headless
 # Chromium inside the suite's network visits every URL the tests leave pending.
-PW_IMAGE="${PW_IMAGE:-mcr.microsoft.com/playwright:v1.63.0-noble}"
+# The driver runs the ui's own Playwright (mounted below), which only launches
+# the browser build of its own release: the image follows the installed version.
+pw_version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' ../ui/node_modules/playwright/package.json)"
+PW_IMAGE="${PW_IMAGE:-mcr.microsoft.com/playwright:v${pw_version}-noble}"
 docker rm -f conformance-driver >/dev/null 2>&1 || true
 # The driver verifies the suite's certificate against the CA certs.sh issued it
 # from (`nginx` is one of its names). DRIVER_INSECURE_TLS=1 gives that up, for a
