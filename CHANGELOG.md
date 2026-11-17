@@ -14,6 +14,15 @@ release renames that heading to the version and date.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-17
+
+0.5.0 was tagged but its release build stopped at the test gate and published nothing, so 0.5.1 is the first 0.5 release: everything in [0.5.0's notes](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/CHANGELOG.md#050---2026-11-17) ships here (every dependency on its latest stable release, majors included), along with `ridm-auth = "0.5"` on crates.io.
+
+### Fixed
+
+- The console's command bar buttons (tenant switcher, search) and the organization member picker are named by their visible text, as WCAG 2.5.3 asks: their labels used to replace it ("Search" over "Search users, clients, pages…").
+- The OpenID conformance run uses the Playwright image of the installed Playwright version; a stale pin had stopped its browser driver from starting.
+
 ## [0.5.0] - 2026-11-17
 
 ### Changed
@@ -22,10 +31,6 @@ release renames that heading to the version and date.
 - **Breaking for `ridm-auth`:** it re-exports `jsonwebtoken::Algorithm`, which is now jsonwebtoken 12's, so this release is 0.5: `ridm-auth = "0.5"`.
 - New advisories that no release fixes yet are ignored with a reason, all in test-only dependencies: rsa's Marvin attack (RUSTSEC-2023-0071, through webauthn-rs 0.6), the unmaintained astral-tokio-tar (RUSTSEC-2026-0440, through testcontainers), and, for cargo-audit only, libsqlite3-sys (RUSTSEC-2026-0459), which sits in `Cargo.lock` as an optional dependency of sqlx but is never built. chrono is now flagged unmaintained (RUSTSEC-2026-0543, informational, no fix); it is ignored with a reason until rIDM moves to jiff or time.
 - **Node.js 26 LTS** builds the UI: the `engines` field, CI and the container images (`node:26.13.0-bookworm-slim`) moved from Node 24.
-
-### Fixed
-
-- The console's command bar buttons (tenant switcher, search) are named by their visible text, as WCAG 2.5.3 asks: their labels used to replace it ("Search" over "Search users, clients, pages…").
 
 ## [0.4.1] - 2026-10-19
 
@@ -429,7 +434,8 @@ Cut but never tagged or published; everything here ships in 0.2.0.
 - `/.well-known/security.txt` is the operator's: `SECURITY_CONTACT`,
   `SECURITY_POLICY_URL` or a whole `SECURITY_TXT_FILE`, and 404 until one is set.
 
-[Unreleased]: https://github.com/ZerosAndOnesLLC/rIDM/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/ZerosAndOnesLLC/rIDM/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.5.1
 [0.5.0]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.5.0
 [0.4.1]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.4.1
 [0.4.0]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.4.0
