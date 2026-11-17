@@ -158,7 +158,9 @@ export function OrganizationRoles({
             if (user && role) change.mutate({ userId: user.id, roleId: role });
           }}
         >
-          <Button type="button" aria-label="Member to grant a role to" onClick={() => setPicking(true)}>
+          {/* Named by its visible text plus screen-reader context (WCAG 2.5.3, label in name). */}
+          <Button type="button" className="relative" onClick={() => setPicking(true)}>
+            <span className="sr-only">Member to grant a role to:</span>
             {user ? user.username : "Choose a member…"}
           </Button>
           <SelectInput aria-label="Role to grant" value={role} onChange={(e) => setRole(e.target.value)}>

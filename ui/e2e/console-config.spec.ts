@@ -34,5 +34,5 @@ test("export, preview a change, apply it, and revert", async ({ page }) => {
   await page.getByRole("button", { name: "Apply" }).click();
   await expect(page.getByRole("heading", { name: "Applied" })).toBeVisible({ timeout: 20_000 });
   await page.reload();
-  await expect(page.getByRole("button", { name: /Tenant: master/ })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: /Tenant: .*\bmaster\b/ })).toBeVisible({ timeout: 15_000 });
 });

@@ -125,14 +125,17 @@ function Frame({ children }: { children: ReactNode }) {
             <button
               type="button"
               onClick={() => setTenants(true)}
-              aria-label={`Tenant: ${tenant ?? "none"}. Switch tenant`}
-              className="flex h-[2.125rem] shrink-0 items-center gap-2 rounded-full border border-[var(--bar-line)] bg-[var(--bar-field)] ps-1 pe-2.5 text-bar-ink hover:brightness-125"
+              className="relative flex h-[2.125rem] shrink-0 items-center gap-2 rounded-full border border-[var(--bar-line)] bg-[var(--bar-field)] ps-1 pe-2.5 text-bar-ink hover:brightness-125"
             >
+              {/* The name is the visible text plus screen-reader words (WCAG 2.5.3, label in name);
+                  on a phone the tenant is screen-reader only rather than display:none, so it stays in the name. */}
               <TenantMark name={tenantName ?? tenant ?? "?"} />
-              <span className="hidden min-w-0 items-baseline gap-1.5 sm:flex">
-                <span className="truncate text-small font-semibold">{tenantName ?? tenant ?? "—"}</span>
+              <span className="sr-only">Tenant:</span>
+              <span className="flex min-w-0 items-baseline gap-1.5 max-sm:sr-only">
+                <span className="truncate text-small font-semibold">{tenantName ?? tenant ?? "none"}</span>
                 {tenantName && <span className="font-mono text-caption text-bar-muted">{tenant}</span>}
               </span>
+              <span className="sr-only">. Switch tenant</span>
               <ChevronsUpDown className="size-3.5 shrink-0 text-bar-muted" aria-hidden />
             </button>
           ) : (
@@ -147,12 +150,12 @@ function Frame({ children }: { children: ReactNode }) {
           )}
           <button
             type="button"
-            aria-label="Search"
             onClick={() => setPalette(true)}
-            className="flex h-[2.125rem] min-w-0 flex-1 items-center gap-2 rounded-full border border-[var(--bar-line)] bg-[var(--bar-field)] px-3 text-small text-bar-muted hover:brightness-125 hover:text-bar-ink"
+            className="relative flex h-[2.125rem] min-w-0 flex-1 items-center gap-2 rounded-full border border-[var(--bar-line)] bg-[var(--bar-field)] px-3 text-small text-bar-muted hover:brightness-125 hover:text-bar-ink"
           >
             <Search className="size-4 shrink-0" aria-hidden />
-            <span className="hidden truncate sm:inline">Search users, clients, pages…</span>
+            {/* The visible text is the name (WCAG 2.5.3); screen-reader only on a phone. */}
+            <span className="truncate max-sm:sr-only">Search users, clients, pages…</span>
             <span className="ms-auto hidden gap-1 sm:flex" aria-hidden>
               <kbd className="border-[var(--bar-line)] bg-transparent text-bar-muted">{modKey()}</kbd>
               <kbd className="border-[var(--bar-line)] bg-transparent text-bar-muted">K</kbd>
