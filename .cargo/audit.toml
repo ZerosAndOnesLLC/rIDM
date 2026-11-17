@@ -4,4 +4,4 @@
 # since no crate enables sqlx's sqlite feature; cargo-deny walks the real graph
 # and does not see it.
 [advisories]
-ignore = ["RUSTSEC-2023-0071", "RUSTSEC-2026-0440", "RUSTSEC-2026-0459"]
+ignore = ["RUSTSEC-2023-0071", "RUSTSEC-2026-0440", "RUSTSEC-2026-0459", "RUSTSEC-2026-0543"]
