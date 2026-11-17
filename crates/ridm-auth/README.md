@@ -11,7 +11,7 @@ and nothing else.
 
 ```toml
 [dependencies]
-ridm-auth = "0.4"
+ridm-auth = "0.5"
 ```
 
 It needs Rust 1.98 or later. The crate's version follows rIDM's, and a release

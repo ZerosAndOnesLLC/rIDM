@@ -14,10 +14,12 @@ release renames that heading to the version and date.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-17
+
 ### Changed
 
 - **Every dependency is on its latest stable release, majors included.** Rust: jsonwebtoken 12, axum-server 0.9, maxminddb 0.33 and webauthn-rs 0.6 (the passkey tests' oracle, with `webauthn-rs-proto` 0.6 for the wire types) are the major moves, plus tokio 1.54, redis 1.8, aws-lc-rs 1.19 and the AWS SDK. axum-server 0.9 wraps a TLS acceptor's service in its own `TlsService`, which the mTLS listener now accounts for. utoipa-swagger-ui 10.0.2 no longer pulls in the vulnerable zip, so the three zip advisories leave the ignore list; webpki-roots 1.0.12 drops the distrusted emSign intermediates (RUSTSEC-2026-0381, 0383). testcontainers stays at 0.27 until testcontainers-modules takes 0.28. Console and example SPA: ESLint 10, TypeScript 7, Next.js 16.4, React 19.3.1, Radix Dialog 1.3 and Select 2.4. TypeScript 7 ships no compiler API yet, so, as its release notes recommend, `tsc` is TypeScript 7 (`@typescript/native`) while the `typescript` package is the 6.0 compatibility release that typescript-eslint and `next build` read.
-- **Breaking for `ridm-auth`:** it re-exports `jsonwebtoken::Algorithm`, which is now jsonwebtoken 12's, so the crate's next release is 0.5.
+- **Breaking for `ridm-auth`:** it re-exports `jsonwebtoken::Algorithm`, which is now jsonwebtoken 12's, so this release is 0.5: `ridm-auth = "0.5"`.
 - New advisories that no release fixes yet are ignored with a reason, all in test-only dependencies: rsa's Marvin attack (RUSTSEC-2023-0071, through webauthn-rs 0.6), the unmaintained astral-tokio-tar (RUSTSEC-2026-0440, through testcontainers), and, for cargo-audit only, libsqlite3-sys (RUSTSEC-2026-0459), which sits in `Cargo.lock` as an optional dependency of sqlx but is never built.
 - **Node.js 26 LTS** builds the UI: the `engines` field, CI and the container images (`node:26.13.0-bookworm-slim`) moved from Node 24.
 
@@ -423,7 +425,8 @@ Cut but never tagged or published; everything here ships in 0.2.0.
 - `/.well-known/security.txt` is the operator's: `SECURITY_CONTACT`,
   `SECURITY_POLICY_URL` or a whole `SECURITY_TXT_FILE`, and 404 until one is set.
 
-[Unreleased]: https://github.com/ZerosAndOnesLLC/rIDM/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/ZerosAndOnesLLC/rIDM/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.5.0
 [0.4.1]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.4.1
 [0.4.0]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.4.0
 [0.3.0]: https://github.com/ZerosAndOnesLLC/rIDM/releases/tag/v0.3.0
