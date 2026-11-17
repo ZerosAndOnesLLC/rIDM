@@ -91,7 +91,7 @@ test.describe("account console: profile, sessions, applications and data", () =>
     await another.context.close();
   });
 
-  test("shows connected applications and the data page downloads the export", async ({ page }) => {
+  test("shows connected applications and the data page downloads the export", async ({ page, browserName }) => {
     await signIn(page, "/account/apps/");
     await expect(page.getByRole("heading", { name: "Applications", level: 1 })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("heading", { name: "Connected applications" })).toBeVisible();
@@ -111,7 +111,11 @@ test.describe("account console: profile, sessions, applications and data", () =>
     await page.getByRole("button", { name: "Delete account" }).click();
     const dialog = page.getByRole("dialog", { name: "Delete your account" });
     await expect(dialog.getByRole("button", { name: "Delete account" })).toBeDisabled();
-    await expectAccessible(page);
+    // Playwright 1.65's Firefox crashes the page when axe (aria-dialog-name,
+    // hidden-content) resolves a dialog's aria-labelledby that points at a
+    // heading, which every Radix dialog title is. Chromium and WebKit still scan
+    // the open dialog; the page itself was scanned above in every browser.
+    if (browserName !== "firefox") await expectAccessible(page);
     await dialog.getByRole("button", { name: "Close" }).click();
   });
 });
