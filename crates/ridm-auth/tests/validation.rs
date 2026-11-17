@@ -246,7 +246,7 @@ async fn a_token_without_a_kid_or_with_a_symmetric_algorithm_is_refused() {
     let hmac = jsonwebtoken::encode(
         &header,
         &issuer.claims(),
-        &jsonwebtoken::EncodingKey::from_secret(b"guess"),
+        &jsonwebtoken::EncodingKey::from_secret(b"guess").unwrap(),
     )
     .unwrap();
     let e = validator.validate(&hmac).await.unwrap_err();

@@ -1,3 +1,7 @@
 # cargo-audit configuration. Keep in sync with the [advisories].ignore list in deny.toml.
+# RUSTSEC-2026-0459 is cargo-audit only: libsqlite3-sys sits in Cargo.lock as an
+# optional dependency of sqlx-sqlite (sqlx 0.9 pins ^0.37) but is never built,
+# since no crate enables sqlx's sqlite feature; cargo-deny walks the real graph
+# and does not see it.
 [advisories]
-ignore = []
+ignore = ["RUSTSEC-2023-0071", "RUSTSEC-2026-0440", "RUSTSEC-2026-0459"]

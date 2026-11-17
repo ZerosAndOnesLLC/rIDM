@@ -17,8 +17,7 @@ use uuid::Uuid;
 use webauthn_authenticator_rs::AuthenticatorBackend as _;
 use webauthn_authenticator_rs::softpasskey::SoftPasskey;
 use webauthn_rs::prelude::{
-    Base64UrlSafeData, CreationChallengeResponse, PublicKeyCredential, RequestChallengeResponse,
-    Url,
+    CreationChallengeResponse, PublicKeyCredential, RequestChallengeResponse, Url,
 };
 
 const CHALLENGE: &str = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
@@ -429,7 +428,7 @@ async fn a_discoverable_passkey_signs_in_without_a_password() {
         let mut assertion: PublicKeyCredential = auth
             .perform_auth(fx.origin.clone(), options.public_key, 60_000)
             .unwrap();
-        assertion.response.user_handle = Some(Base64UrlSafeData::from(handle.as_bytes().to_vec()));
+        assertion.response.user_handle = Some(handle.as_bytes().to_vec());
         assertion
     };
 

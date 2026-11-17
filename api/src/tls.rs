@@ -17,6 +17,7 @@ use std::task::{Context, Poll};
 
 use axum::http::Request;
 use axum_server::accept::{Accept, DefaultAcceptor};
+use axum_server::tls::TlsService;
 use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
 use rustls::DigitallySignedStruct;
 use rustls::DistinguishedName;
@@ -165,7 +166,7 @@ where
     S: Send + 'static,
 {
     type Stream = TlsStream<I>;
-    type Service = WithPeerCertificates<S>;
+    type Service = WithPeerCertificates<TlsService<S>>;
     type Future = AcceptFuture<Self::Stream, Self::Service>;
 
     fn accept(&self, stream: I, service: S) -> Self::Future {

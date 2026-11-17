@@ -157,7 +157,7 @@ reqwest = { workspace = true, features = ["cookies", "query"] }
 testcontainers-modules = { workspace = true }
 testcontainers = { workspace = true }
 proptest = { workspace = true }
-webauthn-authenticator-rs = { version = "0.5.5", default-features = false, features = ["softpasskey"] }
+webauthn-authenticator-rs = { version = "0.6.2", default-features = false, features = ["softpasskey"] }
 # The passkey tests check rIDM's relying party against webauthn-rs, which it
 # replaced: each reads what the other stores.
 webauthn-rs = { workspace = true }
