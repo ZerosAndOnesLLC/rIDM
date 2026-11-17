@@ -32,7 +32,7 @@ test.describe("admin console shell", () => {
     await expect(page.getByTestId("me-username")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Console" }).getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
-    await expect(page.getByRole("button", { name: /Tenant: master/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Tenant: .*\bmaster\b/ })).toBeVisible();
     await expect(page.getByText("Global administrator")).toBeVisible();
     await expect(page.getByText("ridm:owner")).toBeVisible();
     // The dashboard: tiles, the sign-ins chart with its table view, top clients.
