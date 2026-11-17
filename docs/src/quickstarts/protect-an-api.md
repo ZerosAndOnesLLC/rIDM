@@ -119,7 +119,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ridm-auth = "0.4"
+ridm-auth = "0.5"
 axum = "0.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
 serde_json = "1"

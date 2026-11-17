@@ -15,7 +15,19 @@ targets = [
 [advisories]
 version = 2
 yanked = "deny"
-ignore = []
+ignore = [
+  # rsa: pulled in only by webauthn-rs 0.6 (via crypto-glue, which pins a 0.10
+  # release candidate), a dev-dependency the passkey tests use as an oracle.
+  # Marvin is a timing attack on RSA decryption; nothing shipped links rsa.
+  { id = "RUSTSEC-2023-0071", reason = "dev-only, via webauthn-rs's crypto-glue; no RSA decryption in the shipped binary; lift when crypto-glue takes rsa 0.10" },
+  # astral-tokio-tar: testcontainers' archive handling, tests only. Every
+  # testcontainers release (0.28 included) still depends on it.
+  { id = "RUSTSEC-2026-0440", reason = "dev-only, via testcontainers; lift when testcontainers replaces it" },
+  # chrono: informational "unmaintained", no vulnerability and no patched
+  # release. It is a direct dependency in ~170 files (every timestamp, sqlx's
+  # chrono feature); moving to jiff or time is its own change.
+  { id = "RUSTSEC-2026-0543", reason = "unmaintained, not vulnerable; migrating to jiff or time is tracked separately" },
+]
 
 [licenses]
 version = 2

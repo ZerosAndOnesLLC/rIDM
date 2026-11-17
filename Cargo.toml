@@ -12,7 +12,7 @@ members = [
 exclude = ["api/fuzz"]
 
 [workspace.package]
-version = "0.4.1"
+version = "0.5.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/ZerosAndOnesLLC/rIDM"
@@ -21,11 +21,11 @@ rust-version = "1.98"
 # Every dependency is pinned to an exact version (see working-plan.md §2).
 # Bump deliberately; keep the table in the plan in sync.
 [workspace.dependencies]
-ridm-core = { path = "crates/ridm-core", version = "0.4.1" }
+ridm-core = { path = "crates/ridm-core", version = "0.5.0" }
 
 # HTTP
 axum = { version = "=0.8.9", features = ["macros"] }
-axum-server = { version = "=0.8.0", features = ["tls-rustls"] }
+axum-server = { version = "=0.9.2", features = ["tls-rustls"] }
 tower = "=0.5.3"
 tower-http = { version = "=0.7.1", features = ["cors", "trace", "compression-gzip", "compression-br", "set-header", "fs"] }
 tower_governor = "=0.8.0"
@@ -42,7 +42,7 @@ moka = { version = "=0.12.16", features = ["sync"] }
 
 # Crypto / tokens
 # Signing, verification and key generation all go through aws-lc-rs.
-jsonwebtoken = { version = "=11.1.0", features = ["aws_lc_rs"] }
+jsonwebtoken = { version = "=12.0.0", features = ["aws_lc_rs"] }
 argon2 = "=0.6.0"
 # Legacy hash verification for migrated users (never used for new hashes).
 bcrypt = "=0.19.3"
@@ -52,14 +52,14 @@ md-5 = "=0.11.0"
 totp-rs = { version = "=6.0.0", features = ["otpauth"] }
 # Tests only: the WebAuthn library rIDM's own relying party replaced, kept as
 # an oracle (it links OpenSSL; the server doesn't).
-webauthn-rs = { version = "=0.5.5", features = ["danger-allow-state-serialisation", "conditional-ui"] }
+webauthn-rs = { version = "=0.6.2", features = ["danger-allow-state-serialisation", "conditional-ui"] }
 # The WebAuthn wire types, serde only.
-webauthn-rs-proto = "=0.5.5"
-base64urlsafedata = "=0.5.5"
+webauthn-rs-proto = "=0.6.2"
+base64urlsafedata = "=0.6.2"
 chacha20poly1305 = "=0.11.0"
 sha2 = "=0.11.1"
 hmac = "=0.13.0"
-rand = "=0.10.3"
+rand = "=0.10.4"
 rustls = { version = "=0.23.46", default-features = false, features = ["aws-lc-rs", "std", "tls12"] }
 tokio-rustls = { version = "=0.26.6", default-features = false, features = ["aws_lc_rs", "tls12"] }
 rustls-platform-verifier = "=0.7.1"
@@ -76,7 +76,7 @@ hex = "=0.4.3"
 roxmltree = { version = "=0.21.2", default-features = false, features = ["std", "positions"] }
 rcgen = { version = "=0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
 x509-parser = "=0.18.1"
-flate2 = "=1.1.10"
+flate2 = "=1.1.11"
 
 # Outbound
 reqwest = { version = "=0.13.5", default-features = false, features = ["json", "rustls", "form"] }
@@ -95,17 +95,17 @@ picky-krb = "=0.13.1"
 # AWS crates' default `rustls` feature is the legacy hyper 0.14 / ring stack;
 # `default-https-client` is the current one on aws-lc-rs.
 cryptoki = "=0.12.1"
-aws-config = { version = "=1.13.0", default-features = false, features = ["default-https-client", "rt-tokio", "sso", "credentials-process"] }
-aws-sdk-kms = { version = "=1.128.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-config = { version = "=1.13.2", default-features = false, features = ["default-https-client", "rt-tokio", "sso", "credentials-process"] }
+aws-sdk-kms = { version = "=1.132.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
 # The SDK's HTTP client, named only so the FIPS build can pick its FIPS TLS mode
 # (the default client hard-codes the non-FIPS aws-lc-rs provider).
-aws-smithy-http-client = { version = "=1.5.2", default-features = false }
+aws-smithy-http-client = { version = "=1.5.3", default-features = false }
 
 # Serde / types
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
 csv = "=1.4.0"
-uuid = { version = "=1.29.0", features = ["v4", "v7", "serde"] }
+uuid = { version = "=1.29.2", features = ["v4", "v7", "serde"] }
 chrono = { version = "=0.4.45", features = ["serde"] }
 thiserror = "=2.0.21"
 validator = { version = "=0.21.0", features = ["derive"] }
@@ -115,14 +115,14 @@ ipnet = { version = "=2.12.2", features = ["serde"] }
 # Geo-IP lookups for risk-based adaptive authentication; reads a MaxMind DB
 # file the deployment supplies (no data is bundled). Default features only:
 # the file is read into memory rather than memory-mapped.
-maxminddb = { version = "=0.32.0", default-features = false }
+maxminddb = { version = "=0.33.0", default-features = false }
 async-trait = "=0.1.92"
 futures = "=0.3.34"
 
 # Config / observability
-clap = { version = "=4.6.7", features = ["derive", "env"] }
+clap = { version = "=4.6.8", features = ["derive", "env"] }
 dotenvy = "=0.15.7"
-rpassword = "=7.5.4"
+rpassword = "=7.5.5"
 tracing = "=0.1.44"
 tracing-subscriber = { version = "=0.3.23", features = ["env-filter", "json"] }
 metrics = "=0.24.6"
@@ -138,7 +138,7 @@ utoipa-axum = "=0.3.0"
 utoipa-swagger-ui = { version = "=10.0.2", features = ["axum"] }
 
 # Embedded UI
-rust-embed = { version = "=8.13.0", features = ["mime-guess"] }
+rust-embed = { version = "=8.14.0", features = ["mime-guess"] }
 
 # Allocator for the static (musl) release binaries
 mimalloc = { version = "=0.1.52", default-features = false }

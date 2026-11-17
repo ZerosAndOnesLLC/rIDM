@@ -125,11 +125,11 @@ impl RelyingParty {
                 id: self.id.clone(),
             },
             user: User {
-                id: Base64UrlSafeData::from(user_id.as_bytes().to_vec()),
+                id: user_id.as_bytes().to_vec(),
                 name: user_name.to_string(),
                 display_name: display_name.to_string(),
             },
-            challenge: Base64UrlSafeData::from(challenge.as_ref().to_vec()),
+            challenge: challenge.as_ref().to_vec(),
             pub_key_cred_params: ALGORITHMS
                 .iter()
                 .map(|a| PubKeyCredParams {
@@ -143,7 +143,7 @@ impl RelyingParty {
                     .iter()
                     .map(|id| PublicKeyCredentialDescriptor {
                         type_: "public-key".into(),
-                        id: Base64UrlSafeData::from(id.clone()),
+                        id: id.clone(),
                         transports: None,
                     })
                     .collect()
@@ -194,7 +194,7 @@ impl RelyingParty {
             .iter()
             .map(|c| AllowCredentials {
                 type_: "public-key".into(),
-                id: Base64UrlSafeData::from(c.cred_id().to_vec()),
+                id: c.cred_id().to_vec(),
                 transports: serde_json::from_value(c.cred.transports.clone()).unwrap_or(None),
             })
             .collect();
@@ -228,7 +228,7 @@ impl RelyingParty {
     ) -> (RequestChallengeResponse, AuthenticationState) {
         let challenge = Self::challenge();
         let options = PublicKeyCredentialRequestOptions {
-            challenge: Base64UrlSafeData::from(challenge.as_ref().to_vec()),
+            challenge: challenge.as_ref().to_vec(),
             timeout: Some(TIMEOUT_MS),
             rp_id: self.id.clone(),
             allow_credentials: allow_list,
@@ -256,7 +256,7 @@ impl RelyingParty {
         credential: &RegisterPublicKeyCredential,
         state: &RegistrationState,
     ) -> Result<StoredPasskey, Rejected> {
-        let client_data_json = credential.response.client_data_json.as_ref();
+        let client_data_json = credential.response.client_data_json.as_slice();
         let client = ClientData::parse(client_data_json)?;
         let attestation = cbor::decode_exact(credential.response.attestation_object.as_ref())
             .map_err(|_| Rejected("the attestation object is not CBOR"))?;
@@ -322,8 +322,8 @@ impl RelyingParty {
             .user_handle
             .as_ref()
             .ok_or(Rejected("no user handle"))?;
-        let user = Uuid::from_slice(handle.as_ref()).map_err(|_| Rejected("the user handle"))?;
-        Ok((user, credential.raw_id.as_ref().to_vec()))
+        let user = Uuid::from_slice(handle.as_slice()).map_err(|_| Rejected("the user handle"))?;
+        Ok((user, credential.raw_id.clone()))
     }
 
     /// Check an assertion (WebAuthn §7.2) by `passkey`, which must be the
@@ -334,16 +334,16 @@ impl RelyingParty {
         state: &AuthenticationState,
         passkey: &StoredPasskey,
     ) -> Result<Assertion, Rejected> {
-        let raw_id = credential.raw_id.as_ref();
+        let raw_id = credential.raw_id.as_slice();
         if raw_id != passkey.cred_id() {
             return Err(Rejected("a different credential"));
         }
-        if !state.allowed.is_empty() && !state.allowed.iter().any(|a| a.as_ref() == raw_id) {
+        if !state.allowed.is_empty() && !state.allowed.iter().any(|a| a.as_slice() == raw_id) {
             return Err(Rejected("the credential was not asked for"));
         }
-        let auth_data_raw = credential.response.authenticator_data.as_ref();
+        let auth_data_raw = credential.response.authenticator_data.as_slice();
         let data = AuthData::parse(auth_data_raw)?;
-        let client_data_json = credential.response.client_data_json.as_ref();
+        let client_data_json = credential.response.client_data_json.as_slice();
         let client = ClientData::parse(client_data_json)?;
         client.check("webauthn.get", state.challenge.as_ref(), &self.origins)?;
         if !bool::from(data.rp_id_hash.ct_eq(&self.id_hash)) {
@@ -368,7 +368,7 @@ impl RelyingParty {
         message.extend_from_slice(&ridm_core::crypto::Sha256::digest(client_data_json));
         if !stored
             .cred
-            .verify(&message, credential.response.signature.as_ref())
+            .verify(&message, credential.response.signature.as_slice())
         {
             return Err(Rejected("the signature does not verify"));
         }

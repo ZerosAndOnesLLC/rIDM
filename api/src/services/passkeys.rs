@@ -285,7 +285,7 @@ pub async fn finish_authentication(
     let Some((row, key)) = keys_of(state, tenant.id, user.id)
         .await?
         .into_iter()
-        .find(|(_, k)| k.cred_id() == credential.raw_id.as_ref())
+        .find(|(_, k)| k.cred_id() == credential.raw_id.as_slice())
     else {
         tracing::debug!("passkey assertion rejected: not one of the user's credentials");
         return Ok(None);

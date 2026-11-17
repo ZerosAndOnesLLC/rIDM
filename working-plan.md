@@ -78,29 +78,29 @@ All versions are the latest **stable** release as of the date above. Verified by
 | tokio | 1.54.1 | `full` |
 | sqlx | 0.9.0 | `runtime-tokio`, `tls-rustls-ring`, `postgres`, `uuid`, `chrono`, `json`, `migrate` |
 | deadpool-redis | 0.23.1 | `rt_tokio_1` |
-| redis | 1.7.1 | `tokio-rustls-comp`, `script` |
-| jsonwebtoken | 11.1.0 | `aws_lc_rs` — constant-time RSA; avoids RUSTSEC-2023-0071 exposure |
+| redis | 1.7.1 | `tokio-rustls-comp`, `script` — held: 1.8 (1.8.2 included) overflows the 2 MiB test-thread stack in `saml_upstream` (debug build); lift once the hot path's futures are boxed |
+| jsonwebtoken | 12.0.0 | `aws_lc_rs` — constant-time RSA; avoids RUSTSEC-2023-0071 exposure |
 | rsa | 0.9.10 | `pem` — 0.10 is still RC, do not use |
 | p256 | 0.14.0 | `ecdsa`, `pem` |
 | ed25519-dalek | 3.0.0 | `rand_core`, `pkcs8`, `alloc` |
 | argon2 | 0.6.0 | |
 | bcrypt / pbkdf2 / md-5 | 0.19.3 / 0.13.0 / 0.11.0 | legacy hash verification only (imported users) |
 | regex | 1.13.1 | profile schema patterns |
-| clap | 4.6.7 | `derive`, `env` — the `ridm` CLI (`crates/ridm-cli`) |
-| rpassword | 7.5.4 | interactive `ridm-api bootstrap` prompt, `ridm login` and `ridm user` password entry |
+| clap | 4.6.8 | `derive`, `env` — the `ridm` CLI (`crates/ridm-cli`) |
+| rpassword | 7.5.5 | interactive `ridm-api bootstrap` prompt, `ridm login` and `ridm user` password entry |
 | rand_core (0.6, aliased `rand_core_06`) | 0.6.4 | `getrandom` — rsa 0.9 keygen still takes a rand_core 0.6 RNG |
 | totp-rs | 6.0.0 | `qr`, `gen_secret` |
-| webauthn-rs | 0.5.5 | `danger-allow-state-serialisation` — 0.6 is still dev, do not use. Requires OpenSSL: `openssl-sys 0.9.117` with `vendored` so the distroless image is self-contained |
+| webauthn-rs (dev) | 0.6.2 | test oracle only: rIDM's own relying party (`api/src/webauthn`) replaced it, and the passkey tests check each reads what the other stores. `webauthn-rs-proto` 0.6.2 supplies the wire types (byte fields are plain `Vec<u8>` since 0.6) |
 | chacha20poly1305 | 0.11.0 | |
 | sha2 | 0.11.1 | |
-| rand | 0.10.3 | |
+| rand | 0.10.4 | |
 | rustls | 0.23.46 | `aws-lc-rs` — 0.24 is still dev, do not use |
 | reqwest | 0.13.5 | default-features off; `json`, `rustls`, `form` |
 | lettre | 0.11.23 | default-features off; `tokio1`, `tokio1-rustls`, `aws-lc-rs`, `rustls-platform-verifier`, `smtp-transport`, `builder` |
 | handlebars | 6.4.4 | |
 | serde | 1.0.229 | `derive` |
 | serde_json | 1.0.154 | |
-| uuid | 1.29.0 | `v4`, `v7`, `serde` |
+| uuid | 1.29.2 | `v4`, `v7`, `serde` |
 | chrono | 0.4.45 | `serde` |
 | thiserror | 2.0.21 | |
 | validator | 0.21.0 | `derive` |
@@ -111,25 +111,25 @@ All versions are the latest **stable** release as of the date above. Verified by
 | utoipa | 6.0.0 | `axum_extras`, `uuid`, `chrono` |
 | utoipa-axum | 0.3.0 | |
 | utoipa-swagger-ui | 10.0.2 | `axum` |
-| rust-embed | 8.13.0 | embedded UI mode |
+| rust-embed | 8.14.0 | embedded UI mode |
 | testcontainers-modules (dev) | 0.15.0 | `postgres`, `redis` |
 | proptest (dev) | 1.12.0 | property tests for token/blob/cursor parsing |
-| testcontainers (dev) | 0.27.3 | `reusable-containers` — no Ryuk in testcontainers-rs; named reusable containers instead |
+| testcontainers (dev) | 0.27.3 | `reusable-containers` — no Ryuk in testcontainers-rs; named reusable containers instead. 0.28 waits for a testcontainers-modules release that takes it |
 | cargo-llvm-cov / cargo-fuzz / cargo-audit / cargo-deny (tools) | latest stable at Phase 0.9 (verify then) | coverage, fuzzing, supply chain |
 
 ### Frontend packages (`ui/package.json`)
 
 | Package | Version | Notes |
 |---------|---------|-------|
-| next | 16.3.5 | `output: 'export'`, `trailingSlash: true` |
-| react / react-dom | 19.3.0 | |
-| typescript | **6.0.3** | TS 7.0.2 builds fine but `typescript-eslint` refuses TS 7; revisit when typescript-eslint adds support (tracked upstream in typescript-eslint#10940) |
-| eslint | **9.39.5** | ESLint 10.10.0 crashes `eslint-config-next` (bundled eslint-plugin-react 7.37 uses removed `getFilename` API); revisit when eslint-config-next ships a fixed plugin |
-| eslint-config-next | 16.3.5 | |
-| tailwindcss / @tailwindcss/postcss | 4.3.3 | |
-| @radix-ui/react-dialog | 1.1.23 | plus select 2.3.7, and other primitives at their current 1.x/2.x |
-| lucide-react | 1.46.0 | |
-| @tanstack/react-query | 5.102.8 | |
+| next | 16.4.6 | `output: 'export'`, `trailingSlash: true` |
+| react / react-dom | 19.3.1 | |
+| typescript | 7.0.2 | side by side with 6.0, as the TS 7 announcement recommends: `@typescript/native` is `npm:typescript@7.0.2` (its `tsc` runs `npm run typecheck`), and `typescript` is `npm:@typescript/typescript6@6.0.2` because TS 7 ships no compiler API and typescript-eslint and `next build` need one. Drop the alias when typescript-eslint supports TS 7 (typescript-eslint#10940) |
+| eslint | 10.15.0 | eslint-config-next 16.4.6 runs on it (react, jsx-a11y and next rules all fire), although npm still warns that eslint-plugin-import, jsx-a11y and react declare peers up to 9 |
+| eslint-config-next | 16.4.6 | |
+| tailwindcss / @tailwindcss/postcss | 4.3.5 | |
+| @radix-ui/react-dialog | 1.3.1 | plus select 2.4.1, and other primitives at their current 1.x/2.x |
+| lucide-react | 1.73.0 | |
+| @tanstack/react-query | 5.107.1 | |
 | @tanstack/react-table | 9.2.4 | |
 | ~~@tanstack/react-virtual~~ | — | dropped in 6.4: the React Compiler lint (`react-hooks/incompatible-library`) flags `useVirtualizer` regardless of opt-out directives; the users table windows rows with a small hook of its own (`ui/src/lib/console/virtual.ts`) |
 | react-hook-form | 7.88.0 | |

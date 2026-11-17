@@ -41,7 +41,7 @@ fn a_passkey_webauthn_rs_registered_signs_in_through_ridm() {
     // As stored before: webauthn-rs's own JSON.
     let json = serde_json::to_value(&theirs_key).unwrap();
     let mut key: StoredPasskey = serde_json::from_value(json.clone()).unwrap();
-    assert_eq!(key.cred_id(), theirs_key.cred_id().as_ref());
+    assert_eq!(key.cred_id(), theirs_key.cred_id().as_slice());
 
     for _ in 0..2 {
         let (rcr, state) = ours().start_authentication(std::slice::from_ref(&key));
@@ -126,10 +126,10 @@ fn tampered_replayed_and_foreign_assertions_are_refused() {
     );
     // A changed client data (the signature covers its hash).
     let mut tampered = good.clone();
-    let mut cdj = tampered.response.client_data_json.as_ref().to_vec();
+    let mut cdj = tampered.response.client_data_json.clone();
     let last = cdj.len() - 2;
     cdj[last] = b' ';
-    tampered.response.client_data_json = cdj.into();
+    tampered.response.client_data_json = cdj;
     assert!(
         ours()
             .finish_authentication(&tampered, &state, &key)
