@@ -78,7 +78,7 @@ All versions are the latest **stable** release as of the date above. Verified by
 | tokio | 1.54.1 | `full` |
 | sqlx | 0.9.0 | `runtime-tokio`, `tls-rustls-ring`, `postgres`, `uuid`, `chrono`, `json`, `migrate` |
 | deadpool-redis | 0.23.1 | `rt_tokio_1` |
-| redis | 1.8.2 | `tokio-rustls-comp`, `script` |
+| redis | 1.7.1 | `tokio-rustls-comp`, `script` — held: 1.8 (1.8.2 included) overflows the 2 MiB test-thread stack in `saml_upstream` (debug build); lift once the hot path's futures are boxed |
 | jsonwebtoken | 12.0.0 | `aws_lc_rs` — constant-time RSA; avoids RUSTSEC-2023-0071 exposure |
 | rsa | 0.9.10 | `pem` — 0.10 is still RC, do not use |
 | p256 | 0.14.0 | `ecdsa`, `pem` |
