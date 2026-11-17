@@ -72,6 +72,15 @@ async function drive(page, id, url) {
     const path = URL.canParse(here) ? new URL(here).pathname : here;
     if (/\/test\/[^/]+\/(callback|post_logout_redirect)/.test(path) || (await page.locator("#submission_complete").count()) > 0) {
       log(id, "reached", here.slice(0, 80));
+      // The suite's callback page posts what it received back to the test
+      // (its "implicit submission") from a script, and the module waits for
+      // that post before its next step. Closing the page on arrival can cut
+      // the script off and leave the module waiting forever, so let it
+      // finish: it shows #submission_complete once the post went through.
+      await page
+        .locator("#submission_complete")
+        .waitFor({ state: "attached", timeout: STEP_TIMEOUT_MS })
+        .catch(() => log(id, "no submission_complete on", here.slice(0, 80)));
       return done("callback");
     }
     // The login form: the identifier may arrive prefilled (login_hint), so
