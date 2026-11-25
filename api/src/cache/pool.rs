@@ -165,16 +165,23 @@ impl Backend {
         })
     }
 
+    /// Boxed: a pool checkout may open a connection, and redis's connection
+    /// futures are large (since 1.8); every cache call awaits this, so
+    /// inlining it would grow every request handler's future by that much.
     async fn get(&self) -> Result<RawConn, AppError> {
         Ok(match &self.inner {
-            Inner::Single(p) => RawConn::Single(p.get().await?),
-            Inner::Tls(p) => RawConn::Tls(p.get().await?),
-            Inner::Cluster(p) => {
-                RawConn::Cluster(p.get().await.map_err(|e| AppError::Cache(e.to_string()))?)
-            }
-            Inner::Sentinel(p) => {
-                RawConn::Sentinel(p.get().await.map_err(|e| AppError::Cache(e.to_string()))?)
-            }
+            Inner::Single(p) => RawConn::Single(Box::pin(p.get()).await?),
+            Inner::Tls(p) => RawConn::Tls(Box::pin(p.get()).await?),
+            Inner::Cluster(p) => RawConn::Cluster(
+                Box::pin(p.get())
+                    .await
+                    .map_err(|e| AppError::Cache(e.to_string()))?,
+            ),
+            Inner::Sentinel(p) => RawConn::Sentinel(
+                Box::pin(p.get())
+                    .await
+                    .map_err(|e| AppError::Cache(e.to_string()))?,
+            ),
         })
     }
 }

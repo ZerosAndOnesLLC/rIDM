@@ -33,10 +33,10 @@ http = "=1.5.0"
 tokio = { version = "=1.54.1", features = ["full"] }
 
 # Storage
-sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "uuid", "chrono", "json", "migrate", "macros"] }
+sqlx = { version = "=0.9.1", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "uuid", "chrono", "json", "migrate", "macros"] }
 deadpool = { version = "=0.13.1", default-features = false, features = ["managed", "rt_tokio_1"] }
 deadpool-redis = { version = "=0.23.1", features = ["rt_tokio_1", "cluster", "sentinel"] }
-redis = { version = "=1.7.1", features = ["tokio-rustls-comp", "script", "cluster-async", "sentinel"] }
+redis = { version = "=1.8.3", features = ["tokio-rustls-comp", "script", "cluster-async", "sentinel"] }
 # In-process (L1) cache: size-bounded, per-entry TTL.
 moka = { version = "=0.12.16", features = ["sync"] }
 
@@ -57,7 +57,7 @@ webauthn-rs = { version = "=0.6.2", features = ["danger-allow-state-serialisatio
 webauthn-rs-proto = "=0.6.2"
 base64urlsafedata = "=0.6.2"
 chacha20poly1305 = "=0.11.0"
-sha2 = "=0.11.1"
+sha2 = "=0.11.2"
 hmac = "=0.13.0"
 rand = "=0.10.4"
 rustls = { version = "=0.23.46", default-features = false, features = ["aws-lc-rs", "std", "tls12"] }
@@ -66,7 +66,7 @@ rustls-platform-verifier = "=0.7.1"
 # JWE (RSA-OAEP + AES-GCM) for encrypted ID tokens; same backend jsonwebtoken/rustls use.
 aws-lc-rs = "=1.19.0"
 subtle = "=2.6.1"
-zeroize = "=1.9.1"
+zeroize = "=1.9.2"
 base64 = "=0.23.1"
 hex = "=0.4.3"
 # SAML 2.0: a read-only XML tree that refuses DTDs (so no entity expansion
@@ -80,10 +80,10 @@ flate2 = "=1.1.11"
 
 # Outbound
 reqwest = { version = "=0.13.5", default-features = false, features = ["json", "rustls", "form"] }
-lettre = { version = "=0.11.23", default-features = false, features = ["tokio1", "tokio1-rustls", "aws-lc-rs", "rustls-platform-verifier", "smtp-transport", "builder", "pool"] }
+lettre = { version = "=0.11.24", default-features = false, features = ["tokio1", "tokio1-rustls", "aws-lc-rs", "rustls-platform-verifier", "smtp-transport", "builder", "pool"] }
 handlebars = "=6.4.4"
 # DNS, for organization domain verification (TXT lookups only).
-hickory-resolver = { version = "=0.26.3", default-features = false, features = ["tokio", "system-config"] }
+hickory-resolver = { version = "=0.26.4", default-features = false, features = ["tokio", "system-config"] }
 # LDAP / Active Directory upstream: async client over tokio, TLS through
 # rustls on the same aws-lc-rs provider as everything else.
 ldap3 = { version = "=0.12.1", default-features = false, features = ["tls-rustls-aws-lc-rs"] }
@@ -95,8 +95,8 @@ picky-krb = "=0.13.1"
 # AWS crates' default `rustls` feature is the legacy hyper 0.14 / ring stack;
 # `default-https-client` is the current one on aws-lc-rs.
 cryptoki = "=0.12.1"
-aws-config = { version = "=1.13.2", default-features = false, features = ["default-https-client", "rt-tokio", "sso", "credentials-process"] }
-aws-sdk-kms = { version = "=1.132.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-config = { version = "=1.13.4", default-features = false, features = ["default-https-client", "rt-tokio", "sso", "credentials-process"] }
+aws-sdk-kms = { version = "=1.134.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
 # The SDK's HTTP client, named only so the FIPS build can pick its FIPS TLS mode
 # (the default client hard-codes the non-FIPS aws-lc-rs provider).
 aws-smithy-http-client = { version = "=1.5.3", default-features = false }
@@ -105,12 +105,12 @@ aws-smithy-http-client = { version = "=1.5.3", default-features = false }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
 csv = "=1.4.0"
-uuid = { version = "=1.29.2", features = ["v4", "v7", "serde"] }
+uuid = { version = "=1.29.3", features = ["v4", "v7", "serde"] }
 chrono = { version = "=0.4.45", features = ["serde"] }
 thiserror = "=2.0.21"
 validator = { version = "=0.21.0", features = ["derive"] }
-regex = "=1.13.1"
-url = { version = "=2.5.8", features = ["serde"] }
+regex = "=1.13.2"
+url = { version = "=2.5.9", features = ["serde"] }
 ipnet = { version = "=2.12.2", features = ["serde"] }
 # Geo-IP lookups for risk-based adaptive authentication; reads a MaxMind DB
 # file the deployment supplies (no data is bundled). Default features only:
@@ -120,7 +120,7 @@ async-trait = "=0.1.92"
 futures = "=0.3.34"
 
 # Config / observability
-clap = { version = "=4.6.8", features = ["derive", "env"] }
+clap = { version = "=4.6.10", features = ["derive", "env"] }
 dotenvy = "=0.15.7"
 rpassword = "=7.5.5"
 tracing = "=0.1.44"

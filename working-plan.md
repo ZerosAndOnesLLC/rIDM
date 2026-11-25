@@ -76,31 +76,31 @@ All versions are the latest **stable** release as of the date above. Verified by
 | tower-http | 0.7.1 | `cors`, `trace`, `compression-gzip`, `set-header`, `fs` |
 | tower_governor | 0.8.0 | rate limiting |
 | tokio | 1.54.1 | `full` |
-| sqlx | 0.9.0 | `runtime-tokio`, `tls-rustls-ring`, `postgres`, `uuid`, `chrono`, `json`, `migrate` |
+| sqlx | 0.9.1 | `runtime-tokio`, `tls-rustls-ring`, `postgres`, `uuid`, `chrono`, `json`, `migrate` |
 | deadpool-redis | 0.23.1 | `rt_tokio_1` |
-| redis | 1.7.1 | `tokio-rustls-comp`, `script` — held: 1.8 (1.8.2 included) overflows the 2 MiB test-thread stack in `saml_upstream` (debug build); lift once the hot path's futures are boxed |
+| redis | 1.8.3 | `tokio-rustls-comp`, `script` — 1.8's connection futures are large, so the pool checkout (`cache::pool::Backend::get`) is boxed; without that, `saml_upstream` overflowed the 2 MiB test-thread stack (debug build) |
 | jsonwebtoken | 12.0.0 | `aws_lc_rs` — constant-time RSA; avoids RUSTSEC-2023-0071 exposure |
 | rsa | 0.9.10 | `pem` — 0.10 is still RC, do not use |
 | p256 | 0.14.0 | `ecdsa`, `pem` |
 | ed25519-dalek | 3.0.0 | `rand_core`, `pkcs8`, `alloc` |
 | argon2 | 0.6.0 | |
 | bcrypt / pbkdf2 / md-5 | 0.19.3 / 0.13.0 / 0.11.0 | legacy hash verification only (imported users) |
-| regex | 1.13.1 | profile schema patterns |
-| clap | 4.6.8 | `derive`, `env` — the `ridm` CLI (`crates/ridm-cli`) |
+| regex | 1.13.2 | profile schema patterns |
+| clap | 4.6.10 | `derive`, `env` — the `ridm` CLI (`crates/ridm-cli`) |
 | rpassword | 7.5.5 | interactive `ridm-api bootstrap` prompt, `ridm login` and `ridm user` password entry |
 | rand_core (0.6, aliased `rand_core_06`) | 0.6.4 | `getrandom` — rsa 0.9 keygen still takes a rand_core 0.6 RNG |
 | totp-rs | 6.0.0 | `qr`, `gen_secret` |
 | webauthn-rs (dev) | 0.6.2 | test oracle only: rIDM's own relying party (`api/src/webauthn`) replaced it, and the passkey tests check each reads what the other stores. `webauthn-rs-proto` 0.6.2 supplies the wire types (byte fields are plain `Vec<u8>` since 0.6) |
 | chacha20poly1305 | 0.11.0 | |
-| sha2 | 0.11.1 | |
+| sha2 | 0.11.2 | |
 | rand | 0.10.4 | |
 | rustls | 0.23.46 | `aws-lc-rs` — 0.24 is still dev, do not use |
 | reqwest | 0.13.5 | default-features off; `json`, `rustls`, `form` |
-| lettre | 0.11.23 | default-features off; `tokio1`, `tokio1-rustls`, `aws-lc-rs`, `rustls-platform-verifier`, `smtp-transport`, `builder` |
+| lettre | 0.11.24 | default-features off; `tokio1`, `tokio1-rustls`, `aws-lc-rs`, `rustls-platform-verifier`, `smtp-transport`, `builder` |
 | handlebars | 6.4.4 | |
 | serde | 1.0.229 | `derive` |
 | serde_json | 1.0.154 | |
-| uuid | 1.29.2 | `v4`, `v7`, `serde` |
+| uuid | 1.29.3 | `v4`, `v7`, `serde` |
 | chrono | 0.4.45 | `serde` |
 | thiserror | 2.0.21 | |
 | validator | 0.21.0 | `derive` |
@@ -128,15 +128,15 @@ All versions are the latest **stable** release as of the date above. Verified by
 | eslint-config-next | 16.4.6 | |
 | tailwindcss / @tailwindcss/postcss | 4.3.5 | |
 | @radix-ui/react-dialog | 1.3.1 | plus select 2.4.1, and other primitives at their current 1.x/2.x |
-| lucide-react | 1.73.0 | |
-| @tanstack/react-query | 5.107.1 | |
+| lucide-react | 1.80.0 | |
+| @tanstack/react-query | 5.108.4 | |
 | @tanstack/react-table | 9.2.4 | |
 | ~~@tanstack/react-virtual~~ | — | dropped in 6.4: the React Compiler lint (`react-hooks/incompatible-library`) flags `useVirtualizer` regardless of opt-out directives; the users table windows rows with a small hook of its own (`ui/src/lib/console/virtual.ts`) |
 | react-hook-form | 7.88.0 | |
 | @hookform/resolvers | 5.9.1 | |
 | zod | 4.6.5 | |
 | @simplewebauthn/browser | 14.0.0 | |
-| recharts | 3.10.1 | |
+| recharts | 3.11.1 | |
 | qrcode | 1.5.4 | |
 | @types/node / @types/react / @types/react-dom / @types/qrcode | 26.1.0 / 19.2.17 / 19.2.3 / 1.5.6 | |
 | @playwright/test / @axe-core/playwright | 1.63.0 / 4.13.0 | e2e + accessibility (pinned at 4.12) |
