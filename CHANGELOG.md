@@ -14,6 +14,10 @@ release renames that heading to the version and date.
 
 ## [Unreleased]
 
+### Changed
+
+- **Every dependency is on its latest stable release.** Rust: redis 1.8.3 (the 1.7.1 hold is lifted), sqlx 0.9.1, the AWS SDK (aws-config 1.13.4, aws-sdk-kms 1.133), hickory-resolver 0.26.4, lettre 0.11.24, sha2 0.11.2, uuid 1.29.3, clap 4.6.10 and the rest of `Cargo.lock`. redis 1.8's connection futures are large, so the cache pool's connection checkout is now boxed instead of inlined into every caller's future; that is what overflowed the SAML integration suite's 2 MiB test-thread stack. testcontainers stays at 0.27 until testcontainers-modules takes 0.28. Console and example SPA: TanStack Query 5.108, lucide-react 1.80, Recharts 3.11 and current type packages. TypeScript 7 still ships no compiler API (typescript-eslint 8.74 accepts up to 6.0), so the `@typescript/native` / `typescript` 6.0 split stays.
+
 ## [0.5.1] - 2026-11-17
 
 0.5.0 was tagged but its release build stopped at the test gate and published nothing, so 0.5.1 is the first 0.5 release: everything in [0.5.0's notes](https://github.com/ZerosAndOnesLLC/rIDM/blob/main/CHANGELOG.md#050---2026-11-17) ships here (every dependency on its latest stable release, majors included), along with `ridm-auth = "0.5"` on crates.io.
